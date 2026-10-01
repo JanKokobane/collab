@@ -5,66 +5,82 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Collab — Workspace</title>
+    <meta name="description" content="Collab brings your projects, tasks, and team conversations into one calm, focused workspace." />
+    <meta property="og:title" content="Collab — Workspace" />
+    <meta property="og:description" content="Collab brings your projects, tasks, and team conversations into one calm, focused workspace." />
     <meta property="og:image" content="https://bolt.new/static/og_default.png">
     <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Collab — Workspace" />
+    <meta name="twitter:description" content="Collab brings your projects, tasks, and team conversations into one calm, focused workspace." />
     <meta name="twitter:image" content="https://bolt.new/static/og_default.png">
     <link rel="stylesheet" href="./style.css">
 </head>
 
 <body>
     <div id="app">
-        <section class="landing" id="landing">
+        <header class="landing-header">
             <nav class="landing-nav">
-                <div class="brand"><span class="brand-mark">c</span><span>collab</span></div>
-                <div class="landing-links"><a href="#how-it-works">How it works</a><a
-                        href="#features">Features</a><button class="landing-signin" id="landing-signin">Sign
-                        in</button><button class="landing-cta" id="landing-cta">Open workspace</button></div>
+                <a class="brand logo-link" href="index.html" aria-label="Collab Home">
+                    <img src="./images/logo.png" alt="Collab." class="brand-logo-img" />
+                </a>
+                <div class="landing-links">
+                    <a href="#how-it-works">How it works</a>
+                    <a href="#features">Features</a>
+                    <a href="#pricing">Pricing</a>
+                    <a href="" class="divider">|</a>
+                    <a href="./components/auth/auth.html" class="landing-signin" id="landing-signin-link">Sign in</a>
+                </div>
             </nav>
-            <div class="landing-hero">
+        </header>
+
+        <main class="landing">
+            <section class="landing-hero">
                 <div class="hero-copy">
                     <p class="eyebrow">WORK BETTER TOGETHER</p>
                     <h1>Turn ideas into<br><span>momentum.</span></h1>
-                    <p class="hero-lead">Collab brings your projects, tasks, and team conversations into one calm,
-                        focused workspace.</p>
-                    <div class="hero-actions"><button class="landing-cta large-cta" id="hero-cta">Start collaborating
-                            <span>→</span></button><a class="text-link" href="#how-it-works">See how it works
-                            <span>↓</span></a></div>
+                    <p class="hero-lead">Collab brings your projects, tasks, and team conversations into one calm, focused workspace.</p>
+                    <div class="hero-actions">
+                        <a href="dashboard.html" class="landing-cta gold-cta large-cta">Start collaborating <span>→</span></a>
+                        <a class="text-link" href="#how-it-works">See how it works <span>↓</span></a>
+                    </div>
                     <div class="social-proof">
-                        <div class="proof-avatars"><span class="avatar teal-bg">AM</span><span
-                                class="avatar pink-bg">SK</span><span class="avatar orange-bg">JL</span><span
-                                class="avatar more-avatar">+</span></div><span>Trusted by teams who<br>ship meaningful
-                            work.</span>
+                        <div class="proof-avatars">
+                            <span class="avatar coral-bg">AM</span>
+                            <span class="avatar teal-bg">SK</span>
+                            <span class="avatar orange-bg">JL</span>
+                            <span class="avatar more-avatar">+</span>
+                        </div>
+                        <span>Trusted by teams who<br>ship meaningful work.</span>
                     </div>
                 </div>
                 <div class="hero-visual">
-                    <div class="visual-glow"></div>
-                    <div class="floating-note note-one"><span class="note-check">✓</span>
-                        <div><strong>Launch checklist</strong><small>4 tasks completed today</small></div>
-                    </div>
+                
                     <div class="dashboard-preview">
                         <div class="preview-top">
-                            <div class="preview-brand"><span class="brand-mark">c</span><strong>collab</strong></div>
+                            <div class="preview-brand">
+                                <img src="./images/logo.png" alt="Collab" class="preview-brand-img" />
+                            </div>
                             <span class="preview-dots">•••</span>
                         </div>
-                        <div class="preview-title"><small>PRODUCT LAUNCH</small>
+                        <div class="preview-title">
+                            <small>PRODUCT LAUNCH</small>
                             <h3>Ship with clarity.</h3>
                         </div>
                         <div class="preview-columns">
                             <div><b>To do <small>3</small></b><i></i><i></i></div>
-                            <div><b>In progress <small>2</small></b><i class="active-card"></i><i
-                                    class="active-card short"></i></div>
-                            <div><b>Done <small>3</small></b><i class="done-card"></i><i class="done-card short"></i>
-                            </div>
+                            <div><b>In progress <small>2</small></b><i class="active-card"></i><i class="active-card short"></i></div>
+                            <div><b>Done <small>3</small></b><i class="done-card"></i><i class="done-card short"></i></div>
                         </div>
                     </div>
-                    <div class="floating-note note-two"><span class="note-chat">♧</span>
-                        <div><strong>Nice work, Alex</strong><small>Jordan left a comment</small></div>
-                    </div>
+                    
                 </div>
-            </div>
-            <div class="landing-bottom" id="how-it-works"><span>BUILT FOR FOCUSED TEAMS</span>
+            </section>
+
+            <div class="landing-bottom" id="how-it-works">
+                <span>BUILT FOR FOCUSED TEAMS</span>
                 <div><b>Plan clearly.</b><b>Move quickly.</b><b>Celebrate progress.</b></div>
             </div>
+
             <section class="proof-strip">
                 <p>Everything your team needs to move from idea to impact</p>
                 <div class="proof-metrics">
@@ -73,66 +89,124 @@
                     <div><strong>100%</strong><span>clarity on what's next</span></div>
                 </div>
             </section>
+
             <section class="selling-section feature-section" id="features">
                 <div class="section-intro">
                     <p class="eyebrow">ONE PLACE TO MOVE WORK FORWARD</p>
                     <h2>Less chasing.<br><span>More creating.</span></h2>
-                    <p>Collab gives every project a shared source of truth, so your team can spend less time asking for
-                        updates and more time doing their best work.</p>
+                    <p>Collab gives every project a shared source of truth, so your team can spend less time asking for updates and more time doing their best work.</p>
                 </div>
-                <div class="feature-grid">
-                    <article class="feature-card featured-feature">
-                        <div class="feature-icon teal-feature">▦</div>
-                        <h3>See the whole picture</h3>
-                        <p>Turn scattered tasks into a clear visual board. Know what is moving, what is blocked, and
-                            what needs attention at a glance.</p><a href="#how-it-works">Explore project boards
-                            <span>→</span></a>
-                        <div class="mini-board"><i></i><i></i><i></i></div>
-                    </article>
-                    <article class="feature-card">
-                        <div class="feature-icon blue-feature">✓</div>
-                        <h3>Make ownership obvious</h3>
-                        <p>Assign every next step to the right person with due dates that keep momentum moving without
-                            micromanaging.</p><a href="#how-it-works">See task management <span>→</span></a>
-                    </article>
-                    <article class="feature-card">
-                        <div class="feature-icon green-feature">♧</div>
-                        <h3>Keep context together</h3>
-                        <p>Comments, decisions, and updates live with the work, not buried in a separate chat or lost in
-                            a long email thread.</p><a href="#how-it-works">See team collaboration <span>→</span></a>
-                    </article>
-                </div>
+                
+                
             </section>
+
             <section class="selling-section workflow-section">
-                <div class="workflow-visual">
-                    <div class="workflow-card">
-                        <div class="workflow-line"><span class="workflow-number">01</span>
-                            <div><strong>Capture the plan</strong><small>Give the team a clear destination.</small>
-                            </div>
-                        </div>
-                        <div class="workflow-line active-workflow"><span class="workflow-number">02</span>
-                            <div><strong>Move the work</strong><small>Everyone knows what to do next.</small></div>
-                        </div>
-                        <div class="workflow-line"><span class="workflow-number">03</span>
-                            <div><strong>Share the win</strong><small>Celebrate progress together.</small></div>
-                        </div>
-                    </div>
-                </div>
+                
                 <div class="section-intro">
                     <p class="eyebrow">A BETTER WAY TO WORK</p>
                     <h2>From first idea<br>to <span>final delivery.</span></h2>
-                    <p>Whether you are launching a product, running a campaign, or building something new, Collab makes
-                        the path forward feel simple.</p><button class="outline-cta" id="workflow-cta">See Collab in
-                        action <span>→</span></button>
+                    <p>Whether you are launching a product, running a campaign, or building something new, Collab makes the path forward feel simple.</p>
+                    <a href="./components/auth/auth.css" class="outline-cta">See Collab in action <span>→</span></a>
+                </div>
+                <div>
+
+                <div class="faq-list">
+                    <details open>
+                        <summary>01. Capture the plan</summary>
+                        <p>Give the team a clear destination.</p>
+                    </details>
+                    <details>
+                        <summary>02. Move the work</summary>
+                        <p>Everyone knows what to do next.</p>
+                    </details>
+                    <details>
+                        <summary>03. Share the win</summary>
+                        <p>Celebrate progress together.</p>
+                    </details>
+                </div>
+
                 </div>
             </section>
-            <section class="quote-section">
-                <div class="quote-mark">“</div>
-                <blockquote>Collab gave our team a shared rhythm. We stopped managing the work and started making
-                    progress.</blockquote>
-                <div class="quote-person"><span class="avatar teal-bg">MC</span><span><strong>Maya
-                            Chen</strong><small>Head of Product, Northstar</small></span></div>
+
+            <section class="quote-section" id="testimonials">
+                <div class="quote-slider-wrapper">
+                    <button class="quote-nav prev-quote" id="prev-quote-btn" aria-label="Previous testimonial">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    </button>
+
+                    <div class="quote-slides-container">
+                        <div class="quote-mark">“</div>
+
+                        <!-- Slide 1 (Original) -->
+                        <div class="quote-slide active" data-index="0">
+                            <blockquote>Collab gave our team a shared rhythm. We stopped managing the work and started making progress.</blockquote>
+                            <div class="quote-person">
+                                <span class="avatar coral-bg">MC</span>
+                                <span><strong>Maya Chen</strong><small>Head of Product, Northstar</small></span>
+                            </div>
+                        </div>
+
+                        <!-- Slide 2 -->
+                        <div class="quote-slide" data-index="1">
+                            <blockquote>We cut our weekly status meetings by half. With everything on one visual board, nobody has to ask who owns what.</blockquote>
+                            <div class="quote-person">
+                                <span class="avatar teal-bg">MV</span>
+                                <span><strong>Marcus Vance</strong><small>VP of Engineering, Forma Labs</small></span>
+                            </div>
+                        </div>
+
+                        <!-- Slide 3 -->
+                        <div class="quote-slide" data-index="2">
+                            <blockquote>The transition from chaotic spreadsheets to Collab was instant. Our design sprints now ship two days ahead of schedule.</blockquote>
+                            <div class="quote-person">
+                                <span class="avatar green-bg">ER</span>
+                                <span><strong>Elena Rostova</strong><small>Lead Product Designer, Studio Apex</small></span>
+                            </div>
+                        </div>
+
+                        <!-- Slide 4 -->
+                        <div class="quote-slide" data-index="3">
+                            <blockquote>Finally a collaboration tool that doesn't feel like a noisy cockpit. It keeps developers focused and stakeholders informed.</blockquote>
+                            <div class="quote-person">
+                                <span class="avatar blue-bg">DP</span>
+                                <span><strong>Devon Patel</strong><small>Tech Lead, Hyperion Tech</small></span>
+                            </div>
+                        </div>
+
+                        <!-- Slide 5 -->
+                        <div class="quote-slide" data-index="4">
+                            <blockquote>Our remote marketing team across four time zones stays totally in sync. It turned complex multi-channel launches into pure clarity.</blockquote>
+                            <div class="quote-person">
+                                <span class="avatar pink-bg">SJ</span>
+                                <span><strong>Sarah Jenkins</strong><small>Director of Growth, Catalyst Media</small></span>
+                            </div>
+                        </div>
+
+                        <!-- Slide 6 -->
+                        <div class="quote-slide" data-index="5">
+                            <blockquote>Collab brings back the joy of shipping together. Decisions happen directly with the work instead of buried in email threads.</blockquote>
+                            <div class="quote-person">
+                                <span class="avatar orange-bg">LO</span>
+                                <span><strong>Liam O'Connor</strong><small>Operations Lead, Vantage Works</small></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="quote-nav next-quote" id="next-quote-btn" aria-label="Next testimonial">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    </button>
+                </div>
+
+                <div class="quote-dots" id="quote-dots">
+                    <button class="quote-dot active" data-index="0" aria-label="Slide 1"></button>
+                    <button class="quote-dot" data-index="1" aria-label="Slide 2"></button>
+                    <button class="quote-dot" data-index="2" aria-label="Slide 3"></button>
+                    <button class="quote-dot" data-index="3" aria-label="Slide 4"></button>
+                    <button class="quote-dot" data-index="4" aria-label="Slide 5"></button>
+                    <button class="quote-dot" data-index="5" aria-label="Slide 6"></button>
+                </div>
             </section>
+
             <section class="selling-section pricing-section" id="pricing">
                 <div class="section-intro centered">
                     <p class="eyebrow">SIMPLE, HONEST PRICING</p>
@@ -151,9 +225,11 @@
                         <li>Unlimited tasks and comments</li>
                         <li>Up to 8 team members</li>
                         <li>Board and list views</li>
-                    </ul><button class="landing-cta pricing-cta" id="pricing-cta">Start for free <span>→</span></button>
+                    </ul>
+                    <a href="dashboard.html" class="landing-cta gold-cta pricing-cta">Start for free <span>→</span></a>
                 </div>
             </section>
+
             <section class="faq-section">
                 <div class="section-intro">
                     <p class="eyebrow">QUESTIONS, ANSWERED</p>
@@ -162,130 +238,125 @@
                 <div class="faq-list">
                     <details open>
                         <summary>What is Collab?</summary>
-                        <p>Collab is a focused workspace for planning projects, assigning tasks, and keeping team
-                            communication attached to the work.</p>
+                        <p>Collab is a focused workspace for planning projects, assigning tasks, and keeping team communication attached to the work.</p>
                     </details>
                     <details>
                         <summary>Is Collab free to use?</summary>
-                        <p>Yes. The free workspace includes everything a small team needs to get started, with no credit
-                            card required.</p>
+                        <p>Yes. The free workspace includes everything a small team needs to get started, with no credit card required.</p>
                     </details>
                     <details>
                         <summary>Can I invite my whole team?</summary>
-                        <p>Absolutely. Invite your teammates, assign ownership, and keep everyone aligned from one
-                            shared project board.</p>
+                        <p>Absolutely. Invite your teammates, assign ownership, and keep everyone aligned from one shared project board.</p>
                     </details>
                 </div>
             </section>
+
             <section class="final-cta">
-                <p class="eyebrow">READY WHEN YOU ARE</p>
-                <h2>Make your next project<br><span>the one that ships.</span></h2>
-                <p>Bring your team into focus with Collab.</p><button class="landing-cta large-cta" id="final-cta">Start
-                    collaborating <span>→</span></button>
+                <div class="final-cta-content">
+                    <p class="eyebrow">READY WHEN YOU ARE</p>
+                    <h2>Make your next project<br><span>the one that ships.</span></h2>
+                    <p>Bring your team into focus with Collab.</p>
+                    <a href="./components/auth/auth.html" class="landing-cta gold-cta large-cta">Start collaborating <span>→</span></a>
+                </div>
             </section>
-            <footer class="landing-footer">
-                <div class="brand"><span class="brand-mark">c</span><span>collab</span></div>
-                <div><a href="#features">Features</a><a href="#how-it-works">How it works</a><a
-                        href="#pricing">Pricing</a><a href="#">Privacy</a></div><small>© 2026 Collab. Built for teams
-                    who care about the work.</small>
-            </footer>
-        </section>
-        <div class="app-shell" id="workspace-app">
-            <aside class="sidebar">
-                <div class="brand"><span class="brand-mark">c</span><span>collab</span></div>
-                <nav class="primary-nav">
-                    <a class="nav-item active" data-view="Overview"><span>▦</span><span>Overview</span></a>
-                    <a class="nav-item" data-view="My Tasks"><span>✓</span><span>My Tasks</span><b>5</b></a>
-                    <a class="nav-item" data-view="Calendar"><span>□</span><span>Calendar</span></a>
-                </nav>
-                <div class="nav-label">WORKSPACE <button class="tiny-plus" id="add-project">+</button></div>
-                <nav class="project-nav">
-                    <a class="nav-item project active-project" data-view="Product Launch"><i
-                            class="dot coral"></i><span>Product Launch</span><span>•••</span></a>
-                    <a class="nav-item project" data-view="Website Redesign"><i class="dot blue"></i><span>Website
-                            Redesign</span></a>
-                    <a class="nav-item project" data-view="Marketing Sprint"><i class="dot green"></i><span>Marketing
-                            Sprint</span></a>
-                </nav>
-                <div class="sidebar-bottom">
-                    <a class="nav-item"><span>♧</span><span>Team members</span></a>
-                    <a class="nav-item"><span>♢</span><span>Notifications</span><i class="notification-dot"></i></a>
-                    <div class="profile">
-                        <div class="avatar coral-bg">AM</div>
-                        <div><strong>Alex Morgan</strong><small>Free workspace</small></div><span>•••</span>
+        </main>
+
+        <footer class="site-footer">
+            <div class="footer-container">
+                <div class="footer-top-grid">
+                    <!-- Brand Column -->
+                    <div class="footer-brand-col">
+                        <a href="#" class="footer-logo-link">
+                            <img src="./images/logo.png" alt="Collab." class="footer-logo-img" />
+                        </a>
+                        <p class="footer-mission">
+                            The focused workspace designed for modern product teams. Plan with clarity, collaborate in real time, and ship projects that matter.
+                        </p>
+                        
+                        <div class="footer-socials">
+                            <a href="https://github.com" target="_blank" rel="noopener noreferrer" aria-label="GitHub" class="social-btn">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+                            </a>
+                            <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" aria-label="X (formerly Twitter)" class="social-btn">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                            </a>
+                            <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" class="social-btn">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 8.76a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2m1.37 9.74v-8.37H5.09v8.37z"/></svg>
+                            </a>
+                            <a href="https://discord.com" target="_blank" rel="noopener noreferrer" aria-label="Discord" class="social-btn">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Column 1: Product -->
+                    <div class="footer-links-col">
+                        <h4>Product</h4>
+                        <ul>
+                            <li><a href="#features">Feature Overview</a></li>
+                            <li><a href="dashboard.html">Kanban Workspace</a></li>
+                            <li><a href="#how-it-works">Team Workflows</a></li>
+                            <li><a href="#pricing">Pricing Plans</a></li>
+                            <li><a href="dashboard.html">Task Management</a></li>
+                        </ul>
+                    </div>
+
+                    <!-- Column 2: Solutions -->
+                    <div class="footer-links-col">
+                        <h4>Solutions</h4>
+                        <ul>
+                            <li><a href="dashboard.html">Product Teams</a></li>
+                            <li><a href="dashboard.html">Engineering Sprints</a></li>
+                            <li><a href="dashboard.html">Design Collaboration</a></li>
+                            <li><a href="dashboard.html">Remote & Hybrid Teams</a></li>
+                            <li><a href="dashboard.html">Early-Stage Startups</a></li>
+                            <li><a href="dashboard.html">Enterprise Scale</a></li>
+                        </ul>
+                    </div>
+
+                    <!-- Column 3: Resources -->
+                    <div class="footer-links-col">
+                        <h4>Resources</h4>
+                        <ul>
+                            <li><a href="#testimonials">Customer Stories</a></li>
+                            <li><a href="auth.html">Documentation</a></li>
+                            <li><a href="auth.html">API & Webhooks</a></li>
+                            <li><a href="auth.html">Community Forum</a></li>
+                            <li><a href="auth.html">Security & Privacy</a></li>
+                            <li><a href="auth.html">System Status</a></li>
+                        </ul>
+                    </div>
+
+                </div>
+
+                <div class="footer-divider"></div>
+
+                <!-- Bottom Row -->
+                <div class="footer-bottom-row">
+                    <div class="footer-legal-copy">
+                        <span>© 2026 Collab Inc. All rights reserved.</span>
+                        <span class="footer-pill-badge">SOC 2 Type II Certified</span>
+                    </div>
+
+                    <div class="footer-legal-links">
+                        <a href="#privacy">Privacy Policy</a>
+                        <span class="sep">•</span>
+                        <a href="#terms">Terms of Service</a>
+                        <span class="sep">•</span>
+                        <a href="#security">Security</a>
+                        <span class="sep">•</span>
+                        <a href="#cookies">Cookie Preferences</a>
+                    </div>
+
+                    <div class="footer-region">
+                        <span class="globe-icon">🌐</span>
+                        <span>English (US)</span>
                     </div>
                 </div>
-            </aside>
-            <main class="main-content">
-                <header class="topbar">
-                    <div class="breadcrumbs"><span>Workspace</span><span>›</span><strong id="breadcrumb-title">Product
-                            Launch</strong></div>
-                    <div class="top-actions"><label class="search"><span>⌕</span><input id="search"
-                                placeholder="Search tasks..." /></label><button class="icon-button">♢</button><button
-                            class="help-button">?</button><button class="signin-button" id="signin">Sign in</button>
-                    </div>
-                </header>
-                <section class="workspace">
-                    <div class="page-heading">
-                        <div>
-                            <p class="eyebrow">PROJECT OVERVIEW</p>
-                            <h1 id="page-title">Product Launch</h1>
-                            <p class="subtitle">A shared space for your team to plan, create, and ship.</p>
-                        </div><button class="primary-button" id="new-task">+ <span>New task</span></button>
-                    </div>
-                    <div class="stats">
-                        <div class="stat-card"><span class="stat-icon coral-icon">✓</span>
-                            <div><small>Tasks completed</small><strong>18 <em>of 32</em></strong></div>
-                            <div class="mini-chart"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                        </div>
-                        <div class="stat-card"><span class="stat-icon blue-icon">□</span>
-                            <div><small>Due this week</small><strong>7 <em>tasks</em></strong></div><span
-                                class="stat-note">2 overdue</span>
-                        </div>
-                        <div class="stat-card"><span class="stat-icon green-icon">♧</span>
-                            <div><small>Team members</small><strong>8 <em>people</em></strong></div>
-                            <div class="avatars"><span class="avatar teal-bg">AM</span><span
-                                    class="avatar pink-bg">SK</span><span class="avatar orange-bg">JL</span><span
-                                    class="avatar more-avatar">+5</span></div>
-                        </div>
-                    </div>
-                    <div class="board-header">
-                        <div>
-                            <h2>Project board</h2>
-                            <p>Track your team's progress at a glance.</p>
-                        </div>
-                        <div class="board-actions"><button class="filter-button">All tasks ˅</button><button
-                                class="view-button active">▦</button><button class="view-button">□</button></div>
-                    </div>
-                    <div class="board">
-                        <div class="column" data-status="To do">
-                            <div class="column-header"><span class="status-dot gray"></span>
-                                <h3>To do</h3><span class="count">3</span><button class="column-plus">+</button>
-                            </div>
-                            <div class="task-list" id="todo-list"></div><button class="add-card" data-add="To do">+ Add
-                                task</button>
-                        </div>
-                        <div class="column" data-status="In progress">
-                            <div class="column-header"><span class="status-dot coral"></span>
-                                <h3>In progress</h3><span class="count">2</span><button class="column-plus">+</button>
-                            </div>
-                            <div class="task-list" id="progress-list"></div><button class="add-card"
-                                data-add="In progress">+ Add task</button>
-                        </div>
-                        <div class="column" data-status="Done">
-                            <div class="column-header"><span class="status-dot green"></span>
-                                <h3>Done</h3><span class="count">3</span><button class="column-plus">+</button>
-                            </div>
-                            <div class="task-list" id="done-list"></div><button class="add-card" data-add="Done">+ Add
-                                task</button>
-                        </div>
-                    </div>
-                </section>
-            </main>
-        </div>
-        <div id="modal-root"></div>
+            </div>
+        </footer>
     </div>
-    <script type="module" src="main.js"></script>
+    <script type="module" src="./main.js"></script>
 </body>
 
 </html>

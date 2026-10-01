@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Collab — Workspace Dashboard</title>
+    <meta name="description" content="Collab collaboration workspace dashboard." />
+    <link rel="stylesheet" href="./dashboard.css">
+</head>
+
+<body>
+    <div id="app" class="app-shell">
+        <aside class="sidebar">
+            <a class="brand-link" href="index.html" title="Back to Collab Home">
+                <img src="./logo.png" alt="Collab." class="brand-logo-img" />
+            </a>
+
+            <nav class="primary-nav">
+                <a class="nav-item active" data-view="Overview"><span>▦</span><span>Overview</span></a>
+                <a class="nav-item" data-view="My Tasks"><span>✓</span><span>My Tasks</span><b>5</b></a>
+                <a class="nav-item" data-view="Calendar"><span>□</span><span>Calendar</span></a>
+            </nav>
+
+            <div class="nav-label">
+                <span>PROJECTS</span>
+                <button class="tiny-plus" id="add-project" title="Add project">+</button>
+            </div>
+
+            <nav class="project-nav">
+                <a class="nav-item project active" data-view="Product Launch">
+                    <i class="dot coral"></i><span>Product Launch</span>
+                </a>
+                <a class="nav-item project" data-view="Website Redesign">
+                    <i class="dot blue"></i><span>Website Redesign</span>
+                </a>
+                <a class="nav-item project" data-view="Marketing Sprint">
+                    <i class="dot green"></i><span>Marketing Sprint</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-bottom">
+                <div class="profile" id="user-profile" title="Account settings & logout">
+                    <div class="avatar coral-bg" id="sidebar-avatar">AM</div>
+                    <div>
+                        <strong id="sidebar-name">Alex Morgan</strong>
+                        <small id="sidebar-role">Active Member</small>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="topbar">
+                <div class="breadcrumbs">
+                    <span>Workspace</span><span>›</span><strong id="breadcrumb-title">Product Launch</strong>
+                </div>
+                <div class="top-actions">
+                    <label class="search">
+                        <span>⌕</span>
+                        <input id="search" placeholder="Search tasks..." />
+                    </label>
+                    <a href="index.html" class="home-btn" title="Return to Landing Page">
+                        <span>🏠 Landing Page</span>
+                    </a>
+                    <button class="user-badge-btn" id="signin-user-btn">Alex Morgan ▾</button>
+                </div>
+            </header>
+
+            <section class="workspace">
+                <div class="page-heading">
+                    <div>
+                        <p class="eyebrow">PROJECT BOARD</p>
+                        <h1 id="page-title">Product Launch</h1>
+                        <p class="subtitle">A shared space for your team to plan, track, and ship meaningful work.</p>
+                    </div>
+                    <button class="primary-button gold" id="new-task-btn">+ <span>New task</span></button>
+                </div>
+
+                <div class="stats">
+                    <div class="stat-card">
+                        <span class="stat-icon coral-icon">✓</span>
+                        <div><small>Tasks completed</small><strong>18 <em>of 32</em></strong></div>
+                        <div class="mini-chart"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-icon blue-icon">□</span>
+                        <div><small>Due this week</small><strong>7 <em>tasks</em></strong></div>
+                        <span class="stat-note">2 pending</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-icon green-icon">♧</span>
+                        <div><small>Team members</small><strong>8 <em>people</em></strong></div>
+                        <div class="avatars">
+                            <span class="avatar coral-bg">AM</span>
+                            <span class="avatar teal-bg">SK</span>
+                            <span class="avatar orange-bg">JL</span>
+                            <span class="avatar more-avatar">+5</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="board-header">
+                    <div>
+                        <h2>Project board</h2>
+                        <p>Track your team's progress at a glance.</p>
+                    </div>
+                    <div class="board-actions">
+                        <button class="filter-button">All tasks ˅</button>
+                        <button class="view-button active">▦ Board</button>
+                        <button class="view-button">□ List</button>
+                    </div>
+                </div>
+
+                <div class="board">
+                    <div class="column" data-status="To do">
+                        <div class="column-header">
+                            <span class="status-dot gray"></span>
+                            <h3>To do</h3><span class="count">3</span>
+                            <button class="column-plus" data-add="To do">+</button>
+                        </div>
+                        <div class="task-list" id="todo-list"></div>
+                        <button class="add-card" data-add="To do">+ Add task</button>
+                    </div>
+
+                    <div class="column" data-status="In progress">
+                        <div class="column-header">
+                            <span class="status-dot coral"></span>
+                            <h3>In progress</h3><span class="count">2</span>
+                            <button class="column-plus" data-add="In progress">+</button>
+                        </div>
+                        <div class="task-list" id="progress-list"></div>
+                        <button class="add-card" data-add="In progress">+ Add task</button>
+                    </div>
+
+                    <div class="column" data-status="Done">
+                        <div class="column-header">
+                            <span class="status-dot green"></span>
+                            <h3>Done</h3><span class="count">3</span>
+                            <button class="column-plus" data-add="Done">+</button>
+                        </div>
+                        <div class="task-list" id="done-list"></div>
+                        <button class="add-card" data-add="Done">+ Add task</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <div id="modal-root"></div>
+    </div>
+
+    <script type="module" src="./dashboard.js"></script>
+</body>
+
+</html>
