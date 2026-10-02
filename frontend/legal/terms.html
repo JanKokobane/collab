@@ -6,8 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Terms of Service — Collab Workspace</title>
     <meta name="description" content="Read the terms and conditions governing the use of the Collab workspace platform and services." />
-    <link rel="icon" type="image/png" href="./images/favicon.png" />
+    <link rel="icon" type="image/png" href="../../images/favicon.png" />
     <link rel="stylesheet" href="./legal.css">
+    <link rel="stylesheet" href="../style.css">
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const yr = new Date().getFullYear();
@@ -41,18 +42,14 @@
     <!-- Sticky Landing Header matching Index page -->
     <header class="landing-header">
         <nav class="landing-nav">
-            <a class="brand logo-link" href="index.html" aria-label="Collab Home">
-                <img src="./images/logo.png" alt="Collab." class="brand-logo-img" />
+            <a class="brand logo-link" href="../index.html" aria-label="Collab Home">
+                <img src="../images/logo.png" alt="Collab." class="brand-logo-img" />
             </a>
             <div class="landing-links">
-                <a href="index.html#how-it-works">How it works</a>
-                <a href="index.html#features">Features</a>
-                <a href="index.html#pricing">Pricing</a>
-                <a href="privacy.html">Privacy</a>
-                <a href="terms.html" style="color: #1C1C1F; font-weight: 700;">Terms</a>
-                <span class="divider" style="color: #E4E4E7; user-select: none;">|</span>
-                <a href="auth.html" class="landing-signin">Sign in</a>
-                <a href="auth.html?mode=register" class="get-collab-btn">Get Collab for free</a>
+               
+                <a href="./privacy.html">Privacy</a>
+                <span class="divider" style="color: #0d0d0e; user-select: none;">|</span>
+                <a href="../auth/auth.js" class="landing-signin">Sign in</a>
             </div>
         </nav>
     </header>
@@ -60,7 +57,7 @@
     <!-- Aligned Header Banner -->
     <header class="legal-header">
         <div class="legal-header-inner">
-            <a href="index.html" class="legal-back-breadcrumb">
+            <a href="../index.html" class="legal-back-breadcrumb">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="19" y1="12" x2="5" y2="12"></line>
                     <polyline points="12 19 5 12 12 5"></polyline>
@@ -68,27 +65,9 @@
                 <span>Back to Collab Home</span>
             </a>
 
-            <div>
-                <span class="legal-badge">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="8" x2="12" y2="12"></line>
-                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                    </svg>
-                    User Agreement
-                </span>
-            </div>
 
             <h1>Terms of Service</h1>
-            <p>These terms govern your access to and use of Collab workspaces, boards, real-time collaboration tools, and platform APIs.</p>
-
-            <div class="legal-meta">
-                <span>Effective Date: January 1, <span class="current-year">2026</span></span>
-                <span class="legal-meta-dot"></span>
-                <span>Last Updated: October <span class="current-year">2026</span></span>
-                <span class="legal-meta-dot"></span>
-                <span>Version 3.1</span>
-            </div>
+            <p>These terms govern your access to and use of Collab workspaces, boards, real-time collaboration tools, and platform APIs.</p
         </div>
     </header>
 
@@ -119,20 +98,13 @@
                 <li><a href="#governing-law">9. Governing Law</a></li>
             </ul>
 
-            <div class="legal-doc-switch">
-                <span>Related Policy</span>
-                <a href="privacy.html">
-                    <span>Privacy Policy</span>
-                    <span>→</span>
-                </a>
-            </div>
         </aside>
 
         <!-- Document Content Card -->
         <article class="legal-content-card">
             <section id="acceptance" class="legal-section">
                 <h2><span class="legal-section-number">01</span> Acceptance of Terms</h2>
-                <p>Welcome to Collab. By creating an account, accessing project boards, or utilizing our services (collectively, the "Services"), you agree to be legally bound by these Terms of Service ("Terms") and our <a href="privacy.html" style="color: #0052CC; text-decoration: underline;">Privacy Policy</a>. If you are entering into these Terms on behalf of a company, organization, or team, you represent that you hold the legal authority to bind that entity.</p>
+                <p>Welcome to Collab. By creating an account, accessing project boards, or utilizing our services (collectively, the "Services"), you agree to be legally bound by these Terms of Service ("Terms") and our <a href="./privacy.html" style="color: #0052CC; text-decoration: underline;">Privacy Policy</a>. If you are entering into these Terms on behalf of a company, organization, or team, you represent that you hold the legal authority to bind that entity.</p>
                 <p>If you do not accept these Terms in their entirety, you must not access or use the Services.</p>
 
                 <div class="legal-callout">
@@ -224,9 +196,8 @@
                 <!-- Brand Column -->
                 <div class="trello-footer-col brand-col">
                     <a href="index.html" class="trello-footer-logo">
-                        <img src="./images/logo.png" alt="Collab" class="trello-footer-logo-img" />
+                        <img src="../images/logo.png" alt="Collab" class="trello-footer-logo-img" />
                     </a>
-                    <a href="auth.html" class="trello-footer-login">Log In</a>
                 </div>
 
                 <!-- Column 1: About Collab -->
