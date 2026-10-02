@@ -64,7 +64,7 @@ function getReturnUrl() {
     const returnUrl = params.get("return");
 
     if (!returnUrl) {
-        return "../dashboard.html";
+        return "../dashboard/dashboard.html";
     }
 
     if (returnUrl.startsWith("http://") || returnUrl.startsWith("https://")) {
@@ -72,12 +72,12 @@ function getReturnUrl() {
             const url = new URL(returnUrl);
 
             if (url.origin !== window.location.origin) {
-                return "../dashboard.html";
+                return "../dashboard/dashboard.html";
             }
 
             return url.href;
         } catch {
-            return "../dashboard.html";
+            return "../dashboard/dashboard.html";
         }
     }
 
@@ -85,7 +85,7 @@ function getReturnUrl() {
         return returnUrl;
     }
 
-    return "../dashboard.html";
+    return "../dashboard/dashboard.html";
 }
 
 function redirectAfterLogin() {
@@ -579,7 +579,7 @@ async function handleSignin(event) {
 
         showAlert(
             signinErrorAlert,
-            `A secure login link has been sent to ${email}. Check your inbox and click the link to continue.`,
+            `A secure login link has been sent to ${email}. Check your inbox/spam and click the link to continue.`,
             "success"
         );
 
