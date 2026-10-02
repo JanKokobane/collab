@@ -43,6 +43,13 @@ const LOGIN_STORAGE_KEY = "collab-logged-in";
 
 
 // ============================================================
+// AUTH FLOW STATE
+// ============================================================
+
+let authFlowInProgress = false;
+
+
+// ============================================================
 // DOM ELEMENTS
 // ============================================================
 
@@ -116,6 +123,7 @@ function getReturnUrl() {
 
     return "../dashboard/dashboard.html";
 }
+
 
 function redirectAfterLogin() {
     window.location.href = getReturnUrl();
@@ -199,11 +207,15 @@ function showAlert(element, message, type = "error") {
     if (type === "success") {
         element.style.backgroundColor = "#dcfce7";
         element.style.color = "#166534";
+    } else if (type === "info") {
+        element.style.backgroundColor = "#dcfce7";
+        element.style.color = "#166534";
     } else {
         element.style.backgroundColor = "#fee2e2";
         element.style.color = "#991b1b";
     }
 }
+
 
 function clearAlert(element) {
     if (!element) {
@@ -231,23 +243,15 @@ function showErrorToast(message) {
         toast.style.bottom = "24px";
         toast.style.left = "50%";
         toast.style.transform = "translateX(-50%)";
-
         toast.style.backgroundColor = "#DC2626";
         toast.style.color = "#FFFFFF";
-
         toast.style.padding = "10px 18px";
         toast.style.borderRadius = "8px";
-
         toast.style.fontSize = "14px";
         toast.style.fontWeight = "500";
-
-        toast.style.boxShadow =
-            "0 10px 25px rgba(0,0,0,0.2)";
-
+        toast.style.boxShadow = "0 10px 25px rgba(0,0,0,0.2)";
         toast.style.zIndex = "9999";
-
-        toast.style.transition =
-            "opacity 0.3s ease";
+        toast.style.transition = "opacity 0.3s ease";
 
         document.body.appendChild(toast);
     }
@@ -275,23 +279,15 @@ function showSuccessToast(message) {
         toast.style.bottom = "24px";
         toast.style.left = "50%";
         toast.style.transform = "translateX(-50%)";
-
         toast.style.backgroundColor = "#16A34A";
         toast.style.color = "#FFFFFF";
-
         toast.style.padding = "10px 18px";
         toast.style.borderRadius = "8px";
-
         toast.style.fontSize = "14px";
         toast.style.fontWeight = "500";
-
-        toast.style.boxShadow =
-            "0 10px 25px rgba(0,0,0,0.2)";
-
+        toast.style.boxShadow = "0 10px 25px rgba(0,0,0,0.2)";
         toast.style.zIndex = "9999";
-
-        toast.style.transition =
-            "opacity 0.3s ease";
+        toast.style.transition = "opacity 0.3s ease";
 
         document.body.appendChild(toast);
     }
@@ -323,19 +319,16 @@ function setButtonLoading(
 
     button.disabled = loading;
 
-    const textElement =
-        button.querySelector("span");
+    const textElement = button.querySelector("span");
 
     if (textElement) {
-        textElement.textContent =
-            loading
-                ? loadingText
-                : normalText;
+        textElement.textContent = loading
+            ? loadingText
+            : normalText;
     } else {
-        button.textContent =
-            loading
-                ? loadingText
-                : normalText;
+        button.textContent = loading
+            ? loadingText
+            : normalText;
     }
 }
 
@@ -345,15 +338,13 @@ function setButtonLoading(
 // ============================================================
 
 function setFieldError(fieldId, message) {
-    const group =
-        document.querySelector(
-            `#group-${fieldId}`
-        );
+    const group = document.querySelector(
+        `#group-${fieldId}`
+    );
 
-    const errorElement =
-        document.querySelector(
-            `#${fieldId}-error`
-        );
+    const errorElement = document.querySelector(
+        `#${fieldId}-error`
+    );
 
     group?.classList.add("has-error");
 
@@ -365,15 +356,13 @@ function setFieldError(fieldId, message) {
 
 
 function clearFieldError(fieldId) {
-    const group =
-        document.querySelector(
-            `#group-${fieldId}`
-        );
+    const group = document.querySelector(
+        `#group-${fieldId}`
+    );
 
-    const errorElement =
-        document.querySelector(
-            `#${fieldId}-error`
-        );
+    const errorElement = document.querySelector(
+        `#${fieldId}-error`
+    );
 
     group?.classList.remove("has-error");
 
@@ -409,7 +398,6 @@ function clearAllErrors() {
 
 function getFirebaseErrorMessage(error) {
     const messages = {
-
         "auth/invalid-email":
             "Please enter a valid email address.",
 
@@ -494,9 +482,13 @@ function getFirebaseErrorMessage(error) {
 
 function createActionCodeSettings() {
     const callbackUrl = new URL(
-        window.location.pathname,
-        window.location.origin
+        window.location.href
     );
+
+    /*
+     * Keep the return URL so that the user can be sent back
+     * to the page they originally wanted to access.
+     */
 
     return {
         url: callbackUrl.toString(),
@@ -510,8 +502,9 @@ function createActionCodeSettings() {
 // ============================================================
 
 async function sendEmailLoginLink(email) {
-    const normalizedEmail =
-        email.trim().toLowerCase();
+    const normalizedEmail = email
+        .trim()
+        .toLowerCase();
 
     await sendSignInLinkToEmail(
         auth,
@@ -602,8 +595,7 @@ function buildUserProfile(
 
         email,
 
-        initials:
-            getInitials(displayName),
+        initials: getInitials(displayName),
 
         workspace:
             extraProfile.workspace || "",
@@ -689,6 +681,10 @@ async function completePendingProfile(
             pendingProfile.email.toLowerCase() !==
                 firebaseUser.email.toLowerCase()
         ) {
+            window.localStorage.removeItem(
+                PENDING_PROFILE_KEY
+            );
+
             return saveAuthenticatedUser(
                 firebaseUser
             );
@@ -729,10 +725,13 @@ async function completePendingProfile(
         return profile;
 
     } catch (error) {
-
         console.error(
             "Unable to process pending profile:",
             error
+        );
+
+        window.localStorage.removeItem(
+            PENDING_PROFILE_KEY
         );
 
         return saveAuthenticatedUser(
@@ -807,6 +806,8 @@ async function handleEmailLinkOnLoad() {
         return;
     }
 
+    authFlowInProgress = true;
+
     try {
         const result =
             await completeEmailLinkSignIn();
@@ -828,7 +829,6 @@ async function handleEmailLinkOnLoad() {
         }, 700);
 
     } catch (error) {
-
         console.error(
             "Email link completion failed:",
             error
@@ -845,6 +845,9 @@ async function handleEmailLinkOnLoad() {
         );
 
         showErrorToast(message);
+
+    } finally {
+        authFlowInProgress = false;
     }
 }
 
@@ -879,9 +882,16 @@ function createProviderFromId(
     providerId
 ) {
     switch (providerId) {
+        case "google.com": {
+            const provider =
+                new GoogleAuthProvider();
 
-        case "google.com":
-            return new GoogleAuthProvider();
+            provider.setCustomParameters({
+                prompt: "select_account"
+            });
+
+            return provider;
+        }
 
         case "github.com":
             return new GithubAuthProvider();
@@ -906,15 +916,7 @@ function createProviderFromId(
 
 
 // ============================================================
-// RECOVER OAUTH CREDENTIAL FROM ERROR
-// ============================================================
-//
-// IMPORTANT:
-// We must use the provider that originally caused the conflict.
-// OAuthProvider.credentialFromError() is not appropriate for
-// every provider. Google and GitHub have their own recovery
-// helpers.
-//
+// RECOVER ORIGINAL OAUTH CREDENTIAL
 // ============================================================
 
 function recoverCredentialFromError(
@@ -922,9 +924,7 @@ function recoverCredentialFromError(
     attemptedProviderId
 ) {
     try {
-
         switch (attemptedProviderId) {
-
             case "google.com":
                 return GoogleAuthProvider.credentialFromError(
                     error
@@ -943,11 +943,9 @@ function recoverCredentialFromError(
             default:
                 return null;
         }
-
     } catch (credentialError) {
-
         console.warn(
-            "Unable to recover OAuth credential from Firebase error:",
+            "Unable to recover OAuth credential:",
             credentialError
         );
 
@@ -957,23 +955,43 @@ function recoverCredentialFromError(
 
 
 // ============================================================
-// HANDLE EXISTING ACCOUNT
+// FIND EXISTING SIGN-IN METHODS
 // ============================================================
-//
-// Firebase can report:
-//
-// auth/account-exists-with-different-credential
-//
-// This means the email is already attached to another Firebase
-// user/provider.
-//
-// The correct flow is:
-//
-// 1. Identify the existing provider.
-// 2. Recover the credential from the ORIGINAL provider.
-// 3. Authenticate the existing account.
-// 4. Link the original credential to that authenticated user.
-//
+
+async function getExistingSignInMethods(
+    email
+) {
+    try {
+        const methods =
+            await fetchSignInMethodsForEmail(
+                auth,
+                email
+            );
+
+        if (Array.isArray(methods)) {
+            return methods;
+        }
+
+        return [];
+
+    } catch (error) {
+        /*
+         * Email Enumeration Protection can prevent Firebase
+         * from revealing the existing providers.
+         */
+
+        console.warn(
+            "Firebase did not reveal existing sign-in methods:",
+            error
+        );
+
+        return [];
+    }
+}
+
+
+// ============================================================
+// HANDLE ACCOUNT EXISTS WITH DIFFERENT CREDENTIAL
 // ============================================================
 
 async function handleAccountExistsWithDifferentCredential(
@@ -985,17 +1003,22 @@ async function handleAccountExistsWithDifferentCredential(
         error?.customData?.email ||
         error?.customData?.emailAddress;
 
-    if (!email) {
-        throw error;
-    }
-
-    const normalizedEmail =
-        email.trim().toLowerCase();
-
     const activeAlert =
         isRegisterMode
             ? registerErrorAlert
             : signinErrorAlert;
+
+    if (!email) {
+        showAlert(
+            activeAlert,
+            "This email is already associated with a Collab account. Please sign in using the method originally connected to the account."
+        );
+
+        return null;
+    }
+
+    const normalizedEmail =
+        email.trim().toLowerCase();
 
     const attemptedProviderName =
         getProviderDisplayName(
@@ -1012,7 +1035,7 @@ async function handleAccountExistsWithDifferentCredential(
 
 
     // ========================================================
-    // RECOVER THE ORIGINAL SOCIAL CREDENTIAL
+    // RECOVER ORIGINAL CREDENTIAL
     // ========================================================
 
     const pendingCredential =
@@ -1021,31 +1044,22 @@ async function handleAccountExistsWithDifferentCredential(
             attemptedProviderId
         );
 
-
-    // ========================================================
-    // FIND EXISTING SIGN-IN METHODS
-    // ========================================================
-
-    let signInMethods = [];
-
-    try {
-
-        signInMethods =
-            await fetchSignInMethodsForEmail(
-                auth,
-                normalizedEmail
-            );
-
-    } catch (fetchError) {
-
-        console.error(
-            "Unable to determine existing sign-in methods:",
-            fetchError
+    if (!pendingCredential) {
+        console.warn(
+            "Firebase did not provide a recoverable credential for:",
+            attemptedProviderId
         );
-
-        throw fetchError;
     }
 
+
+    // ========================================================
+    // ASK FIREBASE WHICH PROVIDER OWNS THE EMAIL
+    // ========================================================
+
+    const signInMethods =
+        await getExistingSignInMethods(
+            normalizedEmail
+        );
 
     console.log(
         "Existing Firebase sign-in methods:",
@@ -1054,23 +1068,45 @@ async function handleAccountExistsWithDifferentCredential(
 
 
     // ========================================================
-    // EMAIL AUTHENTICATION
+    // IMPORTANT:
+    //
+    // If Firebase returns [] we CANNOT assume that the account
+    // does not exist.
+    //
+    // Email Enumeration Protection can intentionally hide the
+    // existing provider.
+    // ========================================================
+
+    if (signInMethods.length === 0) {
+        showAlert(
+            activeAlert,
+            `The email ${normalizedEmail} is already associated with a Collab account. Firebase is not revealing which sign-in method is connected to that account. Please use the sign-in method you originally used for this email.`
+        );
+
+        showErrorToast(
+            "This email already has a Collab account."
+        );
+
+        return null;
+    }
+
+
+    // ========================================================
+    // EMAIL / PASSWORD / EMAIL LINK ACCOUNT
     // ========================================================
 
     const hasEmailAuthentication =
         signInMethods.includes("password") ||
         signInMethods.includes("emailLink");
 
-
     if (hasEmailAuthentication) {
-
         showAlert(
             activeAlert,
-            `This email already has a Collab account using email authentication. A secure login link will be sent to ${normalizedEmail}. Sign in with that link first.`
+            `This email already has a Collab account using email authentication. We will send a secure login link to ${normalizedEmail}. Sign in with that link first, then connect ${attemptedProviderName}.`,
+            "info"
         );
 
         try {
-
             await sendEmailLoginLink(
                 normalizedEmail
             );
@@ -1080,7 +1116,6 @@ async function handleAccountExistsWithDifferentCredential(
             );
 
         } catch (emailError) {
-
             console.error(
                 "Unable to send existing-account email link:",
                 emailError
@@ -1104,7 +1139,7 @@ async function handleAccountExistsWithDifferentCredential(
 
 
     // ========================================================
-    // FIND AN EXISTING SOCIAL PROVIDER
+    // FIND EXISTING SOCIAL PROVIDER
     // ========================================================
 
     const existingProviderId =
@@ -1118,14 +1153,18 @@ async function handleAccountExistsWithDifferentCredential(
 
 
     if (!existingProviderId) {
+        const existingProviderName =
+            getProviderDisplayName(
+                signInMethods[0]
+            );
 
         showAlert(
             activeAlert,
-            `This email already has a Collab account using ${getProviderDisplayName(signInMethods[0])}. Please sign in using that method first.`
+            `This email already has a Collab account using ${existingProviderName}. Please sign in using ${existingProviderName} first.`
         );
 
         showErrorToast(
-            `Please sign in using ${getProviderDisplayName(signInMethods[0])}.`
+            `Please sign in using ${existingProviderName}.`
         );
 
         return null;
@@ -1133,37 +1172,44 @@ async function handleAccountExistsWithDifferentCredential(
 
 
     // ========================================================
-    // IF THE EXISTING PROVIDER IS THE SAME AS THE ATTEMPTED
-    // PROVIDER, SIGN IN DIRECTLY.
+    // EXISTING PROVIDER
+    // ========================================================
+
+    const existingProvider =
+        createProviderFromId(
+            existingProviderId
+        );
+
+    if (!existingProvider) {
+        showAlert(
+            activeAlert,
+            "The existing authentication provider could not be identified."
+        );
+
+        return null;
+    }
+
+    const existingProviderName =
+        getProviderDisplayName(
+            existingProviderId
+        );
+
+
+    // ========================================================
+    // SAME PROVIDER
     // ========================================================
 
     if (
         existingProviderId ===
         attemptedProviderId
     ) {
-
-        const existingProvider =
-            createProviderFromId(
-                existingProviderId
-            );
-
-        if (!existingProvider) {
-            throw error;
-        }
-
-        const providerName =
-            getProviderDisplayName(
-                existingProviderId
-            );
-
         showAlert(
             activeAlert,
-            `This ${providerName} account already exists. Please continue with ${providerName}.`,
-            "success"
+            `This ${existingProviderName} account already exists. Continue with ${existingProviderName}.`,
+            "info"
         );
 
         try {
-
             const existingResult =
                 await signInWithPopup(
                     auth,
@@ -1183,7 +1229,7 @@ async function handleAccountExistsWithDifferentCredential(
             );
 
             showSuccessToast(
-                `${providerName} sign-in successful.`
+                `${existingProviderName} sign-in successful.`
             );
 
             setTimeout(() => {
@@ -1193,14 +1239,13 @@ async function handleAccountExistsWithDifferentCredential(
             return existingResult.user;
 
         } catch (existingError) {
-
             if (
                 existingError?.code ===
                 "auth/popup-closed-by-user"
             ) {
                 showAlert(
                     activeAlert,
-                    `${providerName} sign-in was cancelled.`
+                    `${existingProviderName} sign-in was cancelled.`
                 );
 
                 return null;
@@ -1212,35 +1257,21 @@ async function handleAccountExistsWithDifferentCredential(
 
 
     // ========================================================
-    // AUTHENTICATE EXISTING SOCIAL PROVIDER
+    // SIGN IN TO THE EXISTING ACCOUNT
     // ========================================================
-
-    const existingProvider =
-        createProviderFromId(
-            existingProviderId
-        );
-
-    if (!existingProvider) {
-        throw error;
-    }
-
-    const existingProviderName =
-        getProviderDisplayName(
-            existingProviderId
-        );
 
     showAlert(
         activeAlert,
-        `This email already has a Collab account connected to ${existingProviderName}. Continue with ${existingProviderName} to access that account.`
+        `This email is already connected to ${existingProviderName}. Continue with ${existingProviderName} to access your existing Collab account and connect ${attemptedProviderName}.`,
+        "info"
     );
 
     showSuccessToast(
-        `Continue with ${existingProviderName} to connect ${attemptedProviderName}.`
+        `Continue with ${existingProviderName}.`
     );
 
 
     try {
-
         const existingResult =
             await signInWithPopup(
                 auth,
@@ -1253,7 +1284,7 @@ async function handleAccountExistsWithDifferentCredential(
 
 
         // ====================================================
-        // VERIFY THE EMAIL
+        // VERIFY EMAIL MATCH
         // ====================================================
 
         const existingEmail =
@@ -1265,7 +1296,6 @@ async function handleAccountExistsWithDifferentCredential(
             !existingEmail ||
             existingEmail !== normalizedEmail
         ) {
-
             await auth.signOut();
 
             throw new Error(
@@ -1279,16 +1309,14 @@ async function handleAccountExistsWithDifferentCredential(
         // ====================================================
 
         if (pendingCredential) {
-
             try {
-
                 await linkWithCredential(
                     existingResult.user,
                     pendingCredential
                 );
 
                 console.log(
-                    `${attemptedProviderName} was successfully linked to the existing ${existingProviderName} account.`
+                    `${attemptedProviderName} successfully linked to the existing ${existingProviderName} account.`
                 );
 
                 showSuccessToast(
@@ -1296,40 +1324,26 @@ async function handleAccountExistsWithDifferentCredential(
                 );
 
             } catch (linkError) {
-
                 console.error(
                     "Provider linking failed:",
                     linkError
                 );
 
-
-                // --------------------------------------------
-                // Already linked
-                // --------------------------------------------
-
                 if (
                     linkError?.code ===
                     "auth/provider-already-linked"
                 ) {
-
-                    console.log(
-                        `${attemptedProviderName} is already linked to this account.`
+                    showSuccessToast(
+                        `${attemptedProviderName} is already connected to your Collab account.`
                     );
 
-                }
-
-                // --------------------------------------------
-                // Credential belongs to another Firebase user
-                // --------------------------------------------
-
-                else if (
+                } else if (
                     linkError?.code ===
                     "auth/credential-already-in-use"
                 ) {
-
                     showAlert(
                         activeAlert,
-                        `The ${attemptedProviderName} account is already connected to another Collab account. For security, it was not merged automatically.`
+                        `The ${attemptedProviderName} account is already connected to another Collab account. Firebase will not merge the two accounts automatically.`
                     );
 
                     showErrorToast(
@@ -1337,30 +1351,29 @@ async function handleAccountExistsWithDifferentCredential(
                     );
 
                     return null;
-                }
 
-                // --------------------------------------------
-                // Any other linking problem
-                // --------------------------------------------
-
-                else {
-
+                } else {
                     throw linkError;
                 }
             }
 
         } else {
-
-            // Firebase did not return the original OAuth
-            // credential. Authentication of the existing account
-            // still succeeded, but automatic linking is not safe.
+            /*
+             * We successfully authenticated the existing account,
+             * but Firebase did not give us the original credential.
+             *
+             * Never fake a link and never store OAuth credentials
+             * in localStorage.
+             */
 
             console.warn(
-                "No pending OAuth credential was available for linking."
+                "No OAuth credential available for automatic linking."
             );
 
-            showSuccessToast(
-                `${existingProviderName} sign-in successful.`
+            showAlert(
+                activeAlert,
+                `You are signed in to your existing ${existingProviderName} account. Firebase did not provide the ${attemptedProviderName} credential needed to link it automatically.`,
+                "info"
             );
         }
 
@@ -1389,12 +1402,10 @@ async function handleAccountExistsWithDifferentCredential(
         return existingResult.user;
 
     } catch (popupError) {
-
         if (
             popupError?.code ===
             "auth/popup-closed-by-user"
         ) {
-
             showAlert(
                 activeAlert,
                 `${existingProviderName} sign-in was cancelled.`
@@ -1407,7 +1418,6 @@ async function handleAccountExistsWithDifferentCredential(
             popupError?.code ===
             "auth/popup-blocked"
         ) {
-
             showAlert(
                 activeAlert,
                 `Your browser blocked the ${existingProviderName} sign-in popup. Please allow popups for Collab and try again.`
@@ -1442,11 +1452,9 @@ async function handleSignin(event) {
     const email =
         signinUserInput?.value
             .trim()
-            .toLowerCase() ||
-        "";
+            .toLowerCase() || "";
 
     if (!email) {
-
         setFieldError(
             "signin-user",
             "Please enter your email address."
@@ -1463,7 +1471,6 @@ async function handleSignin(event) {
     }
 
     if (!isValidEmail(email)) {
-
         setFieldError(
             "signin-user",
             "Please enter a valid email address."
@@ -1487,7 +1494,6 @@ async function handleSignin(event) {
     );
 
     try {
-
         await sendEmailLoginLink(
             email
         );
@@ -1503,7 +1509,6 @@ async function handleSignin(event) {
         );
 
     } catch (error) {
-
         console.error(
             "Email link sign-in error:",
             error
@@ -1522,7 +1527,6 @@ async function handleSignin(event) {
         showErrorToast(message);
 
     } finally {
-
         setButtonLoading(
             signinSubmitBtn,
             false,
@@ -1565,7 +1569,6 @@ async function handleRegister(event) {
 
 
     if (!name) {
-
         setFieldError(
             "reg-name",
             "Please enter your full name."
@@ -1577,7 +1580,6 @@ async function handleRegister(event) {
 
 
     if (!email) {
-
         setFieldError(
             "reg-email",
             "Please enter your email address."
@@ -1587,7 +1589,6 @@ async function handleRegister(event) {
         firstInvalid ||= regEmailInput;
 
     } else if (!isValidEmail(email)) {
-
         setFieldError(
             "reg-email",
             "Please enter a valid email address."
@@ -1599,7 +1600,6 @@ async function handleRegister(event) {
 
 
     if (!workspace) {
-
         setFieldError(
             "reg-workspace",
             "Please enter your workspace name."
@@ -1611,7 +1611,6 @@ async function handleRegister(event) {
 
 
     if (!role) {
-
         setFieldError(
             "reg-role",
             "Please select your role."
@@ -1623,7 +1622,6 @@ async function handleRegister(event) {
 
 
     if (hasError) {
-
         showAlert(
             registerErrorAlert,
             "Please complete all required fields."
@@ -1640,15 +1638,10 @@ async function handleRegister(event) {
 
 
     const pendingProfile = {
-
         name,
-
         email,
-
         workspace,
-
         role,
-
         createdAt:
             new Date().toISOString()
     };
@@ -1663,7 +1656,6 @@ async function handleRegister(event) {
 
 
     try {
-
         window.localStorage.setItem(
             PENDING_PROFILE_KEY,
             JSON.stringify(
@@ -1686,7 +1678,6 @@ async function handleRegister(event) {
         );
 
     } catch (error) {
-
         console.error(
             "Registration error:",
             error
@@ -1709,7 +1700,6 @@ async function handleRegister(event) {
         showErrorToast(message);
 
     } finally {
-
         setButtonLoading(
             registerSubmitBtn,
             false,
@@ -1728,6 +1718,12 @@ async function signInWithProvider(
     provider,
     providerId
 ) {
+    if (authFlowInProgress) {
+        return;
+    }
+
+    authFlowInProgress = true;
+
     const isRegisterMode =
         formRegister?.classList.contains(
             "active"
@@ -1738,8 +1734,12 @@ async function signInWithProvider(
             providerId
         );
 
-    try {
+    const activeAlert =
+        isRegisterMode
+            ? registerErrorAlert
+            : signinErrorAlert;
 
+    try {
         const result =
             await signInWithPopup(
                 auth,
@@ -1751,28 +1751,21 @@ async function signInWithProvider(
         }
 
 
+        // ====================================================
+        // REGISTRATION PROFILE
+        // ====================================================
+
         let extraProfile = {};
 
-
         if (isRegisterMode) {
-
             extraProfile =
                 getCurrentRegistrationData();
 
             extraProfile.email =
                 result.user.email || "";
-        }
-
-
-        // ----------------------------------------------------
-        // Complete pending registration profile
-        // ----------------------------------------------------
-
-        if (isRegisterMode) {
 
             const pendingProfile = {
                 ...extraProfile,
-
                 createdAt:
                     new Date().toISOString()
             };
@@ -1786,29 +1779,29 @@ async function signInWithProvider(
         }
 
 
+        // ====================================================
+        // COMPLETE PROFILE
+        // ====================================================
+
         await completePendingProfile(
             result.user
         );
 
 
-        // ----------------------------------------------------
-        // Save registration data
-        // ----------------------------------------------------
+        // ====================================================
+        // SAVE USER
+        // ====================================================
 
         if (isRegisterMode) {
-
             saveAuthenticatedUser(
                 result.user,
                 {
                     ...extraProfile,
-
                     createdAt:
                         new Date().toISOString()
                 }
             );
-
         } else {
-
             saveAuthenticatedUser(
                 result.user
             );
@@ -1825,7 +1818,6 @@ async function signInWithProvider(
         }, 500);
 
     } catch (error) {
-
         console.error(
             `${providerName} authentication error:`,
             error
@@ -1833,16 +1825,14 @@ async function signInWithProvider(
 
 
         // ====================================================
-        // EXISTING ACCOUNT WITH DIFFERENT CREDENTIAL
+        // ACCOUNT EXISTS WITH DIFFERENT CREDENTIAL
         // ====================================================
 
         if (
             error?.code ===
             "auth/account-exists-with-different-credential"
         ) {
-
             try {
-
                 await handleAccountExistsWithDifferentCredential(
                     error,
                     providerId,
@@ -1852,7 +1842,6 @@ async function signInWithProvider(
                 return;
 
             } catch (linkError) {
-
                 console.error(
                     "Existing account linking flow failed:",
                     linkError
@@ -1862,11 +1851,6 @@ async function signInWithProvider(
                     getFirebaseErrorMessage(
                         linkError
                     );
-
-                const activeAlert =
-                    isRegisterMode
-                        ? registerErrorAlert
-                        : signinErrorAlert;
 
                 showAlert(
                     activeAlert,
@@ -1902,12 +1886,6 @@ async function signInWithProvider(
             error?.code ===
             "auth/popup-blocked"
         ) {
-
-            const activeAlert =
-                isRegisterMode
-                    ? registerErrorAlert
-                    : signinErrorAlert;
-
             const message =
                 `Your browser blocked the ${providerName} sign-in popup. Please allow popups for Collab and try again.`;
 
@@ -1916,7 +1894,33 @@ async function signInWithProvider(
                 message
             );
 
-            showErrorToast(message);
+            showErrorToast(
+                message
+            );
+
+            return;
+        }
+
+
+        // ====================================================
+        // UNAUTHORIZED DOMAIN
+        // ====================================================
+
+        if (
+            error?.code ===
+            "auth/unauthorized-domain"
+        ) {
+            const message =
+                "This AI Studio domain is not authorized in your Firebase Authentication settings.";
+
+            showAlert(
+                activeAlert,
+                message
+            );
+
+            showErrorToast(
+                message
+            );
 
             return;
         }
@@ -1931,11 +1935,6 @@ async function signInWithProvider(
                 error
             );
 
-        const activeAlert =
-            isRegisterMode
-                ? registerErrorAlert
-                : signinErrorAlert;
-
         showAlert(
             activeAlert,
             message
@@ -1944,6 +1943,9 @@ async function signInWithProvider(
         showErrorToast(
             message
         );
+
+    } finally {
+        authFlowInProgress = false;
     }
 }
 
@@ -1953,7 +1955,6 @@ async function signInWithProvider(
 // ============================================================
 
 function setupSocialButtons() {
-
     const googleProvider =
         new GoogleAuthProvider();
 
@@ -1983,7 +1984,6 @@ function setupSocialButtons() {
     googleSigninBtn?.addEventListener(
         "click",
         event => {
-
             event.preventDefault();
 
             signInWithProvider(
@@ -2001,7 +2001,6 @@ function setupSocialButtons() {
     githubSigninBtn?.addEventListener(
         "click",
         event => {
-
             event.preventDefault();
 
             signInWithProvider(
@@ -2019,7 +2018,6 @@ function setupSocialButtons() {
     microsoftSigninBtn?.addEventListener(
         "click",
         event => {
-
             event.preventDefault();
 
             signInWithProvider(
@@ -2037,7 +2035,6 @@ function setupSocialButtons() {
     googleRegisterBtn?.addEventListener(
         "click",
         event => {
-
             event.preventDefault();
 
             signInWithProvider(
@@ -2055,7 +2052,6 @@ function setupSocialButtons() {
     githubRegisterBtn?.addEventListener(
         "click",
         event => {
-
             event.preventDefault();
 
             signInWithProvider(
@@ -2073,7 +2069,6 @@ function setupSocialButtons() {
     microsoftRegisterBtn?.addEventListener(
         "click",
         event => {
-
             event.preventDefault();
 
             signInWithProvider(
@@ -2090,7 +2085,6 @@ function setupSocialButtons() {
 // ============================================================
 
 function setupInputEvents() {
-
     [
         "signin-user",
         "reg-name",
@@ -2098,7 +2092,6 @@ function setupInputEvents() {
         "reg-workspace",
         "reg-role"
     ].forEach(id => {
-
         const element =
             document.querySelector(
                 `#${id}`
@@ -2108,14 +2101,12 @@ function setupInputEvents() {
             return;
         }
 
-
         element.addEventListener(
             "input",
             () => {
                 clearFieldError(id);
             }
         );
-
 
         element.addEventListener(
             "change",
@@ -2132,24 +2123,18 @@ function setupInputEvents() {
 // ============================================================
 
 function setupTabs() {
-
     tabSignin?.addEventListener(
         "click",
         event => {
-
             event.preventDefault();
-
             switchTab("signin");
         }
     );
 
-
     tabRegister?.addEventListener(
         "click",
         event => {
-
             event.preventDefault();
-
             switchTab("register");
         }
     );
@@ -2161,12 +2146,10 @@ function setupTabs() {
 // ============================================================
 
 function setupForms() {
-
     formSignin?.addEventListener(
         "submit",
         handleSignin
     );
-
 
     formRegister?.addEventListener(
         "submit",
@@ -2180,12 +2163,10 @@ function setupForms() {
 // ============================================================
 
 function initializeTabFromUrl() {
-
     const params =
         new URLSearchParams(
             window.location.search
         );
-
 
     const mode =
         (
@@ -2195,32 +2176,26 @@ function initializeTabFromUrl() {
             ""
         ).toLowerCase();
 
-
     const hash =
         window.location.hash
             .replace("#", "")
             .toLowerCase();
-
 
     const email =
         params.get("email");
 
 
     if (email) {
-
         try {
-
             const decodedEmail =
                 decodeURIComponent(
                     email
                 );
 
-
             if (signinUserInput) {
                 signinUserInput.value =
                     decodedEmail;
             }
-
 
             if (regEmailInput) {
                 regEmailInput.value =
@@ -2228,12 +2203,10 @@ function initializeTabFromUrl() {
             }
 
         } catch {
-
             if (signinUserInput) {
                 signinUserInput.value =
                     email;
             }
-
 
             if (regEmailInput) {
                 regEmailInput.value =
@@ -2249,7 +2222,6 @@ function initializeTabFromUrl() {
         hash === "register" ||
         hash === "signup"
     ) {
-
         switchTab(
             "register",
             false
@@ -2271,24 +2243,18 @@ function initializeTabFromUrl() {
 // ============================================================
 
 function initializeAuthObserver() {
-
     onAuthStateChanged(
         auth,
         async user => {
-
             if (!user) {
                 return;
             }
 
-
             try {
-
                 await completePendingProfile(
                     user
                 );
-
             } catch (error) {
-
                 console.error(
                     "Unable to update authenticated user:",
                     error
@@ -2296,19 +2262,31 @@ function initializeAuthObserver() {
             }
 
 
+            /*
+             * Email-link authentication has its own redirect
+             * handler.
+             */
+
             const isEmailLink =
                 isSignInWithEmailLink(
                     auth,
                     window.location.href
                 );
 
+            if (isEmailLink) {
+                return;
+            }
+
 
             /*
-             * Email-link completion handles its own
-             * redirect.
+             * Do not redirect while an explicit authentication
+             * operation is still running.
+             *
+             * This prevents the auth observer from redirecting
+             * before the social-account linking process finishes.
              */
 
-            if (isEmailLink) {
+            if (authFlowInProgress) {
                 return;
             }
 
@@ -2318,6 +2296,10 @@ function initializeAuthObserver() {
                     window.location.search
                 );
 
+            /*
+             * Only redirect an already-authenticated user when
+             * the page was opened with a return destination.
+             */
 
             if (params.has("return")) {
                 redirectAfterLogin();
@@ -2332,11 +2314,9 @@ function initializeAuthObserver() {
 // ============================================================
 
 function initializeYear() {
-
     document
         .querySelectorAll(".current-year")
         .forEach(element => {
-
             element.textContent =
                 new Date().getFullYear();
         });
@@ -2348,7 +2328,6 @@ function initializeYear() {
 // ============================================================
 
 async function initialize() {
-
     setupTabs();
 
     setupForms();
@@ -2361,14 +2340,12 @@ async function initialize() {
 
     initializeYear();
 
-
     /*
-     * Process an incoming Firebase email-login link
-     * before starting the normal auth observer.
+     * Process an incoming Firebase email-login link before
+     * starting the normal auth observer.
      */
 
     await handleEmailLinkOnLoad();
-
 
     initializeAuthObserver();
 }
