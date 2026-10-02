@@ -1,4 +1,4 @@
-import './landing.css'
+import './style.css'
 
 // Testimonial Carousel / Slider Controller
 document.addEventListener('DOMContentLoaded', () => {
@@ -126,6 +126,12 @@ document.addEventListener('DOMContentLoaded', () => {
         newsletterHint.style.fontWeight = '600'
       }
     }
+  })
+
+  // Dynamic copyright year update
+  const yr = new Date().getFullYear()
+  document.querySelectorAll('.current-year').forEach(el => {
+    el.textContent = yr
   })
 
   // Start initial auto-play

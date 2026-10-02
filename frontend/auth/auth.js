@@ -12,26 +12,44 @@ const subheading = document.querySelector('#auth-subheading')
 
 function switchTab(tab) {
   if (tab === 'register') {
-    tabRegister.classList.add('active')
-    tabSignin.classList.remove('active')
-    formRegister.classList.add('active')
-    formSignin.classList.remove('active')
-    heading.textContent = 'Register your workspace'
-    subheading.textContent = 'Create your account to start collaborating with your team.'
+    tabRegister?.classList.add('active')
+    tabSignin?.classList.remove('active')
+    formRegister?.classList.add('active')
+    formSignin?.classList.remove('active')
+    if (heading) heading.textContent = 'Register your workspace'
+    if (subheading) subheading.textContent = 'Create your account to start collaborating with your team.'
     document.querySelector('#reg-name')?.focus()
   } else {
-    tabSignin.classList.add('active')
-    tabRegister.classList.remove('active')
-    formSignin.classList.add('active')
-    formRegister.classList.remove('active')
-    heading.textContent = 'Sign in to Collab'
-    subheading.textContent = 'Any user can sign in immediately — no password or verification required.'
+    tabSignin?.classList.add('active')
+    tabRegister?.classList.remove('active')
+    formSignin?.classList.add('active')
+    formRegister?.classList.remove('active')
+    if (heading) heading.textContent = 'Sign in to Collab'
+    if (subheading) subheading.textContent = 'Any user can sign in immediately — no password or verification required.'
     document.querySelector('#signin-user')?.focus()
   }
 }
 
 tabSignin?.addEventListener('click', () => switchTab('signin'))
 tabRegister?.addEventListener('click', () => switchTab('register'))
+
+// Handle URL parameters (e.g. ?mode=register from "Get Collab for free" button or pre-filled email)
+const urlParams = new URLSearchParams(window.location.search)
+const modeParam = (urlParams.get('mode') || urlParams.get('tab') || urlParams.get('action') || '').toLowerCase()
+const hashParam = window.location.hash.toLowerCase()
+const emailParam = urlParams.get('email')
+
+if (emailParam) {
+  const signinUser = document.querySelector('#signin-user')
+  const regEmail = document.querySelector('#reg-email')
+  if (signinUser) signinUser.value = emailParam
+  if (regEmail) regEmail.value = emailParam
+}
+
+// Automatically open Sign Up / Registration tab if requested
+if (modeParam === 'register' || modeParam === 'signup' || hashParam === '#register' || hashParam === '#signup' || emailParam) {
+  switchTab('register')
+}
 
 function parseUser(input) {
   const trimmed = (input || '').trim()
@@ -62,6 +80,27 @@ function loginAndRedirect(user) {
   window.location.href = 'dashboard.html'
 }
 
+// Password Visibility Toggle
+const togglePasswordBtn = document.querySelector('#toggle-password-btn')
+const passwordInput = document.querySelector('#signin-password')
+
+if (togglePasswordBtn && passwordInput) {
+  togglePasswordBtn.addEventListener('click', () => {
+    const isPassword = passwordInput.getAttribute('type') === 'password'
+    passwordInput.setAttribute('type', isPassword ? 'text' : 'password')
+    togglePasswordBtn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password')
+    togglePasswordBtn.setAttribute('title', isPassword ? 'Hide password' : 'Show password')
+
+    const eyeOpen = togglePasswordBtn.querySelector('.eye-open-icon')
+    const eyeClosed = togglePasswordBtn.querySelector('.eye-closed-icon')
+    if (eyeOpen && eyeClosed) {
+      eyeOpen.style.display = isPassword ? 'none' : 'block'
+      eyeClosed.style.display = isPassword ? 'block' : 'none'
+    }
+    passwordInput.focus()
+  })
+}
+
 // 1. Sign In Form Submission
 formSignin?.addEventListener('submit', event => {
   event.preventDefault()
@@ -70,22 +109,7 @@ formSignin?.addEventListener('submit', event => {
   loginAndRedirect(user)
 })
 
-// 2. 1-Click Guest Button
-document.querySelector('#guest-btn')?.addEventListener('click', () => {
-  loginAndRedirect(defaultUser)
-})
-
-// 3. Quick Persona Chips
-document.querySelectorAll('.persona-chip').forEach(chip => {
-  chip.addEventListener('click', () => {
-    const name = chip.dataset.name
-    const email = chip.dataset.email
-    const initials = chip.dataset.initials
-    loginAndRedirect({ name, email, initials, tone: 'coral', role: 'Team Member' })
-  })
-})
-
-// 4. Registration Form Submission
+// 2. Registration Form Submission
 formRegister?.addEventListener('submit', event => {
   event.preventDefault()
   const name = document.querySelector('#reg-name')?.value || 'New User'
@@ -106,4 +130,9 @@ formRegister?.addEventListener('submit', event => {
   }
 
   loginAndRedirect(newUser)
+})
+
+// Dynamic copyright year update
+document.querySelectorAll('.current-year').forEach(el => {
+  el.textContent = new Date().getFullYear()
 })
