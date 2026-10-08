@@ -1,0 +1,1707 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Collab — Workspace</title>
+    <meta name="description"
+        content="Collab brings your projects, tasks, and team conversations into one calm, focused workspace." />
+    <meta property="og:title" content="Collab — Workspace" />
+    <meta property="og:description"
+        content="Collab brings your projects, tasks, and team conversations into one calm, focused workspace." />
+    <link rel="icon" type="image/png" href="../images/favicon.png" />
+    <link rel="stylesheet" href="./dashboard.css" />
+    <link rel="stylesheet" href="./workspaceHub.css" />
+</head>
+
+<body>
+    <div id="app" class="app-shell">
+        <aside class="sidebar" id="main-sidebar">
+            <a class="brand-link" href="../index.html" title="Back to Collab Home">
+                <img src="../images/logo.png" alt="Collab." class="brand-logo-img" />
+            </a>
+
+            <nav class="primary-nav">
+                <a class="nav-item" data-view="Workspace" id="workspace-nav-item">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="lucide lucide-house preview-icon">
+                        <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+                        <path
+                            d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                    </svg>
+                    <span>Home</span>
+                </a>
+                <a class="nav-item" data-view="Calendar">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="lucide lucide-calendar preview-icon">
+                        <path d="M8 2v3" />
+                        <path d="M16 2v3" />
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <path d="M3 9h18" />
+                    </svg>
+                    <span>Calendar</span>
+                </a>
+                <a class="nav-item admin-nav-link" data-view="Admin Console" id="admin-nav-item">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                        <line x1="8" y1="21" x2="16" y2="21"></line>
+                        <line x1="12" y1="17" x2="12" y2="21"></line>
+                    </svg>
+                    <span>Workspace</span>
+                </a>
+                <a class="nav-item" data-view="Brainstorm" id="brainstorm-nav-item">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="lucide lucide-user-group preview-icon">
+                        <path d="M17 21v-1a2 2 0 00-2-2H9a2 2 0 00-2 2v1" />
+                        <path d="M19 10h1a2 2 0 012 2v1" />
+                        <path d="M5 10H4a2 2 0 00-2 2v1" />
+                        <circle cx="12" cy="11" r="3" />
+                        <circle cx="18" cy="4" r="2" />
+                        <circle cx="6" cy="4" r="2" />
+                    </svg>
+                    <span>Team Brainstorm</span>
+                </a>
+                <a class="nav-item" data-view="Messages" id="messages-nav-item">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="lucide lucide-messages-square preview-icon">
+                        <path
+                            d="M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                        <path
+                            d="M20 9a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1" />
+                    </svg>
+                    <span>Messages</span>
+                    <span class="messages-nav-badge" id="messages-nav-badge" hidden></span>
+                </a>
+            </nav>
+
+            <div class="nav-label">
+                <span>PROJECTS</span>
+                <button class="tiny-plus" id="add-project" title="Create group project">+</button>
+            </div>
+
+            <nav class="project-nav" id="project-nav-list">
+                <a class="nav-item project active" data-view="Product Launch">
+                    <i class="dot coral"></i><span>Product Launch</span>
+                </a>
+                <a class="nav-item project" data-view="Website Redesign">
+                    <i class="dot blue"></i><span>Website Redesign</span>
+                </a>
+                <a class="nav-item project" data-view="Marketing Sprint">
+                    <i class="dot green"></i><span>Marketing Sprint</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-bottom">
+                <a class="nav-item settings-nav-link" data-view="Settings" id="settings-nav-item"
+                    title="Collaboration & Workspace Settings">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                        </path>
+                    </svg>
+                    <span>Settings</span>
+                </a>
+                <button type="button" class="nav-item notification-btn sidebar-notification-btn" id="notification-btn"
+                    data-view="Notifications" aria-label="Notifications" title="Open notifications">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                        <path d="M13.73 21a2 2 0 0 0 3.46 0"></path>
+                    </svg>
+                    <span>Notifications</span>
+                    <span class="notification-badge" id="notification-badge">3</span>
+                </button>
+                <div class="profile" id="user-profile" title="Account settings & logout">
+                    <div class="avatar coral-bg" id="sidebar-avatar">AM</div>
+                    <div>
+                        <strong id="sidebar-name"></strong>
+                        <small id="sidebar-role">Active Member</small>
+                    </div>
+                </div>
+        </aside>
+        <button type="button" class="sidebar-backdrop" id="sidebar-backdrop" aria-label="Close navigation menu"
+            tabindex="-1"></button>
+
+        <main class="main-content">
+            <header class="topbar">
+                <button type="button" class="sidebar-menu-toggle" id="sidebar-menu-toggle"
+                    aria-label="Open navigation menu" aria-controls="main-sidebar" aria-expanded="false"
+                    title="Open navigation menu">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" aria-hidden="true">
+                        <line x1="4" y1="6" x2="20" y2="6"></line>
+                        <line x1="4" y1="12" x2="20" y2="12"></line>
+                        <line x1="4" y1="18" x2="20" y2="18"></line>
+                    </svg>
+                </button>
+                <div class="breadcrumbs">
+                    <span>Workspace</span><span>›</span><strong id="breadcrumb-title">Product Launch</strong>
+                </div>
+
+                <div class="topbar-center">
+                    <label class="search">
+                        <svg class="search-icon-svg" width="15" height="15" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input id="search" placeholder="Search tasks, projects, or team members..." />
+                    </label>
+                </div>
+
+                <div class="top-actions">
+                    <button type="button" class="notification-btn topbar-notification-btn" id="topbar-notification-btn"
+                        data-view="Notifications" aria-label="Notifications" title="Open notifications">
+                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                            <path d="M10 21h4"></path>
+                        </svg>
+                        <span class="notification-badge" id="topbar-notification-badge">0</span>
+                    </button>
+                    <div class="profile-dropdown-wrap" id="profile-dropdown-wrap">
+                        <div class="topbar-profile-group">
+                            <button type="button" class="topbar-avatar-btn" id="signin-user-btn"
+                                aria-label="Account Settings" title="Account settings & profile">
+                                <div class="avatar coral-bg topbar-avatar-circle" id="topbar-avatar-initials">AM</div>
+                            </button>
+                            <div class="topbar-profile-copy">
+                                <strong id="topbar-profile-name">Alex Morgan</strong>
+                                <small id="topbar-profile-role">Active Member</small>
+                            </div>
+                        </div>
+
+                        <div class="profile-dropdown-menu" id="profile-dropdown-menu" style="display: none;">
+                            <div class="profile-dropdown-header">
+                                <div class="avatar coral-bg profile-dropdown-avatar" id="dropdown-avatar">AM</div>
+                                <div class="profile-dropdown-info">
+                                    <strong id="dropdown-name">Alex Morgan</strong>
+                                    <span class="dropdown-email" id="dropdown-email">alex@collab.io</span>
+                                    <span class="dropdown-role-badge" id="dropdown-role">Role: Product Designer</span>
+                                </div>
+                            </div>
+
+                            <div class="profile-dropdown-divider"></div>
+
+                            <div class="profile-dropdown-actions">
+                                <button type="button" class="dropdown-item" id="dropdown-settings-btn">
+                                    <span class="dropdown-item-icon">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2">
+                                            <circle cx="12" cy="12" r="3"></circle>
+                                            <path
+                                                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                                            </path>
+                                        </svg>
+                                    </span>
+                                    <span>Profile & Workspace Settings</span>
+                                </button>
+                            </div>
+
+                            <div class="profile-dropdown-divider"></div>
+
+                            <div class="profile-dropdown-footer">
+                                <button type="button" class="dropdown-item logout" id="dropdown-logout-btn">
+                                    <span class="dropdown-item-icon">→</span>
+                                    <span>Sign out to Home Page</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <section class="workspace">
+                <!-- Dedicated Workspace Collaboration Hub -->
+                <div id="workspace-hub-container" class="workspace-hub-container" style="display: flex;">
+                    <header class="hub-dashboard-header">
+                        <div>
+                            <p class="hub-eyebrow">WORKSPACE OVERVIEW</p>
+                            <p class="hub-dashboard-intro">Your team’s schedule, resources, and decisions at a glance.
+                            </p>
+                        </div>
+
+                    </header>
+
+                    <section class="hub-metrics" aria-label="Workspace overview">
+                        <button type="button" class="stat-card hub-metric" data-view="Overview"
+                            aria-label="Open all-project task progress">
+                            <div class="hub-metric-copy">
+                                <small class="hub-metric-label">Tasks completed</small>
+                                <strong><span id="hub-completed-task-count">0</span> <em>of <span
+                                            id="hub-task-total-count">0</span></em></strong>
+                            </div>
+                            <div class="mini-chart" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                            </div>
+                        </button>
+                        <button type="button" class="stat-card hub-metric" data-view="Overview"
+                            aria-label="Open all-project tasks due this week">
+                            <div class="hub-metric-copy">
+                                <small class="hub-metric-label">Due this week</small>
+                                <strong><span id="hub-due-week-count">0</span> <em>tasks</em></strong>
+                            </div>
+                            <span class="stat-note"><span id="hub-due-week-pending">0</span> pending</span>
+                        </button>
+                        <button type="button" class="stat-card hub-metric" data-view="Overview"
+                            aria-label="Open tasks across all projects">
+                            <div class="hub-metric-copy">
+                                <small class="hub-metric-label">Open tasks</small>
+                                <strong id="hub-open-task-count">0</strong>
+                            </div>
+                            <span class="hub-metric-detail">Across all projects</span>
+                        </button>
+                        <button type="button" class="stat-card hub-metric" data-view="Calendar"
+                            aria-label="Open upcoming meetings on the team calendar">
+                            <div class="hub-metric-copy">
+                                <small class="hub-metric-label">Upcoming meetings</small>
+                                <strong id="hub-meeting-count">0</strong>
+                            </div>
+                            <span class="hub-metric-detail">On the team calendar</span>
+                        </button>
+                        <button type="button" class="stat-card hub-metric" data-view="Admin Console"
+                            aria-label="Open workspace team members">
+                            <div class="hub-metric-copy">
+                                <small class="hub-metric-label">Team members</small>
+                                <strong id="hub-member-count">0</strong>
+                            </div>
+                            <div class="avatars" id="hub-team-member-avatars" aria-hidden="true"></div>
+                        </button>
+                        <button type="button" class="stat-card hub-metric" data-view="Notifications"
+                            aria-label="Open unread updates and announcements">
+                            <div class="hub-metric-copy">
+                                <small class="hub-metric-label">Unread updates</small>
+                                <strong id="hub-unread-count">0</strong>
+                            </div>
+                            <span class="hub-metric-detail">Workspace activity</span>
+                        </button>
+                    </section>
+
+                    <section class="hub-card upcoming-meetings-card" aria-labelledby="upcoming-meetings-title">
+                        <div class="hub-card-header">
+                            <div>
+                                <h3 id="upcoming-meetings-title">Upcoming Meetings</h3>
+                                <p>Scheduled team syncs, reviews, and project meetings.</p>
+                            </div>
+                            <button type="button" class="outline-button upcoming-calendar-link" data-view="Calendar">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+                                    <path d="M16 3v4M8 3v4M3 10h18"></path>
+                                </svg>
+                                <span>Calendar</span>
+                            </button>
+                        </div>
+                        <div class="upcoming-meetings-table-wrap">
+                            <table class="upcoming-meetings-table">
+                                <thead>
+                                    <tr>
+                                        <th>Meeting</th>
+                                        <th>Date</th>
+                                        <th>Time</th>
+                                        <th>Host</th>
+                                        <th>Attendees</th>
+                                        <th>Location</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="workspace-upcoming-meetings"></tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <div class="workspace-hub-grid">
+                        <div class="workspace-hub-col">
+                            <div class="hub-card">
+                                <div class="hub-card-header">
+                                    <div>
+                                        <h3>Pinned Collaboration Resources</h3>
+                                        <p>Central links to team specs, Figma boards, repos, and environments.</p>
+                                    </div>
+                                </div>
+
+                                <div class="hub-resources-grid" id="home-hub-resources-list"></div>
+                            </div>
+
+                        </div>
+
+                        <div class="workspace-hub-col">
+                            <div class="hub-card">
+                                <div class="hub-card-header">
+                                    <div>
+                                        <h3>Team Collaborative Scratchpad</h3>
+                                        <p>Shared workspace canvas for sprint brainstorming, checklists, and quick
+                                            architecture notes.</p>
+                                    </div><span class="hub-save-status" id="scratchpad-save-status">● Synced</span>
+                                </div>
+                                <div class="scratchpad-toolbar">
+                                    <button type="button" class="scratchpad-btn" id="scratchpad-add-check"
+                                        title="Add sprint checklist item">+ Checklist Item</button>
+                                    <button type="button" class="scratchpad-btn" id="scratchpad-add-bullet"
+                                        title="Add bullet note">+ Bullet Point</button>
+                                    <button type="button" class="scratchpad-btn" id="scratchpad-add-code"
+                                        title="Add code block snippet">+ Code Block</button>
+                                    <button type="button" class="scratchpad-btn danger" id="scratchpad-clear-btn"
+                                        title="Reset scratchpad notes">Clear Notes</button>
+                                </div>
+                                <div class="input-with-icon">
+                                    <svg class="input-icon-svg top-aligned" width="16" height="16" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                    </svg>
+                                    <textarea id="workspace-scratchpad-area" class="scratchpad-textarea"
+                                        placeholder="Start typing team notes, sprint targets, or architectural decisions..."></textarea>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <section id="messages-container" class="messages-page" style="display: none;" aria-label="Messages">
+                    <aside class="messages-sidebar" aria-label="Conversations">
+                        <header class="messages-sidebar-header">
+                            <div>
+                                <h2>Messages</h2>
+                                <p>Local demo · saved in this browser</p>
+                            </div>
+                            <button type="button" class="messages-new-button" id="messages-new-channel"
+                                aria-label="Create a channel" title="Create a channel">+</button>
+                        </header>
+                        <div class="messages-sidebar-actions">
+                            <button type="button" class="messages-direct-button" id="messages-new-direct">+ New
+                                message</button>
+                            <button type="button" class="messages-direct-button" id="messages-new-group">+ New
+                                group</button>
+                        </div>
+                        <div id="messages-conversation-list" class="messages-conversation-list"></div>
+                        <section class="messages-people-section" aria-label="Invited teammates">
+                            <h3 class="messages-list-heading">Teammates</h3>
+                            <div id="messages-people-list" class="messages-people-list"></div>
+                        </section>
+                    </aside>
+                    <section class="messages-thread" aria-label="Conversation">
+                        <header id="messages-thread-header" class="messages-thread-header">
+                            <div>
+                                <h2>Select a conversation</h2>
+                                <p>Messages are shared with conversation members.</p>
+                            </div>
+                        </header>
+                        <div id="messages-error" class="messages-error" role="alert" hidden></div>
+                        <div id="messages-feed" class="messages-feed" aria-live="polite">
+                            <p class="messages-placeholder">Choose a channel or start a direct message.</p>
+                        </div>
+                        <form id="messages-composer" class="messages-composer">
+                            <label class="messages-attachment-button" for="messages-file-input" title="Attach files"
+                                aria-label="Attach files">＋</label>
+                            <input id="messages-file-input" type="file" multiple hidden />
+                            <div class="messages-compose-field">
+                                <div id="messages-emoji-picker" class="messages-emoji-picker" hidden></div>
+                                <div id="messages-attachment-list" class="messages-attachment-list"></div>
+                                <div class="messages-input-row">
+                                    <div class="input-with-icon" style="flex: 1;">
+                                        <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z">
+                                            </path>
+                                        </svg>
+                                        <textarea id="messages-input" rows="1" placeholder="Write a message…"
+                                            maxlength="5000" disabled aria-label="Write a message"></textarea>
+                                    </div>
+                                    <button type="button" id="messages-emoji-toggle" class="messages-emoji-toggle"
+                                        aria-label="Insert emoji" title="Insert emoji">☺</button>
+                                </div>
+                            </div>
+                            <button type="submit" class="messages-send-button" aria-label="Send message" disabled><svg
+                                    xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round" class="lucide lucide-send-horizontal preview-icon"
+                                    aria-hidden="true">
+                                    <path
+                                        d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z" />
+                                    <path d="M6 12h16" />
+                                </svg><span class="messages-send-label" hidden>Save</span></button>
+                        </form>
+                    </section>
+                </section>
+
+                <!-- Notifications Page -->
+                <div id="notifications-container" class="settings-container" style="display: none;">
+                    <div class="settings-card notification-settings-card">
+                        <div class="settings-card-header notification-settings-header">
+                            <div>
+                                <h2>Notifications</h2>
+                                <p>Recent task, project, and workspace updates.</p>
+                            </div>
+                            <div class="notification-header-actions">
+                                <button type="button" class="outline-button" id="mark-all-notifications-read">Mark all
+                                    read</button>
+                                <button type="button" class="outline-button notification-clear-button"
+                                    id="clear-all-notifications">Clear all</button>
+                            </div>
+                        </div>
+                        <div class="notification-settings-table-wrap">
+                            <table class="notification-settings-table" aria-label="Notifications">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Time</th>
+                                        <th scope="col">Notification</th>
+                                        <th scope="col">Details</th>
+                                        <th scope="col">Status</th>
+                                        <th scope="col">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="settings-notifications-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <section id="brainstorm-container" class="brainstorm-page" style="display: none;"
+                    aria-labelledby="brainstorm-page-title">
+                    <header class="brainstorm-page-header">
+                        <div>
+                            <p class="hub-eyebrow">TEAM IDEAS & RETROSPECTIVES</p>
+                        </div>
+                        <button type="button" class="primary-button gold" id="hub-add-sticky-btn">+ Add idea</button>
+                    </header>
+                    <section class="hub-card brainstorm-board" aria-label="Open brainstorming board">
+                        <div class="mindmap-toolbar">
+                            <label class="brainstorm-link-type-label" for="sticky-link-type">Link type</label>
+                            <div class="input-with-icon" style="width: auto;">
+                                <svg class="input-icon-svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                                </svg>
+                                <select id="sticky-link-type" class="brainstorm-link-type" aria-label="Connection type"
+                                    title="Connection type">
+                                    <option value="related">Related</option>
+                                    <option value="leads-to">Leads to</option>
+                                    <option value="supports">Supports</option>
+                                    <option value="sequence">Sequence</option>
+                                </select>
+                            </div>
+                            <button type="button" class="outline-button brainstorm-remove-link"
+                                id="sticky-delete-link-btn" disabled>Remove link</button>
+                            <button type="button" class="brainstorm-connect" id="sticky-connect-btn"
+                                aria-pressed="false" title="Connect two notes">
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <path
+                                        d="M10 13.5 14 9.5M8.2 15.3l-1.4 1.4a3.2 3.2 0 0 1-4.5-4.5l4-4a3.2 3.2 0 0 1 4.5 0M15.8 8.2l1.4-1.4a3.2 3.2 0 0 1 4.5 4.5l-4 4a3.2 3.2 0 0 1-4.5 0">
+                                    </path>
+                                </svg>
+                                <span>Connect</span>
+                            </button>
+                            <span class="brainstorm-connection-status" id="sticky-connection-status"
+                                aria-live="polite"></span>
+                            <span class="brainstorm-local-status" id="brainstorm-save-status" role="status">Saved</span>
+                            <button type="button" class="primary-button gold brainstorm-save-btn"
+                                id="save-brainstorm-btn" disabled>Save board</button>
+                        </div>
+                        <div class="mindmap-viewport" id="mindmap-viewport">
+                            <div class="mindmap-canvas" id="sticky-notes-grid" aria-label="Idea map">
+                                <svg class="sticky-link-layer" id="sticky-link-layer" aria-hidden="true"></svg>
+                            </div>
+                        </div>
+                    </section>
+                </section>
+
+                <div class="page-heading" style="display: none;">
+                    <div class="page-heading-actions" id="project-heading-actions">
+                        <button class="primary-button gold" id="new-task-btn">+ <span>New task</span></button>
+                        <button type="button" class="outline-button-action" id="project-sprints-btn"
+                            title="Break project into small sprints">
+                            <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                            </svg>
+                            <span id="sprints-btn-text">Sprints (3)</span>
+                        </button>
+                        <button type="button" class="outline-button-action" id="project-invite-collab-btn"
+                            title="Invite team members to this project by email">
+                            <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="8.5" cy="7.5" r="4"></circle>
+                                <line x1="20" y1="8" x2="20" y2="14"></line>
+                                <line x1="23" y1="11" x2="17" y2="11"></line>
+                            </svg>
+                            <span>Invite Member</span>
+                        </button>
+                        <button type="button" class="outline-button-action" id="project-manage-collab-btn"
+                            title="View & manage invited project members">
+                            <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="9" cy="7" r="4"></circle>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                            </svg>
+                            <span id="collab-btn-count">5 Team Members</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Sprints & Milestones Bar -->
+                <div class="project-sprints-strip" id="project-sprints-strip" style="display: none;">
+                    <div class="sprints-strip-left">
+                        <span class="sprint-strip-label">
+                            <span>Project Sprints:</span>
+                        </span>
+                        <div class="sprint-chips" id="sprint-chips-list">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+                    <button type="button" class="sprint-add-btn" id="add-sprint-btn"
+                        title="Break project into another sprint or milestone">+ Break into Sprint</button>
+                </div>
+
+                <div class="stats" style="display: none;">
+                    <div class="stat-card">
+
+                        <div><small>Tasks completed</small><strong><span id="stats-completed-task-count">0</span> <em>of
+                                    <span id="stats-task-total-count">0</span></em></strong></div>
+                        <div class="mini-chart"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                    </div>
+                    <div class="stat-card">
+                        <div><small>Due this week</small><strong><span id="stats-due-week-count">0</span>
+                                <em>tasks</em></strong></div>
+                        <span class="stat-note"><span id="stats-due-week-pending">0</span> pending</span>
+                    </div>
+                    <div class="stat-card">
+                        <div><small>Team members</small><strong><span id="stats-team-member-count">0</span>
+                                <em>people</em></strong></div>
+                        <div class="avatars" id="stats-team-member-avatars"></div>
+                    </div>
+                </div>
+
+                <div id="board-container" style="display: none;">
+                    <div class="board-header">
+                        <div class="board-actions">
+                            <div class="filter-dropdown-wrap" id="filter-dropdown-wrap">
+                                <button type="button" class="filter-button" id="filter-btn">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                                    </svg>
+                                    <span id="filter-btn-label">All tasks</span> <span>▾</span>
+                                </button>
+                                <div class="filter-menu" id="filter-menu" style="display: none;">
+                                    <button type="button" class="filter-item active" data-filter="all">All
+                                        tasks</button>
+                                    <button type="button" class="filter-item" data-filter="mine">Assigned to me</button>
+                                    <button type="button" class="filter-item" data-filter="backlog">Backlog</button>
+                                    <button type="button" class="filter-item" data-filter="todo">To do</button>
+                                    <button type="button" class="filter-item" data-filter="progress">In
+                                        progress</button>
+                                    <button type="button" class="filter-item" data-filter="done">Completed
+                                        (Done)</button>
+                                </div>
+                            </div>
+                            <button type="button" class="view-button active" id="view-board-btn">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <rect x="3" y="3" width="7" height="18" rx="1"></rect>
+                                    <rect x="14" y="3" width="7" height="10" rx="1"></rect>
+                                </svg>
+                                <span>Board</span>
+                            </button>
+
+                        </div>
+                    </div>
+
+                    <div class="workspace-split-layout" id="workspace-split-layout">
+                        <div class="workspace-main-panel" id="workspace-main-panel">
+                            <div class="board" id="board-columns">
+                                <div class="column" data-status="To do">
+                                    <div class="column-header">
+                                        <span class="status-dot gray"></span>
+                                        <h3>To do</h3><span class="count" id="count-todo">3</span>
+                                        <button class="column-plus" data-add="To do">+</button>
+                                    </div>
+                                    <div class="task-list" id="todo-list"></div>
+                                    <button class="add-card" data-add="To do">+ Add task</button>
+                                </div>
+
+                                <div class="column" data-status="In progress">
+                                    <div class="column-header">
+                                        <span class="status-dot coral"></span>
+                                        <h3>In progress</h3><span class="count" id="count-progress">2</span>
+                                        <button class="column-plus" data-add="In progress">+</button>
+                                    </div>
+                                    <div class="task-list" id="progress-list"></div>
+                                    <button class="add-card" data-add="In progress">+ Add task</button>
+                                </div>
+
+                                <div class="column" data-status="Done">
+                                    <div class="column-header">
+                                        <span class="status-dot green"></span>
+                                        <h3>Done</h3><span class="count" id="count-done">3</span>
+                                        <button class="column-plus" data-add="Done">+</button>
+                                    </div>
+                                    <div class="task-list" id="done-list"></div>
+                                    <button class="add-card" data-add="Done">+ Add task</button>
+                                </div>
+
+                                <div class="column" data-status="Backlog">
+                                    <div class="column-header">
+                                        <span class="status-dot blue"></span>
+                                        <h3>Backlog</h3><span class="count" id="count-backlog">0</span>
+                                        <button class="column-plus" data-add="Backlog"
+                                            title="Add task to Backlog">+</button>
+                                    </div>
+                                    <div class="task-list" id="backlog-list"></div>
+                                    <button class="add-card" data-add="Backlog">+ Add task</button>
+                                </div>
+                            </div>
+
+                            <div class="list-view-container" id="list-view-container" style="display: none;">
+                                <table class="tasks-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 38px;">Done</th>
+                                            <th>Task Title</th>
+                                            <th>Project / Tag</th>
+                                            <th>Assignee</th>
+                                            <th>Due Date</th>
+                                            <th>Comments</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="list-tasks-tbody">
+                                        <!-- Populated dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Integrated in-flow Task Detail Pane (NO backdrop, NO floating aside modal) -->
+                        <div class="inflow-task-pane" id="inflow-task-pane" style="display: none;">
+                            <!-- Populated dynamically when a task is selected -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Calendar Timeline & Collaboration Hub Panel -->
+                <div id="calendar-container" class="calendar-container" style="display: none;">
+                    <div class="calendar-header">
+                        <div>
+                            <p class="boldHeading">Team Collaboration Calendar & Schedules</p>
+                            <p>Interactive calendar with pinned meetings, collaboration syncs, reminders, and scheduled
+                                deliverables.</p>
+                        </div>
+                        <div class="page-heading-actions">
+                            <button type="button" class="primary-button gold" id="cal-schedule-meeting-btn">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.5">
+                                    <path d="M12 2v20M2 12h20"></path>
+                                </svg>
+                                <span>+ Schedule Meeting (Pinned)</span>
+                            </button>
+                            <button type="button" class="outline-button-action" id="cal-add-reminder-btn">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                                    <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                                </svg>
+                                <span>+ Add Reminder</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Actual Interactive Calendar Grid Section -->
+                    <div class="actual-calendar-card">
+                        <div class="cal-controls-row">
+                            <div class="cal-month-nav">
+                                <button type="button" class="cal-nav-btn" id="cal-prev-month"
+                                    title="Previous Month">‹</button>
+                                <h3 id="cal-month-title">October 2026</h3>
+                                <button type="button" class="cal-nav-btn" id="cal-next-month"
+                                    title="Next Month">›</button>
+                                <button type="button" class="cal-today-btn" id="cal-today-btn">Today</button>
+                            </div>
+                            <div class="cal-filter-pills" id="cal-filter-pills">
+                                <button type="button" class="cal-filter-pill active" data-type="all">All Events</button>
+                                <button type="button" class="cal-filter-pill" data-type="meeting">Pinned
+                                    Meetings</button>
+                                <button type="button" class="cal-filter-pill" data-type="task">Deliverables</button>
+                                <button type="button" class="cal-filter-pill" data-type="reminder">Reminders</button>
+                            </div>
+                        </div>
+
+                        <div class="cal-month-table-wrap">
+                            <div class="cal-weekdays-row">
+                                <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                            </div>
+                            <div class="cal-days-month-grid" id="cal-days-month-grid">
+                                <!-- Populated dynamically by dashboard.js -->
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Admin Console Workspace Management Panel -->
+                <div id="admin-container" class="admin-container" style="display: none;">
+                
+                    <!-- Admin Navigation Tabs -->
+                    <div class="admin-tabs-nav" id="admin-tabs-nav">
+                        <button type="button" class="admin-tab-btn active" data-tab="projects">Projects</button>
+                        <button type="button" class="admin-tab-btn" data-tab="members">Team Members &
+                            Roles</button>
+                        <button type="button" class="admin-tab-btn" data-tab="tasks">Task Creation &
+                            Assignments</button>
+                        <button type="button" class="admin-tab-btn" data-tab="meetings">Meetings & Pinned
+                            Schedules</button>
+                        <button type="button" class="admin-tab-btn" data-tab="updates">Workspace Updates</button>
+                    </div>
+
+                    <!-- TAB 0: Workspace Projects Management -->
+                    <div class="admin-tab-panel active" id="admin-tab-projects">
+                        <div class="admin-card">
+                            <div class="admin-card-header">
+                                <div>
+                                    <h3>Workspace Projects & Collaboration Boards</h3>
+                                    <p>Centrally monitor all group projects, collaboration types, timelines, and active
+                                        sprints.</p>
+                                </div>
+                                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                    <div class="admin-card-badge" id="admin-projects-count">projects</div>
+
+                                    <button type="button" class="primary-button gold" id="admin-add-project-quick-btn">+
+                                        <span>Create Project</span></button>
+                                </div>
+                            </div>
+
+                            <div class="admin-table-wrapper">
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Project</th>
+                                            <th>Collaboration Type</th>
+                                            <th>Time Span</th>
+                                            <th>Creator</th>
+                                            <th>Collaborators</th>
+                                            <th>Sprints</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="admin-projects-tbody">
+                                        <!-- Populated dynamically by admin.js -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 1: Team Members Management -->
+                    <div class="admin-tab-panel" id="admin-tab-members" style="display: none;">
+                        <div class="admin-card admin-members-card">
+                            <div class="admin-card-header">
+                                <div>
+                                    <h3>Team Members & Roles</h3>
+                                    <p>Assign workspace permissions and administrative authority.</p>
+                                </div>
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <div class="admin-card-badge" id="admin-member-count">5 members</div>
+                                    <button type="button" class="primary-button gold" id="admin-members-invite-btn">+
+                                        <span>Invite Member</span></button>
+                                </div>
+                            </div>
+
+                            <div class="admin-table-wrapper">
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Member</th>
+                                            <th>Role & Permissions</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="admin-members-tbody">
+                                        <!-- Populated dynamically by dashboard.js -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: Admin Task Creation & Management -->
+                    <div class="admin-tab-panel" id="admin-tab-tasks" style="display: none;">
+                        <div class="admin-card">
+                            <div class="admin-card-header">
+                                <div>
+                                    <h3>Admin Task Creation & Project Assignment Authority</h3>
+                                    <p>All task adding and assignments are centrally managed by the workspace
+                                        administrator.</p>
+                                </div>
+                                <button type="button" class="primary-button gold" id="admin-add-task-quick-btn">+
+                                    <span>Add New Task</span></button>
+                            </div>
+
+                            <div class="admin-table-wrapper">
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Task Deliverable</th>
+                                            <th>Project</th>
+                                            <th>Assignee</th>
+                                            <th>Sprint</th>
+                                            <th>Due Date</th>
+                                            <th>Status</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="admin-tasks-tbody">
+                                        <!-- Populated dynamically by dashboard.js -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 3: Admin Meeting Scheduling & Calendar Management -->
+                    <div class="admin-tab-panel" id="admin-tab-meetings" style="display: none;">
+                        <div class="admin-card">
+                            <div class="admin-card-header">
+                                <div>
+                                    <h3>Meeting Scheduling & Collaboration Hub</h3>
+                                    <p>Schedule team syncs, sprint reviews, and collaboration events with automatic
+                                        calendar pins.</p>
+                                </div>
+                                <button type="button" class="primary-button gold" id="admin-add-meeting-quick-btn">+
+                                    <span>Schedule Meeting (Pinned)</span></button>
+                            </div>
+
+                            <div class="admin-table-wrapper">
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Meeting Event</th>
+                                            <th>Date & Time</th>
+                                            <th>Calendar Pin</th>
+                                            <th>Attendees</th>
+                                            <th>Location / Link</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="admin-meetings-tbody">
+                                        <!-- Populated dynamically by dashboard.js -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="admin-tab-panel admin-workspace-updates-panel" id="admin-tab-updates"
+                        style="display: none;">
+                        <div class="workspace-updates-shell">
+                            <header class="workspace-updates-header">
+                                <div>
+                                    <p class="hub-eyebrow">PUBLISHED TO HOME</p>
+                                    <h2>Workspace updates</h2>
+                                    <p>Manage the announcements, resources, and decisions your team sees.</p>
+                                </div>
+                            </header>
+                            <nav class="workspace-updates-tabs" aria-label="Workspace update types" role="tablist">
+                                <button type="button" class="workspace-updates-tab active"
+                                    id="workspace-updates-tab-announcements" data-workspace-update-tab="announcements"
+                                    role="tab" aria-selected="true"
+                                    aria-controls="workspace-updates-panel-announcements">Announcements</button>
+                                <button type="button" class="workspace-updates-tab" id="workspace-updates-tab-resources"
+                                    data-workspace-update-tab="resources" role="tab" aria-selected="false"
+                                    aria-controls="workspace-updates-panel-resources">Resources</button>
+                                <button type="button" class="workspace-updates-tab" id="workspace-updates-tab-decisions"
+                                    data-workspace-update-tab="decisions" role="tab" aria-selected="false"
+                                    aria-controls="workspace-updates-panel-decisions">Decisions & RFCs</button>
+                            </nav>
+
+                            <section class="workspace-updates-panel active" id="workspace-updates-panel-announcements"
+                                role="tabpanel" aria-labelledby="workspace-updates-tab-announcements">
+                                <div class="workspace-updates-panel-header">
+                                    <div>
+                                        <h3>Team announcements</h3>
+                                        <p>Share a release note, milestone, or team update.</p>
+                                    </div>
+                                    <button type="button" class="primary-button gold" id="hub-toggle-announcement-btn">+
+                                        New announcement</button>
+                                </div>
+                                <form id="announcement-composer-form" class="announcement-composer"
+                                    style="display: none;">
+                                    <div class="input-with-icon">
+                                        <svg class="input-icon-svg top-aligned" width="16" height="16"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z">
+                                            </path>
+                                        </svg>
+                                        <textarea id="announcement-input"
+                                            placeholder="Broadcast an update, sprint goal, or release note to the workspace..."
+                                            rows="2" required></textarea>
+                                    </div>
+                                    <div class="announcement-composer-footer"><span class="announcement-scope">Visible
+                                            to all workspace collaborators</span><button type="submit"
+                                            class="primary-button gold">Post Update</button></div>
+                                </form>
+                                <div class="announcements-feed" id="admin-announcements-feed-list"
+                                    data-interactive="true"></div>
+                            </section>
+
+                            <section class="workspace-updates-panel" id="workspace-updates-panel-resources"
+                                role="tabpanel" aria-labelledby="workspace-updates-tab-resources" hidden>
+                                <div class="workspace-updates-panel-header">
+                                    <div>
+                                        <h3>Pinned resources</h3>
+                                        <p>Keep useful documents, tools, and links close at hand.</p>
+                                    </div>
+                                    <button type="button" class="primary-button gold" id="hub-add-resource-btn">+ Add
+                                        resource</button>
+                                </div>
+                                <div class="hub-resources-grid" id="admin-hub-resources-list"></div>
+                            </section>
+
+                            <section class="workspace-updates-panel" id="workspace-updates-panel-decisions"
+                                role="tabpanel" aria-labelledby="workspace-updates-tab-decisions" hidden>
+                                <div class="workspace-updates-panel-header">
+                                    <div>
+                                        <h3>Team decisions & RFCs</h3>
+                                        <p>Gather votes and keep decisions visible on Home.</p>
+                                    </div>
+                                    <button type="button" class="primary-button gold" id="hub-create-poll-btn">+ New
+                                        poll</button>
+                                </div>
+                                <div class="team-polls-container" id="admin-team-polls-container"
+                                    data-interactive="true"></div>
+                            </section>
+                        </div>
+                    </div>
+
+                    <template id="admin-task-row-template">
+                        <tr>
+                            <td>
+                                <div class="admin-task-cell">
+                                    <strong data-ref="title"></strong>
+                                    <span class="tag" data-ref="tag"></span>
+                                </div>
+                            </td>
+                            <td><span class="admin-project-cell"><i class="dot" data-ref="project-dot"></i><span
+                                        data-ref="project"></span></span></td>
+                            <td>
+                                <div class="admin-assignee-cell">
+                                    <span class="avatar" data-ref="assignee-avatar"></span>
+                                    <span data-ref="assignee-name"></span>
+                                </div>
+                            </td>
+                            <td><span class="admin-sprint-cell" data-ref="sprint"></span></td>
+                            <td><span class="admin-due-cell" data-ref="due"></span></td>
+                            <td><span class="status-badge" data-ref="status"></span></td>
+                            <td>
+                                <button type="button" class="action-btn" data-ref="edit">Edit</button>
+                                <button type="button" class="action-btn delete" data-ref="delete">Delete</button>
+                            </td>
+                        </tr>
+                    </template>
+
+                    <template id="admin-meeting-row-template">
+                        <tr>
+                            <td>
+                                <div class="admin-meeting-cell">
+                                    <strong data-ref="title"></strong>
+                                    <small data-ref="host"></small>
+                                </div>
+                            </td>
+                            <td><span class="admin-meeting-date" data-ref="date"></span></td>
+                            <td><span class="status-badge" data-ref="pin"></span></td>
+                            <td>
+                                <div class="admin-attendees-cell" data-ref="attendees"></div>
+                            </td>
+                            <td><a class="admin-meeting-link" href="https://meet.google.com" target="_blank"
+                                    rel="noopener noreferrer" data-ref="location"></a></td>
+                            <td><button type="button" class="action-btn delete" data-ref="delete">Cancel /
+                                    Delete</button></td>
+                        </tr>
+                    </template>
+
+                    <template id="admin-attendee-template">
+                        <span class="avatar admin-attendee-avatar"></span>
+                    </template>
+
+                    <template id="audit-log-template">
+                        <div class="audit-item">
+                            <span class="activity-icon-badge" data-ref="icon"></span>
+                            <div class="audit-content">
+                                <strong data-ref="action"></strong>
+                                <p data-ref="detail"></p>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Dedicated Collaboration Tool & Workspace Settings Panel -->
+                <div id="settings-container" class="settings-container" style="display: none;">
+
+                    <!-- User Profile & Bio -->
+                    <div class="settings-tab-panel" id="settings-tab-profile">
+                        <div class="settings-card">
+                            <div class="settings-card-header profile-card-header">
+                                <div>
+                                    <h3>User Profile & Collaboration Identity</h3>
+                                    <p>Update your personal information, job title, avatar tone, and custom status
+                                        visible to team members.</p>
+                                </div>
+                                <div class="profile-preview">
+                                    <div class="avatar coral-bg profile-preview-avatar" id="profile-preview-avatar">AM
+                                    </div>
+                                    <div class="profile-preview-info">
+                                        <h4 id="profile-preview-name">Alex Morgan</h4>
+                                        <p id="profile-preview-email">admin@collab.io</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <form id="profile-settings-form" class="admin-settings-form">
+                                <div style="margin-bottom: 16px;">
+                                    <label for="profile-image-input"
+                                        style="display: block; font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 8px;">Profile
+                                        picture</label>
+                                    <input type="file" id="profile-image-input" accept="image/*" class="admin-input"
+                                        style="padding: 10px 12px;" />
+                                    <small style="display:block; margin-top: 6px; color: var(--muted);">Upload a square
+                                        image to replace the initials avatar. JPEG, PNG and WebP are supported.</small>
+                                </div>
+
+                                <div
+                                    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+                                    <div class="admin-form-group">
+                                        <label for="profile-name-input">Your Full Name *</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                                <circle cx="12" cy="7" r="4"></circle>
+                                            </svg>
+                                            <input type="text" id="profile-name-input" class="admin-input" required
+                                                placeholder="e.g. David Makau" value="Alex Morgan" />
+                                        </div>
+                                        <small class="profile-field-hint">Please enter your full name.</small>
+                                    </div>
+
+                                    <div class="admin-form-group">
+                                        <label for="profile-email-input">Work Email *</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <path
+                                                    d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z">
+                                                </path>
+                                                <polyline points="22,6 12,13 2,6"></polyline>
+                                            </svg>
+                                            <input type="email" id="profile-email-input" class="admin-input" required
+                                                placeholder="you@company.com" value="admin@collab.io" />
+                                        </div>
+                                        <small class="profile-field-hint">Please enter your email address.</small>
+                                    </div>
+
+                                    <div class="admin-form-group">
+                                        <label for="profile-phone-country-input">Country calling code *</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <circle cx="12" cy="12" r="10"></circle>
+                                                <line x1="2" y1="12" x2="22" y2="12"></line>
+                                                <path
+                                                    d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
+                                                </path>
+                                            </svg>
+                                            <select id="profile-phone-country-input" class="admin-select" required>
+                                                <option value="">Choose a country code</option>
+                                                <option value="+1" data-countries="US,CA">🇺🇸🇨🇦 United States /
+                                                    Canada (+1)</option>
+                                                <option value="+44" data-countries="GB">🇬🇧 United Kingdom (+44)
+                                                </option>
+                                                <option value="+254" data-countries="KE">🇰🇪 Kenya (+254)</option>
+                                                <option value="+27" data-countries="ZA">🇿🇦 South Africa (+27)</option>
+                                                <option value="+61" data-countries="AU">🇦🇺 Australia (+61)</option>
+                                                <option value="+64" data-countries="NZ">🇳🇿 New Zealand (+64)</option>
+                                                <option value="+91" data-countries="IN">🇮🇳 India (+91)</option>
+                                                <option value="+234" data-countries="NG">🇳🇬 Nigeria (+234)</option>
+                                                <option value="+256" data-countries="UG">🇺🇬 Uganda (+256)</option>
+                                                <option value="+255" data-countries="TZ">🇹🇿 Tanzania (+255)</option>
+                                                <option value="+233" data-countries="GH">🇬🇭 Ghana (+233)</option>
+                                                <option value="+250" data-countries="RW">🇷🇼 Rwanda (+250)</option>
+                                                <option value="+251" data-countries="ET">🇪🇹 Ethiopia (+251)</option>
+                                                <option value="+20" data-countries="EG">🇪🇬 Egypt (+20)</option>
+                                                <option value="+971" data-countries="AE">🇦🇪 United Arab Emirates
+                                                    (+971)</option>
+                                                <option value="+966" data-countries="SA">🇸🇦 Saudi Arabia (+966)
+                                                </option>
+                                                <option value="+33" data-countries="FR">🇫🇷 France (+33)</option>
+                                                <option value="+49" data-countries="DE">🇩🇪 Germany (+49)</option>
+                                                <option value="+34" data-countries="ES">🇪🇸 Spain (+34)</option>
+                                                <option value="+39" data-countries="IT">🇮🇹 Italy (+39)</option>
+                                                <option value="+31" data-countries="NL">🇳🇱 Netherlands (+31)</option>
+                                                <option value="+353" data-countries="IE">🇮🇪 Ireland (+353)</option>
+                                                <option value="+81" data-countries="JP">🇯🇵 Japan (+81)</option>
+                                                <option value="+82" data-countries="KR">🇰🇷 South Korea (+82)</option>
+                                                <option value="+86" data-countries="CN">🇨🇳 China (+86)</option>
+                                                <option value="+55" data-countries="BR">🇧🇷 Brazil (+55)</option>
+                                                <option value="+52" data-countries="MX">🇲🇽 Mexico (+52)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div class="admin-form-group">
+                                        <label for="profile-phone-input">Phone Number *</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <path
+                                                    d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z">
+                                                </path>
+                                            </svg>
+                                            <input type="tel" id="profile-phone-input" class="admin-input" required
+                                                autocomplete="tel-national" inputmode="tel"
+                                                placeholder="Enter your phone number" />
+                                        </div>
+                                    </div>
+
+                                    <div class="admin-form-group">
+                                        <label for="profile-collaboration-type-input">Type of Collaboration *</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <path
+                                                    d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z">
+                                                </path>
+                                            </svg>
+                                            <select id="profile-collaboration-type-input" class="admin-select" required>
+                                                <option value="">Choose a collaboration type</option>
+                                                <option value="Product collaboration">Product collaboration</option>
+                                                <option value="Event partnership">Event partnership</option>
+                                                <option value="Content creation">Content creation</option>
+                                                <option value="Influencer campaign">Influencer campaign</option>
+                                                <option value="Other">Other</option>
+                                            </select>
+                                        </div>
+                                        <small class="profile-field-hint">Please choose a collaboration type.</small>
+                                    </div>
+
+                                    <div class="admin-form-group" id="profile-collaboration-details-group" hidden>
+                                        <label for="profile-collaboration-details-input">Collaboration Details *</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z">
+                                                </path>
+                                                <polyline points="14 2 14 8 20 8"></polyline>
+                                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                                <polyline points="10 9 9 9 8 9"></polyline>
+                                            </svg>
+                                            <input type="text" id="profile-collaboration-details-input"
+                                                class="admin-input" placeholder="Describe your collaboration" />
+                                        </div>
+                                    </div>
+
+                                    <div class="admin-form-group">
+                                        <label for="profile-workspace-input">Brand or Company Name *</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
+                                                <line x1="9" y1="22" x2="9" y2="12"></line>
+                                                <line x1="15" y1="22" x2="15" y2="12"></line>
+                                                <line x1="9" y1="12" x2="15" y2="12"></line>
+                                                <line x1="9" y1="6" x2="9" y2="7"></line>
+                                                <line x1="15" y1="6" x2="15" y2="7"></line>
+                                            </svg>
+                                            <input type="text" id="profile-workspace-input" class="admin-input" required
+                                                placeholder="e.g. Northstar" />
+                                        </div>
+                                        <small class="profile-field-hint">Please enter your brand or company
+                                            name.</small>
+                                    </div>
+
+                                    <div class="admin-form-group">
+                                        <label for="profile-role-input">Role or Job Title *</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                                            </svg>
+                                            <input type="text" id="profile-role-input" class="admin-input" required
+                                                placeholder="e.g. Marketing Manager" />
+                                        </div>
+                                        <small class="profile-field-hint">Please enter your role or job title.</small>
+                                    </div>
+
+                                    <div class="admin-form-group">
+                                        <label for="profile-industry-input">Industry *</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                                                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+                                            </svg>
+                                            <select id="profile-industry-input" class="admin-select" required>
+                                                <option value="">Choose an industry</option>
+                                                <option value="Advertising and Marketing">Advertising and Marketing
+                                                </option>
+                                                <option value="Agriculture">Agriculture</option>
+                                                <option value="Automotive">Automotive</option>
+                                                <option value="Construction and Real Estate">Construction and Real
+                                                    Estate</option>
+                                                <option value="Consumer Goods">Consumer Goods</option>
+                                                <option value="Education">Education</option>
+                                                <option value="Energy and Utilities">Energy and Utilities</option>
+                                                <option value="Entertainment and Media">Entertainment and Media</option>
+                                                <option value="Fashion and Beauty">Fashion and Beauty</option>
+                                                <option value="Financial Services">Financial Services</option>
+                                                <option value="Food and Beverage">Food and Beverage</option>
+                                                <option value="Government and Public Sector">Government and Public
+                                                    Sector</option>
+                                                <option value="Healthcare and Life Sciences">Healthcare and Life
+                                                    Sciences</option>
+                                                <option value="Hospitality and Tourism">Hospitality and Tourism</option>
+                                                <option value="Manufacturing">Manufacturing</option>
+                                                <option value="Nonprofit">Nonprofit</option>
+                                                <option value="Professional Services">Professional Services</option>
+                                                <option value="Retail and E-commerce">Retail and E-commerce</option>
+                                                <option value="Technology">Technology</option>
+                                                <option value="Transportation and Logistics">Transportation and
+                                                    Logistics</option>
+                                            </select>
+                                        </div>
+                                        <small class="profile-field-hint">Please choose your industry.</small>
+                                    </div>
+
+                                    <div class="admin-form-group">
+                                        <label for="profile-avatar-tone">Avatar Tone & Color</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"></circle>
+                                                <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"></circle>
+                                                <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"></circle>
+                                                <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"></circle>
+                                                <path
+                                                    d="M12 2C6.49 2 2 6.49 2 12c0 3.31 2.69 6 6 6h1.25a1.75 1.75 0 0 1 1.75 1.75c0 .41-.14.79-.38 1.09-.43.54-.62 1.25-.62 1.96C10 23.94 10.96 24 12 24c6.63 0 12-5.37 12-12S18.63 2 12 2z">
+                                                </path>
+                                            </svg>
+                                            <select id="profile-avatar-tone" class="admin-select">
+                                                <option value="coral">Warm Coral</option>
+                                                <option value="teal">Mint Teal</option>
+                                                <option value="orange">Sunset Orange</option>
+                                                <option value="purple">Royal Purple</option>
+                                                <option value="blue">Sapphire Blue</option>
+                                                <option value="green">Forest Green</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div class="admin-form-group">
+                                        <label for="profile-timezone-input">Timezone</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <circle cx="12" cy="12" r="10"></circle>
+                                                <polyline points="12 6 12 12 16 14"></polyline>
+                                            </svg>
+                                            <select id="profile-timezone-input" class="admin-select">
+                                                <option value="UTC">UTC (Universal Time)</option>
+                                                <option value="America/New_York">America/New_York (EST / EDT)</option>
+                                                <option value="America/Los_Angeles" selected>America/Los_Angeles (PST /
+                                                    PDT)
+                                                </option>
+                                                <option value="Europe/London">Europe/London (GMT / BST)</option>
+                                                <option value="Europe/Paris">Europe/Paris (CET / CEST)</option>
+                                                <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div style="display: flex; justify-content: flex-end; margin-top: 10px;">
+                                    <button type="submit" class="primary-button gold" id="save-profile-btn">Update
+                                        Profile</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Password & Security -->
+                    <div class="settings-tab-panel" id="settings-tab-security">
+                        <div
+                            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px;">
+                            <!-- Change Password Card -->
+                            <div class="settings-card">
+                                <div class="settings-card-header">
+                                    <div>
+                                        <h3>Change Password</h3>
+                                        <p>Keep your account secure with a strong, updated password.</p>
+                                    </div>
+                                </div>
+
+                                <form id="password-settings-form" class="admin-settings-form">
+                                    <div class="admin-form-group">
+                                        <label for="current-password-input">Current Password</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                                            </svg>
+                                            <input type="password" id="current-password-input" class="admin-input"
+                                                placeholder="••••••••" style="padding-right: 38px;" />
+                                            <button type="button" class="pwd-toggle-btn"
+                                                data-target="current-password-input"
+                                                style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: 14px;">👁️</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="admin-form-group">
+                                        <label for="new-password-input">New Password *</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                                            </svg>
+                                            <input type="password" id="new-password-input" class="admin-input"
+                                                placeholder="At least 6 characters" required minlength="6"
+                                                style="padding-right: 38px;" />
+                                            <button type="button" class="pwd-toggle-btn"
+                                                data-target="new-password-input"
+                                                style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: 14px;">👁️</button>
+                                        </div>
+                                        <small style="display: block; margin-top: 6px; color: var(--muted);">At least 6
+                                            characters.</small>
+                                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                                            <div
+                                                style="flex: 1; height: 4px; background: #E4E4E7; border-radius: 2px; overflow: hidden;">
+                                                <div id="pwd-strength-bar"
+                                                    style="height: 100%; width: 0%; background: #EF4444; transition: all .2s;">
+                                                </div>
+                                            </div>
+                                            <span id="pwd-strength-text"
+                                                style="font-size: 11px; color: var(--muted);">Password strength</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="admin-form-group">
+                                        <label for="confirm-password-input">Confirm New Password</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                                            </svg>
+                                            <input type="password" id="confirm-password-input" class="admin-input"
+                                                placeholder="Repeat new password" required
+                                                style="padding-right: 38px;" />
+                                            <button type="button" class="pwd-toggle-btn"
+                                                data-target="confirm-password-input"
+                                                style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: 14px;">👁️</button>
+                                        </div>
+                                    </div>
+
+                                    <button type="submit" class="primary-button gold" id="update-password-btn">Update
+                                        Password</button>
+                                </form>
+                            </div>
+
+                            <!-- Two-Factor Authentication & Sessions -->
+                            <div class="settings-card">
+                                <div class="settings-card-header">
+                                    <div>
+                                        <h3>Two-Factor Authentication & Sessions</h3>
+                                        <p>Manage authentication challenges and authorized devices.</p>
+                                    </div>
+                                </div>
+
+                                <div class="settings-toggles-list">
+                                    <div class="settings-toggle-item">
+                                        <div class="toggle-text">
+                                            <div style="display: flex; align-items: center; gap: 6px;">
+                                                <strong>Two-Factor Authentication (2FA)</strong>
+                                                <span class="admin-pill" id="badge-2fa-status"
+                                                    style="font-size: 10px;">Active</span>
+                                            </div>
+                                            <p>Require verification codes on unrecognized browser logins.</p>
+                                        </div>
+                                        <label class="switch">
+                                            <input type="checkbox" id="toggle-2fa" checked />
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+
+                                    <div class="settings-toggle-item">
+                                        <div class="toggle-text">
+                                            <strong>Inactivity Auto-Logout</strong>
+                                            <p>Automatically lock workspace after periods of inactivity.</p>
+                                        </div>
+                                        <label class="switch">
+                                            <input type="checkbox" id="toggle-sec-timeout" checked />
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                                    <h4
+                                        style="font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 8px;">
+                                        Active Sessions</h4>
+                                    <div
+                                        style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; margin-bottom: 14px;">
+                                        <div
+                                            style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #FAFAFB; border: 1px solid var(--line); border-radius: 8px;">
+                                            <div>
+                                                <strong style="color: var(--ink);">🖥️ Chrome on macOS / Linux</strong>
+                                                <span style="display: block; font-size: 11px; color: #10B981;">● Current
+                                                    Active Session</span>
+                                            </div>
+                                            <span class="admin-pill" style="font-size: 10px;">This Device</span>
+                                        </div>
+                                        <div
+                                            style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #FAFAFB; border: 1px solid var(--line); border-radius: 8px;">
+                                            <div>
+                                                <strong style="color: var(--ink);">📱 Collab Mobile Client
+                                                    (iOS)</strong>
+                                                <span style="display: block; font-size: 11px; color: var(--muted);">Last
+                                                    active 2 hours ago</span>
+                                            </div>
+                                            <button type="button" class="action-btn delete"
+                                                id="revoke-mobile-session-btn"
+                                                style="padding: 2px 8px; font-size: 11px;">Revoke</button>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="outline-button full"
+                                        id="signout-other-sessions-btn">Sign Out All Other Sessions</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Collaboration Tools -->
+                    <div class="settings-tab-panel" id="settings-tab-collaboration">
+                        <div class="settings-card">
+                            <div class="settings-card-header">
+                                <div>
+                                    <h3>Collaboration Tool & Workflow Settings</h3>
+                                    <p>Configure team synchronization, calendar meeting pins, approval gates, and
+                                        notifications.</p>
+                                </div>
+                            </div>
+
+                            <form id="workspace-config-form" class="admin-settings-form" style="margin-bottom: 24px;">
+                                <div
+                                    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+                                    <div class="admin-form-group">
+                                        <label for="ws-name-input">Workspace Organization Name</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
+                                                <line x1="9" y1="22" x2="9" y2="12"></line>
+                                                <line x1="15" y1="22" x2="15" y2="12"></line>
+                                                <line x1="9" y1="12" x2="15" y2="12"></line>
+                                                <line x1="9" y1="6" x2="9" y2="7"></line>
+                                                <line x1="15" y1="6" x2="15" y2="7"></line>
+                                            </svg>
+                                            <input type="text" id="ws-name-input" class="admin-input" value="Collab HQ"
+                                                required />
+                                        </div>
+                                    </div>
+
+                                    <div class="admin-form-group">
+                                        <label for="ws-default-role-input">Default Member Role</label>
+                                        <div class="input-with-icon">
+                                            <svg class="input-icon-svg" width="16" height="16" viewBox="0 0 24 24"
+                                                fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                                            </svg>
+                                            <select id="ws-default-role-input" class="admin-select">
+                                                <option value="Product Lead">Product Lead</option>
+                                                <option value="Designer">Product Designer</option>
+                                                <option value="Engineer" selected>Software Engineer</option>
+                                                <option value="Viewer">Viewer (Read-only)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+
+                            <div class="settings-toggles-list">
+                                <div class="settings-toggle-item">
+                                    <div class="toggle-text">
+                                        <strong>Real-Time Collaboration & Presence Sync</strong>
+                                        <p>Stream live task updates, status changes, and collaborator presence in real
+                                            time.</p>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" id="toggle-collab-sync" checked />
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+
+                                <div class="settings-toggle-item">
+                                    <div class="toggle-text">
+                                        <strong>Auto-Pin Scheduled Meetings to Calendar</strong>
+                                        <p>Pin scheduled team syncs and sprint reviews directly to the workspace
+                                            calendar view.</p>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" id="toggle-calendar-pins" checked />
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+
+                                <div class="settings-toggle-item">
+                                    <div class="toggle-text">
+                                        <strong>Project Creator Approval Workflow</strong>
+                                        <p>Require project creators or workspace admins to formally approve completed
+                                            deliverables.</p>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" id="toggle-approval-workflow" checked />
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+
+                                <div class="settings-toggle-item">
+                                    <div class="toggle-text">
+                                        <strong>Sprint Auto-Rollover</strong>
+                                        <p>Automatically migrate incomplete deliverables to the upcoming sprint when a
+                                            sprint closes.</p>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" id="toggle-sprint-rollover" checked />
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+
+                                <div class="settings-toggle-item">
+                                    <div class="toggle-text">
+                                        <strong>Threaded Task Comments & Mentions</strong>
+                                        <p>Allow collaborators to post threaded feedback and @mention team members on
+                                            deliverables.</p>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" id="toggle-comments" checked />
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+
+                                <div class="settings-toggle-item">
+                                    <div class="toggle-text">
+                                        <strong>Audio Chimes & Notification Sounds</strong>
+                                        <p>Play subtle audio cues when tasks are assigned or high-priority reminders
+                                            trigger.</p>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" id="toggle-sound-notifs" checked />
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+
+                                <div class="settings-toggle-item">
+                                    <div class="toggle-text">
+                                        <strong>Standup Huddle & Video Links</strong>
+                                        <p>Auto-generate Google Meet / video conferencing links for all scheduled
+                                            calendar events.</p>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" id="toggle-huddle-links" checked />
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+
+                                <div class="settings-toggle-item">
+                                    <div class="toggle-text">
+                                        <strong>Public Read-Only Board Links</strong>
+                                        <p>Allow members to generate shareable read-only preview links for external
+                                            stakeholders.</p>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" id="toggle-public-share" checked />
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+
+                                <div class="settings-toggle-item">
+                                    <div class="toggle-text">
+                                        <strong>Central Admin Authority for Tasks & Meetings</strong>
+                                        <p>Centralize task creation, member invitations, and meeting scheduling under
+                                            workspace leaders.</p>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" id="toggle-sec-admin-authority" checked />
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
+                                <button type="button" class="primary-button gold" id="save-collab-settings-btn">Save
+                                    Collaboration Settings</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Security & Audit Log -->
+                    <div class="settings-tab-panel" id="settings-tab-audit">
+                        <div class="settings-card">
+                            <div class="settings-card-header"
+                                style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h3>Security & Audit Log</h3>
+                                    <p>Comprehensive event timeline of authentication, profile updates, and permissions
+                                        changes.</p>
+                                </div>
+                                <button type="button" class="outline-button" id="export-audit-btn">Export Log</button>
+                            </div>
+
+                            <div class="admin-audit-list" id="settings-audit-list">
+                                <!-- Populated dynamically by dashboard.js -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <div id="modal-root"></div>
+    </div>
+
+    <script type="module" src="./dashboard.js"></script>
+</body>
+
+</html>
