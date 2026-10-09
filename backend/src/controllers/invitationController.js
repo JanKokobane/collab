@@ -2334,47 +2334,83 @@ const createInAppInvitations = async (
                     });
                 }
 
+                const rawToken = randomBytes(32).toString('base64url');
                 const tokenHash = createHash('sha256')
-                    .update(randomBytes(32).toString('base64url'))
+                    .update(rawToken)
                     .digest('hex');
-                const invitationResult = await client.query(
+                const previousInvitation = await client.query(
                     `
-                        INSERT INTO project_invitations (
-                            invitation_id,
-                            project_id,
-                            invited_by_firebase_uid,
-                            invited_email,
-                            invited_name,
-                            role,
-                            token_hash,
-                            invited_firebase_uid,
-                            expires_at
-                        )
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + INTERVAL '14 days')
-                        ON CONFLICT (project_id, invited_email)
-                            WHERE status = 'pending'
-                        DO UPDATE SET
-                            invited_by_firebase_uid = EXCLUDED.invited_by_firebase_uid,
-                            invited_name = EXCLUDED.invited_name,
-                            role = EXCLUDED.role,
-                            token_hash = EXCLUDED.token_hash,
-                            invited_firebase_uid = EXCLUDED.invited_firebase_uid,
-                            expires_at = EXCLUDED.expires_at,
-                            responded_at = NULL
-                        RETURNING invitation_id
+                        SELECT invitation_id
+                        FROM project_invitations
+                        WHERE project_id = $1
+                          AND LOWER(invited_email) = $2
+                          AND status IN ('pending', 'declined', 'revoked', 'delivery_failed')
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                        FOR UPDATE
                     `,
-                    [
-                        randomUUID(),
-                        project.project_id,
-                        req.firebaseUid,
-                        invitee.email,
-                        invitee.name,
-                        role,
-                        tokenHash,
-                        invitee.firebaseUid
-                    ]
+                    [project.project_id, invitee.email]
                 );
-                const invitationId = invitationResult.rows[0].invitation_id;
+
+                let invitationId;
+                if (previousInvitation.rowCount) {
+                    const refreshedInvitation = await client.query(
+                        `
+                            UPDATE project_invitations
+                            SET invited_by_firebase_uid = $1,
+                                invited_name = $2,
+                                invited_email = $3,
+                                role = $4,
+                                token_hash = $5,
+                                invited_firebase_uid = $6,
+                                status = 'pending',
+                                expires_at = NOW() + INTERVAL '14 days',
+                                responded_at = NULL
+                            WHERE invitation_id = $7::uuid
+                            RETURNING invitation_id
+                        `,
+                        [
+                            req.firebaseUid,
+                            invitee.name,
+                            invitee.email,
+                            role,
+                            tokenHash,
+                            invitee.firebaseUid,
+                            previousInvitation.rows[0].invitation_id
+                        ]
+                    );
+                    invitationId = refreshedInvitation.rows[0].invitation_id;
+                } else {
+                    const insertedInvitation = await client.query(
+                        `
+                            INSERT INTO project_invitations (
+                                invitation_id,
+                                project_id,
+                                invited_by_firebase_uid,
+                                invited_email,
+                                invited_name,
+                                role,
+                                token_hash,
+                                invited_firebase_uid,
+                                expires_at
+                            )
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+                                    NOW() + INTERVAL '14 days')
+                            RETURNING invitation_id
+                        `,
+                        [
+                            randomUUID(),
+                            project.project_id,
+                            req.firebaseUid,
+                            invitee.email,
+                            invitee.name,
+                            role,
+                            tokenHash,
+                            invitee.firebaseUid
+                        ]
+                    );
+                    invitationId = insertedInvitation.rows[0].invitation_id;
+                }
 
                 const detail =
                     `${inviterName} invited you to join ${project.name} as a ${role}.`;

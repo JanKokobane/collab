@@ -187,9 +187,15 @@ function renderProjectTaskDetails(project, taskRecords, loadError) {
   const isOwner = project.creatorFirebaseUid === firebaseAuth.currentUser?.uid
   const acceptedMembers = Array.isArray(project.acceptedMembers) ? project.acceptedMembers : []
   const sprints = Array.isArray(project.sprints) ? project.sprints : []
+
   const toolbar = make('div', 'project-task-toolbar')
   const sprintSection = make('section', 'project-sprint-section')
-  sprintSection.append(make('h4', '', 'Project sprints'))
+  const sprintHeading = make('div', 'project-task-section-heading')
+  sprintHeading.append(
+    make('h4', '', 'Project sprints'),
+    make('span', 'project-task-section-count', String(sprints.length))
+  )
+  sprintSection.append(sprintHeading)
   const sprintList = make('div', 'project-sprint-list')
 
   if (!sprints.length) {
@@ -201,6 +207,9 @@ function renderProjectTaskDetails(project, taskRecords, loadError) {
         make('strong', '', sprint.name || 'Sprint'),
         make('small', '', sprint.status || 'Upcoming')
       )
+      if (sprint.assigneeName) {
+        sprintChip.append(make('small', 'project-sprint-assignee', `Assigned to ${sprint.assigneeName}`))
+      }
       sprintList.append(sprintChip)
     })
   }
@@ -208,10 +217,26 @@ function renderProjectTaskDetails(project, taskRecords, loadError) {
   toolbar.append(sprintSection)
 
   const memberSection = make('section', 'project-sprint-section')
-  memberSection.append(make('h4', '', 'Accepted project invitees'))
+  const memberHeading = make('div', 'project-task-section-heading')
+  memberHeading.append(
+    make('h4', '', 'Accepted project invitees'),
+    make('span', 'project-task-section-count', String(acceptedMembers.length))
+  )
+  memberSection.append(memberHeading)
   const memberList = make('div', 'project-task-member-list')
   if (!acceptedMembers.length) {
-    memberList.append(make('p', 'project-task-empty', 'No accepted invitees are available for task assignment.'))
+    const emptyInvitees = make('div', 'project-task-empty-state')
+    emptyInvitees.append(
+      make('p', '', 'No accepted invitees yet.'),
+      make('small', '', 'Invite a teammate. Tasks can be assigned once they accept.')
+    )
+    if (isOwner) {
+      const inviteButton = make('button', 'outline-button project-task-invite-button', '+ Invite Member')
+      inviteButton.type = 'button'
+      inviteButton.addEventListener('click', () => openInviteCollaboratorModal(project))
+      emptyInvitees.append(inviteButton)
+    }
+    memberList.append(emptyInvitees)
   } else {
     acceptedMembers.forEach(member => {
       const name = member.name || member.email || 'Project member'
@@ -221,21 +246,6 @@ function renderProjectTaskDetails(project, taskRecords, loadError) {
   memberSection.append(memberList)
   toolbar.append(memberSection)
 
-  if (isOwner) {
-    const actions = make('div', 'project-task-owner-actions')
-    const addSprintButton = make('button', 'outline-button', '+ Add Sprint')
-    addSprintButton.type = 'button'
-    addSprintButton.addEventListener('click', () => openAddSprintModal(project))
-    const addTaskButton = make('button', 'primary-button gold', '+ Add Task')
-    addTaskButton.type = 'button'
-    addTaskButton.disabled = !sprints.length || !acceptedMembers.length
-    addTaskButton.title = addTaskButton.disabled
-      ? 'Add a sprint and invite a member who accepts before creating tasks.'
-      : 'Create a task assigned to an accepted project invitee.'
-    addTaskButton.addEventListener('click', () => openProjectTaskModal(project))
-    actions.append(addSprintButton, addTaskButton)
-    toolbar.append(actions)
-  }
   wrapper.append(toolbar)
 
   if (loadError) {
@@ -245,6 +255,7 @@ function renderProjectTaskDetails(project, taskRecords, loadError) {
 
   const taskTable = document.createElement('table')
   taskTable.className = 'project-task-table'
+  const taskTableWrap = make('div', 'project-task-table-wrap')
   const head = document.createElement('thead')
   const headRow = document.createElement('tr')
   ;['Task', 'Sprint', 'Assigned to', 'Due date', 'Status', ...(isOwner ? ['Actions'] : [])]
@@ -306,7 +317,8 @@ function renderProjectTaskDetails(project, taskRecords, loadError) {
     })
   }
   taskTable.append(body)
-  wrapper.append(taskTable)
+  taskTableWrap.append(taskTable)
+  wrapper.append(taskTableWrap)
   return wrapper
 }
 
@@ -347,15 +359,40 @@ export async function renderAdminTasksTable() {
     const projectRow = document.createElement('tr')
     projectRow.className = 'project-task-project-row'
     const projectCell = document.createElement('td')
+    const rowLayout = make('div', 'project-task-row-layout')
     const expandButton = make('button', 'project-task-project-toggle')
     expandButton.type = 'button'
     expandButton.setAttribute('aria-expanded', 'false')
-    const projectDot = make('i', `dot ${project.color || 'blue'}`)
-    const projectTitle = make('span', '', project.name)
+    const identity = make('span', 'project-task-row-identity')
+    const projectTitle = make('strong', '', project.name)
+    const projectDescription = make('small', '', project.description || 'No description provided')
+    identity.append(projectTitle, projectDescription)
+    const metadata = make('span', 'project-task-row-metadata')
+    metadata.append(
+      make('span', 'collab-type-badge', project.projectType || 'General Collaboration'),
+      make('span', '', project.timeSpan || 'Ongoing'),
+      make('span', '', `${(project.acceptedMembers || []).length} ${(project.acceptedMembers || []).length === 1 ? 'collaborator' : 'collaborators'}`)
+    )
     const taskCount = make('small', '', `${projectTasks.length} ${projectTasks.length === 1 ? 'task' : 'tasks'}`)
+    expandButton.append(identity, metadata)
+    const rowActions = make('div', 'project-task-row-actions')
+    rowActions.append(taskCount)
+    if (project.creatorFirebaseUid === firebaseAuth.currentUser?.uid) {
+      const addTaskButton = make('button', 'primary-button gold project-task-row-add-button', '+ Add Task')
+      addTaskButton.type = 'button'
+      addTaskButton.title = 'Create a task for this project.'
+      addTaskButton.addEventListener('click', () => openProjectTaskModal(project))
+      rowActions.append(addTaskButton)
+    }
+    const expandButtonToggle = make('button', 'project-task-row-expand-button')
+    expandButtonToggle.type = 'button'
+    expandButtonToggle.setAttribute('aria-expanded', 'false')
+    expandButtonToggle.setAttribute('aria-label', `Expand ${project.name}`)
     const chevron = make('span', 'project-task-chevron', '⌄')
-    expandButton.append(projectDot, projectTitle, taskCount, chevron)
-    projectCell.append(expandButton)
+    expandButtonToggle.append(chevron)
+    rowActions.append(expandButtonToggle)
+    rowLayout.append(expandButton, rowActions)
+    projectCell.append(rowLayout)
     projectRow.append(projectCell)
 
     const detailsRow = document.createElement('tr')
@@ -364,12 +401,17 @@ export async function renderAdminTasksTable() {
     const detailsCell = document.createElement('td')
     detailsCell.append(renderProjectTaskDetails(project, projectTasks, error))
     detailsRow.append(detailsCell)
-    expandButton.addEventListener('click', () => {
+    const toggleProjectDetails = () => {
       const isExpanded = expandButton.getAttribute('aria-expanded') === 'true'
       expandButton.setAttribute('aria-expanded', String(!isExpanded))
+      expandButtonToggle.setAttribute('aria-expanded', String(!isExpanded))
+      expandButtonToggle.setAttribute('aria-label', `${isExpanded ? 'Expand' : 'Collapse'} ${project.name}`)
       detailsRow.hidden = isExpanded
       expandButton.classList.toggle('is-expanded', !isExpanded)
-    })
+      expandButtonToggle.classList.toggle('is-expanded', !isExpanded)
+    }
+    expandButton.addEventListener('click', toggleProjectDetails)
+    expandButtonToggle.addEventListener('click', toggleProjectDetails)
     tbody.append(projectRow, detailsRow)
   })
 }
@@ -377,15 +419,11 @@ export async function renderAdminTasksTable() {
 function openProjectTaskModal(project, task = null, defaults = {}) {
   const isOwner = project.creatorFirebaseUid === firebaseAuth.currentUser?.uid
   const acceptedMembers = Array.isArray(project.acceptedMembers) ? project.acceptedMembers : []
-  const sprints = Array.isArray(project.sprints) ? project.sprints : []
+  let sprints = Array.isArray(project.sprints) ? project.sprints : []
   if (!isOwner) return
-  if (!sprints.length || !acceptedMembers.length) {
-    showDashboardToast('This project needs a sprint and an accepted invitee before you can assign a task.', 'error')
-    return
-  }
 
   const backdrop = make('div', 'modal-backdrop')
-  const form = make('form', 'modal')
+  const form = make('form', 'modal project-task-parent-form')
   const close = make('button', 'close-modal', '×')
   close.type = 'button'
   close.addEventListener('click', closeModal)
@@ -400,7 +438,7 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
   titleInput.placeholder = 'e.g. Prepare project deliverables'
   titleLabel.append(titleInput)
 
-  const descriptionLabel = make('label', '', 'Description')
+  const descriptionLabel = make('label', 'no-input-icon', 'Description')
   const descriptionInput = document.createElement('textarea')
   descriptionInput.rows = 3
   descriptionInput.maxLength = 10000
@@ -408,26 +446,274 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
   descriptionInput.placeholder = 'Add details or acceptance criteria'
   descriptionLabel.append(descriptionInput)
 
-  const sprintLabel = make('label', '', 'Sprint')
-  const sprintSelect = document.createElement('select')
-  if (task && !sprints.some(sprint => sprint.name === task.sprint_name)) {
-    const unavailableSprint = make('option', '', `${task.sprint_name || 'Former sprint'} (no longer in this project)`)
-    unavailableSprint.value = task.sprint_name || ''
-    unavailableSprint.selected = true
-    unavailableSprint.disabled = true
-    sprintSelect.append(unavailableSprint)
+  const initialSprint = task
+    ? sprints.find(sprint => sprint.name === task.sprint_name)
+    : [...sprints].reverse().find(sprint => sprint.assigneeFirebaseUid)
+  let selectedSprintIsInProject = Boolean(initialSprint)
+  let selectedSprintName = task?.sprint_name || initialSprint?.name || ''
+  let selectedAssigneeFirebaseUid = initialSprint?.assigneeFirebaseUid || task?.assignee_firebase_uid || ''
+  const originalSprintSelection = {
+    isInProject: selectedSprintIsInProject,
+    name: selectedSprintName,
+    assigneeFirebaseUid: selectedAssigneeFirebaseUid
   }
-  sprints.forEach(sprint => {
-    const option = make('option', '', sprint.name)
-    option.value = sprint.name
-    if (sprint.name === task?.sprint_name) option.selected = true
-    sprintSelect.append(option)
-  })
-  sprintLabel.append(sprintSelect)
+  const draftSprints = []
+  let editingDraftSprintId = null
+  let selectedDraftSprintId = null
 
-  const categoryLabel = make('label', '', 'Category')
+  const createSprintToggle = make('button', 'primary-button gold project-task-create-sprint-toggle', '+ Add Sprint')
+  createSprintToggle.type = 'button'
+  const sprintCreatePanel = make('section', 'project-task-create-sprint-panel')
+  sprintCreatePanel.setAttribute('role', 'region')
+  sprintCreatePanel.setAttribute('aria-labelledby', 'project-task-sprint-title')
+  sprintCreatePanel.hidden = true
+
+  const sprintCreateTitle = make('h4', '', 'Create a project sprint')
+  sprintCreateTitle.id = 'project-task-sprint-title'
+  const closeSprintPanel = make('button', 'project-task-close-sprint', 'Close')
+  closeSprintPanel.type = 'button'
+  const sprintPanelHeader = make('div', 'project-task-sprint-panel-header')
+  sprintPanelHeader.append(sprintCreateTitle, closeSprintPanel)
+  const sprintCreateCopy = make('p', 'modal-copy', task
+    ? 'Add sprint drafts here. They will be added to the project when you save this task; edit or remove them first if needed.'
+    : 'Add sprint drafts here. They will be added to the project when you create the task; edit or remove them first if needed.')
+  const draftSprintList = make('div', 'project-task-draft-sprint-list')
+  const draftSprintListHeading = make('h4', 'project-task-draft-sprint-heading', 'Sprints to add when the task is saved')
+  draftSprintList.hidden = true
+  const newSprintNameLabel = make('label', 'no-input-icon', 'Sprint title')
+  const newSprintNameInput = make('input')
+  newSprintNameInput.maxLength = 240
+  newSprintNameInput.placeholder = `Sprint ${sprints.length + 1}: Your title`
+  newSprintNameLabel.append(newSprintNameInput)
+
+  const newSprintAssigneeLabel = make('label', 'no-input-icon', `Assign sprint to accepted invitee${task ? ' (optional)' : ''}`)
+  const newSprintAssigneeSelect = document.createElement('select')
+  const noSprintAssigneeOption = make('option', '', 'No sprint lead')
+  noSprintAssigneeOption.value = ''
+  newSprintAssigneeSelect.append(noSprintAssigneeOption)
+  acceptedMembers.forEach(member => {
+    const option = make('option', '', `${member.name || member.email || 'Invitee'}${member.role ? ` (${member.role})` : ''}`)
+    option.value = member.firebaseUid
+    newSprintAssigneeSelect.append(option)
+  })
+  newSprintAssigneeLabel.append(newSprintAssigneeSelect)
+
+  const newSprintStatusLabel = make('label', 'no-input-icon', 'Sprint status')
+  const newSprintStatusSelect = document.createElement('select')
+  ;['Upcoming', 'Active', 'Completed'].forEach(status => {
+    const option = make('option', '', status)
+    option.value = status
+    newSprintStatusSelect.append(option)
+  })
+  newSprintStatusLabel.append(newSprintStatusSelect)
+
+  const sprintCreateRow = make('div', 'form-row')
+  sprintCreateRow.append(newSprintAssigneeLabel, newSprintStatusLabel)
+  const saveSprintButton = make('button', 'primary-button gold project-task-save-sprint', 'Add Sprint')
+  saveSprintButton.type = 'button'
+  const sprintCreateError = make('p', 'project-form-error')
+  sprintCreateError.hidden = true
+  sprintCreatePanel.append(
+    sprintPanelHeader,
+    sprintCreateCopy,
+    newSprintNameLabel,
+    sprintCreateRow,
+    sprintCreateError,
+    saveSprintButton
+  )
+  const setSprintPanelOpen = isOpen => {
+    sprintCreatePanel.hidden = !isOpen
+    if (isOpen) {
+      newSprintNameInput.focus()
+    } else {
+      createSprintToggle.focus()
+    }
+    createSprintToggle.textContent = isOpen ? 'Cancel Sprint' : '+ Add Sprint'
+  }
+  createSprintToggle.addEventListener('click', () => {
+    setSprintPanelOpen(sprintCreatePanel.hidden)
+  })
+  closeSprintPanel.addEventListener('click', () => setSprintPanelOpen(false))
+  const updateSprintDrafts = () => {
+    draftSprints.forEach((sprint, index) => {
+      const title = sprint.name.replace(/^Sprint\s+\d+\s*:\s*/i, '').trim()
+      sprint.name = `Sprint ${index + 1}: ${title}`
+    })
+
+    draftSprintList.replaceChildren()
+    draftSprintList.hidden = draftSprints.length === 0
+    if (draftSprints.length) draftSprintList.append(draftSprintListHeading)
+    draftSprints.forEach((sprint, index) => {
+      const item = make('article', 'project-task-draft-sprint')
+      const details = make('div', 'project-task-draft-sprint-details')
+      const lead = acceptedMembers.find(member => member.firebaseUid === sprint.assigneeFirebaseUid)
+      details.append(
+        make('strong', '', sprint.name),
+        make('small', '', `${sprint.status}${lead ? ` · ${lead.name || lead.email}` : ''}`)
+      )
+      const actions = make('div', 'project-task-draft-sprint-actions')
+      const editButton = make('button', 'project-task-draft-action', 'Edit')
+      editButton.type = 'button'
+      editButton.addEventListener('click', () => {
+        editingDraftSprintId = sprint.id
+        newSprintNameInput.value = sprint.name.replace(/^Sprint\s+\d+\s*:\s*/i, '')
+        newSprintAssigneeSelect.value = sprint.assigneeFirebaseUid || ''
+        newSprintStatusSelect.value = sprint.status
+        saveSprintButton.textContent = 'Update Sprint'
+        sprintCreateError.hidden = true
+        newSprintNameInput.focus()
+      })
+      const removeButton = make('button', 'project-task-draft-action is-danger', 'Remove')
+      removeButton.type = 'button'
+      removeButton.addEventListener('click', () => {
+        const removedSelectedSprint = selectedDraftSprintId === sprint.id
+        draftSprints.splice(index, 1)
+        if (removedSelectedSprint) selectedDraftSprintId = draftSprints.at(-1)?.id || null
+        if (editingDraftSprintId === sprint.id) {
+          editingDraftSprintId = null
+          saveSprintButton.textContent = 'Add Sprint'
+          newSprintNameInput.value = ''
+          newSprintAssigneeSelect.value = ''
+          newSprintStatusSelect.value = 'Upcoming'
+        }
+        updateSprintDrafts()
+        const selectedSprint = draftSprints.find(draft => draft.id === selectedDraftSprintId)
+        selectedSprintName = selectedSprint?.name || originalSprintSelection.name
+        selectedAssigneeFirebaseUid = selectedSprint?.assigneeFirebaseUid || originalSprintSelection.assigneeFirebaseUid
+        selectedSprintIsInProject = Boolean(selectedSprint) || originalSprintSelection.isInProject
+        submit.disabled = !selectedSprintIsInProject || !selectedSprintName || !selectedAssigneeFirebaseUid
+      })
+      actions.append(editButton, removeButton)
+      item.append(details, actions)
+      draftSprintList.append(item)
+    })
+    const selectedDraftSprint = draftSprints.find(sprint => sprint.id === selectedDraftSprintId)
+    if (selectedDraftSprint) selectedSprintName = selectedDraftSprint.name
+  }
+
+  saveSprintButton.addEventListener('click', () => {
+    const title = newSprintNameInput.value.trim().replace(/^Sprint\s+\d+\s*:\s*/i, '')
+    if (!title) {
+      newSprintNameInput.focus()
+      return
+    }
+
+    const draftToUpdate = draftSprints.find(sprint => sprint.id === editingDraftSprintId)
+    const draftPosition = draftToUpdate
+      ? draftSprints.findIndex(sprint => sprint.id === editingDraftSprintId)
+      : draftSprints.length
+    const sprintName = `Sprint ${draftPosition + 1}: ${title}`
+    const persistedSprintName = `Sprint ${sprints.length + draftPosition + 1}: ${title}`
+    const duplicate = sprints.some(sprint => sprint.name.trim().toLowerCase() === persistedSprintName.toLowerCase()) ||
+      draftSprints.some((sprint, index) =>
+        index !== draftPosition && sprint.name.replace(/^Sprint\s+\d+\s*:/i, '').trim().toLowerCase() === title.toLowerCase()
+      )
+    if (duplicate) {
+      sprintCreateError.textContent = 'A sprint with this title already exists in the project.'
+      sprintCreateError.hidden = false
+      return
+    }
+
+    const selectedSprintMember = acceptedMembers.find(member => member.firebaseUid === newSprintAssigneeSelect.value)
+    if (!task && !selectedSprintMember) {
+      sprintCreateError.textContent = 'Select an accepted invitee to assign tasks in this sprint.'
+      sprintCreateError.hidden = false
+      return
+    }
+
+    const draftSprint = {
+      id: draftToUpdate?.id || `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      name: sprintName,
+      status: newSprintStatusSelect.value,
+      ...(selectedSprintMember ? {
+        assigneeFirebaseUid: selectedSprintMember.firebaseUid,
+        assigneeName: selectedSprintMember.name || selectedSprintMember.email
+      } : {})
+    }
+    if (draftToUpdate) {
+      delete draftToUpdate.assigneeFirebaseUid
+      delete draftToUpdate.assigneeName
+      Object.assign(draftToUpdate, draftSprint)
+    } else {
+      draftSprints.push(draftSprint)
+    }
+
+    updateSprintDrafts()
+    selectedDraftSprintId = draftSprint.id
+    selectedSprintName = draftSprint.name
+    selectedAssigneeFirebaseUid = draftSprint.assigneeFirebaseUid || task?.assignee_firebase_uid || ''
+    selectedSprintIsInProject = true
+    submit.disabled = !selectedSprintName || !selectedAssigneeFirebaseUid
+    editingDraftSprintId = null
+    newSprintNameInput.value = ''
+    newSprintAssigneeSelect.value = ''
+    newSprintStatusSelect.value = 'Upcoming'
+    saveSprintButton.textContent = 'Add Sprint'
+    sprintCreateError.hidden = true
+  })
+
+  const sprintSection = make('div', 'project-task-sprint-field')
+  sprintSection.append(createSprintToggle)
+
+  const categoryLabel = make('label', 'no-input-icon', 'Category')
   const categorySelect = document.createElement('select')
-  ;['Design', 'Development', 'Marketing', 'Product'].forEach(category => {
+  const taskCategories = [
+    'Design',
+    'Development',
+    'Marketing',
+    'Product',
+    'Accessibility',
+    'Analytics',
+    'API Integration',
+    'Backend Development',
+    'Branding',
+    'Business Development',
+    'Collaboration',
+    'Community Management',
+    'Communication',
+    'Content Strategy',
+    'Content Writing',
+    'Copywriting',
+    'Customer Success',
+    'Customer Support',
+    'Data Analysis',
+    'Data Engineering',
+    'DevOps',
+    'Documentation',
+    'Education',
+    'Event Planning',
+    'Finance',
+    'Frontend Development',
+    'Graphic Design',
+    'Human Resources',
+    'Legal',
+    'Logistics',
+    'Mobile Development',
+    'Operations',
+    'Partnerships',
+    'Photography',
+    'Planning',
+    'Product Strategy',
+    'Project Management',
+    'Prototyping',
+    'Quality Assurance',
+    'Recruiting',
+    'Research',
+    'Roadmapping',
+    'Sales',
+    'Security',
+    'SEO',
+    'Social Media',
+    'Testing',
+    'Training',
+    'UI Design',
+    'User Research',
+    'UX Design',
+    'Video Production',
+    'Visual Design',
+    'Web Development'
+  ]
+  taskCategories.forEach(category => {
     const option = make('option', '', category)
     option.value = category
     if (category === task?.category) option.selected = true
@@ -435,24 +721,7 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
   })
   categoryLabel.append(categorySelect)
 
-  const assigneeLabel = make('label', '', 'Assign to accepted invitee')
-  const assigneeSelect = document.createElement('select')
-  if (task && !acceptedMembers.some(member => member.firebaseUid === task.assignee_firebase_uid)) {
-    const removedMember = make('option', '', `${task.assignee_name || task.assignee_email || 'Former invitee'} (no longer accepted)`)
-    removedMember.value = task.assignee_firebase_uid
-    removedMember.selected = true
-    removedMember.disabled = true
-    assigneeSelect.append(removedMember)
-  }
-  acceptedMembers.forEach(member => {
-    const option = make('option', '', `${member.name || member.email || 'Invitee'}${member.role ? ` (${member.role})` : ''}`)
-    option.value = member.firebaseUid
-    if (member.firebaseUid === task?.assignee_firebase_uid) option.selected = true
-    assigneeSelect.append(option)
-  })
-  assigneeLabel.append(assigneeSelect)
-
-  const statusLabel = make('label', '', 'Status')
+  const statusLabel = make('label', 'no-input-icon', 'Status')
   const statusSelect = document.createElement('select')
   ;['Backlog', 'To do', 'In progress', 'Done'].forEach(status => {
     const option = make('option', '', status)
@@ -462,27 +731,20 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
   })
   statusLabel.append(statusSelect)
 
-  const startDateLabel = make('label', '', 'Start date')
-  const startDateInput = make('input')
-  startDateInput.type = 'date'
-  startDateInput.value = task?.start_date ? String(task.start_date).slice(0, 10) : (defaults.startDate || '')
-  startDateLabel.append(startDateInput)
+  const initialDueDate = task?.due_date
+    ? String(task.due_date).slice(0, 10)
+    : (defaults.dueDate || toLocalDateKey())
+  const initialStartDate = task?.start_date
+    ? String(task.start_date).slice(0, 10)
+    : (defaults.startDate || initialDueDate)
+  const schedulePicker = createScheduleCalendarPicker(initialStartDate, initialDueDate)
 
-  const dueDateLabel = make('label', '', 'Due date')
-  const dueDateInput = make('input')
-  dueDateInput.type = 'date'
-  dueDateInput.value = task?.due_date ? String(task.due_date).slice(0, 10) : (defaults.dueDate || '')
-  dueDateLabel.append(dueDateInput)
-
-  const assignmentRow = make('div', 'form-row')
-  assignmentRow.append(sprintLabel, assigneeLabel)
-  const metadataRow = make('div', 'form-row')
-  metadataRow.append(categoryLabel, statusLabel)
-  const dateRow = make('div', 'form-row')
-  dateRow.append(startDateLabel, dueDateLabel)
+  const assignmentRow = make('div', 'form-row project-task-assignment-row')
+  assignmentRow.append(sprintSection, categoryLabel, statusLabel)
   const submit = make('button', 'primary-button full gold', task ? 'Save Task' : 'Create Task')
   submit.type = 'submit'
-  form.append(close, heading, copy, titleLabel, descriptionLabel, assignmentRow, metadataRow, dateRow, submit)
+  submit.disabled = !selectedSprintIsInProject || !selectedSprintName || !selectedAssigneeFirebaseUid
+  form.append(close, heading, copy, titleLabel, descriptionLabel, assignmentRow, sprintCreatePanel, draftSprintList, schedulePicker.element, submit)
   backdrop.append(form)
   root.replaceChildren(backdrop)
   titleInput.focus()
@@ -490,18 +752,39 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
   form.addEventListener('submit', async event => {
     event.preventDefault()
     submit.disabled = true
+    const schedule = schedulePicker.getValues()
     const payload = {
       title: titleInput.value.trim(),
       description: descriptionInput.value.trim(),
       category: categorySelect.value,
-      sprintName: sprintSelect.value,
-      assigneeFirebaseUid: assigneeSelect.value,
+      sprintName: selectedSprintName,
+      assigneeFirebaseUid: selectedAssigneeFirebaseUid,
       status: statusSelect.value,
-      startDate: startDateInput.value || null,
-      dueDate: dueDateInput.value || null
+      startDate: schedule.startDate || null,
+      dueDate: schedule.dueDate || null
     }
     try {
       const projectId = encodeURIComponent(project.projectId)
+      if (draftSprints.length) {
+        const persistedDraftSprints = draftSprints.map((draft, index) => ({
+          ...draft,
+          name: draft.name.replace(/^Sprint\s+\d+\s*:\s*/i, `Sprint ${sprints.length + index + 1}: `)
+        }))
+        const selectedDraftIndex = draftSprints.findIndex(draft => draft.id === selectedDraftSprintId)
+        const persistedSelectedSprintName = selectedDraftIndex >= 0
+          ? persistedDraftSprints[selectedDraftIndex].name
+          : selectedSprintName
+        const updatedSprints = [...sprints, ...persistedDraftSprints]
+        await api.put(`/projects/${projectId}`, { sprints: updatedSprints })
+        project.sprints = updatedSprints
+        sprints = updatedSprints
+        selectedSprintName = persistedSelectedSprintName
+        selectedSprintIsInProject = true
+        draftSprints.splice(0, draftSprints.length)
+        selectedDraftSprintId = null
+        updateSprintDrafts()
+        payload.sprintName = selectedSprintName
+      }
       if (task) {
         await api.put(`/projects/${projectId}/tasks/${encodeURIComponent(task.task_id)}`, payload)
       } else {
@@ -1061,22 +1344,12 @@ export function renderAdminProjectsTable() {
     // 5. Team / Collaborators
     const tdTeam = document.createElement('td')
     const teamWrap = make('div', 'collaborators-cell')
-    const projectMembers = [
-      {
-        firebaseUid: project.creatorFirebaseUid,
-        email: project.creatorEmail
-      },
-      ...(project.acceptedMembers || [])
-    ]
     const teamCount = new Set(
-      projectMembers
-        .map(member => {
-          const email = member.email?.trim().toLowerCase()
-          return email || member.firebaseUid || member.firebase_uid
-        })
+      (project.acceptedMembers || [])
+        .map(member => member.firebaseUid || member.firebase_uid || member.email?.trim().toLowerCase())
         .filter(Boolean)
     ).size
-    const teamBadge = make('span', 'status-badge active', `${teamCount} ${teamCount === 1 ? 'member' : 'members'}`)
+    const teamBadge = make('span', 'status-badge active', `${teamCount} ${teamCount === 1 ? 'collaborator' : 'collaborators'}`)
     teamWrap.append(teamBadge)
     tdTeam.append(teamWrap)
 

@@ -46,6 +46,11 @@ Authenticated project owners can create, edit, and delete tasks; project owners
 and accepted project invitees can read them. A task must reference a sprint on
 its project and an invitee whose invitation has been accepted. Pending invitees
 and the project creator are not valid task assignees.
+New tasks must be assigned to the accepted invitee recorded as the sprint lead;
+task creation and assignment are validated by the API. Task categories are
+stored as text and accept any non-empty value up to 100 characters. Existing
+tasks on older sprints without a recorded lead can retain their current
+accepted invitee when edited.
 
 - `GET /api/projects/:projectId/tasks`: list tasks for a project the caller
   owns or has accepted an invitation to.

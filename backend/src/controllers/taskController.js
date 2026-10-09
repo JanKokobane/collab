@@ -2,7 +2,6 @@ const { randomUUID } = require('node:crypto');
 const { query } = require('../config/db');
 
 const allowedStatuses = new Set(['Backlog', 'To do', 'In progress', 'Done']);
-const allowedCategories = new Set(['Design', 'Development', 'Marketing', 'Product']);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isValidDate = value => {
     if (!value) return true;
@@ -17,7 +16,11 @@ const isValidDate = value => {
 const normalizeTaskInput = body => {
     const title = typeof body?.title === 'string' ? body.title.trim() : '';
     const description = typeof body?.description === 'string' ? body.description.trim() : '';
-    const category = typeof body?.category === 'string' ? body.category.trim() : 'Product';
+    const category = body?.category === undefined
+        ? 'Product'
+        : typeof body.category === 'string'
+            ? body.category.trim()
+            : '';
     const sprintName = typeof body?.sprintName === 'string' ? body.sprintName.trim() : '';
     const assigneeFirebaseUid = typeof body?.assigneeFirebaseUid === 'string'
         ? body.assigneeFirebaseUid.trim()
@@ -32,7 +35,7 @@ const normalizeTaskInput = body => {
     if (description.length > 10_000) {
         return { error: 'Task description cannot exceed 10,000 characters.' };
     }
-    if (!allowedCategories.has(category)) {
+    if (!category || category.length > 100) {
         return { error: 'Choose a valid task category.' };
     }
     if (!sprintName || sprintName.length > 255) {
@@ -88,10 +91,20 @@ const getProjectAndCheckAccess = async (projectId, firebaseUid, ownerOnly = fals
     return result.rows[0] || null;
 };
 
-const validateAssignmentAndSprint = async (project, task) => {
+const validateAssignmentAndSprint = async (project, task, { allowLegacyTaskAssignee = false } = {}) => {
     const sprints = Array.isArray(project.sprints) ? project.sprints : [];
-    if (!sprints.some(sprint => sprint?.name === task.sprintName)) {
+    const sprint = sprints.find(item => item?.name === task.sprintName);
+    if (!sprint) {
         return 'Choose a sprint that belongs to this project.';
+    }
+    if (!sprint.assigneeFirebaseUid && !allowLegacyTaskAssignee) {
+        return 'Assign an accepted invitee as the sprint lead before creating tasks in this sprint.';
+    }
+    if (
+        sprint.assigneeFirebaseUid &&
+        sprint.assigneeFirebaseUid !== task.assigneeFirebaseUid
+    ) {
+        return 'Tasks must be assigned to the accepted invitee assigned to their sprint.';
     }
 
     const assignee = await query(
@@ -266,7 +279,9 @@ const updateProjectTask = async (req, res) => {
                 message: 'Project not found or you are not its creator.'
             });
         }
-        const assignmentError = await validateAssignmentAndSprint(project, normalized.value);
+        const assignmentError = await validateAssignmentAndSprint(project, normalized.value, {
+            allowLegacyTaskAssignee: true
+        });
         if (assignmentError) {
             return res.status(400).json({
                 success: false,

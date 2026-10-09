@@ -779,7 +779,8 @@ body.dark-mode .brainstorm-link-type {
 .upcoming-meetings-table-wrap,
 .notification-settings-table-wrap {
     width: 100%;
-    overflow-x: auto;
+    min-width: 0;
+    overflow-x: hidden;
     overscroll-behavior-x: contain;
 }
 
@@ -807,33 +808,33 @@ body.dark-mode .brainstorm-link-type {
 }
 
 .notification-settings-table {
-    min-width: 1120px;
+    min-width: 0;
     table-layout: fixed;
 }
 
 .notification-settings-table th:first-child,
 .notification-settings-table td:first-child {
-    width: 150px;
+    width: 16%;
 }
 
 .notification-settings-table th:nth-child(2),
 .notification-settings-table td:nth-child(2) {
-    width: 250px;
+    width: 23%;
 }
 
 .notification-settings-table th:nth-child(3),
 .notification-settings-table td:nth-child(3) {
-    width: 450px;
+    width: 34%;
 }
 
 .notification-settings-table th:nth-child(4),
 .notification-settings-table td:nth-child(4) {
-    width: 100px;
+    width: 10%;
 }
 
 .notification-settings-table th:nth-child(5),
 .notification-settings-table td:nth-child(5) {
-    width: 170px;
+    width: 17%;
 }
 
 .upcoming-meetings-table th,
@@ -1311,6 +1312,19 @@ body.dark-mode .notification-confirmation-body {
     overflow-wrap: anywhere;
 }
 
+.notification-action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.notification-action-buttons .action-btn {
+    min-height: 30px;
+    padding: 5px 9px;
+    white-space: nowrap;
+}
+
 .admin-workspace-updates-panel {
     width: 100%;
     min-width: 0;
@@ -1483,7 +1497,63 @@ body.dark-mode .workspace-updates-panel-header {
     }
 
     .notification-settings-table {
-        min-width: 1120px;
+        min-width: 0;
+    }
+
+    .notification-settings-table th,
+    .notification-settings-table td {
+        padding: 8px 6px;
+        font-size: 10px;
+    }
+
+    .notification-settings-table th:first-child,
+    .notification-settings-table td:first-child {
+        width: 17%;
+    }
+
+    .notification-settings-table th:nth-child(2),
+    .notification-settings-table td:nth-child(2) {
+        width: 22%;
+    }
+
+    .notification-settings-table th:nth-child(3),
+    .notification-settings-table td:nth-child(3) {
+        width: 27%;
+    }
+
+    .notification-settings-table th:nth-child(4),
+    .notification-settings-table td:nth-child(4) {
+        width: 15%;
+    }
+
+    .notification-settings-table th:nth-child(5),
+    .notification-settings-table td:nth-child(5) {
+        width: 19%;
+    }
+
+    .notification-settings-table .settings-notification-title {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .notification-settings-table .settings-notification-title .notif-avatar.notification-person-avatar {
+        width: 28px;
+        height: 28px;
+        flex-basis: 28px;
+    }
+
+    .notification-action-buttons {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 7px;
+    }
+
+    .notification-action-buttons .action-btn {
+        width: 100%;
+        min-height: 28px;
+        padding: 4px 5px;
+        font-size: 10px;
     }
 
     .notification-confirmation-modal {

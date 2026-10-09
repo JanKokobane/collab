@@ -235,6 +235,7 @@ export function renderNotifications() {
     const statusCell = make('td')
     statusCell.append(status)
     const actionCell = make('td')
+    const actionButtons = make('div', 'notification-action-buttons')
     const invitationIsPending =
       notification.invitationId &&
       notification.invitationStatus === 'pending' &&
@@ -272,7 +273,8 @@ export function renderNotifications() {
       const declineButton = make('button', 'action-btn delete', 'Decline')
       declineButton.type = 'button'
       declineButton.addEventListener('click', () => respond('decline', declineButton))
-      actionCell.append(acceptButton, declineButton)
+      actionButtons.append(acceptButton, declineButton)
+      actionCell.append(actionButtons)
     } else if (notification.invitationId && notification.invitationStatus === 'pending') {
       actionCell.append(make('span', 'notification-read-label', 'Expired'))
     } else if (notification.unread) {
@@ -283,7 +285,8 @@ export function renderNotifications() {
           console.error('Unable to mark notification as read:', error)
         })
       })
-      actionCell.append(readButton)
+      actionButtons.append(readButton)
+      actionCell.append(actionButtons)
     } else {
       actionCell.append(make('span', 'notification-read-label', 'Done'))
     }

@@ -22,16 +22,46 @@ export function showDashboardConfirmation({
 }) {
   return new Promise(resolve => {
     const backdrop = make('div', 'modal-backdrop')
-    const dialog = make('section', 'modal dashboard-confirmation-modal')
+    const dialog = make('section', 'modal notification-confirmation-modal')
     dialog.setAttribute('role', 'alertdialog')
     dialog.setAttribute('aria-modal', 'true')
+    dialog.dataset.chromeReady = 'true'
+
+    const close = make('button', 'close-modal', '×')
+    close.type = 'button'
+    close.setAttribute('aria-label', 'Cancel')
+
+    const header = make('header', 'notification-confirmation-header')
+    const iconWrap = make('div', `notification-confirmation-icon${danger ? ' destructive' : ''}`)
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    icon.setAttribute('viewBox', '0 0 24 24')
+    icon.setAttribute('fill', 'none')
+    icon.setAttribute('stroke', 'currentColor')
+    icon.setAttribute('stroke-width', '1.8')
+    icon.setAttribute('stroke-linecap', 'round')
+    icon.setAttribute('stroke-linejoin', 'round')
+    icon.setAttribute('aria-hidden', 'true')
+    const iconPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    iconPath.setAttribute('d', danger
+      ? 'M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6'
+      : 'M20 7 10 17l-5-5')
+    icon.append(iconPath)
+    iconWrap.append(icon)
+
+    const eyebrow = make('span', 'notification-confirmation-eyebrow', 'Project confirmation')
     const heading = make('h2', '', title)
+    heading.id = `dashboard-confirmation-title-${crypto.randomUUID()}`
+    dialog.setAttribute('aria-labelledby', heading.id)
+    const body = make('div', 'notification-confirmation-body')
     const copy = make('p', 'modal-copy', message)
-    const actions = make('div', 'dashboard-confirmation-actions')
-    const cancel = make('button', 'outline-button', cancelText)
+    copy.id = `dashboard-confirmation-copy-${crypto.randomUUID()}`
+    dialog.setAttribute('aria-describedby', copy.id)
+    const actions = make('div', 'notification-confirmation-actions')
+    const cancel = make('button', 'outline-button notification-confirmation-cancel', cancelText)
     cancel.type = 'button'
-    const confirm = make('button', danger ? 'primary-button danger' : 'primary-button gold', confirmText)
+    const confirm = make('button', `primary-button${danger ? ' notification-confirmation-danger' : ' gold'}`, confirmText)
     confirm.type = 'button'
+    confirm.classList.add('notification-confirmation-submit')
 
     let settled = false
     const finish = confirmed => {
@@ -47,13 +77,16 @@ export function showDashboardConfirmation({
 
     cancel.addEventListener('click', () => finish(false))
     confirm.addEventListener('click', () => finish(true))
+    close.addEventListener('click', () => finish(false))
     backdrop.addEventListener('click', event => {
       if (event.target === backdrop) finish(false)
     })
     document.addEventListener('keydown', onKeyDown)
 
     actions.append(cancel, confirm)
-    dialog.append(heading, copy, actions)
+    header.append(close, iconWrap, eyebrow, heading)
+    body.append(copy, actions)
+    dialog.append(header, body)
     backdrop.append(dialog)
     root.replaceChildren(backdrop)
     cancel.focus()

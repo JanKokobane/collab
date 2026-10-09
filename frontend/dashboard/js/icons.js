@@ -79,7 +79,7 @@ export function enhanceInputsWithIcons(container = document) {
 
   elements.forEach(el => {
     // Skip if already wrapped in input-with-icon or if inside label.search
-    if (el.closest('.input-with-icon') || el.closest('.search') || el.dataset.iconEnhanced === 'true') {
+    if (el.closest('.input-with-icon') || el.closest('.search') || el.closest('.no-input-icon') || el.dataset.iconEnhanced === 'true') {
       return
     }
 
@@ -108,4 +108,3 @@ export function enhanceInputsWithIcons(container = document) {
     el.dataset.iconEnhanced = 'true'
   })
 }
-
