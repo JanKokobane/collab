@@ -777,10 +777,12 @@ export function openInviteCollaboratorModal(
   searchStatus.textContent = 'Enter at least 2 characters to search.'
 
   const searchResults = make('div', 'invite-user-search-results')
-  const selectedUserInfo = make('p', 'modal-copy')
-  selectedUserInfo.hidden = true
+  const selectedUsersLabel = make('p', 'modal-copy', 'Selected users')
+  const selectedUsersList = make('div', 'invite-selected-users')
+  selectedUsersLabel.hidden = true
+  selectedUsersList.hidden = true
 
-  let selectedUser = null
+  const selectedUsers = new Map()
   let searchTimer = null
   let searchSequence = 0
 
@@ -860,11 +862,16 @@ export function openInviteCollaboratorModal(
     make(
       'button',
       'primary-button full gold',
-      'Send Invitation'
+      ''
     )
 
   submit.type = 'submit'
   submit.disabled = true
+  const submitLabel = make('span', '', 'Send Invitation')
+  const submitSpinner = make('span', 'invite-submit-spinner')
+  submitSpinner.setAttribute('aria-hidden', 'true')
+  submitSpinner.hidden = true
+  submit.append(submitSpinner, submitLabel)
   const errorNotice = make('p', 'project-form-error')
   errorNotice.setAttribute('role', 'alert')
   errorNotice.hidden = true
@@ -881,21 +888,43 @@ export function openInviteCollaboratorModal(
     searchLabel,
     searchStatus,
     searchResults,
-    selectedUserInfo,
+    selectedUsersLabel,
+    selectedUsersList,
     roleLabel,
     projectLabel,
     errorNotice,
     submit
   )
 
+  const renderSelectedUsers = () => {
+    selectedUsersList.replaceChildren()
+    selectedUsers.forEach(user => {
+      const entry = make('div', 'invite-selected-user')
+      entry.append(
+        make('span', '', `${user.name} (${user.email})`)
+      )
+      const remove = make('button', 'invite-selected-user-remove', 'Remove')
+      remove.type = 'button'
+      remove.setAttribute('aria-label', `Remove ${user.name} from invitation`)
+      remove.addEventListener('click', () => {
+        selectedUsers.delete(user.firebaseUid)
+        renderSelectedUsers()
+        searchInput.dispatchEvent(new Event('input'))
+      })
+      entry.append(remove)
+      selectedUsersList.append(entry)
+    })
+    const hasSelection = selectedUsers.size > 0
+    selectedUsersLabel.hidden = !hasSelection
+    selectedUsersList.hidden = !hasSelection
+    submit.disabled = !hasSelection
+  }
+
   searchInput.addEventListener('input', () => {
     clearTimeout(searchTimer)
     const requestSequence = ++searchSequence
     const search = searchInput.value.trim()
-    selectedUser = null
-    selectedUserInfo.hidden = true
-    selectedUserInfo.textContent = ''
-    submit.disabled = true
+    renderSelectedUsers()
     errorNotice.hidden = true
     searchResults.replaceChildren()
 
@@ -921,17 +950,25 @@ export function openInviteCollaboratorModal(
         }
 
         users.forEach(user => {
+          const firebaseUid = user?.firebaseUid || user?.firebase_uid || user?.uid
+          const email = user?.email
+          const name = user?.name || user?.displayName || user?.display_name || email
+          if (!firebaseUid || !email || !name) return
+          const selectedUser = { firebaseUid, email, name }
           const resultButton = make('button', 'invite-user-search-result')
           resultButton.type = 'button'
+          resultButton.disabled = selectedUsers.has(firebaseUid)
           resultButton.append(
-            make('strong', '', user.name),
-            make('span', '', user.email)
+            make('strong', '', name),
+            make('span', '', email),
+            make('span', '', resultButton.disabled ? 'Already selected' : 'Add to invitation')
           )
           resultButton.addEventListener('click', () => {
-            selectedUser = user
-            selectedUserInfo.textContent = `Selected: ${user.name} (${user.email})`
-            selectedUserInfo.hidden = false
-            submit.disabled = false
+            if (selectedUsers.has(firebaseUid)) return
+            selectedUsers.set(firebaseUid, selectedUser)
+            renderSelectedUsers()
+            resultButton.disabled = true
+            resultButton.lastElementChild.textContent = 'Already selected'
             errorNotice.hidden = true
           })
           searchResults.append(resultButton)
@@ -951,18 +988,27 @@ export function openInviteCollaboratorModal(
       const role =
         roleSelect.value
 
-      if (!selectedUser) {
-        errorNotice.textContent = 'Search for and select a registered Collab user first.'
+      if (!selectedUsers.size) {
+        errorNotice.textContent = 'Search for and select at least one registered Collab user first.'
         errorNotice.hidden = false
         return
       }
 
-      const invitee = selectedUser
+      const invitees = [...selectedUsers.values()]
       const selectedProjectId = projectSelect.value
       submit.disabled = true
+      submitSpinner.hidden = false
+      submit.setAttribute('aria-busy', 'true')
+      submitLabel.textContent = 'Sending invitations...'
       try {
         await api.post('/invitations', {
-          firebaseUid: invitee.firebaseUid,
+          firebaseUids: invitees.map(user => user.firebaseUid),
+          firebaseUid: invitees.length === 1 ? invitees[0].firebaseUid : undefined,
+          users: invitees.map(user => ({
+            firebaseUid: user.firebaseUid,
+            email: user.email
+          })),
+          emails: invitees.map(user => user.email),
           role,
           projectId: selectedProjectId
         })
@@ -972,17 +1018,20 @@ export function openInviteCollaboratorModal(
           : error.message || 'The invitation could not be sent.'
         errorNotice.hidden = false
         submit.disabled = false
+        submitSpinner.hidden = true
+        submit.removeAttribute('aria-busy')
+        submitLabel.textContent = 'Send Invitation'
         return
       }
 
       addAuditLog(
         'Member invited',
-        `${currentUser.name || 'Project creator'} invited ${invitee.name} (${invitee.email}) to ${proj.name}.`,
+        `${currentUser.name || 'Project creator'} invited ${invitees.map(user => user.name).join(', ')} to ${proj.name}.`,
         'userPlus'
       )
       pushNotification(
         'Invitation Sent',
-        `${invitee.name} will see your invitation in their Collab dashboard.`,
+        `${invitees.length} ${invitees.length === 1 ? 'person has' : 'people have'} been invited to ${proj.name}.`,
         '✉️',
         'blue-bg'
       )

@@ -2102,10 +2102,35 @@ const createInAppInvitations = async (
                 .map(id => id.trim())
         )
     ];
-    const invitedFirebaseUid =
-        typeof req.body?.firebaseUid === 'string'
-            ? req.body.firebaseUid.trim()
-            : '';
+    const requestedUsers = Array.isArray(req.body?.users)
+        ? req.body.users
+        : Array.isArray(req.body?.selectedUsers)
+            ? req.body.selectedUsers
+            : [];
+    const requestedUids = [
+        ...(Array.isArray(req.body?.firebaseUids) ? req.body.firebaseUids : []),
+        ...(Array.isArray(req.body?.firebase_uids) ? req.body.firebase_uids : []),
+        req.body?.firebaseUid,
+        req.body?.firebase_uid
+    ];
+    const requestedEmails = [
+        ...(Array.isArray(req.body?.emails) ? req.body.emails : []),
+        ...(Array.isArray(req.body?.inviteeEmails) ? req.body.inviteeEmails : []),
+        req.body?.email
+    ];
+    const inviteeInputs = [
+        ...requestedUsers.map(user => typeof user === 'string'
+            ? { firebaseUid: user }
+            : {
+                firebaseUid: user?.firebaseUid || user?.firebase_uid || user?.uid,
+                email: user?.email
+            }),
+        ...requestedUids.map(firebaseUid => ({ firebaseUid })),
+        ...requestedEmails.map(email => ({ email }))
+    ].map(user => ({
+        firebaseUid: typeof user.firebaseUid === 'string' ? user.firebaseUid.trim() : '',
+        email: typeof user.email === 'string' ? user.email.trim().toLowerCase() : ''
+    })).filter(user => user.firebaseUid || user.email);
     const role =
         typeof req.body?.role === 'string'
             ? req.body.role.trim()
@@ -2119,19 +2144,11 @@ const createInAppInvitations = async (
         });
     }
 
-    if (!invitedFirebaseUid) {
+    if (!inviteeInputs.length || inviteeInputs.length > 50) {
         return res.status(400).json({
             success: false,
-            code: 'REGISTERED_USER_REQUIRED',
-            message: 'Select a registered Collab user to invite.'
-        });
-    }
-
-    if (invitedFirebaseUid === req.firebaseUid) {
-        return res.status(400).json({
-            success: false,
-            code: 'CANNOT_INVITE_SELF',
-            message: 'You cannot invite yourself to a project.'
+            code: 'INVALID_INVITEE_SELECTION',
+            message: 'Select between 1 and 50 users from the registered-user search results.'
         });
     }
 
@@ -2143,9 +2160,67 @@ const createInAppInvitations = async (
         });
     }
 
-    let invitee;
+    const invitees = [];
     try {
-        invitee = await getFirebaseAdmin().auth().getUser(invitedFirebaseUid);
+        const auth = getFirebaseAdmin().auth();
+        for (const input of inviteeInputs) {
+            let user = null;
+            if (input.firebaseUid) {
+                try {
+                    user = await auth.getUser(input.firebaseUid);
+                } catch (error) {
+                    if (error.code !== 'auth/user-not-found' || !input.email) throw error;
+                }
+            }
+            if (!user && input.email) {
+                try {
+                    user = await auth.getUserByEmail(input.email);
+                } catch (error) {
+                    if (error.code === 'auth/user-not-found') {
+                        return res.status(404).json({
+                            success: false,
+                            code: 'REGISTERED_USER_NOT_FOUND',
+                            message: `No registered Collab user was found for ${input.email}.`
+                        });
+                    }
+                    throw error;
+                }
+            }
+            if (!user) {
+                return res.status(400).json({
+                    success: false,
+                    code: 'INVALID_INVITEE_SELECTION',
+                    message: 'Each selected user must include an account ID or registered email.'
+                });
+            }
+            const email = typeof user.email === 'string'
+                ? user.email.trim().toLowerCase()
+                : '';
+            const name = (user.displayName || email).trim();
+            if (!email || !name) {
+                return res.status(400).json({
+                    success: false,
+                    code: 'INVITEE_PROFILE_INCOMPLETE',
+                    message: 'Every selected user needs a name and email on their Collab account.'
+                });
+            }
+            if (user.uid === req.firebaseUid) {
+                return res.status(400).json({
+                    success: false,
+                    code: 'CANNOT_INVITE_SELF',
+                    message: 'You cannot invite yourself to a project.'
+                });
+            }
+            invitees.push({
+                firebaseUid: user.uid,
+                email,
+                name
+            });
+        }
+        const uniqueInvitees = new Map(
+            invitees.map(invitee => [invitee.firebaseUid, invitee])
+        );
+        invitees.splice(0, invitees.length, ...uniqueInvitees.values());
     } catch (error) {
         if (error.code === 'auth/user-not-found') {
             return res.status(404).json({
@@ -2159,21 +2234,6 @@ const createInAppInvitations = async (
             success: false,
             code: 'INVITEE_LOOKUP_FAILED',
             message: 'The selected user could not be verified.'
-        });
-    }
-
-    const invitedEmail =
-        typeof invitee.email === 'string'
-            ? invitee.email.trim().toLowerCase()
-            : '';
-    const invitedName =
-        (invitee.displayName || invitedEmail).trim();
-
-    if (!invitedEmail || !invitedName) {
-        return res.status(400).json({
-            success: false,
-            code: 'INVITEE_PROFILE_INCOMPLETE',
-            message: 'The selected user needs a name and email on their Collab account.'
         });
     }
 
@@ -2204,61 +2264,6 @@ const createInAppInvitations = async (
 
         const created = [];
         for (const project of ownedProjects.rows) {
-            const existing = await client.query(
-                `
-                    SELECT status
-                    FROM project_invitations
-                    WHERE project_id = $1
-                      AND (invited_firebase_uid = $2 OR LOWER(invited_email) = $3)
-                      AND status IN ('pending', 'accepted')
-                    LIMIT 1
-                `,
-                [project.project_id, invitedFirebaseUid, invitedEmail]
-            );
-
-            if (existing.rowCount) {
-                await client.query('ROLLBACK');
-                const isMember = existing.rows[0].status === 'accepted';
-                return res.status(409).json({
-                    success: false,
-                    code: isMember ? 'USER_ALREADY_MEMBER' : 'INVITATION_ALREADY_PENDING',
-                    message: isMember
-                        ? 'This user is already a member of the project.'
-                        : 'This user already has a pending invitation.'
-                });
-            }
-
-            const invitationId = randomUUID();
-            const tokenHash = createHash('sha256')
-                .update(randomBytes(32).toString('base64url'))
-                .digest('hex');
-            await client.query(
-                `
-                    INSERT INTO project_invitations (
-                        invitation_id,
-                        project_id,
-                        invited_by_firebase_uid,
-                        invited_email,
-                        invited_name,
-                        role,
-                        token_hash,
-                        invited_firebase_uid,
-                        expires_at
-                    )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + INTERVAL '14 days')
-                `,
-                [
-                    invitationId,
-                    project.project_id,
-                    req.firebaseUid,
-                    invitedEmail,
-                    invitedName,
-                    role,
-                    tokenHash,
-                    invitedFirebaseUid
-                ]
-            );
-
             const inviterName =
                 project.creator_name ||
                 req.firebaseUser?.name ||
@@ -2271,37 +2276,118 @@ const createInAppInvitations = async (
                 .join('')
                 .slice(0, 2)
                 .toUpperCase();
+            for (const invitee of invitees) {
+                const existing = await client.query(
+                    `
+                        SELECT invitation_id
+                        FROM project_invitations
+                        WHERE project_id = $1
+                          AND (invited_firebase_uid = $2 OR LOWER(invited_email) = $3)
+                          AND status = 'accepted'
+                        LIMIT 1
+                        FOR UPDATE
+                    `,
+                    [project.project_id, invitee.firebaseUid, invitee.email]
+                );
 
-            const notification = await client.query(
-                `
-                    INSERT INTO notifications (
-                        recipient_firebase_uid,
-                        project_id,
-                        invitation_id,
-                        type,
-                        title,
-                        detail,
-                        avatar,
-                        tone_class
-                    )
-                    VALUES ($1, $2, $3, 'project_invitation', 'You''ve been invited to a project', $4, $5, 'blue-bg')
-                    RETURNING id, project_id, invitation_id, type, title, detail, avatar, tone_class, is_read, created_at
-                `,
-                [
-                    invitedFirebaseUid,
-                    project.project_id,
-                    invitationId,
-                    `${inviterName} invited you to join ${project.name} as a ${role}.`,
-                    initials || '•'
-                ]
-            );
-            created.push(notification.rows[0]);
+                if (existing.rowCount) {
+                    await client.query('ROLLBACK');
+                    return res.status(409).json({
+                        success: false,
+                        code: 'USER_ALREADY_MEMBER',
+                        message: `${invitee.name} is already a member of ${project.name}.`
+                    });
+                }
+
+                const tokenHash = createHash('sha256')
+                    .update(randomBytes(32).toString('base64url'))
+                    .digest('hex');
+                const invitationResult = await client.query(
+                    `
+                        INSERT INTO project_invitations (
+                            invitation_id,
+                            project_id,
+                            invited_by_firebase_uid,
+                            invited_email,
+                            invited_name,
+                            role,
+                            token_hash,
+                            invited_firebase_uid,
+                            expires_at
+                        )
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + INTERVAL '14 days')
+                        ON CONFLICT (project_id, invited_email)
+                            WHERE status = 'pending'
+                        DO UPDATE SET
+                            invited_by_firebase_uid = EXCLUDED.invited_by_firebase_uid,
+                            invited_name = EXCLUDED.invited_name,
+                            role = EXCLUDED.role,
+                            token_hash = EXCLUDED.token_hash,
+                            invited_firebase_uid = EXCLUDED.invited_firebase_uid,
+                            expires_at = EXCLUDED.expires_at,
+                            responded_at = NULL
+                        RETURNING invitation_id
+                    `,
+                    [
+                        randomUUID(),
+                        project.project_id,
+                        req.firebaseUid,
+                        invitee.email,
+                        invitee.name,
+                        role,
+                        tokenHash,
+                        invitee.firebaseUid
+                    ]
+                );
+                const invitationId = invitationResult.rows[0].invitation_id;
+
+                const detail =
+                    `${inviterName} invited you to join ${project.name} as a ${role}.`;
+                let notification = await client.query(
+                    `
+                        UPDATE notifications
+                        SET title = 'You''ve been invited to a project',
+                            detail = $1,
+                            avatar = $2,
+                            tone_class = 'blue-bg',
+                            is_read = FALSE,
+                            created_at = NOW()
+                        WHERE invitation_id = $3::uuid
+                          AND recipient_firebase_uid = $4
+                        RETURNING id, project_id, invitation_id, type, title, detail,
+                                  avatar, tone_class, is_read, created_at
+                    `,
+                    [detail, initials || '•', invitationId, invitee.firebaseUid]
+                );
+                if (!notification.rowCount) {
+                    notification = await client.query(
+                        `
+                            INSERT INTO notifications (
+                                recipient_firebase_uid, project_id, invitation_id,
+                                type, title, detail, avatar, tone_class
+                            )
+                            VALUES ($1, $2, $3, 'project_invitation',
+                                    'You''ve been invited to a project', $4, $5, 'blue-bg')
+                            RETURNING id, project_id, invitation_id, type, title, detail,
+                                      avatar, tone_class, is_read, created_at
+                        `,
+                        [
+                            invitee.firebaseUid,
+                            project.project_id,
+                            invitationId,
+                            detail,
+                            initials || '•'
+                        ]
+                    );
+                }
+                created.push(notification.rows[0]);
+            }
         }
 
         await client.query('COMMIT');
         return res.status(201).json({
             success: true,
-            message: 'Invitation sent successfully.',
+            message: 'Invitations sent successfully.',
             data: { invitations: created }
         });
     } catch (error) {

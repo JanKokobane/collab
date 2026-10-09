@@ -227,6 +227,34 @@ body {
     overflow-y: auto;
 }
 
+.invite-selected-users {
+    display: grid;
+    gap: 6px;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.invite-selected-user {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid #D4D4D8;
+    border-radius: 8px;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.invite-selected-user-remove {
+    flex: 0 0 auto;
+    border: 0;
+    background: transparent;
+    color: #B42318;
+    font: inherit;
+    cursor: pointer;
+}
+
 .invite-user-search-result {
     display: flex;
     flex-direction: column;
@@ -246,6 +274,30 @@ body {
     border-color: #E0A800;
     background: #FFFBEB;
     outline: none;
+}
+
+.invite-user-search-result:disabled {
+    cursor: default;
+    opacity: .6;
+}
+
+.invite-submit-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: invite-submit-spin .7s linear infinite;
+}
+
+.invite-submit-spinner[hidden] {
+    display: none;
+}
+
+@keyframes invite-submit-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .invite-user-search-result span {
