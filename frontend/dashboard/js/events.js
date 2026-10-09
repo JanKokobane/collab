@@ -36,6 +36,8 @@ import {
   saveCollabSettings
 } from './theme.js'
 import { switchView } from './navigation.js'
+import { signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
+import { firebaseAuth } from '../../firebase.js'
 
 // ============================================================
 // SIMULATE REAL-TIME COLLABORATION EVENT
@@ -123,9 +125,15 @@ export function initEventListeners() {
     window.location.href = '../auth/auth.html'
   })
 
-  document.querySelector('#dropdown-logout-btn')?.addEventListener('click', () => {
+  document.querySelector('#dropdown-logout-btn')?.addEventListener('click', async () => {
     localStorage.removeItem('collab-logged-in')
-    window.location.href = '../index.html'
+    try {
+      await signOut(firebaseAuth)
+      window.location.href = '../auth/auth.html?mode=signin'
+    } catch (error) {
+      console.error('Unable to sign out of Firebase:', error)
+      window.alert('Sign out failed. Please try again.')
+    }
   })
 
   // Filter dropdown

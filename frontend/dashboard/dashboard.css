@@ -227,6 +227,26 @@ body {
     overflow-y: auto;
 }
 
+.project-nav-empty {
+    display: grid;
+    gap: 8px;
+    padding: 8px 10px;
+}
+
+.project-nav-empty p {
+    margin: 0;
+    color: #71717A;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.project-nav-empty .outline-button {
+    width: 100%;
+    justify-content: center;
+    padding: 7px 9px;
+    font-size: 11px;
+}
+
 .invite-selected-users {
     display: grid;
     gap: 6px;

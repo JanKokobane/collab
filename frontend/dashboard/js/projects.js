@@ -40,6 +40,19 @@ export function renderProjectNav() {
 
   container.replaceChildren()
 
+  if (!projects.length) {
+    const empty = make('div', 'project-nav-empty')
+    empty.append(
+      make('p', '', 'No projects yet. Create one to get started.')
+    )
+    const createButton = make('button', 'outline-button', 'Create a project')
+    createButton.type = 'button'
+    createButton.addEventListener('click', openCreateProjectModal)
+    empty.append(createButton)
+    container.append(empty)
+    return
+  }
+
   projects.forEach(project => {
     const item = document.createElement('a')
 

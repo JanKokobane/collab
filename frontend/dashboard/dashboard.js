@@ -12,6 +12,8 @@ import {
   meetings,
   reminders,
   currentUser,
+  setCurrentUser,
+  getUserInitials,
   activeView,
   activeFilter,
   activeSprintFilter,
@@ -179,7 +181,38 @@ onAuthStateChanged(firebaseAuth, async user => {
     notificationRefreshInterval = null
   }
   clearNotificationsForSignedOutUser()
-  if (!user) return
+  if (!user) {
+    const returnToDashboard = encodeURIComponent('../dashboard/dashboard.html')
+    window.location.replace(`../auth/auth.html?mode=signin&return=${returnToDashboard}`)
+    return
+  }
+
+  let storedUser = null
+  try {
+    storedUser = JSON.parse(localStorage.getItem('collab-user') || 'null')
+  } catch (error) {
+    console.warn('Unable to read the saved dashboard profile:', error)
+  }
+  const savedUser = currentUser?.uid === user.uid
+    ? currentUser
+    : storedUser?.uid === user.uid
+      ? storedUser
+      : null
+  const userName = (
+    savedUser?.uid === user.uid ? savedUser.name : ''
+  ) || user.displayName || user.email?.split('@')[0] || 'Collab User'
+  setCurrentUser({
+    ...(savedUser?.uid === user.uid ? savedUser : {}),
+    uid: user.uid,
+    name: userName,
+    email: user.email || savedUser?.email || '',
+    initials: getUserInitials(userName),
+    photoURL: user.photoURL || savedUser?.photoURL || '',
+    profileImage: user.photoURL || savedUser?.profileImage || '',
+    role: savedUser?.uid === user.uid ? savedUser.role || 'Member' : 'Member',
+    isAdmin: savedUser?.uid === user.uid ? Boolean(savedUser.isAdmin) : false
+  })
+  updateUserUI()
 
   try {
     const inviteToken = new URLSearchParams(window.location.search).get('invite')
