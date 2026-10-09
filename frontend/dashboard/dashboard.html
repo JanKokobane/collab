@@ -769,16 +769,15 @@
 
                     <!-- TAB 0: Workspace Projects Management -->
                     <div class="admin-tab-panel active" id="admin-tab-projects">
-                        <div class="admin-card">
+                        <div class="admin-card admin-projects-card">
                             <div class="admin-card-header">
                                 <div>
                                     <h3>Workspace Projects & Collaboration Boards</h3>
-                                    <p>Centrally monitor all group projects, collaboration types, timelines, and active
-                                        sprints.</p>
+                                    <p>Manage projects, timelines, teams, and sprints.</p>
                                 </div>
-                                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <div class="admin-projects-toolbar" id="admin-projects-toolbar">
                                     <div class="admin-card-badge" id="admin-projects-count">projects</div>
-
+                                    <div class="admin-project-actions" id="admin-project-actions"></div>
                                     <button type="button" class="primary-button gold" id="admin-add-project-quick-btn">+
                                         <span>Create Project</span></button>
                                 </div>
@@ -794,7 +793,6 @@
                                             <th>Creator</th>
                                             <th>Collaborators</th>
                                             <th>Sprints</th>
-                                            <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody id="admin-projects-tbody">
@@ -814,7 +812,7 @@
                                     <p>Assign workspace permissions and administrative authority.</p>
                                 </div>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <div class="admin-card-badge" id="admin-member-count">5 members</div>
+                                    <div class="admin-card-badge" id="admin-member-count">0 members</div>
                                     <button type="button" class="primary-button gold" id="admin-members-invite-btn">+
                                         <span>Invite Member</span></button>
                                 </div>
@@ -826,6 +824,7 @@
                                         <tr>
                                             <th>Member</th>
                                             <th>Role & Permissions</th>
+                                            <th>Project</th>
                                             <th>Status</th>
                                             <th>Actions</th>
                                         </tr>

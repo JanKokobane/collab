@@ -80,6 +80,91 @@ const saveProfileImage = async (req, res) => {
     }
 };
 
+const getProjectMembers = async (req, res) => {
+    try {
+        const result = await query(
+            `
+                WITH accessible_projects AS (
+                    SELECT p.project_id, p.name, p.creator_firebase_uid,
+                           p.creator_email, p.creator_name, p.creator_initials
+                    FROM projects p
+                    WHERE p.creator_firebase_uid = $1
+                       OR EXISTS (
+                            SELECT 1
+                            FROM project_invitations access_invitation
+                            WHERE access_invitation.project_id = p.project_id
+                              AND access_invitation.invited_firebase_uid = $1
+                              AND access_invitation.status = 'accepted'
+                        )
+                ),
+                project_members AS (
+                    SELECT
+                        p.project_id,
+                        p.name AS project_name,
+                        p.creator_firebase_uid,
+                        NULL::uuid AS invitation_id,
+                        p.creator_firebase_uid AS firebase_uid,
+                        p.creator_email AS email,
+                        p.creator_name AS name,
+                        'Project Creator'::text AS role,
+                        'Active'::text AS status
+                    FROM accessible_projects p
+
+                    UNION ALL
+
+                    SELECT
+                        p.project_id,
+                        p.name AS project_name,
+                        p.creator_firebase_uid,
+                        i.invitation_id,
+                        i.invited_firebase_uid AS firebase_uid,
+                        i.invited_email AS email,
+                        i.invited_name AS name,
+                        i.role,
+                        CASE WHEN i.status = 'pending' THEN 'Pending' ELSE 'Active' END AS status
+                    FROM accessible_projects p
+                    JOIN project_invitations i
+                      ON i.project_id = p.project_id
+                     AND (
+                        i.status = 'accepted'
+                        OR (i.status = 'pending' AND p.creator_firebase_uid = $1)
+                     )
+                     AND i.invited_firebase_uid IS NOT NULL
+                    WHERE i.invited_firebase_uid <> p.creator_firebase_uid
+                )
+                SELECT
+                    pm.project_id,
+                    pm.project_name,
+                    pm.creator_firebase_uid,
+                    pm.invitation_id,
+                    pm.firebase_uid,
+                    pm.email,
+                    pm.name,
+                    pm.role,
+                    pm.status,
+                    up.profile_image
+                FROM project_members pm
+                LEFT JOIN user_profiles up
+                  ON up.firebase_uid = pm.firebase_uid
+                ORDER BY LOWER(pm.project_name), LOWER(pm.name)
+            `,
+            [req.firebaseUid]
+        );
+
+        return res.status(200).json({
+            success: true,
+            data: { members: result.rows }
+        });
+    } catch (error) {
+        console.error('Get project members error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'PROJECT_MEMBERS_FETCH_FAILED',
+            message: 'Project members could not be retrieved.'
+        });
+    }
+};
+
 const searchUsers = async (req, res) => {
     const search = typeof req.query.q === 'string'
         ? req.query.q.trim().toLocaleLowerCase()
@@ -136,4 +221,9 @@ const searchUsers = async (req, res) => {
     }
 };
 
-module.exports = { getProfileImage, saveProfileImage, searchUsers };
+module.exports = {
+    getProfileImage,
+    getProjectMembers,
+    saveProfileImage,
+    searchUsers
+};

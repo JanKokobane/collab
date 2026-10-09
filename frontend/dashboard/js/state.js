@@ -1073,6 +1073,7 @@ export const hub = {
   renderMembersTable: () => {},
   renderAdminTasksTable: () => {},
   renderAdminMeetingsTable: () => {},
+  loadProjectMembers: () => {},
   renderAuditLogs: () => {},
   renderMessages: () => {},
   switchView: () => {},

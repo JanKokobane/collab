@@ -255,6 +255,7 @@ export function renderNotifications() {
           if (action === 'accept') {
             await loadProjectsFromAPI()
             hub.renderProjectNav?.()
+            await hub.loadProjectMembers?.()
             const project = projects.find(item => item.id === result?.data?.projectId)
             if (project) hub.switchView?.(project.name)
           }

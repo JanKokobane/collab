@@ -23,6 +23,7 @@ import {
   openAdminTaskModal,
   renderAdminProjectsTable,
   renderMembersTable,
+  loadProjectMembers,
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   openInviteModal
@@ -255,7 +256,11 @@ export function initEventListeners() {
       })
 
       if (targetTab === 'projects') renderAdminProjectsTable()
-      if (targetTab === 'members') renderMembersTable()
+      if (targetTab === 'members') {
+        loadProjectMembers().catch(error => {
+          console.error('Unable to refresh team members:', error)
+        })
+      }
       if (targetTab === 'tasks') renderAdminTasksTable()
       if (targetTab === 'meetings') renderAdminMeetingsTable()
     })

@@ -513,7 +513,7 @@ export function initSettingsControls() {
   populateProfileForm()
 
   const profileImageInput = document.querySelector('#profile-image-input')
-  profileImageInput?.addEventListener('change', async (event) => {
+  if (profileImageInput) profileImageInput.onchange = async event => {
     const file = event.target.files?.[0]
     if (!file) return
 
@@ -549,7 +549,7 @@ export function initSettingsControls() {
     } finally {
       input.disabled = false
     }
-  })
+  }
 
   // Profile Form Submit
   const profileForm = document.querySelector('#profile-settings-form')

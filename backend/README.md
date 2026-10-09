@@ -60,6 +60,8 @@ All endpoints below require `Authorization: Bearer <Firebase ID token>`.
   creator in the same database transaction.
 - `GET|PUT /api/users/profile-image`: retrieve or save the authenticated user's
   compressed profile photo, keyed only by their verified Firebase UID.
+- `GET /api/users/members`: list creators and accepted collaborators for projects
+  the authenticated user can access, with each member's project invitation role.
 - `POST /api/invitations`: create invitations for projects owned by the caller
   and send branded Resend emails. `GET /api/projects/:projectId/invitations`
   lists their invitation status, and

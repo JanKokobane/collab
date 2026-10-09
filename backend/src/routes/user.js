@@ -2,6 +2,7 @@ const express = require('express');
 const { rateLimit } = require('express-rate-limit');
 const {
     getProfileImage,
+    getProjectMembers,
     saveProfileImage,
     searchUsers
 } = require('../controllers/userController');
@@ -12,6 +13,7 @@ const router = express.Router();
 router.use(requireFirebaseAuth);
 router.get('/profile-image', getProfileImage);
 router.put('/profile-image', saveProfileImage);
+router.get('/members', getProjectMembers);
 router.get(
     '/search',
     rateLimit({

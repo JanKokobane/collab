@@ -77,6 +77,7 @@ import {
 import {
   renderAdminProjectsTable,
   renderMembersTable,
+  loadProjectMembers,
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   renderAuditLogs,
@@ -119,9 +120,40 @@ import { initModalChrome } from './js/modalChrome.js'
 import { initProfileOnboarding } from './js/profileOnboarding.js'
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
 import { firebaseAuth } from '../firebase.js'
-import { api } from './js/api.js'
 
 let notificationRefreshInterval = null
+let notificationRefreshDelay = 30_000
+let notificationRefreshWarningShown = false
+
+function scheduleNotificationRefresh(delay = notificationRefreshDelay) {
+  clearTimeout(notificationRefreshInterval)
+  notificationRefreshInterval = window.setTimeout(async () => {
+    notificationRefreshInterval = null
+    if (!firebaseAuth.currentUser) return
+
+    if (document.visibilityState !== 'visible') {
+      scheduleNotificationRefresh(30_000)
+      return
+    }
+
+    try {
+      await loadNotificationsFromAPI()
+      notificationRefreshDelay = 30_000
+      notificationRefreshWarningShown = false
+    } catch (error) {
+      if (!notificationRefreshWarningShown) {
+        console.warn('Unable to refresh notifications for the signed-in user; will retry:', error)
+        notificationRefreshWarningShown = true
+      }
+      const retryDelay = notificationRefreshDelay
+      notificationRefreshDelay = Math.min(notificationRefreshDelay * 2, 300_000)
+      scheduleNotificationRefresh(retryDelay)
+      return
+    }
+
+    scheduleNotificationRefresh()
+  }, delay)
+}
 
 // Register all actions on the central hub for synchronous, zero-lag coordination
 registerHub({
@@ -137,6 +169,7 @@ registerHub({
   renderCalendarPanel,
   renderAdminProjectsTable,
   renderMembersTable,
+  loadProjectMembers,
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   renderAuditLogs,
@@ -177,10 +210,10 @@ initProfileOnboarding()
 enhanceInputsWithIcons(document)
 
 onAuthStateChanged(firebaseAuth, async user => {
-  if (notificationRefreshInterval) {
-    clearInterval(notificationRefreshInterval)
-    notificationRefreshInterval = null
-  }
+  clearTimeout(notificationRefreshInterval)
+  notificationRefreshInterval = null
+  notificationRefreshDelay = 30_000
+  notificationRefreshWarningShown = false
   clearNotificationsForSignedOutUser()
   if (!user) {
     const returnToDashboard = encodeURIComponent('../dashboard/dashboard.html')
@@ -282,18 +315,12 @@ onAuthStateChanged(firebaseAuth, async user => {
   }
 
   try {
-    await loadNotificationsFromAPI()
-    notificationRefreshInterval = setInterval(async () => {
-      if (document.visibilityState !== 'visible') return
-      try {
-        await loadNotificationsFromAPI()
-      } catch (error) {
-        console.error('Unable to refresh notifications for the signed-in user:', error)
-      }
-    }, 30_000)
+    await loadProjectMembers()
   } catch (error) {
-    console.error('Unable to load notifications for the signed-in user:', error)
+    console.error('Unable to load project members for the dashboard:', error)
   }
+
+  scheduleNotificationRefresh(0)
 })
 
 // Re-export core modules and functions

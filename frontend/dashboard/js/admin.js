@@ -9,7 +9,6 @@ import {
   make,
   closeModal,
   root,
-  saveMembers,
   renderAvatarElement,
   saveTasks,
   saveMeetings,
@@ -30,15 +29,67 @@ import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 // ADMIN CONSOLE TABLE & FUNCTIONS
 // ============================================================
 
+let projectMembers = []
+
+export async function loadProjectMembers() {
+  try {
+    const response = await api.get('/users/members')
+    const records = response?.data?.members
+    if (!Array.isArray(records)) {
+      throw new Error('The server returned an invalid team members response.')
+    }
+
+    projectMembers = records.map(member => ({
+      ...member,
+      id: `${member.project_id}:${member.firebase_uid}`,
+      firebaseUid: member.firebase_uid,
+      projectId: member.project_id,
+      projectName: member.project_name,
+      projectCreatorFirebaseUid: member.creator_firebase_uid,
+      invitationId: member.invitation_id,
+      profileImage: member.profile_image || '',
+      initials: member.name
+        ? member.name.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase()
+        : '•',
+      tone: 'coral',
+      status: member.status || 'Active'
+    }))
+    renderMembersTable()
+    return projectMembers
+  } catch (error) {
+    console.error('Unable to load project members:', error)
+    const tbody = document.querySelector('#admin-members-tbody')
+    if (tbody) {
+      tbody.replaceChildren()
+      const row = document.createElement('tr')
+      const cell = make('td', 'notification-empty-state', error.message || 'Team members could not be loaded.')
+      cell.colSpan = 5
+      row.append(cell)
+      tbody.append(row)
+    }
+    throw error
+  }
+}
+
 export function renderMembersTable() {
   const tbody = document.querySelector('#admin-members-tbody')
   const countBadge = document.querySelector('#admin-member-count')
   if (!tbody) return
 
-  if (countBadge) countBadge.textContent = `${members.length} members`
+  const memberCount = new Set(projectMembers.map(member => member.firebaseUid).filter(Boolean)).size
+  if (countBadge) countBadge.textContent = `${memberCount} ${memberCount === 1 ? 'member' : 'members'}`
   tbody.replaceChildren()
 
-  members.forEach(member => {
+  if (!projectMembers.length) {
+    const row = document.createElement('tr')
+    const cell = make('td', 'notification-empty-state', 'No project members to show yet.')
+    cell.colSpan = 5
+    row.append(cell)
+    tbody.append(row)
+    return
+  }
+
+  projectMembers.forEach(member => {
     const tr = document.createElement('tr')
 
     const tdMember = document.createElement('td')
@@ -54,27 +105,60 @@ export function renderMembersTable() {
     const roleText = make('span', 'member-role-text', member.role || 'Member')
     tdRole.append(roleText)
 
+    const tdProject = document.createElement('td')
+    tdProject.textContent = member.projectName || 'Project'
+
     const tdStatus = document.createElement('td')
-    const statusBadge = make('span', `status-badge ${member.status.toLowerCase()}`, `● ${member.status}`)
+    const statusBadge = make('span', `status-badge ${String(member.status || 'Active').toLowerCase()}`, `● ${member.status || 'Active'}`)
     tdStatus.append(statusBadge)
 
     const tdActions = document.createElement('td')
-    const removeBtn = make('button', 'action-btn delete', 'Remove')
-    removeBtn.type = 'button'
-    removeBtn.addEventListener('click', () => {
-      if (members.length <= 1) {
-        pushNotification('Action Denied', 'Cannot remove the last member of the workspace.', '⚠️', 'coral-bg')
-        return
-      }
-      const idx = members.findIndex(m => m.id === member.id)
-      if (idx !== -1) members.splice(idx, 1)
-      saveMembers()
-      renderMembersTable()
-      addAuditLog(`Member removed`, `${member.name} (${member.email}) removed from workspace.`, 'trash')
-    })
-    tdActions.append(removeBtn)
+    if (
+      member.invitationId &&
+      member.projectCreatorFirebaseUid === firebaseAuth.currentUser?.uid
+    ) {
+      const removeBtn = make('button', 'action-btn delete', 'Remove')
+      removeBtn.type = 'button'
+      removeBtn.addEventListener('click', async () => {
+        const isPendingInvitation = member.status === 'Pending'
+        const confirmed = await showDashboardConfirmation({
+          title: isPendingInvitation ? 'Revoke project invitation?' : 'Remove project member?',
+          message: isPendingInvitation
+            ? `Revoke the invitation for ${member.name} to join ${member.projectName}?`
+            : `Remove ${member.name} from ${member.projectName}?`,
+          confirmText: isPendingInvitation ? 'Revoke invitation' : 'Remove member',
+          danger: true
+        })
+        if (!confirmed) return
 
-    tr.append(tdMember, tdRole, tdStatus, tdActions)
+        removeBtn.disabled = true
+        try {
+          await api.delete(
+            `/projects/${encodeURIComponent(member.projectId)}/invitations/${encodeURIComponent(member.invitationId)}`
+          )
+          await loadProjectMembers()
+          const action = isPendingInvitation ? 'Project invitation revoked' : 'Project member removed'
+          const detail = isPendingInvitation
+            ? `The invitation for ${member.name} to "${member.projectName}" was revoked.`
+            : `${member.name} was removed from "${member.projectName}".`
+          addAuditLog(action, detail, 'trash')
+          showDashboardToast(
+            isPendingInvitation
+              ? `The invitation for ${member.name} was revoked.`
+              : `${member.name} was removed from ${member.projectName}.`,
+            'success'
+          )
+        } catch (error) {
+          removeBtn.disabled = false
+          pushNotification('Member Removal Failed', error.message || 'The project member could not be removed.', '⚠️', 'coral-bg')
+        }
+      })
+      tdActions.append(removeBtn)
+    } else {
+      tdActions.append(make('span', 'notification-read-label', '—'))
+    }
+
+    tr.append(tdMember, tdRole, tdProject, tdStatus, tdActions)
     tbody.append(tr)
   })
 }
@@ -444,12 +528,122 @@ export function openAdminEditTaskModal(task) {
   })
 }
 
+function renderProjectActionDropdown(container, label, availableProjects, onSelect, variant = '') {
+  if (!availableProjects.length) return
+
+  const dropdown = make('details', 'admin-project-action-dropdown')
+  const trigger = make('summary', `action-btn admin-project-action-trigger ${variant}`, label)
+  trigger.setAttribute('aria-label', `${label}: choose a project`)
+  const menu = make('div', 'admin-project-action-menu')
+
+  dropdown.addEventListener('toggle', () => {
+    if (!dropdown.open) return
+    container.querySelectorAll('details[open]').forEach(item => {
+      if (item !== dropdown) item.open = false
+    })
+  })
+
+  availableProjects.forEach(project => {
+    const option = make('button', 'admin-project-action-option')
+    option.type = 'button'
+    option.append(
+      make('i', `dot ${project.color || 'blue'}`),
+      make('span', '', project.name)
+    )
+    option.addEventListener('click', () => {
+      container.querySelectorAll('details[open]').forEach(item => {
+        item.open = false
+      })
+      onSelect(project)
+    })
+    menu.append(option)
+  })
+
+  dropdown.append(trigger, menu)
+  container.append(dropdown)
+}
+
+async function removeProject(project, deleteButton) {
+  if (projects.length <= 1) {
+    pushNotification('Action Denied', 'Workspace must maintain at least one project.', '⚠️', 'coral-bg')
+    return
+  }
+
+  const confirmed = await showDashboardConfirmation({
+    title: 'Delete project?',
+    message: `Are you sure you want to permanently delete "${project.name}"? This will remove the project and its related project access.`,
+    confirmText: 'Delete project',
+    danger: true
+  })
+  if (!confirmed) return
+
+  if (deleteButton) deleteButton.disabled = true
+  try {
+    await api.delete(`/projects/${encodeURIComponent(project.projectId || project.id)}`)
+  } catch (error) {
+    if (deleteButton) deleteButton.disabled = false
+    pushNotification(
+      'Project Removal Failed',
+      error.message || `Unable to remove "${project.name}".`,
+      '⚠️',
+      'coral-bg'
+    )
+    return
+  }
+
+  const idx = projects.findIndex(item => item.id === project.id)
+  if (idx !== -1) {
+    const removed = projects.splice(idx, 1)[0]
+    saveProjects()
+    renderAdminProjectsTable()
+    hub.renderProjectNav?.()
+    addAuditLog('Project deleted', `${currentUser.name} removed project "${removed.name}".`, 'trash')
+    pushNotification('Project Removed', `"${removed.name}" was deleted.`, '🗑️', 'coral-bg')
+    showDashboardToast(`"${removed.name}" was deleted.`, 'success')
+  }
+}
+
 export function renderAdminProjectsTable() {
   const tbody = document.querySelector('#admin-projects-tbody')
   const countBadge = document.querySelector('#admin-projects-count')
+  const projectActions = document.querySelector('#admin-project-actions')
   if (!tbody) return
 
-  if (countBadge) countBadge.textContent = `${projects.length} projects`
+  if (countBadge) countBadge.textContent = `${projects.length} ${projects.length === 1 ? 'project' : 'projects'}`
+  if (projectActions) {
+    projectActions.replaceChildren()
+    const ownedProjects = projects.filter(
+      project => project.creatorFirebaseUid === firebaseAuth.currentUser?.uid
+    )
+    renderProjectActionDropdown(
+      projectActions,
+      'Open Board',
+      projects,
+      project => hub.switchView?.(project.name),
+      'admin-project-open-action'
+    )
+    renderProjectActionDropdown(
+      projectActions,
+      'Edit',
+      ownedProjects,
+      project => openEditProjectModal(project),
+      'admin-project-edit-btn'
+    )
+    renderProjectActionDropdown(
+      projectActions,
+      'Invite Member',
+      ownedProjects,
+      project => openInviteCollaboratorModal(project),
+      'admin-project-invite-action'
+    )
+    renderProjectActionDropdown(
+      projectActions,
+      'Remove',
+      ownedProjects,
+      project => removeProject(project),
+      'admin-project-remove-action'
+    )
+  }
   tbody.replaceChildren()
 
   projects.forEach(project => {
@@ -518,80 +712,7 @@ export function renderAdminProjectsTable() {
     const sprintText = make('span', 'admin-sprint-cell', `${sprintCount} ${sprintCount === 1 ? 'Sprint' : 'Sprints'}`)
     tdSprints.append(sprintText)
 
-    // 7. Actions
-    const tdActions = document.createElement('td')
-    const actionsWrap = make('div', 'table-actions-cluster')
-    const isProjectCreator = project.creatorFirebaseUid === firebaseAuth.currentUser?.uid
-
-    const openBtn = make('button', 'action-btn primary gold', 'Open Board')
-    openBtn.type = 'button'
-    openBtn.title = `Switch to ${project.name} board`
-    openBtn.addEventListener('click', () => {
-      hub.switchView?.(project.name)
-    })
-
-    actionsWrap.append(openBtn)
-
-    if (isProjectCreator) {
-      const editBtn = make('button', 'action-btn edit', 'Edit')
-      editBtn.type = 'button'
-      editBtn.title = `Edit ${project.name}`
-      editBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg><span>Edit</span>`
-      editBtn.addEventListener('click', () => openEditProjectModal(project))
-
-      const inviteBtn = make('button', 'action-btn invite-action-btn', 'Invite Member')
-      inviteBtn.type = 'button'
-      inviteBtn.title = `Invite member to ${project.name}`
-      inviteBtn.addEventListener('click', () => openInviteCollaboratorModal(project))
-
-      const deleteBtn = make('button', 'action-btn delete', 'Remove')
-      deleteBtn.type = 'button'
-      deleteBtn.title = `Delete ${project.name}`
-      deleteBtn.addEventListener('click', async () => {
-        if (projects.length <= 1) {
-          pushNotification('Action Denied', 'Workspace must maintain at least one project.', '⚠️', 'coral-bg')
-          return
-        }
-        const confirmed = await showDashboardConfirmation({
-          title: 'Delete project?',
-          message: `Are you sure you want to permanently delete "${project.name}"? This will remove the project and its related project access.`,
-          confirmText: 'Delete project',
-          danger: true
-        })
-        if (!confirmed) return
-
-        deleteBtn.disabled = true
-        try {
-          await api.delete(`/projects/${encodeURIComponent(project.projectId || project.id)}`)
-        } catch (error) {
-          deleteBtn.disabled = false
-          pushNotification(
-            'Project Removal Failed',
-            error.message || `Unable to remove "${project.name}".`,
-            '⚠️',
-            'coral-bg'
-          )
-          return
-        }
-
-        const idx = projects.findIndex(p => p.id === project.id)
-        if (idx !== -1) {
-          const removed = projects.splice(idx, 1)[0]
-          saveProjects()
-          renderAdminProjectsTable()
-          hub.renderProjectNav?.()
-          addAuditLog('Project deleted', `${currentUser.name} removed project "${removed.name}".`, 'trash')
-          pushNotification('Project Removed', `"${removed.name}" was deleted.`, '🗑️', 'coral-bg')
-          showDashboardToast(`"${removed.name}" was deleted.`, 'success')
-        }
-      })
-      actionsWrap.append(editBtn, inviteBtn, deleteBtn)
-    } else {
-      actionsWrap.append(make('span', 'notification-read-label', 'Read only'))
-    }
-    tdActions.append(actionsWrap)
-
-    tr.append(tdProject, tdType, tdTimeSpan, tdCreator, tdTeam, tdSprints, tdActions)
+    tr.append(tdProject, tdType, tdTimeSpan, tdCreator, tdTeam, tdSprints)
     tbody.append(tr)
   })
 }

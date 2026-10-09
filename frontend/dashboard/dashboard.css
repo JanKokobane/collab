@@ -2354,6 +2354,259 @@ form.modal {
     border-radius: 20px;
 }
 
+.admin-projects-card > .admin-card-header {
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+
+.admin-projects-card > .admin-card-header > div:first-child {
+    display: flex;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+    width: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.admin-projects-card > .admin-card-header > div:first-child h3,
+.admin-projects-card > .admin-card-header > div:first-child p {
+    margin: 0;
+}
+
+.admin-projects-card > .admin-card-header > div:first-child h3 {
+    flex: 0 1 auto;
+}
+
+.admin-projects-card > .admin-card-header > div:first-child p {
+    min-width: 0;
+    line-height: 1.5;
+    white-space: normal;
+}
+
+.admin-projects-toolbar,
+.admin-project-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+}
+
+.admin-projects-toolbar {
+    width: auto;
+    box-sizing: border-box;
+    justify-content: flex-end;
+    flex: 0 0 auto;
+}
+
+.admin-projects-toolbar > .admin-card-badge {
+    box-sizing: border-box;
+    width: 88px;
+    flex: 0 0 88px;
+    text-align: center;
+}
+
+.admin-project-actions {
+    flex: 0 0 auto;
+}
+
+.admin-projects-toolbar > #admin-add-project-quick-btn {
+    flex: 0 0 136px;
+    justify-content: center;
+    white-space: nowrap;
+}
+
+.admin-project-action-dropdown {
+    position: relative;
+}
+
+.admin-project-action-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    list-style: none;
+    white-space: nowrap;
+}
+
+.admin-project-open-action {
+    box-sizing: border-box;
+    width: 96px;
+    justify-content: center;
+}
+
+.admin-project-edit-btn {
+    box-sizing: border-box;
+    width: 64px;
+    justify-content: center;
+}
+
+.admin-project-invite-action {
+    box-sizing: border-box;
+    width: 116px;
+    justify-content: center;
+}
+
+.admin-project-remove-action {
+    box-sizing: border-box;
+    width: 86px;
+    justify-content: center;
+}
+
+.admin-project-action-trigger::-webkit-details-marker {
+    display: none;
+}
+
+.admin-project-action-trigger::after {
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    content: "";
+    transform: rotate(45deg) translateY(-2px);
+    transition: transform .15s ease;
+}
+
+.admin-project-action-dropdown[open] .admin-project-action-trigger::after {
+    transform: rotate(225deg) translate(-1px, -1px);
+}
+
+.admin-project-action-menu {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 7px);
+    right: 0;
+    display: grid;
+    min-width: 210px;
+    max-width: min(280px, calc(100vw - 40px));
+    max-height: 280px;
+    gap: 3px;
+    overflow: auto;
+    padding: 6px;
+    border: 1px solid #E4E4E7;
+    border-radius: 10px;
+    background: #FFFFFF;
+    box-shadow: 0 12px 28px rgba(24, 24, 27, 0.16);
+}
+
+@media (max-width: 1100px) {
+    .admin-projects-card > .admin-card-header {
+        align-items: stretch;
+        flex-direction: column;
+        flex-wrap: wrap;
+    }
+
+    .admin-projects-toolbar,
+    .admin-project-actions {
+        flex-wrap: wrap;
+    }
+
+    .admin-projects-toolbar {
+        width: 100%;
+        justify-content: flex-end;
+        flex: 0 0 100%;
+    }
+}
+
+.admin-project-action-option {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    min-width: 0;
+    padding: 9px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #27272A;
+    font: 600 12px 'DM Sans', sans-serif;
+    text-align: left;
+    cursor: pointer;
+}
+
+.admin-project-action-option:hover,
+.admin-project-action-option:focus-visible {
+    outline: none;
+    background: #F4F4F5;
+}
+
+.admin-project-action-option span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-project-action-option .dot {
+    flex: 0 0 8px;
+}
+
+.admin-project-action-trigger.admin-project-open-action {
+    background: #F5B800;
+    color: #171717;
+    border-color: #E0A800;
+    font-weight: 700;
+}
+
+.admin-project-action-trigger.admin-project-open-action:hover {
+    background: #E5AC00;
+    color: #000000;
+}
+
+.admin-project-action-trigger.admin-project-edit-btn,
+.admin-project-action-trigger.admin-project-edit-btn:hover {
+    border-color: #18181B;
+    background: #18181B;
+    color: #FFFFFF;
+}
+
+.admin-project-action-trigger.admin-project-edit-btn:hover {
+    background: #000000;
+}
+
+.admin-project-action-trigger.admin-project-invite-action {
+    background: #1877F2;
+    color: #FFFFFF;
+    border-color: #1877F2;
+}
+
+.admin-project-action-trigger.admin-project-invite-action:hover {
+    background: #166FE5;
+    color: #FFFFFF;
+    border-color: #166FE5;
+}
+
+.admin-project-action-trigger.admin-project-remove-action {
+    background: #DC2626;
+    color: #FFFFFF;
+    border-color: #DC2626;
+}
+
+.admin-project-action-trigger.admin-project-remove-action:hover {
+    background: #B91C1C;
+    color: #FFFFFF;
+    border-color: #B91C1C;
+}
+
+body.dark-mode .admin-project-action-menu,
+[data-theme="dark"] .admin-project-action-menu {
+    border-color: #3F3F46;
+    background: #18181B;
+}
+
+body.dark-mode .admin-project-action-option,
+[data-theme="dark"] .admin-project-action-option {
+    color: #E4E4E7;
+}
+
+body.dark-mode .admin-project-action-option:hover,
+body.dark-mode .admin-project-action-option:focus-visible,
+[data-theme="dark"] .admin-project-action-option:hover,
+[data-theme="dark"] .admin-project-action-option:focus-visible {
+    background: #27272A;
+}
+
 /* Admin Table with Nested Smooth Rounded Corners */
 .admin-table-wrapper {
     overflow-x: auto;
