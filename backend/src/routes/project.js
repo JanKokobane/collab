@@ -13,7 +13,9 @@ const {
 } = require('../controllers/invitationController');
 const {
     createProjectTask,
+    createProjectTaskComment,
     deleteProjectTask,
+    getProjectTaskComments,
     getProjectTasks,
     updateProjectTask,
     updateProjectTaskStatus
@@ -42,6 +44,8 @@ router.get('/:projectId/invitations', listProjectInvitations);
 router.delete('/:projectId/invitations/:invitationId', revokeInvitation);
 router.get('/:projectId/tasks', getProjectTasks);
 router.post('/:projectId/tasks', createProjectTask);
+router.get('/:projectId/tasks/:taskId/comments', getProjectTaskComments);
+router.post('/:projectId/tasks/:taskId/comments', createProjectTaskComment);
 router.patch('/:projectId/tasks/:taskId/status', updateProjectTaskStatus);
 router.put('/:projectId/tasks/:taskId', updateProjectTask);
 router.delete('/:projectId/tasks/:taskId', deleteProjectTask);

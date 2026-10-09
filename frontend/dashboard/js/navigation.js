@@ -11,7 +11,6 @@ import {
   hub
 } from './state.js'
 import { updateUserUI } from './auth.js'
-import { closeInflowTaskPane } from './taskDetail.js'
 import { initSettingsControls } from './theme.js'
 
 // ============================================================
@@ -21,8 +20,6 @@ import { initSettingsControls } from './theme.js'
 export function switchView(viewName) {
   setActiveView(viewName)
   setActiveSprintFilter('all')
-  closeInflowTaskPane()
-
   document.querySelectorAll('.primary-nav .nav-item, .sidebar-bottom .nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.view === viewName)
   })

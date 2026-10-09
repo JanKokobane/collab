@@ -1065,6 +1065,59 @@ body.dark-mode .brainstorm-link-type {
     box-shadow: 0 28px 70px rgba(24, 34, 48, .2), 0 4px 14px rgba(24, 34, 48, .07);
 }
 
+.notification-confirmation-modal.is-compact {
+    width: min(100%, 460px);
+    border-radius: 14px;
+}
+
+.notification-confirmation-modal.is-compact .notification-confirmation-header {
+    grid-template-columns: 42px minmax(0, 1fr);
+    column-gap: 11px;
+    padding: 14px 40px 14px 20px;
+}
+
+.notification-confirmation-modal.is-compact .notification-confirmation-icon {
+    width: 42px;
+    height: 42px;
+}
+
+.notification-confirmation-modal.is-compact .notification-confirmation-icon svg {
+    width: 21px;
+    height: 21px;
+}
+
+.notification-confirmation-modal.is-compact .notification-confirmation-eyebrow {
+    font-size: 9px;
+}
+
+.notification-confirmation-modal.is-compact .notification-confirmation-header > h2 {
+    font-size: 18px;
+}
+
+.notification-confirmation-modal.is-compact .notification-confirmation-body {
+    gap: 12px;
+    padding: 14px 20px 16px;
+}
+
+.notification-confirmation-modal.is-compact .modal-copy {
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.notification-confirmation-modal.is-compact .notification-confirmation-actions {
+    width: 190px;
+    gap: 8px;
+    margin-top: 0;
+}
+
+.notification-confirmation-modal.is-compact .notification-confirmation-actions .notification-confirmation-cancel,
+.notification-confirmation-modal.is-compact .notification-confirmation-actions .notification-confirmation-submit {
+    min-width: 88px;
+    min-height: 36px;
+    padding: 8px 10px;
+    font-size: 12px;
+}
+
 .notification-confirmation-header {
     position: relative;
     display: grid;

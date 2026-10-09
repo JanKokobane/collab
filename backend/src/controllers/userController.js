@@ -123,6 +123,34 @@ const getProjectMembers = async (req, res) => {
                      )
                      AND i.invited_firebase_uid IS NOT NULL
                     WHERE i.invited_firebase_uid <> p.creator_firebase_uid
+                ),
+                project_members AS (
+                    SELECT
+                        pm.project_id,
+                        pm.project_name,
+                        pm.creator_firebase_uid,
+                        pm.invitation_id,
+                        pm.firebase_uid,
+                        pm.email,
+                        pm.name,
+                        pm.role,
+                        pm.status
+                    FROM invited_members pm
+                    WHERE pm.invitation_rank = 1
+
+                    UNION ALL
+
+                    SELECT
+                        p.project_id,
+                        p.name AS project_name,
+                        p.creator_firebase_uid,
+                        NULL::uuid AS invitation_id,
+                        p.creator_firebase_uid AS firebase_uid,
+                        p.creator_email AS email,
+                        p.creator_name AS name,
+                        'Project Lead' AS role,
+                        'Active' AS status
+                    FROM accessible_projects p
                 )
                 SELECT
                     pm.project_id,
@@ -135,10 +163,9 @@ const getProjectMembers = async (req, res) => {
                     pm.role,
                     pm.status,
                     up.profile_image
-                FROM invited_members pm
+                FROM project_members pm
                 LEFT JOIN user_profiles up
                   ON up.firebase_uid = pm.firebase_uid
-                WHERE pm.invitation_rank = 1
                 ORDER BY LOWER(pm.project_name), LOWER(pm.name)
             `,
             [req.firebaseUid]

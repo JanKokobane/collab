@@ -686,10 +686,6 @@
                             </div>
                         </div>
 
-                        <!-- Integrated in-flow Task Detail Pane (NO backdrop, NO floating aside modal) -->
-                        <div class="inflow-task-pane" id="inflow-task-pane" style="display: none;">
-                            <!-- Populated dynamically when a task is selected -->
-                        </div>
                     </div>
                 </div>
 
@@ -811,10 +807,20 @@
                                     <h3>Team Members & Roles</h3>
                                     <p>Assign workspace permissions and administrative authority.</p>
                                 </div>
-                                <div style="display: flex; gap: 8px; align-items: center;">
-                                    <div class="admin-card-badge" id="admin-member-count">0 members</div>
-                                    <button type="button" class="primary-button gold" id="admin-members-invite-btn">+
-                                        <span>Invite Member</span></button>
+                                <div class="admin-members-header-controls">
+                                    <div class="admin-card-badge" id="admin-member-count">No members</div>
+                                    <div class="admin-members-project-actions">
+                                        <div class="admin-members-project-filter-wrap">
+                                            <select id="admin-members-project-filter" class="admin-members-project-filter" aria-label="Filter members by project">
+                                                <option value="">Choose a project</option>
+                                            </select>
+                                            <svg class="admin-members-project-filter-icon" aria-hidden="true" viewBox="0 0 16 16" fill="none">
+                                                <path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+                                            </svg>
+                                        </div>
+                                        <button type="button" class="primary-button gold" id="admin-members-invite-btn">+
+                                            <span>Invite Member</span></button>
+                                    </div>
                                 </div>
                             </div>
 

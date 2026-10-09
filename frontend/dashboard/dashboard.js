@@ -57,13 +57,6 @@ import {
 } from './js/tasks.js'
 
 import {
-  openInflowTaskPane,
-  closeInflowTaskPane,
-  openEditTaskInline,
-  currentDetailTaskId
-} from './js/taskDetail.js'
-
-import {
   renderCalendarPanel,
   renderPinnedMeetingsStrip,
   renderActualCalendarGrid,
@@ -175,8 +168,6 @@ registerHub({
   renderAuditLogs,
   renderProjectNav,
   switchView,
-  openInflowTaskPane,
-  closeInflowTaskPane,
   openDayScheduleModal,
   openAdminTaskModal,
   openCreateProjectModal,
@@ -360,10 +351,6 @@ export {
   moveTaskStatus,
   taskCard,
   setupDragAndDrop,
-  openInflowTaskPane,
-  closeInflowTaskPane,
-  openEditTaskInline,
-  currentDetailTaskId,
   renderCalendarPanel,
   renderPinnedMeetingsStrip,
   renderActualCalendarGrid,

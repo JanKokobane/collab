@@ -2333,6 +2333,27 @@ form.modal {
     grid-column: 1 / -1;
 }
 
+.admin-members-card > .admin-card-header {
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 16px;
+}
+
+.admin-members-card > .admin-card-header > div:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.admin-members-header-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 16px;
+    width: auto;
+    flex: 0 0 auto;
+}
+
 .admin-card-header {
     display: flex;
     justify-content: space-between;
@@ -2364,6 +2385,104 @@ form.modal {
     font-weight: 700;
     padding: 4px 12px;
     border-radius: 20px;
+}
+
+.admin-members-header-controls .admin-card-badge {
+    margin: 0;
+    padding-left: 0;
+}
+
+.admin-members-project-actions {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+.admin-members-project-filter-wrap {
+    position: relative;
+    box-sizing: border-box;
+    width: 200px;
+    min-width: 200px;
+    height: 38px;
+    min-height: 38px;
+    flex: 0 0 200px;
+}
+
+.admin-members-project-filter {
+    box-sizing: border-box;
+    appearance: none;
+    width: 100%;
+    height: 38px;
+    min-height: 38px;
+    padding: 7px 30px 7px 10px;
+    border: 1px solid #D4D4D8;
+    border-radius: 8px;
+    background: #FFFFFF;
+    color: #27272A;
+    font: 600 12px 'DM Sans', sans-serif;
+}
+
+.admin-members-project-filter-icon {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    width: 14px;
+    height: 14px;
+    color: #71717A;
+    pointer-events: none;
+    transform: translateY(-50%);
+}
+
+.admin-members-project-filter:focus-visible {
+    border-color: #D4A500;
+    outline: 2px solid rgba(245, 184, 0, .2);
+    outline-offset: 1px;
+}
+
+.admin-members-header-controls > #admin-members-invite-btn {
+    box-sizing: border-box;
+    width: 160px;
+    min-width: 160px;
+    height: 38px;
+    min-height: 38px;
+    flex: 0 0 160px;
+    justify-content: center;
+    padding: 10px 12px;
+    white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+    .admin-members-card > .admin-card-header {
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .admin-members-card > .admin-card-header > div:first-child {
+        flex: 1 1 100%;
+    }
+
+    .admin-members-header-controls {
+        width: 100%;
+        flex: 1 1 100%;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .admin-members-project-actions {
+        margin-left: auto;
+    }
+}
+
+@media (max-width: 640px) {
+    .admin-members-project-filter-wrap {
+        width: 160px;
+        min-width: 160px;
+        flex-basis: 160px;
+        margin-left: 0;
+    }
 }
 
 .admin-projects-card > .admin-card-header {
@@ -2666,6 +2785,14 @@ body.dark-mode .admin-project-action-option:focus-visible,
     vertical-align: middle;
 }
 
+.admin-members-card .admin-table th:nth-child(3),
+.admin-members-card .admin-table td:nth-child(3) {
+    width: 130px;
+    max-width: 130px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .admin-table tr:last-child td {
     border-bottom: none;
 }
@@ -2889,10 +3016,40 @@ body.dark-mode .admin-table tr:hover td,
 }
 
 .project-sprint-chip {
+    position: relative;
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;
     min-width: 150px;
+    padding-right: 34px;
+}
+
+.project-sprint-remove {
+    position: absolute;
+    top: 5px;
+    right: 6px;
+    display: grid;
+    width: 22px;
+    height: 22px;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #71717A;
+    font: 600 18px/1 'DM Sans', sans-serif;
+    cursor: pointer;
+}
+
+.project-sprint-remove:hover,
+.project-sprint-remove:focus-visible {
+    background: #FEE2E2;
+    color: #B91C1C;
+    outline: none;
+}
+
+.project-sprint-remove:disabled {
+    cursor: wait;
+    opacity: 0.55;
 }
 
 .project-sprint-chip small {
@@ -3233,6 +3390,19 @@ body.dark-mode .project-task-table,
     border-color: #3F3F46;
     background: #18181B;
     color: #E4E4E7;
+}
+
+body.dark-mode .project-sprint-remove,
+[data-theme="dark"] .project-sprint-remove {
+    color: #A1A1AA;
+}
+
+body.dark-mode .project-sprint-remove:hover,
+body.dark-mode .project-sprint-remove:focus-visible,
+[data-theme="dark"] .project-sprint-remove:hover,
+[data-theme="dark"] .project-sprint-remove:focus-visible {
+    background: #451A1A;
+    color: #FCA5A5;
 }
 
 body.dark-mode .project-task-create-sprint-panel h4,
@@ -4380,7 +4550,6 @@ body.dark-mode .input-with-icon:focus-within .input-icon-svg,
     color: #1C1C1F;
     font: inherit;
     text-align: left;
-    cursor: pointer;
     transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
 }
 
@@ -4390,7 +4559,6 @@ body.dark-mode .input-with-icon:focus-within .input-icon-svg,
     box-shadow: 0 4px 10px rgba(28, 28, 31, .07);
 }
 
-.calendar-task-chip:focus-visible,
 .pinned-meeting-open:focus-visible,
 .pinned-join-btn:focus-visible {
     outline: 2px solid #287B6E;
@@ -4512,48 +4680,9 @@ body.dark-mode .input-with-icon:focus-within .input-icon-svg,
     width: 100%;
 }
 
-.workspace-split-layout.has-detail-open {
-    grid-template-columns: 1fr 380px;
-    gap: 20px;
-}
-
-@media (max-width: 1100px) {
-    .workspace-split-layout.has-detail-open {
-        grid-template-columns: 1fr;
-    }
-}
-
 .workspace-main-panel {
     min-width: 0;
     width: 100%;
-}
-
-.inflow-task-pane {
-    background: #FFFFFF;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 22px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    position: sticky;
-    top: 20px;
-    max-height: calc(100vh - 140px);
-    overflow-y: auto;
-    animation: fadeInRight 0.2s ease-out;
-}
-
-@keyframes fadeInRight {
-    from {
-        opacity: 0;
-        transform: translateX(12px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateX(0);
-    }
 }
 
 .inflow-pane-header {
@@ -4620,6 +4749,17 @@ body.dark-mode .input-with-icon:focus-within .input-icon-svg,
     font-size: 12px;
     font-weight: 600;
     color: #1C1C1F;
+}
+
+.inflow-task-assignment-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.inflow-meta-item .inflow-task-assignment-list span {
+    font-size: 11px;
+    line-height: 1.35;
 }
 
 .inflow-status-row {
@@ -6764,12 +6904,6 @@ body.dark-mode .cal-mode-btn.active {
 body.dark-mode .cal-schedule-summary {
     background: #24242F;
     border-color: #363646;
-    color: #FFFFFF;
-}
-
-body.dark-mode .inflow-task-pane {
-    background: #1A1A20;
-    border-color: #272730;
     color: #FFFFFF;
 }
 

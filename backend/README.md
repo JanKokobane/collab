@@ -41,7 +41,8 @@ view access only; project writes remain restricted to the creator.
 ## Project tasks and sprints
 
 Project sprints are persisted in the existing `projects.sprints` JSONB field.
-Migration `005_project_tasks.sql` adds PostgreSQL-backed, project-scoped tasks.
+Migration `005_project_tasks.sql` adds PostgreSQL-backed, project-scoped tasks;
+`006_project_task_comments.sql` adds persistent comments for those tasks.
 Authenticated project owners can create, edit, and delete tasks; project owners
 and accepted project invitees can read them. A task must reference a sprint on
 its project and an invitee whose invitation has been accepted. Pending invitees
@@ -61,8 +62,14 @@ accepted invitee when edited.
   project creator or the invitee assigned to that task.
 - `DELETE /api/projects/:projectId/tasks/:taskId`: delete a task as its project
   creator.
+- `GET|POST /api/projects/:projectId/tasks/:taskId/comments`: read or add task
+  comments as the project creator or an accepted invitee.
 - `PUT /api/projects/:projectId` with a `sprints` array: persist sprint changes
-  as the project creator.
+  as the project creator. Sprint deletion may include a `sprint_name_map`
+  object mapping every existing sprint name to a remaining sprint name; the
+  update, task sprint changes, and task reassignment to the destination sprint
+  lead (when present) are committed atomically. Newly assigned accepted
+  invitee sprint leads receive a persisted in-dashboard notification.
 
 ## Implemented API foundation
 
@@ -78,7 +85,8 @@ All endpoints below require `Authorization: Bearer <Firebase ID token>`.
   access-controlled project operations.
 - `GET|POST /api/projects/:projectId/tasks`, `GET|PATCH|DELETE
   /api/tasks/:taskId`, and task comment routes: project-authorized task
-  operations.
+  operations. Any accepted project member or the project creator can update a
+  task's status; task edits and deletes remain creator-only.
 - `GET /api/notifications`, `PATCH /api/notifications/:notificationId/read`,
   `PATCH /api/notifications/read-all`, and
   `DELETE /api/notifications[/:notificationId]`: manage only the signed-in
@@ -86,8 +94,9 @@ All endpoints below require `Authorization: Bearer <Firebase ID token>`.
   creator in the same database transaction.
 - `GET|PUT /api/users/profile-image`: retrieve or save the authenticated user's
   compressed profile photo, keyed only by their verified Firebase UID.
-- `GET /api/users/members`: list creators and accepted collaborators for projects
-  the authenticated user can access, with each member's project invitation role.
+- `GET /api/users/members`: list project creators and collaborators for projects
+  the authenticated user can access, including each member's project role and
+  saved profile photo.
 - `POST /api/invitations`: create invitations for projects owned by the caller
   and send branded Resend emails. `GET /api/projects/:projectId/invitations`
   lists their invitation status, and

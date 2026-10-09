@@ -18,11 +18,15 @@ export function showDashboardConfirmation({
   message,
   confirmText = 'Confirm',
   cancelText = 'Cancel',
-  danger = false
+  danger = false,
+  compact = false
 }) {
   return new Promise(resolve => {
     const backdrop = make('div', 'modal-backdrop')
-    const dialog = make('section', 'modal notification-confirmation-modal')
+    const dialog = make(
+      'section',
+      `modal notification-confirmation-modal${compact ? ' is-compact' : ''}`
+    )
     dialog.setAttribute('role', 'alertdialog')
     dialog.setAttribute('aria-modal', 'true')
     dialog.dataset.chromeReady = 'true'

@@ -185,6 +185,154 @@ const getProjectTasks = async (req, res) => {
     }
 };
 
+const getProjectTaskComments = async (req, res) => {
+    if (!uuidPattern.test(req.params.taskId)) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_TASK_ID',
+            message: 'Task ID is invalid.'
+        });
+    }
+
+    try {
+        const project = await getProjectAndCheckAccess(req.params.projectId, req.firebaseUid);
+        if (!project) {
+            return res.status(404).json({
+                success: false,
+                code: 'PROJECT_NOT_FOUND',
+                message: 'Project not found.'
+            });
+        }
+
+        const task = await query(
+            'SELECT 1 FROM project_tasks WHERE project_id = $1 AND task_id = $2::uuid LIMIT 1',
+            [project.project_id, req.params.taskId]
+        );
+        if (!task.rowCount) {
+            return res.status(404).json({
+                success: false,
+                code: 'TASK_NOT_FOUND',
+                message: 'Task not found.'
+            });
+        }
+
+        const result = await query(
+            `
+                SELECT
+                    comment_id,
+                    author_firebase_uid,
+                    author_name,
+                    author_email,
+                    body,
+                    created_at
+                FROM project_task_comments
+                WHERE task_id = $1::uuid
+                ORDER BY created_at, comment_id
+            `,
+            [req.params.taskId]
+        );
+        return res.status(200).json({
+            success: true,
+            data: { comments: result.rows }
+        });
+    } catch (error) {
+        console.error('Get project task comments error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'PROJECT_TASK_COMMENTS_FETCH_FAILED',
+            message: 'Task comments could not be retrieved.'
+        });
+    }
+};
+
+const createProjectTaskComment = async (req, res) => {
+    if (!uuidPattern.test(req.params.taskId)) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_TASK_ID',
+            message: 'Task ID is invalid.'
+        });
+    }
+    const body = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+    if (!body || body.length > 5000) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_TASK_COMMENT',
+            message: 'Comment text is required and cannot exceed 5,000 characters.'
+        });
+    }
+
+    try {
+        const project = await getProjectAndCheckAccess(req.params.projectId, req.firebaseUid);
+        if (!project) {
+            return res.status(404).json({
+                success: false,
+                code: 'PROJECT_NOT_FOUND',
+                message: 'Project not found.'
+            });
+        }
+
+        const authorName =
+            req.firebaseUser?.name ||
+            req.firebaseUser?.displayName ||
+            req.firebaseEmail ||
+            'Project member';
+        const result = await query(
+            `
+                INSERT INTO project_task_comments (
+                    task_id,
+                    author_firebase_uid,
+                    author_name,
+                    author_email,
+                    body
+                )
+                SELECT
+                    task_id,
+                    $3,
+                    $4,
+                    $5,
+                    $6
+                FROM project_tasks
+                WHERE project_id = $1
+                  AND task_id = $2::uuid
+                RETURNING
+                    comment_id,
+                    author_firebase_uid,
+                    author_name,
+                    author_email,
+                    body,
+                    created_at
+            `,
+            [
+                project.project_id,
+                req.params.taskId,
+                req.firebaseUid,
+                authorName,
+                req.firebaseEmail,
+                body
+            ]
+        );
+        if (!result.rowCount) {
+            return res.status(404).json({
+                success: false,
+                code: 'TASK_NOT_FOUND',
+                message: 'Task not found.'
+            });
+        }
+        return res.status(201).json({
+            success: true,
+            data: { comment: result.rows[0] }
+        });
+    } catch (error) {
+        console.error('Create project task comment error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'PROJECT_TASK_COMMENT_CREATE_FAILED',
+            message: 'The comment could not be posted.'
+        });
+    }
+};
+
 const createProjectTask = async (req, res) => {
     const normalized = normalizeTaskInput(req.body);
     if (normalized.error) {
@@ -367,46 +515,26 @@ const updateProjectTaskStatus = async (req, res) => {
             });
         }
 
-        const taskResult = await query(
+        const result = await query(
             `
-                SELECT assignee_firebase_uid
-                FROM project_tasks
-                WHERE project_id = $1
-                  AND task_id = $2::uuid
-                LIMIT 1
+                UPDATE project_tasks
+                SET status = $1, updated_at = NOW()
+                WHERE project_id = $2
+                  AND task_id = $3::uuid
+                RETURNING task_id
             `,
-            [project.project_id, req.params.taskId]
+            [status, project.project_id, req.params.taskId]
         );
-        if (!taskResult.rowCount) {
+        if (!result.rowCount) {
             return res.status(404).json({
                 success: false,
                 code: 'TASK_NOT_FOUND',
                 message: 'Task not found.'
             });
         }
-        if (
-            project.creator_firebase_uid !== req.firebaseUid &&
-            taskResult.rows[0].assignee_firebase_uid !== req.firebaseUid
-        ) {
-            return res.status(403).json({
-                success: false,
-                code: 'TASK_UPDATE_FORBIDDEN',
-                message: 'Only the project creator or assigned invitee can update this task status.'
-            });
-        }
-
-        await query(
-            `
-                UPDATE project_tasks
-                SET status = $1, updated_at = NOW()
-                WHERE project_id = $2
-                  AND task_id = $3::uuid
-            `,
-            [status, project.project_id, req.params.taskId]
-        );
         return res.status(200).json({
             success: true,
-            data: { taskId: req.params.taskId, status }
+            data: { taskId: result.rows[0].task_id, status }
         });
     } catch (error) {
         console.error('Update project task status error:', error);
@@ -467,7 +595,9 @@ const deleteProjectTask = async (req, res) => {
 
 module.exports = {
     createProjectTask,
+    createProjectTaskComment,
     deleteProjectTask,
+    getProjectTaskComments,
     getProjectTasks,
     updateProjectTask,
     updateProjectTaskStatus

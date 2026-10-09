@@ -47,7 +47,7 @@ Firebase authentication is separate from the dashboard's demo data storage; sign
 ## Dashboard features
 
 - **Workspace and projects:** Project navigation, workspace overview, sprint summaries, task board, and list view. Project and sprint management lives in `dashboard/js/projects.js`.
-- **Tasks:** Filtering, task status changes, board drag-and-drop, list rendering, task creation, and task detail/edit panels are handled by `dashboard/js/tasks.js` and `dashboard/js/taskDetail.js`.
+- **Tasks:** Filtering, task status changes, board drag-and-drop, list rendering, and task creation are handled by `dashboard/js/tasks.js`.
 - **Calendar:** Month navigation, scheduled meetings, pinned meetings, task dates, reminders, and scheduling dialogs are handled by `dashboard/js/calendar.js`. `dashboard/js/dateUtils.js` centralizes local date-key parsing and relative date display.
 - **Administration:** Member, task, meeting, and audit-log tables are rendered by `dashboard/js/admin.js`. Role and project-creator helpers are in `dashboard/js/auth.js`.
 - **Workspace hub:** Workspace summaries, announcements, resources, scratchpad, and team notifications are managed by `dashboard/js/workspaceHub.js`.
@@ -90,7 +90,6 @@ frontend/
 │       ├── navigation.js      Dashboard view switching
 │       ├── projects.js        Projects, sprints, collaborator management
 │       ├── state.js           Seed data, shared state, persistence, hub
-│       ├── taskDetail.js      Task detail and inline editing
 │       ├── tasks.js           Task filtering, boards, list, status workflow
 │       ├── theme.js           Theme, accent, profile, settings
 │       └── workspaceHub.js    Workspace hub, notifications, polls, brainstorm

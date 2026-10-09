@@ -22,6 +22,8 @@ import {
 import {
   renderAdminProjectsTable,
   renderMembersTable,
+  filterMembersByProject,
+  getSelectedMembersProject,
   loadProjectMembers,
   renderAdminTasksTable,
   renderAdminMeetingsTable,
@@ -215,7 +217,14 @@ export function initEventListeners() {
   document.querySelector('#project-invite-collab-btn')?.addEventListener('click', openInviteCollaboratorModal)
   document.querySelector('#project-manage-collab-btn')?.addEventListener('click', openManageCollaboratorsModal)
   document.querySelector('#admin-invite-btn')?.addEventListener('click', openInviteCollaboratorModal)
-  document.querySelector('#admin-members-invite-btn')?.addEventListener('click', openInviteCollaboratorModal)
+  document.querySelector('#admin-members-invite-btn')?.addEventListener('click', () => {
+    openInviteCollaboratorModal(getSelectedMembersProject())
+  })
+  document.querySelector('#admin-members-project-filter')?.addEventListener('change', event => {
+    const filter = event.currentTarget
+    if (!(filter instanceof HTMLSelectElement)) return
+    filterMembersByProject(filter.value)
+  })
   document.querySelector('#admin-invite-project-quick-btn')?.addEventListener('click', () => openInviteCollaboratorModal())
 
   // Project creation buttons

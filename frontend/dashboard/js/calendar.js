@@ -14,7 +14,6 @@ import {
   pushNotification,
   hub
 } from './state.js'
-import { openInflowTaskPane } from './taskDetail.js'
 import {
   addDaysToDateKey,
   formatRelativeDate,
@@ -228,10 +227,6 @@ export function renderActualCalendarGrid() {
         const workChip = make('div', 'cal-event-pin work')
         workChip.title = `Deliverable: ${t.title} (${t.project}) • Assignee: ${t.assignee}`
         workChip.innerHTML = `<span>📋</span> <span>${t.title}</span> <small>(${t.assignee})</small>`
-        workChip.addEventListener('click', (e) => {
-          e.stopPropagation()
-          openInflowTaskPane(t)
-        })
         cell.append(workChip)
       })
     }
@@ -326,7 +321,6 @@ export function openDayScheduleModal(dateStr) {
       row.style.display = 'flex'
       row.style.justifyContent = 'space-between'
       row.style.alignItems = 'center'
-      row.style.cursor = 'pointer'
       row.innerHTML = `
         <div>
           <strong style="font-size: 12px; color: #1E293B; display: block;">📋 ${t.title}</strong>
@@ -334,10 +328,6 @@ export function openDayScheduleModal(dateStr) {
         </div>
         <span class="status-badge ${t.status.toLowerCase().replace(' ', '-')}">${t.status}</span>
       `
-      row.addEventListener('click', () => {
-        closeModal()
-        openInflowTaskPane(t)
-      })
       taskSec.append(row)
     })
   }
@@ -441,12 +431,11 @@ export function renderCalendarDaysGrid() {
       colEl.append(make('p', 'calendar-day-empty', col.label === 'Completed' ? 'No completed milestones yet.' : 'No tasks scheduled.'))
     } else {
       colTasks.forEach(t => {
-        const chip = make('button', 'calendar-task-chip')
-        chip.type = 'button'
+        const chip = make('div', 'calendar-task-chip')
         const assignee = getAccessibleMembers().find(member => member.initials === t.assignee)
         const assigneeName = t.assigneeName || assignee?.name || t.assignee || 'Unassigned'
         const assigneeTone = t.assigneeTone || assignee?.tone || 'teal'
-        chip.setAttribute('aria-label', `Open task: ${t.title}, ${t.project}, assigned to ${assigneeName}`)
+        chip.setAttribute('aria-label', `${t.title}, ${t.project}, assigned to ${assigneeName}`)
         chip.innerHTML = `
           <div class="calendar-task-top">
             <span class="calendar-task-project">${t.project}</span>
@@ -458,7 +447,6 @@ export function renderCalendarDaysGrid() {
             <span class="calendar-task-category">${t.tag || 'Task'}</span>
           </div>
         `
-        chip.addEventListener('click', () => openInflowTaskPane(t))
         colEl.append(chip)
       })
     }

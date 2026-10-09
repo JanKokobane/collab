@@ -17,7 +17,6 @@ import {
   hub
 } from './state.js'
 import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } from './auth.js'
-import { openInflowTaskPane, currentDetailTaskId } from './taskDetail.js'
 import { createScheduleCalendarPicker } from './calendar.js'
 import { api } from './api.js'
 import { showDashboardToast } from './modalChrome.js'
@@ -124,9 +123,6 @@ export async function moveTaskStatus(taskId, newStatus) {
   saveTasks()
   renderTasks()
 
-  if (currentDetailTaskId === task.id) {
-    openInflowTaskPane(task)
-  }
   if (task.backendPersistent) {
     hub.renderAdminTasksTable?.()
   }
@@ -142,8 +138,8 @@ export function taskCard(task) {
     ? projects.find(item => item.projectId === task.projectId)
     : null
   const canUpdateBackendTask = !task.backendPersistent ||
-    currentUser.uid === task.assigneeFirebaseUid ||
-    currentUser.uid === project?.creatorFirebaseUid
+    currentUser.uid === project?.creatorFirebaseUid ||
+    project?.acceptedMembers?.some(member => member.firebaseUid === currentUser.uid)
   card.setAttribute('draggable', String(canUpdateBackendTask))
 
   card.addEventListener('dragstart', e => {
@@ -238,7 +234,6 @@ export function taskCard(task) {
   }
 
   card.append(top, title, meta, footer, moveRow)
-  card.addEventListener('click', () => openInflowTaskPane(task))
   return card
 }
 
@@ -345,7 +340,6 @@ export function renderListView(filtered) {
     tdStatus.innerHTML = `<span class="status-badge ${isDone ? 'active' : 'pending'}">${task.status}</span>`
 
     tr.append(tdCheck, tdTitle, tdTag, tdAssignee, tdDue, tdComments, tdStatus)
-    tr.addEventListener('click', () => openInflowTaskPane(task))
     tbody.append(tr)
   })
 }

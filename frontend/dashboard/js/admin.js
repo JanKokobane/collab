@@ -31,6 +31,16 @@ import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 // ============================================================
 
 let projectMembers = []
+let selectedMembersProjectId = ''
+
+export function getSelectedMembersProject() {
+  return projects.find(project => project.projectId === selectedMembersProjectId) || null
+}
+
+export function filterMembersByProject(projectId) {
+  selectedMembersProjectId = projectId
+  renderMembersTable()
+}
 
 export async function loadProjectMembers() {
   try {
@@ -48,7 +58,11 @@ export async function loadProjectMembers() {
       projectName: member.project_name,
       projectCreatorFirebaseUid: member.creator_firebase_uid,
       invitationId: member.invitation_id,
-      profileImage: member.profile_image || '',
+      profileImage: member.profile_image || (
+        member.firebase_uid === currentUser.uid
+          ? currentUser.profileImage || currentUser.photoURL || ''
+          : ''
+      ),
       initials: member.name
         ? member.name.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase()
         : '•',
@@ -77,11 +91,59 @@ export function renderMembersTable() {
   const countBadge = document.querySelector('#admin-member-count')
   if (!tbody) return
 
-  const memberCount = new Set(projectMembers.map(member => member.firebaseUid).filter(Boolean)).size
+  const accessibleProjects = [...new Map(
+    projects
+      .filter(project => project.projectId && project.name)
+      .map(project => [project.projectId, project])
+  ).values()]
+  const ownedProjects = accessibleProjects.filter(
+    project => project.creatorFirebaseUid === firebaseAuth.currentUser?.uid
+  )
+  const projectFilter = document.querySelector('#admin-members-project-filter')
+  if (projectFilter) {
+    const availableProjects = ownedProjects.length ? ownedProjects : accessibleProjects
+    const projectFilterWrap = projectFilter.closest('.admin-members-project-filter-wrap')
+    const availableProjectIds = new Set(availableProjects.map(project => project.projectId))
+    if (selectedMembersProjectId !== 'all' && !availableProjectIds.has(selectedMembersProjectId)) {
+      const activeProject = getActiveProject()
+      selectedMembersProjectId = availableProjectIds.has(activeProject?.projectId)
+        ? activeProject.projectId
+        : availableProjects[0]?.projectId || ''
+    }
+
+    projectFilter.replaceChildren()
+    if (availableProjects.length > 1) {
+      const allOption = make('option', '', 'All projects')
+      allOption.value = 'all'
+      projectFilter.append(allOption)
+    }
+    availableProjects.forEach(project => {
+      const option = make('option', '', project.name)
+      option.value = project.projectId
+      projectFilter.append(option)
+    })
+    projectFilter.value = selectedMembersProjectId
+    if (projectFilterWrap) projectFilterWrap.hidden = availableProjects.length < 2
+  }
+  const visibleMembers = selectedMembersProjectId && selectedMembersProjectId !== 'all'
+    ? projectMembers.filter(member => member.projectId === selectedMembersProjectId)
+    : projectMembers.filter(member =>
+      accessibleProjects.some(project => project.projectId === member.projectId)
+    )
+  const memberCount = new Set(visibleMembers.map(member => member.firebaseUid).filter(Boolean)).size
   if (countBadge) countBadge.textContent = `${memberCount} ${memberCount === 1 ? 'member' : 'members'}`
   tbody.replaceChildren()
 
-  if (!projectMembers.length) {
+  if (!accessibleProjects.length) {
+    const row = document.createElement('tr')
+    const cell = make('td', 'notification-empty-state', 'No accessible projects to show.')
+    cell.colSpan = 5
+    row.append(cell)
+    tbody.append(row)
+    return
+  }
+
+  if (!visibleMembers.length) {
     const row = document.createElement('tr')
     const cell = make('td', 'notification-empty-state', 'No project members to show yet.')
     cell.colSpan = 5
@@ -90,7 +152,7 @@ export function renderMembersTable() {
     return
   }
 
-  projectMembers.forEach(member => {
+  visibleMembers.forEach(member => {
     const tr = document.createElement('tr')
 
     const tdMember = document.createElement('td')
@@ -182,7 +244,14 @@ function taskTableCell(text, className = '') {
   return cell
 }
 
-function renderProjectTaskDetails(project, taskRecords, loadError) {
+function renumberSprintName(name, number) {
+  const title = String(name || 'Sprint')
+    .replace(/^Sprint\s+\d+\s*:\s*/i, '')
+    .trim()
+  return `Sprint ${number}: ${title || 'Untitled'}`
+}
+
+function renderProjectTaskDetails(project, taskRecords, loadError, refreshDetails) {
   const wrapper = make('div', 'project-task-details')
   const isOwner = project.creatorFirebaseUid === firebaseAuth.currentUser?.uid
   const acceptedMembers = Array.isArray(project.acceptedMembers) ? project.acceptedMembers : []
@@ -209,6 +278,95 @@ function renderProjectTaskDetails(project, taskRecords, loadError) {
       )
       if (sprint.assigneeName) {
         sprintChip.append(make('small', 'project-sprint-assignee', `Assigned to ${sprint.assigneeName}`))
+      }
+      if (isOwner && !loadError) {
+        const removeSprintButton = make('button', 'project-sprint-remove', '×')
+        removeSprintButton.type = 'button'
+        removeSprintButton.setAttribute('aria-label', `Remove ${sprint.name || 'sprint'}`)
+        removeSprintButton.title = 'Remove sprint'
+        removeSprintButton.addEventListener('click', async () => {
+          const sprintIndex = sprints.indexOf(sprint)
+          if (sprintIndex < 0) return
+
+          const linkedTasks = taskRecords.filter(task => task.sprint_name === sprint.name)
+          const remainingSprints = sprints.filter((_, index) => index !== sprintIndex)
+          if (!remainingSprints.length && linkedTasks.length) {
+            showDashboardToast(
+              "Reassign or delete this sprint's tasks before removing the last sprint.",
+              'error'
+            )
+            return
+          }
+
+          const taskDestination = remainingSprints[
+            Math.min(sprintIndex, remainingSprints.length - 1)
+          ]
+          const taskDestinationName = taskDestination
+            ? renumberSprintName(
+              taskDestination.name,
+              Math.min(sprintIndex, remainingSprints.length - 1) + 1
+            )
+            : ''
+          const taskDestinationAssignment = taskDestination?.assigneeFirebaseUid
+            ? `assigned to ${taskDestination.assigneeName || 'the destination sprint lead'}`
+            : 'keeping their current assignees'
+          const confirmed = await showDashboardConfirmation({
+            title: 'Remove project sprint?',
+            message: linkedTasks.length
+              ? `Remove "${sprint.name}"? Its ${linkedTasks.length} ${linkedTasks.length === 1 ? 'task will' : 'tasks will'} move to "${taskDestinationName}", ${taskDestinationAssignment}, and sprint numbers will be updated.`
+              : `Remove "${sprint.name}" and update the numbering of the remaining sprints?`,
+            confirmText: 'Remove sprint',
+            danger: true,
+            compact: true
+          })
+          if (!confirmed) return
+
+          const updatedSprints = remainingSprints.map((item, index) => ({
+            ...item,
+            name: renumberSprintName(item.name, index + 1)
+          }))
+          const sprintNameMap = {}
+          sprints.forEach((item, oldIndex) => {
+            const targetIndex = oldIndex < sprintIndex
+              ? oldIndex
+              : oldIndex === sprintIndex
+                ? Math.min(sprintIndex, updatedSprints.length - 1)
+                : oldIndex - 1
+            const targetSprint = updatedSprints[targetIndex]
+            if (targetSprint) sprintNameMap[item.name] = targetSprint.name
+          })
+
+          removeSprintButton.disabled = true
+          try {
+            await api.put(`/projects/${encodeURIComponent(project.projectId)}`, {
+              sprints: updatedSprints,
+              ...(Object.keys(sprintNameMap).length ? { sprint_name_map: sprintNameMap } : {})
+            })
+            project.sprints = updatedSprints
+            taskRecords.forEach(task => {
+              if (Object.hasOwn(sprintNameMap, task.sprint_name)) {
+                task.sprint_name = sprintNameMap[task.sprint_name]
+                const targetSprint = updatedSprints.find(item => item.name === task.sprint_name)
+                if (targetSprint?.assigneeFirebaseUid) {
+                  task.assignee_firebase_uid = targetSprint.assigneeFirebaseUid
+                  const assignee = acceptedMembers.find(
+                    member => member.firebaseUid === targetSprint.assigneeFirebaseUid
+                  )
+                  if (assignee) {
+                    task.assignee_name = assignee.name || ''
+                    task.assignee_email = assignee.email || ''
+                  }
+                }
+              }
+            })
+            refreshDetails()
+            showDashboardToast('Sprint removed and remaining sprints renumbered.', 'success')
+          } catch (error) {
+            removeSprintButton.disabled = false
+            showDashboardToast(error.message || 'The sprint could not be removed.', 'error')
+          }
+        })
+        sprintChip.append(removeSprintButton)
       }
       sprintList.append(sprintChip)
     })
@@ -258,7 +416,7 @@ function renderProjectTaskDetails(project, taskRecords, loadError) {
   const taskTableWrap = make('div', 'project-task-table-wrap')
   const head = document.createElement('thead')
   const headRow = document.createElement('tr')
-  ;['Task', 'Sprint', 'Assigned to', 'Due date', 'Status', ...(isOwner ? ['Actions'] : [])]
+  ;['Task', 'Assigned to', 'Due date', 'Status', ...(isOwner ? ['Actions'] : [])]
     .forEach(label => headRow.append(make('th', '', label)))
   head.append(headRow)
   taskTable.append(head)
@@ -267,7 +425,7 @@ function renderProjectTaskDetails(project, taskRecords, loadError) {
   if (!taskRecords.length) {
     const row = document.createElement('tr')
     const cell = taskTableCell('No tasks have been created for this project yet.', 'project-task-empty')
-    cell.colSpan = isOwner ? 6 : 5
+    cell.colSpan = isOwner ? 5 : 4
     row.append(cell)
     body.append(row)
   } else {
@@ -277,9 +435,24 @@ function renderProjectTaskDetails(project, taskRecords, loadError) {
       taskCell.append(make('strong', '', task.title))
       if (task.description) taskCell.append(make('small', '', task.description))
       row.append(taskCell)
-      row.append(taskTableCell(task.sprint_name))
-      const assigned = task.assignee_name || task.assignee_email || 'Project invitee'
-      row.append(taskTableCell(assigned))
+      const assignmentCell = document.createElement('td')
+      const assignmentList = make('div', 'project-task-assignment-list')
+      sprints.forEach((sprint, index) => {
+        const isTaskSprint = sprint.name === task.sprint_name
+        const leadName = sprint.assigneeName ||
+          (isTaskSprint ? task.assignee_name || task.assignee_email : '') ||
+          'No sprint lead'
+        assignmentList.append(
+          make('small', '', `Sprint ${index + 1} - ${leadName}`)
+        )
+      })
+      if (!sprints.length) {
+        assignmentList.append(
+          make('small', '', task.assignee_name || task.assignee_email || 'Project invitee')
+        )
+      }
+      assignmentCell.append(assignmentList)
+      row.append(assignmentCell)
       row.append(taskTableCell(taskDateLabel(task.due_date)))
       const statusCell = document.createElement('td')
       statusCell.append(make('span', `status-badge ${String(task.status || 'To do').toLowerCase().replaceAll(' ', '-')}`, task.status || 'To do'))
@@ -399,7 +572,10 @@ export async function renderAdminTasksTable() {
     detailsRow.className = 'project-task-details-row'
     detailsRow.hidden = true
     const detailsCell = document.createElement('td')
-    detailsCell.append(renderProjectTaskDetails(project, projectTasks, error))
+    const refreshProjectDetails = () => {
+      detailsCell.replaceChildren(renderProjectTaskDetails(project, projectTasks, error, refreshProjectDetails))
+    }
+    detailsCell.append(renderProjectTaskDetails(project, projectTasks, error, refreshProjectDetails))
     detailsRow.append(detailsCell)
     const toggleProjectDetails = () => {
       const isExpanded = expandButton.getAttribute('aria-expanded') === 'true'

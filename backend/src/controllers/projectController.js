@@ -494,7 +494,8 @@ const updateProject = async (req, res) => {
             description,
             color,
             invited_members,
-            sprints
+            sprints,
+            sprint_name_map
         } = req.body;
 
         /*
@@ -599,6 +600,98 @@ const updateProject = async (req, res) => {
             });
         }
 
+        let sprintNameMap = null;
+        let taskSprintMap = null;
+        const sprintAssignmentNotifications = [];
+        if (sprints !== undefined) {
+            const currentSprints = Array.isArray(current.sprints) ? current.sprints : [];
+            const sprintNameEntries = sprint_name_map &&
+                typeof sprint_name_map === 'object' &&
+                !Array.isArray(sprint_name_map)
+                ? Object.entries(sprint_name_map)
+                : [];
+            const oldNameByNewName = new Map(
+                sprintNameEntries.map(([oldName, newName]) => [newName, oldName])
+            );
+            const sprintsById = new Map(
+                currentSprints
+                    .filter(sprint => sprint?.id !== undefined && sprint?.id !== null)
+                    .map(sprint => [String(sprint.id), sprint])
+            );
+            const sprintsByName = new Map(
+                currentSprints
+                    .filter(sprint => typeof sprint?.name === 'string')
+                    .map(sprint => [sprint.name, sprint])
+            );
+
+            updatedSprints.forEach(sprint => {
+                const assigneeFirebaseUid =
+                    typeof sprint?.assigneeFirebaseUid === 'string'
+                        ? sprint.assigneeFirebaseUid.trim()
+                        : '';
+                if (!assigneeFirebaseUid) return;
+
+                const previousSprint =
+                    (sprint?.id !== undefined && sprint?.id !== null
+                        ? sprintsById.get(String(sprint.id))
+                        : null) ||
+                    sprintsByName.get(oldNameByNewName.get(sprint?.name) || sprint?.name);
+                const previousAssigneeFirebaseUid =
+                    typeof previousSprint?.assigneeFirebaseUid === 'string'
+                        ? previousSprint.assigneeFirebaseUid.trim()
+                        : '';
+                if (previousAssigneeFirebaseUid === assigneeFirebaseUid) return;
+
+                sprintAssignmentNotifications.push({
+                    assigneeFirebaseUid,
+                    sprintName: typeof sprint.name === 'string' ? sprint.name : 'Project sprint'
+                });
+            });
+        }
+
+        if (sprint_name_map !== undefined) {
+            const currentSprints = Array.isArray(current.sprints) ? current.sprints : [];
+            const currentSprintNames = new Set(currentSprints.map(sprint => sprint?.name));
+            const updatedSprintNames = new Set(updatedSprints.map(sprint => sprint?.name));
+            const entries = sprint_name_map &&
+                typeof sprint_name_map === 'object' &&
+                !Array.isArray(sprint_name_map)
+                ? Object.entries(sprint_name_map)
+                : [];
+            const isValidMap =
+                entries.length === currentSprints.length &&
+                entries.every(([oldName, newName]) =>
+                    typeof oldName === 'string' &&
+                    currentSprintNames.has(oldName) &&
+                    typeof newName === 'string' &&
+                    updatedSprintNames.has(newName)
+                );
+
+            if (!isValidMap) {
+                return res.status(400).json({
+                    success: false,
+                    code: 'INVALID_SPRINT_NAME_MAP',
+                    message: 'sprint_name_map must map every existing sprint to a remaining project sprint.'
+                });
+            }
+            sprintNameMap = sprint_name_map;
+            const updatedSprintsByName = new Map(
+                updatedSprints.map(sprint => [sprint?.name, sprint])
+            );
+            taskSprintMap = Object.fromEntries(
+                entries.map(([oldName, newName]) => {
+                    const targetSprint = updatedSprintsByName.get(newName);
+                    return [
+                        oldName,
+                        {
+                            name: newName,
+                            assigneeFirebaseUid: targetSprint.assigneeFirebaseUid || null
+                        }
+                    ];
+                })
+            );
+        }
+
         const sql = `
             UPDATE projects
             SET
@@ -630,7 +723,7 @@ const updateProject = async (req, res) => {
                 updated_at
         `;
 
-        const result = await query(sql, [
+        const values = [
             updatedName,
             updatedProjectType,
             updatedTimeSpan,
@@ -640,13 +733,120 @@ const updateProject = async (req, res) => {
             JSON.stringify(updatedSprints),
             projectId,
             firebaseUid
-        ]);
+        ];
+        let result;
+        let createdNotifications = [];
+        if (sprints !== undefined || sprintNameMap) {
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                const assigneeUids = [
+                    ...new Set(sprintAssignmentNotifications.map(item => item.assigneeFirebaseUid))
+                ];
+                if (assigneeUids.length) {
+                    const acceptedAssignees = await client.query(
+                        `
+                            SELECT invited_firebase_uid
+                            FROM project_invitations
+                            WHERE project_id = $1
+                              AND status = 'accepted'
+                              AND invited_firebase_uid = ANY($2::text[])
+                        `,
+                        [projectId, assigneeUids]
+                    );
+                    const acceptedUids = new Set(
+                        acceptedAssignees.rows.map(row => row.invited_firebase_uid)
+                    );
+                    const invalidAssignee = assigneeUids.find(uid => !acceptedUids.has(uid));
+                    if (invalidAssignee) {
+                        await client.query('ROLLBACK');
+                        return res.status(400).json({
+                            success: false,
+                            code: 'INVALID_SPRINT_ASSIGNEE',
+                            message: 'Sprint leads must be accepted invitees of this project.'
+                        });
+                    }
+                }
+
+                result = await client.query(sql, values);
+                if (!result.rowCount) {
+                    await client.query('ROLLBACK');
+                    return res.status(404).json({
+                        success: false,
+                        code: 'PROJECT_NOT_FOUND',
+                        message: 'Project not found.'
+                    });
+                }
+                if (taskSprintMap) {
+                    await client.query(
+                        `
+                            UPDATE project_tasks AS task
+                            SET sprint_name = sprint_map.target->>'name',
+                                assignee_firebase_uid = COALESCE(
+                                    sprint_map.target->>'assigneeFirebaseUid',
+                                    task.assignee_firebase_uid
+                                ),
+                                updated_at = NOW()
+                            FROM jsonb_each($1::jsonb) AS sprint_map(old_name, target)
+                            WHERE task.project_id = $2
+                              AND task.sprint_name = sprint_map.old_name
+                        `,
+                        [JSON.stringify(taskSprintMap), projectId]
+                    );
+                }
+                for (const assignment of sprintAssignmentNotifications) {
+                    const notification = await client.query(
+                        `
+                            INSERT INTO notifications (
+                                recipient_firebase_uid,
+                                project_id,
+                                type,
+                                title,
+                                detail,
+                                avatar,
+                                tone_class
+                            )
+                            VALUES ($1, $2, 'sprint_assigned', $3, $4, $5, 'blue-bg')
+                            RETURNING
+                                id,
+                                project_id,
+                                type,
+                                title,
+                                detail,
+                                avatar,
+                                tone_class,
+                                is_read,
+                                created_at
+                        `,
+                        [
+                            assignment.assigneeFirebaseUid,
+                            projectId,
+                            'You have been assigned to a sprint',
+                            `You are leading "${assignment.sprintName}" in "${updatedName}".`,
+                            current.creator_initials || '•'
+                        ]
+                    );
+                    createdNotifications.push(notification.rows[0]);
+                }
+                await client.query('COMMIT');
+            } catch (error) {
+                await client.query('ROLLBACK').catch(rollbackError => {
+                    console.error('Project sprint update rollback error:', rollbackError);
+                });
+                throw error;
+            } finally {
+                client.release();
+            }
+        } else {
+            result = await query(sql, values);
+        }
 
         return res.status(200).json({
             success: true,
             message: 'Project updated successfully.',
             data: {
-                project: result.rows[0]
+                project: result.rows[0],
+                notifications: createdNotifications
             }
         });
     } catch (error) {
