@@ -519,15 +519,6 @@
 
                 <div class="page-heading" style="display: none;">
                     <div class="page-heading-actions" id="project-heading-actions">
-                        <button class="primary-button gold" id="new-task-btn">+ <span>New task</span></button>
-                        <button type="button" class="outline-button-action" id="project-sprints-btn"
-                            title="Break project into small sprints">
-                            <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2">
-                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                            </svg>
-                            <span id="sprints-btn-text">Sprints (3)</span>
-                        </button>
                         <button type="button" class="outline-button-action" id="project-invite-collab-btn"
                             title="Invite team members to this project by email">
                             <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -818,7 +809,7 @@
                                                 <path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
                                             </svg>
                                         </div>
-                                        <button type="button" class="primary-button gold" id="admin-members-invite-btn">+
+                                        <button type="button" class="primary-button gold" id="admin-members-invite-btn" hidden>+
                                             <span>Invite Member</span></button>
                                     </div>
                                 </div>
@@ -997,7 +988,7 @@
                             <td>
                                 <div class="admin-attendees-cell" data-ref="attendees"></div>
                             </td>
-                            <td><a class="admin-meeting-link" href="https://meet.google.com" target="_blank"
+                            <td><a class="admin-meeting-link"
                                     rel="noopener noreferrer" data-ref="location"></a></td>
                             <td><button type="button" class="action-btn delete" data-ref="delete">Cancel /
                                     Delete</button></td>

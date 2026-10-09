@@ -148,6 +148,11 @@ function normalizeProject(project) {
       project.creatorInitials ||
       '',
 
+    creatorProfileImage:
+      project.creator_profile_image ||
+      project.creatorProfileImage ||
+      '',
+
     invitedMembers: Array.isArray(
       project.invited_members
     )
@@ -529,57 +534,6 @@ export const seedTasks = [
 ]
 
 // ============================================================
-// MEETINGS
-// ============================================================
-
-export const defaultMeetings = [
-  {
-    id: 'meet-1',
-    title: 'Product Launch Sprint Kickoff & Team Sync',
-    date: seedDate(0),
-    startTime: '10:00',
-    endTime: '11:00',
-    time: '10:00 AM - 11:00 AM',
-    pinned: true,
-    location: 'Google Meet (collab.io/sync-launch)',
-    host: 'Alex Morgan',
-    attendees: ['AM', 'SK', 'JL', 'ER', 'DP'],
-    notes:
-      'Review Q4 launch targets and assign Sprint 2 deliverables.'
-  },
-
-  {
-    id: 'meet-2',
-    title: 'Design Review & Wireframes Walkthrough',
-    date: seedDate(1),
-    startTime: '14:00',
-    endTime: '14:45',
-    time: '02:00 PM - 02:45 PM',
-    pinned: true,
-    location: 'Collab Huddle Room A',
-    host: 'Jordan Lee',
-    attendees: ['JL', 'AM', 'SK'],
-    notes:
-      'Validate responsive layouts and user onboarding screens.'
-  },
-
-  {
-    id: 'meet-3',
-    title: 'Engineering Architecture & Release Candidate QA',
-    date: seedDate(5),
-    startTime: '16:00',
-    endTime: '17:00',
-    time: '04:00 PM - 05:00 PM',
-    pinned: true,
-    location: 'Google Meet (collab.io/eng-sync)',
-    host: 'Elena Rostova',
-    attendees: ['ER', 'DP', 'JL'],
-    notes:
-      'Walkthrough release candidate test coverage and deployment scripts.'
-  }
-]
-
-// ============================================================
 // REMINDERS
 // ============================================================
 
@@ -812,26 +766,10 @@ export function getAccessibleMembers() {
 }
 
 // ============================================================
-// LOCAL MEETING STATE
+// BACKEND-PERSISTED MEETING STATE
 // ============================================================
 
-const storedMeetings =
-  JSON.parse(
-    localStorage.getItem('collab-meetings') || 'null'
-  )
-
-export let meetings = storedMeetings
-  ? rebaseSeedDates(
-      storedMeetings,
-      defaultMeetings,
-      {
-        'meet-1': '2026-10-04',
-        'meet-2': '2026-10-05',
-        'meet-3': '2026-10-09'
-      },
-      'collab-meetings'
-    )
-  : defaultMeetings
+export let meetings = []
 
 // ============================================================
 // LOCAL REMINDER STATE
@@ -857,12 +795,6 @@ export let reminders = storedReminders
 // ============================================================
 // LOCAL STORAGE SAVE HELPERS
 // ============================================================
-
-export const saveMeetings = () =>
-  localStorage.setItem(
-    'collab-meetings',
-    JSON.stringify(meetings)
-  )
 
 export const saveReminders = () =>
   localStorage.setItem(
@@ -898,7 +830,6 @@ export function setTasks(newTasks) {
 
 export function setMeetings(newMeetings) {
   meetings = newMeetings
-  saveMeetings()
 }
 
 export function setReminders(newReminders) {

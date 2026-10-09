@@ -12,6 +12,8 @@ import {
 } from './state.js'
 import { updateUserUI } from './auth.js'
 import { initSettingsControls } from './theme.js'
+import { loadProjectMeetings } from './meetings.js'
+import { showDashboardToast } from './modalChrome.js'
 
 // ============================================================
 // VIEW SWITCHING (WORKSPACE COLLABORATION HUB)
@@ -129,6 +131,19 @@ export function switchView(viewName) {
   }
 
   enhanceInputsWithIcons(document)
+  if (['Calendar', 'Workspace', 'Admin Console'].includes(viewName)) {
+    loadProjectMeetings().then(() => {
+      if (activeView !== viewName) return
+      if (viewName === 'Calendar') hub.renderCalendarPanel?.()
+      if (viewName === 'Workspace') hub.renderWorkspaceHub?.()
+      if (viewName === 'Admin Console') hub.renderAdminMeetingsTable?.()
+    }).catch(error => {
+      console.error('Unable to refresh project meetings for this view:', error)
+      if (activeView === viewName) {
+        showDashboardToast(error.message || 'Project meetings could not be refreshed.', 'error')
+      }
+    })
+  }
 }
 
 // ============================================================

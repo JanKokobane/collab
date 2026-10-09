@@ -40,6 +40,8 @@ import {
 import { switchView } from './navigation.js'
 import { signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
 import { firebaseAuth } from '../../firebase.js'
+import { loadProjectMeetings } from './meetings.js'
+import { showDashboardToast } from './modalChrome.js'
 
 // ============================================================
 // SIMULATE REAL-TIME COLLABORATION EVENT
@@ -198,10 +200,6 @@ export function initEventListeners() {
   })
 
   // Task creation buttons
-  document.querySelector('#new-task-btn')?.addEventListener('click', () => {
-    const currentActive = document.querySelector('.project-nav .nav-item.active')?.dataset?.view
-    openAdminTaskModal('To do', currentActive)
-  })
   document.querySelectorAll('[data-add]').forEach(button => {
     button.addEventListener('click', () => {
       const currentActive = document.querySelector('.project-nav .nav-item.active')?.dataset?.view
@@ -211,7 +209,6 @@ export function initEventListeners() {
 
   // Sprints management buttons
   document.querySelector('#add-sprint-btn')?.addEventListener('click', openAddSprintModal)
-  document.querySelector('#project-sprints-btn')?.addEventListener('click', openAddSprintModal)
 
   // Collaborator invitation & management
   document.querySelector('#project-invite-collab-btn')?.addEventListener('click', openInviteCollaboratorModal)
@@ -270,7 +267,14 @@ export function initEventListeners() {
         })
       }
       if (targetTab === 'tasks') renderAdminTasksTable()
-      if (targetTab === 'meetings') renderAdminMeetingsTable()
+      if (targetTab === 'meetings') {
+        loadProjectMeetings().then(() => {
+          renderAdminMeetingsTable()
+        }).catch(error => {
+          console.error('Unable to refresh project meetings:', error)
+          showDashboardToast(error.message || 'Project meetings could not be refreshed.', 'error')
+        })
+      }
     })
   })
 

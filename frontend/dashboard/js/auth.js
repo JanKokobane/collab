@@ -206,23 +206,6 @@ export function updateUserUI() {
     }
   }
 
-  const newTaskBtn = document.querySelector('#new-task-btn')
-  if (newTaskBtn) {
-    if (!proj && activeView !== 'Workspace' && activeView !== 'My Tasks') {
-      newTaskBtn.style.display = 'none'
-    } else if (activeView === 'Workspace' || activeView === 'My Tasks' || isCreator) {
-      newTaskBtn.style.display = ''
-      newTaskBtn.className = 'primary-button gold'
-      newTaskBtn.innerHTML = '+ <span>New task</span>'
-      newTaskBtn.title = `Create and assign a task`
-    } else {
-      newTaskBtn.style.display = ''
-      newTaskBtn.className = 'primary-button disabled-permission'
-      newTaskBtn.innerHTML = `${getSvg('lock', 'btn-lock-svg', 13, 13)} <span>New task (${proj.creatorName} Only)</span>`
-      newTaskBtn.title = `Only ${proj.creatorName} (Project Creator) can create and assign tasks for ${proj.name}.`
-    }
-  }
-
   document.querySelectorAll('.column-plus, .add-card').forEach(btn => {
     btn.style.display = (activeView === 'Workspace' || isCreator) ? 'block' : 'none'
   })
@@ -230,11 +213,6 @@ export function updateUserUI() {
   const addSprintBtn = document.querySelector('#add-sprint-btn')
   if (addSprintBtn) {
     addSprintBtn.style.display = isCreator ? 'inline-block' : 'none'
-  }
-
-  const sprintsBtnText = document.querySelector('#sprints-btn-text')
-  if (sprintsBtnText && proj && proj.sprints) {
-    sprintsBtnText.textContent = `Sprints (${proj.sprints.length})`
   }
 
   const collabBtnCount = document.querySelector('#collab-btn-count')
@@ -299,9 +277,12 @@ export function switchTestingPerspective(mode) {
 
 export function showPermissionNotice() {
   const proj = getActiveProject()
-  if (!proj) return
+  const ownedProjects = projects.filter(
+    project => project.creatorFirebaseUid === firebaseAuth.currentUser?.uid
+  )
+  const hasOwnedProject = ownedProjects.length > 0
   const backdrop = make('div', 'modal-backdrop')
-  const box = make('div', 'modal')
+  const box = make('div', `modal${hasOwnedProject ? '' : ' create-project-first-notice'}`)
   const close = make('button', 'close-modal', '×')
   close.type = 'button'
   close.addEventListener('click', closeModal)
@@ -315,31 +296,47 @@ export function showPermissionNotice() {
   crown.style.alignItems = 'center'
   crown.style.justifyContent = 'center'
 
-  const title = make('h2', '', 'Project Creator Privileges Required')
+  const title = make(
+    'h2',
+    '',
+    hasOwnedProject ? 'Project Creator Privileges Required' : 'Create a Project First'
+  )
   title.style.textAlign = 'center'
-  title.style.marginBottom = '8px'
+  title.style.marginBottom = hasOwnedProject ? '8px' : '0'
 
-  const copy = make('p', 'modal-copy', `Only ${proj.creatorName} (who created "${proj.name}") has authority to add new tasks, assign collaborators, break the project into sprints, and approve deliverables. You are currently viewing as an invited collaborator (${currentUser.name}). You have full access to view, update statuses, move task cards, and comment on work.`)
+  const copy = make(
+    'p',
+    'modal-copy',
+    hasOwnedProject && proj
+      ? `Only ${proj.creatorName} (who created "${proj.name}") can add tasks, assign collaborators, create sprints, and approve deliverables. As an invited collaborator, you can view the project, update statuses, move task cards, and comment on work.`
+      : 'You do not own an active project yet. Create a project first, then you can invite people to collaborate with you.'
+  )
   copy.style.textAlign = 'center'
   copy.style.lineHeight = '1.5'
-  copy.style.marginBottom = '20px'
+  copy.style.marginBottom = hasOwnedProject ? '20px' : '0'
 
-  const switchBtn = make('button', 'primary-button full gold', `👑 Switch to ${proj.creatorName} View (Test Creator Mode)`)
-  switchBtn.type = 'button'
-  switchBtn.addEventListener('click', () => {
-    closeModal()
-    switchTestingPerspective('creator')
-  })
-
-  const createOwnBtn = make('button', 'outline-button', '+ Create My Own Project Board')
-  createOwnBtn.type = 'button'
-  createOwnBtn.style.marginTop = '10px'
-  createOwnBtn.addEventListener('click', () => {
+  const createProjectButton = make(
+    'button',
+    'primary-button full gold',
+    hasOwnedProject ? '+ Create My Own Project Board' : 'Create Project'
+  )
+  createProjectButton.type = 'button'
+  createProjectButton.addEventListener('click', () => {
     closeModal()
     hub.openCreateProjectModal?.()
   })
 
-  box.append(close, crown, title, copy, switchBtn, createOwnBtn)
+  if (hasOwnedProject && proj) {
+    box.append(close, crown, title, copy, createProjectButton)
+  } else {
+    box.append(
+      close,
+      make('p', 'eyebrow', 'PROJECT ACCESS'),
+      title,
+      copy,
+      createProjectButton
+    )
+  }
   backdrop.append(box)
   root.replaceChildren(backdrop)
 }

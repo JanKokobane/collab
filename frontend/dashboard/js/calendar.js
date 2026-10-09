@@ -8,12 +8,16 @@ import {
   make,
   closeModal,
   root,
-  saveMeetings,
   saveReminders,
   addAuditLog,
   pushNotification,
-  hub
+  hub,
+  projects,
+  activeView,
+  renderAvatarElement
 } from './state.js'
+import { createProjectMeeting, deleteProjectMeeting, getMeetingProjectMembers, getSafeMeetingUrl } from './meetings.js'
+import { showDashboardToast } from './modalChrome.js'
 import {
   addDaysToDateKey,
   formatRelativeDate,
@@ -77,59 +81,80 @@ export function renderPinnedMeetingsStrip() {
 
   pinned.forEach(meet => {
     const card = make('div', 'pinned-meeting-card')
-    const attendeesHtml = (meet.attendees || ['AM', 'SK']).map(initials => {
-      const mem = getAccessibleMembers().find(m => m.initials === initials)
-      const tone = mem ? mem.tone : 'coral'
-      return `<span class="avatar pinned-attendee-avatar ${tone}-bg" title="${mem ? mem.name : initials}">${initials}</span>`
-    }).join('')
-
     const dateLabel = formatRelativeDate(meet.date)
+    const top = make('div', 'pinned-card-top')
+    const when = make('div', 'pinned-meeting-when')
+    when.append(
+      make('span', 'pinned-date-badge', dateLabel),
+      make('time', 'pinned-meeting-time', getMeetingTimeRange(meet))
+    )
+    const actions = make('div', 'pinned-meeting-actions')
+    actions.append(make('span', 'pinned-meeting-tag', 'Pinned'))
+    if (meet.canCancel) {
+      const cancel = make('button', 'action-btn delete', '×')
+      cancel.type = 'button'
+      cancel.setAttribute('aria-label', `Cancel ${meet.title}`)
+      cancel.title = 'Cancel meeting'
+      cancel.addEventListener('click', event => {
+        event.stopPropagation()
+        deleteMeeting(meet, cancel)
+      })
+      actions.append(cancel)
+    }
+    top.append(when, actions)
 
-    card.innerHTML = `
-      <div class="pinned-card-top">
-        <div class="pinned-meeting-when">
-          <span class="pinned-date-badge">${dateLabel}</span>
-          <time class="pinned-meeting-time">${getMeetingTimeRange(meet)}</time>
-        </div>
-        <div class="pinned-meeting-actions">
-          <span class="pinned-meeting-tag">Pinned</span>
-          <button type="button" class="action-btn delete" aria-label="Cancel ${meet.title}" title="Cancel meeting">×</button>
-        </div>
-      </div>
-      <button type="button" class="pinned-meeting-open" aria-label="Open schedule for ${meet.title}">
-        <h4 class="pinned-card-title">${meet.title}</h4>
-        <p class="pinned-card-notes">${meet.notes || 'Collaborative team sync across active work streams.'}</p>
-      </button>
-      <div class="pinned-card-footer">
-        <div class="pinned-attendees">
-          <span class="pinned-attendees-label">Team</span>
-          <div class="pinned-attendee-list">${attendeesHtml}</div>
-        </div>
-        <a href="https://meet.google.com" target="_blank" rel="noopener noreferrer" class="pinned-join-btn" aria-label="Join ${meet.title} on Google Meet">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l5-5v14l-5-5z"></path><rect x="1" y="5" width="14" height="14" rx="2" ry="2"></rect></svg>
-          Join Meet
-        </a>
-      </div>
-    `
-    const meetingTime = card.querySelector('.pinned-meeting-time')
-    if (meetingTime && meet.startTime) meetingTime.dateTime = `${meet.date}T${meet.startTime}`
-
-    card.querySelector('.action-btn.delete')?.addEventListener('click', (e) => {
-      e.stopPropagation()
-      const idx = meetings.findIndex(m => m.id === meet.id)
-      if (idx !== -1) meetings.splice(idx, 1)
-      saveMeetings()
-      renderCalendarPanel()
-      hub.renderAdminMeetingsTable?.()
-      addAuditLog('Pinned meeting cancelled', `Cancelled "${meet.title}".`, 'trash')
-    })
-
-    card.querySelector('.pinned-meeting-open')?.addEventListener('click', () => {
+    const openButton = make('button', 'pinned-meeting-open')
+    openButton.type = 'button'
+    openButton.setAttribute('aria-label', `Open schedule for ${meet.title}`)
+    openButton.append(
+      make('h4', 'pinned-card-title', meet.title),
+      make('p', 'pinned-card-notes', meet.notes || 'No agenda provided.')
+    )
+    openButton.addEventListener('click', () => {
       openDayScheduleModal(meet.date)
     })
 
+    const footer = make('div', 'pinned-card-footer')
+    const team = make('div', 'pinned-attendees')
+    const attendeeList = make('div', 'pinned-attendee-list')
+    team.append(make('span', 'pinned-attendees-label', 'Team'))
+    ;(meet.attendees || []).forEach(person => {
+      const avatar = make('span', `avatar pinned-attendee-avatar ${person.tone || 'teal'}-bg`)
+      renderAvatarElement(avatar, person, 'pinned-attendee-avatar')
+      avatar.title = person.name
+      attendeeList.append(avatar)
+    })
+    team.append(attendeeList)
+    footer.append(team)
+    const meetingUrl = getSafeMeetingUrl(meet.location)
+    if (meetingUrl) {
+      const join = make('a', 'pinned-join-btn', 'Join Meeting')
+      join.href = meetingUrl
+      join.target = '_blank'
+      join.rel = 'noopener noreferrer'
+      join.setAttribute('aria-label', `Open meeting link for ${meet.title}`)
+      footer.append(join)
+    } else if (meet.location) {
+      footer.append(make('span', 'meeting-location', meet.location))
+    }
+    card.append(top, openButton, footer)
     container.append(card)
   })
+}
+
+async function deleteMeeting(meet, button) {
+  button.disabled = true
+  try {
+    await deleteProjectMeeting(meet)
+    renderCalendarPanel()
+    hub.renderAdminMeetingsTable?.()
+    hub.renderWorkspaceHub?.()
+    addAuditLog('Pinned meeting cancelled', `Cancelled "${meet.title}".`, 'trash')
+    showDashboardToast('Meeting cancelled.')
+  } catch (error) {
+    button.disabled = false
+    showDashboardToast(error.message || 'Unable to cancel this meeting.', 'error')
+  }
 }
 
 export function renderActualCalendarGrid() {
@@ -295,13 +320,26 @@ export function openDayScheduleModal(dateStr) {
       row.style.display = 'flex'
       row.style.justifyContent = 'space-between'
       row.style.alignItems = 'center'
-      row.innerHTML = `
-        <div>
-          <strong style="font-size: 12px; color: #92400E; display: block;">📍 ${m.title}</strong>
-          <small style="color: #71717A; font-size: 11px;">${getMeetingTimeRange(m)} • Host: ${m.host || 'Alex Morgan'}</small>
-        </div>
-        <a href="https://meet.google.com" target="_blank" rel="noopener noreferrer" class="pinned-join-btn">Join Meet</a>
-      `
+      const description = make('div')
+      const meetingTitle = make('strong', '', `📍 ${m.title}`)
+      meetingTitle.style.fontSize = '12px'
+      meetingTitle.style.color = '#92400E'
+      meetingTitle.style.display = 'block'
+      const details = make('small', '', `${getMeetingTimeRange(m)} • Host: ${m.host}`)
+      details.style.color = '#71717A'
+      details.style.fontSize = '11px'
+      description.append(meetingTitle, details)
+      row.append(description)
+      const meetingUrl = getSafeMeetingUrl(m.location)
+      if (meetingUrl) {
+        const join = make('a', 'pinned-join-btn', 'Join Meeting')
+        join.href = meetingUrl
+        join.target = '_blank'
+        join.rel = 'noopener noreferrer'
+        row.append(join)
+      } else if (m.location) {
+        row.append(make('span', 'meeting-location', m.location))
+      }
       meetSec.append(row)
     })
   }
@@ -750,12 +788,52 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey()) {
   close.type = 'button'
   close.addEventListener('click', closeModal)
 
-  const title = make('h2', '', 'Admin Console: Schedule Team Meeting')
-  const copy = make('p', 'modal-copy', 'Centrally schedule team collaboration events with pinned calendar markers.')
+  const title = make('h2', '', 'Schedule Team Meeting')
+  const copy = make('p', 'modal-copy', 'Schedule a meeting for a project you own or have joined.')
+
+  const projectLabel = make('label', '', 'Project')
+  const projectSelect = document.createElement('select')
+  projectSelect.required = true
+  projects.forEach(project => {
+    const option = make('option', '', project.name)
+    option.value = project.projectId
+    projectSelect.append(option)
+  })
+  const activeProject = projects.find(project => project.name === activeView)
+  if (activeProject) projectSelect.value = activeProject.projectId
+  projectLabel.append(projectSelect)
+
+  const attendeesFieldset = document.createElement('fieldset')
+  attendeesFieldset.className = 'meeting-attendees-fieldset'
+  const attendeesLegend = document.createElement('legend')
+  attendeesLegend.textContent = 'Invite project members'
+  const attendeesList = make('div', 'meeting-attendees-options')
+  attendeesFieldset.append(attendeesLegend, attendeesList)
+  const renderAttendeeOptions = () => {
+    attendeesList.replaceChildren()
+    getMeetingProjectMembers(projectSelect.value).forEach(person => {
+      const label = make('label', 'checkbox-label')
+      const checkbox = document.createElement('input')
+      checkbox.type = 'checkbox'
+      checkbox.name = 'meetingAttendee'
+      checkbox.value = person.firebaseUid
+      checkbox.checked = true
+      label.append(checkbox, make('span', '', person.name))
+      attendeesList.append(label)
+    })
+  }
+  projectSelect.addEventListener('change', renderAttendeeOptions)
+  renderAttendeeOptions()
+  if (!projects.length) {
+    projectSelect.disabled = true
+    attendeesFieldset.disabled = true
+    copy.textContent = 'Create or join a project before scheduling a project meeting.'
+  }
 
   const titleLabel = make('label', '', 'Meeting Title')
   const titleInput = make('input')
   titleInput.required = true
+  titleInput.maxLength = 255
   titleInput.placeholder = 'e.g. Sprint 2 Planning & Review'
   titleLabel.append(titleInput)
 
@@ -805,46 +883,59 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey()) {
 
   const locLabel = make('label', '', 'Meeting Link / Location')
   const locInput = make('input')
-  locInput.value = 'Google Meet (collab.io/sync-meet)'
+  locInput.type = 'text'
+  locInput.maxLength = 2048
+  locInput.placeholder = 'https://meet.google.com/... or a physical location'
+  locInput.title = 'Enter an HTTPS or HTTP meeting link, or a physical location.'
   locLabel.append(locInput)
 
   const notesLabel = make('label', '', 'Agenda & Discussion Topics')
   const notesInput = document.createElement('textarea')
   notesInput.rows = 2
+  notesInput.maxLength = 10000
   notesInput.placeholder = 'Key discussion points for this collaborative sync...'
   notesLabel.append(notesInput)
 
   const submit = make('button', 'primary-button gold', 'Schedule & Pin Meeting')
   submit.type = 'submit'
+  submit.disabled = projects.length === 0
 
-  form.append(close, title, copy, titleLabel, dateLabel, timeRange, pinLabel, locLabel, notesLabel, submit)
+  form.append(close, title, copy, projectLabel, attendeesFieldset, titleLabel, dateLabel, timeRange, pinLabel, locLabel, notesLabel, submit)
   backdrop.append(form)
   root.replaceChildren(backdrop)
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async e => {
     e.preventDefault()
     validateMeetingTime()
     if (!form.reportValidity()) return
-    const newMeet = {
-      id: `meet-${Date.now()}`,
-      title: titleInput.value.trim(),
-      date: dateInput.value,
-      startTime: startTimeInput.value,
-      endTime: endTimeInput.value,
-      time: formatTimeRangeForDisplay(startTimeInput.value, endTimeInput.value),
-      pinned: pinInput.checked,
-      location: locInput.value.trim(),
-      host: currentUser.name,
-      attendees: ['AM', 'SK', 'JL', 'ER', 'DP'],
-      notes: notesInput.value.trim()
+    if (!projectSelect.value) {
+      showDashboardToast('Choose a project before scheduling a meeting.')
+      return
     }
-    meetings.push(newMeet)
-    saveMeetings()
-    closeModal()
-    renderCalendarPanel()
-    hub.renderAdminMeetingsTable?.()
-    addAuditLog('Admin meeting scheduled', `${newMeet.title} scheduled for ${newMeet.date} (${newMeet.time}).`, 'sync')
-    pushNotification('New Team Meeting Scheduled', `${newMeet.title} on ${newMeet.date}`, '📅', 'coral-bg')
+    submit.disabled = true
+    try {
+      const newMeet = await createProjectMeeting(projectSelect.value, {
+        title: titleInput.value.trim(),
+        date: dateInput.value,
+        startTime: startTimeInput.value,
+        endTime: endTimeInput.value,
+        pinned: pinInput.checked,
+        location: locInput.value.trim(),
+        notes: notesInput.value.trim(),
+        attendeeFirebaseUids: [...attendeesList.querySelectorAll('input[name="meetingAttendee"]:checked')]
+          .map(input => input.value)
+      })
+      closeModal()
+      renderCalendarPanel()
+      hub.renderAdminMeetingsTable?.()
+      hub.renderWorkspaceHub?.()
+      addAuditLog('Project meeting scheduled', `${newMeet.title} scheduled for ${newMeet.meeting_date}.`, 'sync')
+      pushNotification('New Team Meeting Scheduled', `${newMeet.title} on ${newMeet.meeting_date}`, '📅', 'coral-bg')
+      showDashboardToast('Meeting scheduled.')
+    } catch (error) {
+      submit.disabled = false
+      showDashboardToast(error.message || 'Unable to schedule this meeting.', 'error')
+    }
   })
 }
 

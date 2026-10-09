@@ -109,10 +109,11 @@ import {
   initWorkspaceHubEvents
 } from './js/workspaceHub.js'
 import { initMessages, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js'
-import { initModalChrome } from './js/modalChrome.js'
 import { initProfileOnboarding } from './js/profileOnboarding.js'
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
 import { firebaseAuth } from '../firebase.js'
+import { loadProjectMeetings } from './js/meetings.js'
+import { initModalChrome, showDashboardToast } from './js/modalChrome.js'
 
 let notificationRefreshInterval = null
 let notificationRefreshDelay = 30_000
@@ -281,9 +282,16 @@ onAuthStateChanged(firebaseAuth, async user => {
       window.history.replaceState({}, '', url)
     }
     await loadProjectsFromAPI()
+    try {
+      await loadProjectMeetings()
+    } catch (error) {
+      console.error('Unable to load project meetings:', error)
+      showDashboardToast(error.message || 'Project meetings could not be loaded.', 'error')
+    }
     refreshMessagesForCurrentUser()
     renderProjectNav()
     renderAdminProjectsTable()
+    renderAdminMeetingsTable()
     await renderAdminTasksTable()
     const selectedProject = projects.find(project => project.id === acceptedProjectId)
     const builtInViews = [

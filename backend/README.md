@@ -64,6 +64,11 @@ accepted invitee when edited.
   creator.
 - `GET|POST /api/projects/:projectId/tasks/:taskId/comments`: read or add task
   comments as the project creator or an accepted invitee.
+- `GET|POST /api/projects/:projectId/meetings` and
+  `DELETE /api/projects/:projectId/meetings/:meetingId`: list, schedule, and
+  cancel project meetings. Owners and accepted invitees can list or schedule;
+  only the host or project owner can cancel. Meeting attendees must be accepted
+  members of that project.
 - `PUT /api/projects/:projectId` with a `sprints` array: persist sprint changes
   as the project creator. Sprint deletion may include a `sprint_name_map`
   object mapping every existing sprint name to a remaining sprint name; the
@@ -112,6 +117,9 @@ The database migration includes tables for the planned calendar, messaging,
 announcements, resources, polls, brainstorm, notifications, activity, and
 files features. A table existing does not mean its API or frontend feature is
 implemented.
+
+Migration `007_project_meetings.sql` adds persistent project-scoped meetings
+and is applied automatically during backend startup.
 
 ## Remaining local demo features
 

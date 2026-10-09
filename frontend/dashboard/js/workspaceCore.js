@@ -1,9 +1,10 @@
-import { projects, getAccessibleMembers, getAccessibleTasks, meetings, notifications, currentUser, loadNotificationsFromAPI, loadProjectsFromAPI, markNotificationRead, markAllNotificationsRead, clearAllNotifications, make, getUserInitials, renderAvatarElement, root, closeModal, hub } from './state.js'
+import { projects, activeView, getAccessibleMembers, getAccessibleTasks, meetings, notifications, currentUser, loadNotificationsFromAPI, loadProjectsFromAPI, markNotificationRead, markAllNotificationsRead, clearAllNotifications, make, getUserInitials, renderAvatarElement, root, closeModal, hub } from './state.js'
 import { renderAnnouncements, initAnnouncementEvents } from './announcements.js'
 import { renderStickyNotes, initBrainstormEvents } from './brainstorm.js'
 import { renderTeamPolls, initPollEvents } from './polls.js'
 import { renderScratchpad, renderHubResources, initWorkspaceResourceEvents } from './workspaceResources.js'
 import { api } from './api.js'
+import { getSafeMeetingUrl } from './meetings.js'
 
 // RENDER WORKSPACE HUB
 export function renderWorkspaceHub() {
@@ -62,25 +63,82 @@ export function renderWorkspaceSummary() {
   const statsTeamMemberCount = document.querySelector('#stats-team-member-count')
   const statsTeamMemberAvatars = document.querySelector('#stats-team-member-avatars')
   const hubTeamMemberAvatars = document.querySelector('#hub-team-member-avatars')
+  const activeProject = projects.find(project => project.name === activeView)
+  const projectTasks = activeProject
+    ? accessibleTasks.filter(task =>
+      task.projectId
+        ? task.projectId === activeProject.projectId
+        : task.project === activeProject.name
+    )
+    : accessibleTasks
+  const statsTasks = activeProject ? projectTasks : accessibleTasks
+  const statsDueThisWeek = statsTasks.filter(task => {
+    if (!task.date) return false
+    const dueDate = new Date(`${task.date}T00:00:00`)
+    return !Number.isNaN(dueDate.getTime()) && dueDate >= weekStart && dueDate <= weekEnd
+  })
+  const projectMembers = activeProject
+    ? [
+      ...(activeProject.creatorEmail || activeProject.creatorFirebaseUid
+        ? [{
+          firebaseUid: activeProject.creatorFirebaseUid,
+          email: activeProject.creatorEmail,
+          name: activeProject.creatorName,
+          initials: activeProject.creatorInitials,
+          tone: activeProject.creatorTone,
+          profileImage: activeProject.creatorProfileImage ||
+            (activeProject.creatorFirebaseUid === currentUser.uid
+              ? currentUser.profileImage || currentUser.photoURL || ''
+              : '')
+        }]
+        : []),
+      ...(activeProject.acceptedMembers || [])
+    ]
+    : accessibleMembers
+  const statsMembers = activeProject
+    ? [...new Map(projectMembers
+      .filter(member => member.email || member.firebaseUid)
+      .map(member => [
+        member.firebaseUid || member.email.trim().toLowerCase(),
+        member
+      ])).values()]
+    : accessibleMembers
   if (completedTaskCount) completedTaskCount.textContent = completedCount
   if (totalTaskCount) totalTaskCount.textContent = accessibleTasks.length
   if (dueWeekCount) dueWeekCount.textContent = dueThisWeek.length
   if (dueWeekPending) dueWeekPending.textContent = dueThisWeek.filter(task => task.status !== 'Done').length
-  if (statsCompletedCount) statsCompletedCount.textContent = completedCount
-  if (statsTotalCount) statsTotalCount.textContent = accessibleTasks.length
-  if (statsDueWeekCount) statsDueWeekCount.textContent = dueThisWeek.length
-  if (statsDueWeekPending) statsDueWeekPending.textContent = dueThisWeek.filter(task => task.status !== 'Done').length
-  if (statsTeamMemberCount) statsTeamMemberCount.textContent = accessibleMembers.length
-  ;[statsTeamMemberAvatars, hubTeamMemberAvatars].forEach(container => {
-    if (!container) return
-    container.replaceChildren()
+  if (statsCompletedCount) {
+    statsCompletedCount.textContent = statsTasks.filter(task => task.status === 'Done').length
+  }
+  if (statsTotalCount) statsTotalCount.textContent = statsTasks.length
+  if (statsDueWeekCount) statsDueWeekCount.textContent = statsDueThisWeek.length
+  if (statsDueWeekPending) {
+    statsDueWeekPending.textContent = statsDueThisWeek.filter(task => task.status !== 'Done').length
+  }
+  if (statsTeamMemberCount) statsTeamMemberCount.textContent = statsMembers.length
+
+  if (statsTeamMemberAvatars) {
+    statsTeamMemberAvatars.replaceChildren()
+    statsMembers.slice(0, 3).forEach(member => {
+      const avatar = make('span')
+      renderAvatarElement(avatar, member)
+      statsTeamMemberAvatars.append(avatar)
+    })
+    if (statsMembers.length > 3) {
+      statsTeamMemberAvatars.append(make('span', 'avatar more-avatar', `+${statsMembers.length - 3}`))
+    }
+  }
+  if (hubTeamMemberAvatars) {
+    hubTeamMemberAvatars.replaceChildren()
     accessibleMembers.slice(0, 3).forEach(member => {
-      container.append(make('span', `avatar ${member.tone || 'coral'}-bg`, member.initials))
+      const avatar = make('span')
+      renderAvatarElement(avatar, member)
+      hubTeamMemberAvatars.append(avatar)
     })
     if (accessibleMembers.length > 3) {
-      container.append(make('span', 'avatar more-avatar', `+${accessibleMembers.length - 3}`))
+      hubTeamMemberAvatars.append(make('span', 'avatar more-avatar', `+${accessibleMembers.length - 3}`))
     }
-  })
+  }
   if (openTaskCount) openTaskCount.textContent = accessibleTasks.filter(task => task.status !== 'Done').length
   if (meetingCount) meetingCount.textContent = upcomingCount
   if (memberCount) memberCount.textContent = accessibleMembers.length
@@ -120,31 +178,43 @@ export function renderUpcomingMeetings() {
     row.setAttribute('aria-label', `Open ${meeting.title} on ${formattedDate}`)
     const attendeeCell = make('td')
     const attendeeWrap = make('div', 'meeting-attendees')
-    ;(meeting.attendees || []).forEach(initials => {
-      const member = getAccessibleMembers().find(person => person.initials === initials)
-      const avatar = make('span', `avatar ${member?.tone || 'coral'}-bg meeting-attendee`)
-      renderAvatarElement(avatar, member || { name: initials, initials }, 'meeting-attendee')
-      avatar.title = member?.name || initials
+    ;(meeting.attendees || []).forEach(person => {
+      const avatar = make('span', `avatar ${person.tone || 'teal'}-bg meeting-attendee`)
+      renderAvatarElement(avatar, person, 'meeting-attendee')
+      avatar.title = person.name
       attendeeWrap.append(avatar)
     })
     attendeeCell.append(attendeeWrap)
     const hostName = meeting.host || 'Not assigned'
     const hostMember = getAccessibleMembers().find(person =>
-      person.name?.toLowerCase() === hostName.toLowerCase() ||
-      person.email?.toLowerCase() === hostName.toLowerCase() ||
-      person.initials?.toLowerCase() === hostName.toLowerCase()
+      person.firebaseUid === meeting.hostFirebaseUid
     )
     const hostCell = make('td')
     const hostWrap = make('div', 'meeting-host')
     if (hostMember || hostName !== 'Not assigned') {
       const hostAvatar = make('span', `avatar ${hostMember?.tone || 'coral'}-bg meeting-host-avatar`)
-      renderAvatarElement(hostAvatar, hostMember || { name: hostName, initials: getUserInitials(hostName) }, 'meeting-host-avatar')
+      renderAvatarElement(hostAvatar, hostMember || {
+        name: hostName,
+        initials: getUserInitials(hostName),
+        profileImage: meeting.hostProfileImage
+      }, 'meeting-host-avatar')
       hostAvatar.setAttribute('aria-hidden', 'true')
       hostWrap.append(hostAvatar)
     }
     hostWrap.append(make('span', 'meeting-host-name', hostName))
     hostCell.append(hostWrap)
-    const locationCell = make('td', 'meeting-location', meeting.location || 'Location not set')
+    const locationCell = make('td', 'meeting-location')
+    const meetingUrl = getSafeMeetingUrl(meeting.location)
+    if (meetingUrl) {
+      const link = make('a', '', meeting.location)
+      link.href = meetingUrl
+      link.target = '_blank'
+      link.rel = 'noopener noreferrer'
+      link.addEventListener('click', event => event.stopPropagation())
+      locationCell.append(link)
+    } else {
+      locationCell.textContent = meeting.location || 'Location not set'
+    }
     const meetingCell = make('td', 'meeting-title-cell', meeting.title)
     const dateCell = make('td', '', formattedDate)
     const timeCell = make('td', '', meeting.time || 'Time not set')

@@ -82,46 +82,63 @@ export function updateTaskCounts(filtered) {
 
 export async function moveTaskStatus(taskId, newStatus) {
   const task = tasks.find(t => t.id === taskId)
-  if (!task) return
+  if (!task || task.status === newStatus || task.statusUpdating) return
 
   const oldStatus = task.status
-  if (task.backendPersistent) {
-    try {
-      await api.patch(
-        `/projects/${encodeURIComponent(task.projectId)}/tasks/${encodeURIComponent(task.taskId)}/status`,
-        { status: newStatus }
-      )
-    } catch (error) {
-      showDashboardToast(error.message || 'The task status could not be updated.', 'error')
-      return
-    }
+  const previousState = {
+    status: task.status,
+    done: task.done,
+    progress: task.progress,
+    approvalStatus: task.approvalStatus,
+    approvedBy: task.approvedBy
   }
+
   task.status = newStatus
   task.done = newStatus === 'Done'
 
   if (task.backendPersistent) {
     task.progress = newStatus === 'Done' ? 100 : newStatus === 'In progress' ? 50 : 0
     task.approvalStatus = 'none'
-  } else if (newStatus === 'Done') {
-    task.progress = 100
-    const isCreator = isCurrentUserProjectCreator()
-    if (!isCreator) {
-      task.approvalStatus = 'pending_approval'
-      pushNotification('Deliverable Submitted', `${currentUser.name} completed "${task.title}" — awaiting creator approval`, currentUser.initials, 'orange-bg')
-    } else {
-      task.approvalStatus = 'approved'
-      task.approvedBy = currentUser.name
+    task.statusUpdating = true
+    renderTasks()
+    hub.renderWorkspaceSummary?.()
+    try {
+      await api.patch(
+        `/projects/${encodeURIComponent(task.projectId)}/tasks/${encodeURIComponent(task.taskId)}/status`,
+        { status: newStatus }
+      )
+    } catch (error) {
+      Object.assign(task, previousState)
+      task.statusUpdating = false
+      renderTasks()
+      hub.renderWorkspaceSummary?.()
+      showDashboardToast(error.message || 'The task status could not be updated.', 'error')
+      return
     }
-  } else if (newStatus === 'In progress') {
-    task.progress = task.progress && task.progress > 0 && task.progress < 100 ? task.progress : 50
-    task.approvalStatus = 'none'
+    task.statusUpdating = false
   } else {
-    task.progress = 0
-    task.approvalStatus = 'none'
+    if (newStatus === 'Done') {
+      task.progress = 100
+      const isCreator = isCurrentUserProjectCreator()
+      if (!isCreator) {
+        task.approvalStatus = 'pending_approval'
+        pushNotification('Deliverable Submitted', `${currentUser.name} completed "${task.title}" — awaiting creator approval`, currentUser.initials, 'orange-bg')
+      } else {
+        task.approvalStatus = 'approved'
+        task.approvedBy = currentUser.name
+      }
+    } else if (newStatus === 'In progress') {
+      task.progress = task.progress && task.progress > 0 && task.progress < 100 ? task.progress : 50
+      task.approvalStatus = 'none'
+    } else {
+      task.progress = 0
+      task.approvalStatus = 'none'
+    }
   }
 
   saveTasks()
   renderTasks()
+  hub.renderWorkspaceSummary?.()
 
   if (task.backendPersistent) {
     hub.renderAdminTasksTable?.()
@@ -140,9 +157,15 @@ export function taskCard(task) {
   const canUpdateBackendTask = !task.backendPersistent ||
     currentUser.uid === project?.creatorFirebaseUid ||
     project?.acceptedMembers?.some(member => member.firebaseUid === currentUser.uid)
-  card.setAttribute('draggable', String(canUpdateBackendTask))
+  const canMoveTask = canUpdateBackendTask && !task.statusUpdating
+  card.setAttribute('draggable', String(canMoveTask))
+  if (task.statusUpdating) card.setAttribute('aria-busy', 'true')
 
   card.addEventListener('dragstart', e => {
+    if (!canMoveTask) {
+      e.preventDefault()
+      return
+    }
     e.dataTransfer.setData('text/plain', String(task.id))
     e.dataTransfer.effectAllowed = 'move'
     card.classList.add('is-dragging')
@@ -204,28 +227,28 @@ export function taskCard(task) {
   }
 
   const moveRow = make('div', 'card-move-row')
-  if (canUpdateBackendTask && task.status !== 'Backlog') {
+  if (canMoveTask && task.status !== 'Backlog') {
     const btnBacklog = make('button', 'card-move-btn')
     btnBacklog.type = 'button'
     btnBacklog.innerHTML = `${getSvg('arrowLeft', 'arrow-svg', 11, 11)} <span>Backlog</span>`
     btnBacklog.addEventListener('click', e => { e.stopPropagation(); moveTaskStatus(task.id, 'Backlog') })
     moveRow.append(btnBacklog)
   }
-  if (canUpdateBackendTask && task.status !== 'To do') {
+  if (canMoveTask && task.status !== 'To do') {
     const btnTodo = make('button', 'card-move-btn')
     btnTodo.type = 'button'
     btnTodo.innerHTML = `${getSvg('arrowLeft', 'arrow-svg', 11, 11)} <span>To do</span>`
     btnTodo.addEventListener('click', e => { e.stopPropagation(); moveTaskStatus(task.id, 'To do') })
     moveRow.append(btnTodo)
   }
-  if (canUpdateBackendTask && task.status !== 'In progress') {
+  if (canMoveTask && task.status !== 'In progress') {
     const btnProg = make('button', 'card-move-btn')
     btnProg.type = 'button'
     btnProg.innerHTML = `<span>In prog</span> ${getSvg('arrowRight', 'arrow-svg', 11, 11)}`
     btnProg.addEventListener('click', e => { e.stopPropagation(); moveTaskStatus(task.id, 'In progress') })
     moveRow.append(btnProg)
   }
-  if (canUpdateBackendTask && task.status !== 'Done') {
+  if (canMoveTask && task.status !== 'Done') {
     const btnDone = make('button', 'card-move-btn')
     btnDone.type = 'button'
     btnDone.innerHTML = `${getSvg('check', 'check-svg', 11, 11)} <span>Done</span>`

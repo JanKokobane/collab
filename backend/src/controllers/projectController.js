@@ -301,6 +301,11 @@ const getProjects = async (req, res) => {
                 creator_email,
                 creator_name,
                 creator_initials,
+                (
+                    SELECT profile_image
+                    FROM user_profiles
+                    WHERE firebase_uid = projects.creator_firebase_uid
+                ) AS creator_profile_image,
                 invited_members,
                 COALESCE(
                     (
@@ -308,20 +313,24 @@ const getProjects = async (req, res) => {
                             'firebaseUid', accepted_member.invited_firebase_uid,
                             'email', accepted_member.invited_email,
                             'name', accepted_member.invited_name,
-                            'role', accepted_member.role
+                            'role', accepted_member.role,
+                            'profileImage', accepted_member.profile_image
                         ) ORDER BY accepted_member.created_at)
                         FROM (
                             SELECT DISTINCT ON (invited_firebase_uid)
-                                invited_firebase_uid,
-                                invited_email,
-                                invited_name,
-                                role,
-                                created_at
-                            FROM project_invitations
-                            WHERE project_id = projects.project_id
-                              AND status = 'accepted'
-                              AND invited_firebase_uid IS NOT NULL
-                            ORDER BY invited_firebase_uid, created_at DESC
+                                invitation.invited_firebase_uid,
+                                invitation.invited_email,
+                                invitation.invited_name,
+                                invitation.role,
+                                invitation.created_at,
+                                user_profile.profile_image
+                            FROM project_invitations invitation
+                            LEFT JOIN user_profiles user_profile
+                              ON user_profile.firebase_uid = invitation.invited_firebase_uid
+                            WHERE invitation.project_id = projects.project_id
+                              AND invitation.status = 'accepted'
+                              AND invitation.invited_firebase_uid IS NOT NULL
+                            ORDER BY invitation.invited_firebase_uid, invitation.created_at DESC
                         ) accepted_member
                     ),
                     '[]'::json
@@ -395,6 +404,11 @@ const getProject = async (req, res) => {
                 creator_email,
                 creator_name,
                 creator_initials,
+                (
+                    SELECT profile_image
+                    FROM user_profiles
+                    WHERE firebase_uid = projects.creator_firebase_uid
+                ) AS creator_profile_image,
                 invited_members,
                 COALESCE(
                     (
@@ -402,20 +416,24 @@ const getProject = async (req, res) => {
                             'firebaseUid', accepted_member.invited_firebase_uid,
                             'email', accepted_member.invited_email,
                             'name', accepted_member.invited_name,
-                            'role', accepted_member.role
+                            'role', accepted_member.role,
+                            'profileImage', accepted_member.profile_image
                         ) ORDER BY accepted_member.created_at)
                         FROM (
                             SELECT DISTINCT ON (invited_firebase_uid)
-                                invited_firebase_uid,
-                                invited_email,
-                                invited_name,
-                                role,
-                                created_at
-                            FROM project_invitations
-                            WHERE project_id = projects.project_id
-                              AND status = 'accepted'
-                              AND invited_firebase_uid IS NOT NULL
-                            ORDER BY invited_firebase_uid, created_at DESC
+                                invitation.invited_firebase_uid,
+                                invitation.invited_email,
+                                invitation.invited_name,
+                                invitation.role,
+                                invitation.created_at,
+                                user_profile.profile_image
+                            FROM project_invitations invitation
+                            LEFT JOIN user_profiles user_profile
+                              ON user_profile.firebase_uid = invitation.invited_firebase_uid
+                            WHERE invitation.project_id = projects.project_id
+                              AND invitation.status = 'accepted'
+                              AND invitation.invited_firebase_uid IS NOT NULL
+                            ORDER BY invitation.invited_firebase_uid, invitation.created_at DESC
                         ) accepted_member
                     ),
                     '[]'::json

@@ -6,7 +6,7 @@ Collab is a browser-based team workspace for organizing projects, tasks, calenda
 
 - A public landing page with product information, pricing, FAQs, testimonials, and sign-up links.
 - An authentication page for email-link sign-in and registration, plus Google, GitHub, and Microsoft sign-in.
-- A single-page dashboard with project boards, calendar, workspace administration, notifications, brainstorming tools, settings, and local-demo messaging.
+- A single-page dashboard with project boards, calendar, workspace administration, notifications, brainstorming tools, settings, and local-demo messaging. Project meetings are persisted by the backend and scoped to accessible projects.
 - Privacy and terms pages.
 
 ## Run locally
@@ -48,7 +48,7 @@ Firebase authentication is separate from the dashboard's demo data storage; sign
 
 - **Workspace and projects:** Project navigation, workspace overview, sprint summaries, task board, and list view. Project and sprint management lives in `dashboard/js/projects.js`.
 - **Tasks:** Filtering, task status changes, board drag-and-drop, list rendering, and task creation are handled by `dashboard/js/tasks.js`.
-- **Calendar:** Month navigation, scheduled meetings, pinned meetings, task dates, reminders, and scheduling dialogs are handled by `dashboard/js/calendar.js`. `dashboard/js/dateUtils.js` centralizes local date-key parsing and relative date display.
+- **Calendar:** Month navigation, backend-persisted project meetings, pinned meetings, task dates, reminders, and scheduling dialogs are handled by `dashboard/js/calendar.js`. Meeting API loading and normalization are in `dashboard/js/meetings.js`; `dashboard/js/dateUtils.js` centralizes local date-key parsing and relative date display.
 - **Administration:** Member, task, meeting, and audit-log tables are rendered by `dashboard/js/admin.js`. Role and project-creator helpers are in `dashboard/js/auth.js`.
 - **Workspace hub:** Workspace summaries, announcements, resources, scratchpad, and team notifications are managed by `dashboard/js/workspaceHub.js`.
 - **Brainstorming:** Sticky notes can be categorized, repositioned, and linked on a board; board changes can be explicitly saved. The same workspace module manages this feature.
@@ -89,6 +89,7 @@ frontend/
 │       ├── modalChrome.js     Shared modal chrome enhancement
 │       ├── navigation.js      Dashboard view switching
 │       ├── projects.js        Projects, sprints, collaborator management
+│       ├── meetings.js        Project meeting API, loading, and normalization
 │       ├── state.js           Seed data, shared state, persistence, hub
 │       ├── tasks.js           Task filtering, boards, list, status workflow
 │       ├── theme.js           Theme, accent, profile, settings
@@ -102,7 +103,7 @@ frontend/
 
 ## State and persistence
 
-The frontend seeds demo members, projects, tasks, meetings, reminders, notifications, and collaboration activity in `dashboard/js/state.js`. Most dashboard state is saved in the browser's `localStorage`; workspace-hub features and messages use their own modules and storage keys. The dashboard is consequently a local demo, not a real-time multi-user backend. State is scoped to the browser origin and device; clearing site data removes it. Some modules listen for browser `storage` events so changes from another tab on the same origin can be reflected locally.
+Some dashboard sections still seed demo members, tasks, reminders, notifications, and collaboration activity in `dashboard/js/state.js`; local-only state remains scoped to the browser origin and device. Projects and project tasks use the backend API, and project meetings are stored in PostgreSQL through the authenticated project meeting endpoints. Meetings are not loaded from or saved to browser storage.
 
 Common storage keys include:
 
@@ -111,7 +112,7 @@ Common storage keys include:
 | Authenticated profile and login marker | `collab-user`, `collab-logged-in` |
 | Pending registration and email-link flow | `collab-pending-user`, `emailForSignIn` |
 | Members, projects, tasks | `collab-members`, `collab-projects`, `collab-tasks` |
-| Meetings and reminders | `collab-meetings`, `collab-reminders` |
+| Local reminders | `collab-reminders` |
 | Workspace notifications | `collab_notifications` |
 | Announcements, sticky notes, links, polls, resources | `collab_announcements`, `collab_sticky_notes`, `collab_sticky_links`, `collab_team_polls`, `collab_team_resources` |
 | Scratchpad and workspace preferences | `collab_workspace_scratchpad`, `collab-workspace-settings`, `collab_tool_settings` |
@@ -120,13 +121,12 @@ Common storage keys include:
 
 Messaging attachments are converted to data URLs and stored with the conversation; the current implementation limits the combined attachment size to 512 KB per message to reduce browser storage pressure. Incoming-message read state and outgoing demo read receipts are simulated in local state.
 
-Firebase is used for authentication only in this frontend. Project, task, calendar, poll, notification, and message changes are not written to Firestore or another server by these modules.
+Firebase provides authentication tokens to the backend API. Project meetings and other documented project APIs are persisted by the server; reminders, polls, and demo messaging remain local unless their module is explicitly wired to an API.
 
-The backend now contains a Firebase-ID-token authenticated workspace and
-membership API foundation. Existing dashboard features have not yet migrated
-from browser-local demo state to that API, so local demo data is not protected
-or shared as real workspace data. See `../backend/README.md` for API setup and
-the current migration boundary.
+The backend provides Firebase-ID-token authenticated project, task, invitation,
+notification, and meeting APIs. Other dashboard features may still use
+browser-local demo state; see `../backend/README.md` for API setup and the
+current migration boundary.
 
 ## Styling and assets
 

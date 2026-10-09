@@ -20,6 +20,11 @@ const {
     updateProjectTask,
     updateProjectTaskStatus
 } = require('../controllers/taskController');
+const {
+    createMeeting,
+    deleteMeeting,
+    getMeetings
+} = require('../controllers/meetingController');
 
 const {
     requireFirebaseAuth
@@ -49,6 +54,9 @@ router.post('/:projectId/tasks/:taskId/comments', createProjectTaskComment);
 router.patch('/:projectId/tasks/:taskId/status', updateProjectTaskStatus);
 router.put('/:projectId/tasks/:taskId', updateProjectTask);
 router.delete('/:projectId/tasks/:taskId', deleteProjectTask);
+router.get('/:projectId/meetings', getMeetings);
+router.post('/:projectId/meetings', createMeeting);
+router.delete('/:projectId/meetings/:meetingId', deleteMeeting);
 
 router.get(
     '/:projectId',

@@ -11,7 +11,6 @@ import {
   root,
   renderAvatarElement,
   saveTasks,
-  saveMeetings,
   saveProjects,
   addAuditLog,
   pushNotification,
@@ -25,16 +24,20 @@ import { openInviteCollaboratorModal, openCreateProjectModal, openEditProjectMod
 import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
 import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
+import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
 
 // ============================================================
 // ADMIN CONSOLE TABLE & FUNCTIONS
 // ============================================================
 
 let projectMembers = []
-let selectedMembersProjectId = ''
+let selectedMembersProjectId = 'all'
 
 export function getSelectedMembersProject() {
-  return projects.find(project => project.projectId === selectedMembersProjectId) || null
+  return projects.find(project =>
+    project.projectId === selectedMembersProjectId &&
+    project.creatorFirebaseUid === firebaseAuth.currentUser?.uid
+  ) || null
 }
 
 export function filterMembersByProject(projectId) {
@@ -101,29 +104,30 @@ export function renderMembersTable() {
   )
   const projectFilter = document.querySelector('#admin-members-project-filter')
   if (projectFilter) {
-    const availableProjects = ownedProjects.length ? ownedProjects : accessibleProjects
-    const projectFilterWrap = projectFilter.closest('.admin-members-project-filter-wrap')
-    const availableProjectIds = new Set(availableProjects.map(project => project.projectId))
+    const availableProjectIds = new Set(accessibleProjects.map(project => project.projectId))
     if (selectedMembersProjectId !== 'all' && !availableProjectIds.has(selectedMembersProjectId)) {
-      const activeProject = getActiveProject()
-      selectedMembersProjectId = availableProjectIds.has(activeProject?.projectId)
-        ? activeProject.projectId
-        : availableProjects[0]?.projectId || ''
+      selectedMembersProjectId = 'all'
     }
 
     projectFilter.replaceChildren()
-    if (availableProjects.length > 1) {
-      const allOption = make('option', '', 'All projects')
-      allOption.value = 'all'
-      projectFilter.append(allOption)
-    }
-    availableProjects.forEach(project => {
+    const allOption = make('option', '', 'All projects')
+    allOption.value = 'all'
+    projectFilter.append(allOption)
+    accessibleProjects.forEach(project => {
       const option = make('option', '', project.name)
       option.value = project.projectId
       projectFilter.append(option)
     })
     projectFilter.value = selectedMembersProjectId
-    if (projectFilterWrap) projectFilterWrap.hidden = availableProjects.length < 2
+  }
+  const inviteButton = document.querySelector('#admin-members-invite-btn')
+  if (inviteButton) {
+    const selectedProjectIsOwned = ownedProjects.some(
+      project => project.projectId === selectedMembersProjectId
+    )
+    inviteButton.hidden = selectedMembersProjectId === 'all'
+      ? ownedProjects.length === 0
+      : !selectedProjectIsOwned
   }
   const visibleMembers = selectedMembersProjectId && selectedMembersProjectId !== 'all'
     ? projectMembers.filter(member => member.projectId === selectedMembersProjectId)
@@ -984,11 +988,22 @@ export function renderAdminMeetingsTable() {
   const attendeeTemplate = document.querySelector('#admin-attendee-template')
   if (!template || !attendeeTemplate) return
 
+  if (!meetings.length) {
+    const row = document.createElement('tr')
+    const cell = document.createElement('td')
+    cell.colSpan = 6
+    cell.className = 'meeting-empty-state'
+    cell.textContent = 'No project meetings scheduled.'
+    row.append(cell)
+    tbody.append(row)
+    return
+  }
+
   meetings.forEach(meet => {
     const tr = template.content.firstElementChild.cloneNode(true)
     const field = name => tr.querySelector(`[data-ref="${name}"]`)
     field('title').textContent = meet.title
-    field('host').textContent = `Host: ${meet.host || 'Alex Morgan'}`
+    field('host').textContent = `Host: ${meet.host} · Project: ${meet.projectName}`
     field('date').textContent = `${meet.date} • ${meet.time}`
 
     const pin = field('pin')
@@ -996,25 +1011,39 @@ export function renderAdminMeetingsTable() {
     pin.textContent = meet.pinned ? '📍 Pinned on Calendar' : 'Unpinned'
 
     const attendees = field('attendees')
-    ;(meet.attendees || ['AM', 'SK']).forEach(initials => {
-      const mem = members.find(m => m.initials === initials)
-      const tone = mem ? mem.tone : 'coral'
+    ;(meet.attendees || []).forEach(person => {
       const attendee = attendeeTemplate.content.firstElementChild.cloneNode(true)
-      attendee.classList.add(`${tone}-bg`)
-      attendee.title = mem ? mem.name : initials
-      attendee.textContent = initials
+      attendee.classList.add(`${person.tone || 'teal'}-bg`)
+      attendee.title = person.name
+      renderAvatarElement(attendee, person, 'admin-attendee-avatar')
       attendees.append(attendee)
     })
 
-    field('location').textContent = `${meet.location || 'Google Meet'} ↗`
+    const location = field('location')
+    location.removeAttribute('href')
+    const meetingUrl = getSafeMeetingUrl(meet.location)
+    location.textContent = meetingUrl ? 'Open meeting link ↗' : meet.location || 'Location not set'
+    if (meetingUrl) {
+      location.href = meetingUrl
+      location.target = '_blank'
+      location.rel = 'noopener noreferrer'
+      location.addEventListener('click', event => event.stopPropagation())
+    }
     const delBtn = field('delete')
-    delBtn.addEventListener('click', () => {
-      const idx = meetings.findIndex(m => m.id === meet.id)
-      if (idx !== -1) meetings.splice(idx, 1)
-      saveMeetings()
-      renderAdminMeetingsTable()
-      hub.renderCalendarPanel?.()
-      addAuditLog('Admin meeting canceled', `Meeting "${meet.title}" deleted by Admin.`, 'trash')
+    delBtn.style.display = meet.canCancel ? '' : 'none'
+    delBtn.addEventListener('click', async () => {
+      delBtn.disabled = true
+      try {
+        await deleteProjectMeeting(meet)
+        renderAdminMeetingsTable()
+        hub.renderCalendarPanel?.()
+        hub.renderWorkspaceHub?.()
+        addAuditLog('Project meeting canceled', `Meeting "${meet.title}" canceled.`, 'trash')
+        showDashboardToast('Meeting cancelled.')
+      } catch (error) {
+        delBtn.disabled = false
+        showDashboardToast(error.message || 'Unable to cancel this meeting.', 'error')
+      }
     })
     tbody.append(tr)
   })
