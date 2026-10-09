@@ -19,6 +19,8 @@ import {
 import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } from './auth.js'
 import { openInflowTaskPane, currentDetailTaskId } from './taskDetail.js'
 import { createScheduleCalendarPicker } from './calendar.js'
+import { api } from './api.js'
+import { showDashboardToast } from './modalChrome.js'
 
 // ============================================================
 // TASKS & BOARD MANAGEMENT
@@ -31,7 +33,9 @@ export function getFilteredTasks() {
   if (activeView === 'Workspace') {
     // Show all tasks across active projects
   } else if (activeView === 'My Tasks') {
-    list = list.filter(t => t.assignee === currentUser.initials)
+    list = list.filter(t => t.backendPersistent
+      ? t.assigneeFirebaseUid === currentUser.uid
+      : t.assignee === currentUser.initials)
   } else if (activeView !== 'Admin Console' && activeView !== 'Calendar' && activeView !== 'Overview') {
     list = list.filter(t => t.project === activeView)
   }
@@ -41,7 +45,9 @@ export function getFilteredTasks() {
   }
 
   if (activeFilter === 'mine') {
-    list = list.filter(t => t.assignee === currentUser.initials)
+    list = list.filter(t => t.backendPersistent
+      ? t.assigneeFirebaseUid === currentUser.uid
+      : t.assignee === currentUser.initials)
   } else if (activeFilter === 'backlog') {
     list = list.filter(t => t.status === 'Backlog')
   } else if (activeFilter === 'todo') {
@@ -75,15 +81,29 @@ export function updateTaskCounts(filtered) {
   if (workspaceNavBadge) workspaceNavBadge.textContent = `${getAccessibleTasks().length}`
 }
 
-export function moveTaskStatus(taskId, newStatus) {
+export async function moveTaskStatus(taskId, newStatus) {
   const task = tasks.find(t => t.id === taskId)
   if (!task) return
 
   const oldStatus = task.status
+  if (task.backendPersistent) {
+    try {
+      await api.patch(
+        `/projects/${encodeURIComponent(task.projectId)}/tasks/${encodeURIComponent(task.taskId)}/status`,
+        { status: newStatus }
+      )
+    } catch (error) {
+      showDashboardToast(error.message || 'The task status could not be updated.', 'error')
+      return
+    }
+  }
   task.status = newStatus
   task.done = newStatus === 'Done'
 
-  if (newStatus === 'Done') {
+  if (task.backendPersistent) {
+    task.progress = newStatus === 'Done' ? 100 : newStatus === 'In progress' ? 50 : 0
+    task.approvalStatus = 'none'
+  } else if (newStatus === 'Done') {
     task.progress = 100
     const isCreator = isCurrentUserProjectCreator()
     if (!isCreator) {
@@ -107,6 +127,9 @@ export function moveTaskStatus(taskId, newStatus) {
   if (currentDetailTaskId === task.id) {
     openInflowTaskPane(task)
   }
+  if (task.backendPersistent) {
+    hub.renderAdminTasksTable?.()
+  }
 
   addAuditLog('Task status updated', `"${task.title}" moved from ${oldStatus} to ${newStatus}.`, newStatus === 'Done' ? 'check' : 'sync')
   pushNotification(`Task ${newStatus}`, `"${task.title}" moved to ${newStatus}`, newStatus === 'Done' ? '✓' : '⇄', newStatus === 'Done' ? 'green-bg' : 'coral-bg')
@@ -115,7 +138,13 @@ export function moveTaskStatus(taskId, newStatus) {
 export function taskCard(task) {
   const card = make('article', 'task-card')
   card.dataset.id = String(task.id)
-  card.setAttribute('draggable', 'true')
+  const project = task.backendPersistent
+    ? projects.find(item => item.projectId === task.projectId)
+    : null
+  const canUpdateBackendTask = !task.backendPersistent ||
+    currentUser.uid === task.assigneeFirebaseUid ||
+    currentUser.uid === project?.creatorFirebaseUid
+  card.setAttribute('draggable', String(canUpdateBackendTask))
 
   card.addEventListener('dragstart', e => {
     e.dataTransfer.setData('text/plain', String(task.id))
@@ -179,28 +208,28 @@ export function taskCard(task) {
   }
 
   const moveRow = make('div', 'card-move-row')
-  if (task.status !== 'Backlog') {
+  if (canUpdateBackendTask && task.status !== 'Backlog') {
     const btnBacklog = make('button', 'card-move-btn')
     btnBacklog.type = 'button'
     btnBacklog.innerHTML = `${getSvg('arrowLeft', 'arrow-svg', 11, 11)} <span>Backlog</span>`
     btnBacklog.addEventListener('click', e => { e.stopPropagation(); moveTaskStatus(task.id, 'Backlog') })
     moveRow.append(btnBacklog)
   }
-  if (task.status !== 'To do') {
+  if (canUpdateBackendTask && task.status !== 'To do') {
     const btnTodo = make('button', 'card-move-btn')
     btnTodo.type = 'button'
     btnTodo.innerHTML = `${getSvg('arrowLeft', 'arrow-svg', 11, 11)} <span>To do</span>`
     btnTodo.addEventListener('click', e => { e.stopPropagation(); moveTaskStatus(task.id, 'To do') })
     moveRow.append(btnTodo)
   }
-  if (task.status !== 'In progress') {
+  if (canUpdateBackendTask && task.status !== 'In progress') {
     const btnProg = make('button', 'card-move-btn')
     btnProg.type = 'button'
     btnProg.innerHTML = `<span>In prog</span> ${getSvg('arrowRight', 'arrow-svg', 11, 11)}`
     btnProg.addEventListener('click', e => { e.stopPropagation(); moveTaskStatus(task.id, 'In progress') })
     moveRow.append(btnProg)
   }
-  if (task.status !== 'Done') {
+  if (canUpdateBackendTask && task.status !== 'Done') {
     const btnDone = make('button', 'card-move-btn')
     btnDone.type = 'button'
     btnDone.innerHTML = `${getSvg('check', 'check-svg', 11, 11)} <span>Done</span>`
@@ -235,8 +264,7 @@ export function setupDragAndDrop() {
       col.classList.remove('drag-over')
       const taskIdStr = e.dataTransfer.getData('text/plain')
       if (!taskIdStr) return
-      const taskId = Number(taskIdStr)
-      const task = tasks.find(t => t.id === taskId)
+      const task = tasks.find(t => String(t.id) === taskIdStr)
       if (task && task.status !== status) {
         moveTaskStatus(task.id, status)
       }

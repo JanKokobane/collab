@@ -293,6 +293,7 @@ onAuthStateChanged(firebaseAuth, async user => {
     refreshMessagesForCurrentUser()
     renderProjectNav()
     renderAdminProjectsTable()
+    await renderAdminTasksTable()
     const selectedProject = projects.find(project => project.id === acceptedProjectId)
     const builtInViews = [
       'Overview',

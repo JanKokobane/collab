@@ -64,7 +64,13 @@ export function openInflowTaskPane(task) {
     editBtn.type = 'button'
     editBtn.innerHTML = `<span>Edit</span>`
     editBtn.title = 'Edit task title, description, and assignment'
-    editBtn.addEventListener('click', () => openEditTaskInline(task))
+    editBtn.addEventListener('click', () => {
+      if (task.backendPersistent) {
+        hub.openAdminEditTaskModal?.(task)
+      } else {
+        openEditTaskInline(task)
+      }
+    })
     actionsGroup.append(editBtn)
   }
 
@@ -100,7 +106,9 @@ export function openInflowTaskPane(task) {
   sprintRow.append(sprintItem, creatorItem)
 
   const approvalBox = make('div', 'inflow-approval-card')
-  if (task.status === 'Done') {
+  if (task.backendPersistent) {
+    approvalBox.style.display = 'none'
+  } else if (task.status === 'Done') {
     if (task.approvalStatus === 'pending_approval') {
       approvalBox.className = 'inflow-approval-card pending'
       if (isCreator) {
@@ -179,6 +187,10 @@ export function openInflowTaskPane(task) {
   statusSelect.addEventListener('change', () => {
     hub.moveTaskStatus?.(task.id, statusSelect.value)
   })
+  const canUpdateTask = !task.backendPersistent ||
+    currentUser.uid === task.assigneeFirebaseUid ||
+    currentUser.uid === proj?.creatorFirebaseUid
+  statusSelect.disabled = !canUpdateTask
   statusRow.append(statusLabel, statusSelect)
 
   const isDone = task.status === 'Done'
@@ -187,6 +199,7 @@ export function openInflowTaskPane(task) {
   completeBtn.innerHTML = isDone
     ? `${getSvg('check', 'btn-icon', 13, 13)} <span>Completed</span>`
     : `${getSvg('check', 'btn-icon', 13, 13)} <span>Mark as complete</span>`
+  completeBtn.disabled = !canUpdateTask
   completeBtn.addEventListener('click', () => {
     hub.moveTaskStatus?.(task.id, isDone ? 'To do' : 'Done')
   })
@@ -261,7 +274,15 @@ export function openInflowTaskPane(task) {
     )
   })
 
-  commentsSection.append(sectionTitle, commentsThread, commentForm)
+  if (task.backendPersistent) {
+    commentsSection.append(
+      sectionTitle,
+      commentsThread,
+      make('p', 'modal-copy', 'Comments are not enabled for persisted project tasks yet.')
+    )
+  } else {
+    commentsSection.append(sectionTitle, commentsThread, commentForm)
+  }
 
   pane.append(headerRow, title, description, metaBox, sprintRow, approvalBox, statusRow, completeBtn, commentsSection)
 }

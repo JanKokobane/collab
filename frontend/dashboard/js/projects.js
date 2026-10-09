@@ -556,11 +556,11 @@ export function openEditProjectModal(project) {
 // BREAK PROJECT INTO SMALL SPRINTS
 // ============================================================
 
-export function openAddSprintModal() {
-  const proj = getActiveProject()
+export function openAddSprintModal(projectOverride = null) {
+  const proj = projectOverride || getActiveProject()
 
   const isCreator =
-    isCurrentUserProjectCreator()
+    proj?.creatorFirebaseUid === firebaseAuth.currentUser?.uid
 
   if (!isCreator) {
     showPermissionNotice()
@@ -677,7 +677,7 @@ export function openAddSprintModal() {
 
   form.addEventListener(
     'submit',
-    e => {
+    async e => {
       e.preventDefault()
 
       const sName =
@@ -688,21 +688,31 @@ export function openAddSprintModal() {
         return
       }
 
-      if (!proj.sprints) {
-        proj.sprints = []
-      }
-
-      proj.sprints.push({
+      const updatedSprints = [
+        ...(Array.isArray(proj.sprints) ? proj.sprints : []),
+        {
         id: `s_${Date.now()}`,
         name: sName,
         status: statusSelect.value
-      })
-
-      saveProjects()
+        }
+      ]
+      submit.disabled = true
+      try {
+        await api.put(
+          `/projects/${encodeURIComponent(proj.projectId || proj.id)}`,
+          { sprints: updatedSprints }
+        )
+      } catch (error) {
+        submit.disabled = false
+        showDashboardToast(error.message || 'The sprint could not be saved.', 'error')
+        return
+      }
+      proj.sprints = updatedSprints
 
       closeModal()
 
       updateUserUI()
+      hub.renderAdminTasksTable?.()
 
       addAuditLog(
         'Sprint created',

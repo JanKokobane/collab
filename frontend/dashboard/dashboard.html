@@ -843,24 +843,15 @@
                             <div class="admin-card-header">
                                 <div>
                                     <h3>Admin Task Creation & Project Assignment Authority</h3>
-                                    <p>All task adding and assignments are centrally managed by the workspace
-                                        administrator.</p>
+                                    <p>Open a project to manage its sprints, tasks, and accepted invitees.</p>
                                 </div>
-                                <button type="button" class="primary-button gold" id="admin-add-task-quick-btn">+
-                                    <span>Add New Task</span></button>
                             </div>
 
                             <div class="admin-table-wrapper">
                                 <table class="admin-table">
                                     <thead>
                                         <tr>
-                                            <th>Task Deliverable</th>
-                                            <th>Project</th>
-                                            <th>Assignee</th>
-                                            <th>Sprint</th>
-                                            <th>Due Date</th>
-                                            <th>Status</th>
-                                            <th>Action</th>
+                                            <th>Projects and project tasks</th>
                                         </tr>
                                     </thead>
                                     <tbody id="admin-tasks-tbody">
@@ -986,32 +977,6 @@
                             </section>
                         </div>
                     </div>
-
-                    <template id="admin-task-row-template">
-                        <tr>
-                            <td>
-                                <div class="admin-task-cell">
-                                    <strong data-ref="title"></strong>
-                                    <span class="tag" data-ref="tag"></span>
-                                </div>
-                            </td>
-                            <td><span class="admin-project-cell"><i class="dot" data-ref="project-dot"></i><span
-                                        data-ref="project"></span></span></td>
-                            <td>
-                                <div class="admin-assignee-cell">
-                                    <span class="avatar" data-ref="assignee-avatar"></span>
-                                    <span data-ref="assignee-name"></span>
-                                </div>
-                            </td>
-                            <td><span class="admin-sprint-cell" data-ref="sprint"></span></td>
-                            <td><span class="admin-due-cell" data-ref="due"></span></td>
-                            <td><span class="status-badge" data-ref="status"></span></td>
-                            <td>
-                                <button type="button" class="action-btn" data-ref="edit">Edit</button>
-                                <button type="button" class="action-btn delete" data-ref="delete">Delete</button>
-                            </td>
-                        </tr>
-                    </template>
 
                     <template id="admin-meeting-row-template">
                         <tr>

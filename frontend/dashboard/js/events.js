@@ -20,7 +20,6 @@ import {
   setActiveCalendarFilter
 } from './calendar.js'
 import {
-  openAdminTaskModal,
   renderAdminProjectsTable,
   renderMembersTable,
   loadProjectMembers,
@@ -356,7 +355,6 @@ export function initEventListeners() {
 
   // Admin console buttons
   document.querySelector('#admin-create-task-btn')?.addEventListener('click', openCreateProjectModal)
-  document.querySelector('#admin-add-task-quick-btn')?.addEventListener('click', () => openAdminTaskModal('To do'))
   document.querySelector('#admin-schedule-meeting-btn')?.addEventListener('click', () => openScheduleMeetingModal())
   document.querySelector('#admin-add-meeting-quick-btn')?.addEventListener('click', () => openScheduleMeetingModal())
   document.querySelector('#admin-invite-btn')?.addEventListener('click', openInviteModal)

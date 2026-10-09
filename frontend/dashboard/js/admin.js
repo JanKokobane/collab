@@ -15,7 +15,8 @@ import {
   saveProjects,
   addAuditLog,
   pushNotification,
-  hub
+  hub,
+  replaceProjectTasksFromBackend
 } from './state.js'
 import { getActiveProject } from './auth.js'
 import { createScheduleCalendarPicker } from './calendar.js'
@@ -163,50 +164,356 @@ export function renderMembersTable() {
   })
 }
 
-export function renderAdminTasksTable() {
+let projectTaskLoadVersion = 0
+
+function taskDateLabel(value) {
+  if (!value) return '—'
+  const dateKey = String(value).slice(0, 10)
+  const date = new Date(`${dateKey}T12:00:00`)
+  return Number.isNaN(date.getTime())
+    ? dateKey
+    : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function taskTableCell(text, className = '') {
+  const cell = document.createElement('td')
+  if (className) cell.className = className
+  cell.textContent = text || '—'
+  return cell
+}
+
+function renderProjectTaskDetails(project, taskRecords, loadError) {
+  const wrapper = make('div', 'project-task-details')
+  const isOwner = project.creatorFirebaseUid === firebaseAuth.currentUser?.uid
+  const acceptedMembers = Array.isArray(project.acceptedMembers) ? project.acceptedMembers : []
+  const sprints = Array.isArray(project.sprints) ? project.sprints : []
+  const toolbar = make('div', 'project-task-toolbar')
+  const sprintSection = make('section', 'project-sprint-section')
+  sprintSection.append(make('h4', '', 'Project sprints'))
+  const sprintList = make('div', 'project-sprint-list')
+
+  if (!sprints.length) {
+    sprintList.append(make('p', 'project-task-empty', 'No sprints yet. Add a sprint before creating tasks.'))
+  } else {
+    sprints.forEach(sprint => {
+      const sprintChip = make('span', 'project-sprint-chip')
+      sprintChip.append(
+        make('strong', '', sprint.name || 'Sprint'),
+        make('small', '', sprint.status || 'Upcoming')
+      )
+      sprintList.append(sprintChip)
+    })
+  }
+  sprintSection.append(sprintList)
+  toolbar.append(sprintSection)
+
+  const memberSection = make('section', 'project-sprint-section')
+  memberSection.append(make('h4', '', 'Accepted project invitees'))
+  const memberList = make('div', 'project-task-member-list')
+  if (!acceptedMembers.length) {
+    memberList.append(make('p', 'project-task-empty', 'No accepted invitees are available for task assignment.'))
+  } else {
+    acceptedMembers.forEach(member => {
+      const name = member.name || member.email || 'Project member'
+      memberList.append(make('span', 'project-task-member-chip', `${name}${member.role ? ` · ${member.role}` : ''}`))
+    })
+  }
+  memberSection.append(memberList)
+  toolbar.append(memberSection)
+
+  if (isOwner) {
+    const actions = make('div', 'project-task-owner-actions')
+    const addSprintButton = make('button', 'outline-button', '+ Add Sprint')
+    addSprintButton.type = 'button'
+    addSprintButton.addEventListener('click', () => openAddSprintModal(project))
+    const addTaskButton = make('button', 'primary-button gold', '+ Add Task')
+    addTaskButton.type = 'button'
+    addTaskButton.disabled = !sprints.length || !acceptedMembers.length
+    addTaskButton.title = addTaskButton.disabled
+      ? 'Add a sprint and invite a member who accepts before creating tasks.'
+      : 'Create a task assigned to an accepted project invitee.'
+    addTaskButton.addEventListener('click', () => openProjectTaskModal(project))
+    actions.append(addSprintButton, addTaskButton)
+    toolbar.append(actions)
+  }
+  wrapper.append(toolbar)
+
+  if (loadError) {
+    wrapper.append(make('p', 'project-task-error', loadError))
+    return wrapper
+  }
+
+  const taskTable = document.createElement('table')
+  taskTable.className = 'project-task-table'
+  const head = document.createElement('thead')
+  const headRow = document.createElement('tr')
+  ;['Task', 'Sprint', 'Assigned to', 'Due date', 'Status', ...(isOwner ? ['Actions'] : [])]
+    .forEach(label => headRow.append(make('th', '', label)))
+  head.append(headRow)
+  taskTable.append(head)
+  const body = document.createElement('tbody')
+
+  if (!taskRecords.length) {
+    const row = document.createElement('tr')
+    const cell = taskTableCell('No tasks have been created for this project yet.', 'project-task-empty')
+    cell.colSpan = isOwner ? 6 : 5
+    row.append(cell)
+    body.append(row)
+  } else {
+    taskRecords.forEach(task => {
+      const row = document.createElement('tr')
+      const taskCell = document.createElement('td')
+      taskCell.append(make('strong', '', task.title))
+      if (task.description) taskCell.append(make('small', '', task.description))
+      row.append(taskCell)
+      row.append(taskTableCell(task.sprint_name))
+      const assigned = task.assignee_name || task.assignee_email || 'Project invitee'
+      row.append(taskTableCell(assigned))
+      row.append(taskTableCell(taskDateLabel(task.due_date)))
+      const statusCell = document.createElement('td')
+      statusCell.append(make('span', `status-badge ${String(task.status || 'To do').toLowerCase().replaceAll(' ', '-')}`, task.status || 'To do'))
+      row.append(statusCell)
+
+      if (isOwner) {
+        const actionCell = document.createElement('td')
+        const editButton = make('button', 'action-btn', 'Edit')
+        editButton.type = 'button'
+        editButton.addEventListener('click', () => openProjectTaskModal(project, task))
+        const deleteButton = make('button', 'action-btn delete', 'Delete')
+        deleteButton.type = 'button'
+        deleteButton.addEventListener('click', async () => {
+          const confirmed = await showDashboardConfirmation({
+            title: 'Delete project task?',
+            message: `Delete "${task.title}" from ${project.name}?`,
+            confirmText: 'Delete task',
+            danger: true
+          })
+          if (!confirmed) return
+          deleteButton.disabled = true
+          try {
+            await api.delete(`/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(task.task_id)}`)
+            showDashboardToast('Project task deleted.', 'success')
+            renderAdminTasksTable()
+          } catch (error) {
+            deleteButton.disabled = false
+            showDashboardToast(error.message || 'The task could not be deleted.', 'error')
+          }
+        })
+        actionCell.append(editButton, deleteButton)
+        row.append(actionCell)
+      }
+      body.append(row)
+    })
+  }
+  taskTable.append(body)
+  wrapper.append(taskTable)
+  return wrapper
+}
+
+export async function renderAdminTasksTable() {
   const tbody = document.querySelector('#admin-tasks-tbody')
   if (!tbody) return
+  const loadVersion = ++projectTaskLoadVersion
   tbody.replaceChildren()
-  const template = document.querySelector('#admin-task-row-template')
-  if (!template) return
+  const loadingRow = document.createElement('tr')
+  loadingRow.append(taskTableCell('Loading project tasks…', 'notification-empty-state'))
+  tbody.append(loadingRow)
 
-  tasks.forEach(task => {
-    const tr = template.content.firstElementChild.cloneNode(true)
-    const field = name => tr.querySelector(`[data-ref="${name}"]`)
-    field('title').textContent = task.title
-    const tag = field('tag')
-    tag.classList.add(task.tagTone || 'blue')
-    tag.textContent = task.tag || 'Work'
+  const projectResults = await Promise.all(projects.map(async project => {
+    try {
+      const response = await api.get(`/projects/${encodeURIComponent(project.projectId)}/tasks`)
+      if (!Array.isArray(response?.data?.tasks)) throw new Error('The server returned an invalid project tasks response.')
+      return { project, tasks: response.data.tasks }
+    } catch (error) {
+      return { project, tasks: [], error: error.message || 'Tasks could not be loaded.' }
+    }
+  }))
+  if (loadVersion !== projectTaskLoadVersion || !tbody.isConnected) return
+  replaceProjectTasksFromBackend(projectResults.map(({ project, tasks: projectTasks }) => ({
+    projectId: project.projectId,
+    tasks: projectTasks
+  })))
+  hub.renderTasks?.()
+  tbody.replaceChildren()
 
-    const projObj = projects.find(p => p.name === task.project)
-    const color = projObj ? projObj.color : 'coral'
-    field('project-dot').classList.add(color)
-    field('project').textContent = task.project
+  if (!projectResults.length) {
+    const row = document.createElement('tr')
+    row.append(taskTableCell('No projects are available yet.', 'notification-empty-state'))
+    tbody.append(row)
+    return
+  }
 
-    const avatar = field('assignee-avatar')
-    avatar.classList.add(`${task.assigneeTone || 'teal'}-bg`)
-    avatar.textContent = task.assignee
-    field('assignee-name').textContent = task.assigneeName || task.assignee
-    field('sprint').textContent = task.sprint || 'Core Sprint'
-    field('due').textContent = task.due
+  projectResults.forEach(({ project, tasks: projectTasks, error }) => {
+    const projectRow = document.createElement('tr')
+    projectRow.className = 'project-task-project-row'
+    const projectCell = document.createElement('td')
+    const expandButton = make('button', 'project-task-project-toggle')
+    expandButton.type = 'button'
+    expandButton.setAttribute('aria-expanded', 'false')
+    const projectDot = make('i', `dot ${project.color || 'blue'}`)
+    const projectTitle = make('span', '', project.name)
+    const taskCount = make('small', '', `${projectTasks.length} ${projectTasks.length === 1 ? 'task' : 'tasks'}`)
+    const chevron = make('span', 'project-task-chevron', '⌄')
+    expandButton.append(projectDot, projectTitle, taskCount, chevron)
+    projectCell.append(expandButton)
+    projectRow.append(projectCell)
 
-    const status = field('status')
-    status.classList.add(task.status.toLowerCase().replace(' ', '-'))
-    status.textContent = task.status
-
-    const editBtn = field('edit')
-    editBtn.addEventListener('click', () => openAdminEditTaskModal(task))
-    const delBtn = field('delete')
-    delBtn.addEventListener('click', () => {
-      const idx = tasks.findIndex(t => t.id === task.id)
-      if (idx !== -1) tasks.splice(idx, 1)
-      saveTasks()
-      hub.renderTasks?.()
-      renderAdminTasksTable()
-      hub.renderCalendarPanel?.()
-      addAuditLog('Admin task deleted', `Deliverable "${task.title}" deleted by Admin.`, 'trash')
+    const detailsRow = document.createElement('tr')
+    detailsRow.className = 'project-task-details-row'
+    detailsRow.hidden = true
+    const detailsCell = document.createElement('td')
+    detailsCell.append(renderProjectTaskDetails(project, projectTasks, error))
+    detailsRow.append(detailsCell)
+    expandButton.addEventListener('click', () => {
+      const isExpanded = expandButton.getAttribute('aria-expanded') === 'true'
+      expandButton.setAttribute('aria-expanded', String(!isExpanded))
+      detailsRow.hidden = isExpanded
+      expandButton.classList.toggle('is-expanded', !isExpanded)
     })
-    tbody.append(tr)
+    tbody.append(projectRow, detailsRow)
+  })
+}
+
+function openProjectTaskModal(project, task = null, defaults = {}) {
+  const isOwner = project.creatorFirebaseUid === firebaseAuth.currentUser?.uid
+  const acceptedMembers = Array.isArray(project.acceptedMembers) ? project.acceptedMembers : []
+  const sprints = Array.isArray(project.sprints) ? project.sprints : []
+  if (!isOwner) return
+  if (!sprints.length || !acceptedMembers.length) {
+    showDashboardToast('This project needs a sprint and an accepted invitee before you can assign a task.', 'error')
+    return
+  }
+
+  const backdrop = make('div', 'modal-backdrop')
+  const form = make('form', 'modal')
+  const close = make('button', 'close-modal', '×')
+  close.type = 'button'
+  close.addEventListener('click', closeModal)
+  const heading = make('h2', '', task ? 'Edit Project Task' : 'Create Project Task')
+  const copy = make('p', 'modal-copy', `Task assignments are limited to accepted invitees of ${project.name}.`)
+
+  const titleLabel = make('label', '', 'Task title')
+  const titleInput = make('input')
+  titleInput.required = true
+  titleInput.maxLength = 255
+  titleInput.value = task?.title || ''
+  titleInput.placeholder = 'e.g. Prepare project deliverables'
+  titleLabel.append(titleInput)
+
+  const descriptionLabel = make('label', '', 'Description')
+  const descriptionInput = document.createElement('textarea')
+  descriptionInput.rows = 3
+  descriptionInput.maxLength = 10000
+  descriptionInput.value = task?.description || ''
+  descriptionInput.placeholder = 'Add details or acceptance criteria'
+  descriptionLabel.append(descriptionInput)
+
+  const sprintLabel = make('label', '', 'Sprint')
+  const sprintSelect = document.createElement('select')
+  if (task && !sprints.some(sprint => sprint.name === task.sprint_name)) {
+    const unavailableSprint = make('option', '', `${task.sprint_name || 'Former sprint'} (no longer in this project)`)
+    unavailableSprint.value = task.sprint_name || ''
+    unavailableSprint.selected = true
+    unavailableSprint.disabled = true
+    sprintSelect.append(unavailableSprint)
+  }
+  sprints.forEach(sprint => {
+    const option = make('option', '', sprint.name)
+    option.value = sprint.name
+    if (sprint.name === task?.sprint_name) option.selected = true
+    sprintSelect.append(option)
+  })
+  sprintLabel.append(sprintSelect)
+
+  const categoryLabel = make('label', '', 'Category')
+  const categorySelect = document.createElement('select')
+  ;['Design', 'Development', 'Marketing', 'Product'].forEach(category => {
+    const option = make('option', '', category)
+    option.value = category
+    if (category === task?.category) option.selected = true
+    categorySelect.append(option)
+  })
+  categoryLabel.append(categorySelect)
+
+  const assigneeLabel = make('label', '', 'Assign to accepted invitee')
+  const assigneeSelect = document.createElement('select')
+  if (task && !acceptedMembers.some(member => member.firebaseUid === task.assignee_firebase_uid)) {
+    const removedMember = make('option', '', `${task.assignee_name || task.assignee_email || 'Former invitee'} (no longer accepted)`)
+    removedMember.value = task.assignee_firebase_uid
+    removedMember.selected = true
+    removedMember.disabled = true
+    assigneeSelect.append(removedMember)
+  }
+  acceptedMembers.forEach(member => {
+    const option = make('option', '', `${member.name || member.email || 'Invitee'}${member.role ? ` (${member.role})` : ''}`)
+    option.value = member.firebaseUid
+    if (member.firebaseUid === task?.assignee_firebase_uid) option.selected = true
+    assigneeSelect.append(option)
+  })
+  assigneeLabel.append(assigneeSelect)
+
+  const statusLabel = make('label', '', 'Status')
+  const statusSelect = document.createElement('select')
+  ;['Backlog', 'To do', 'In progress', 'Done'].forEach(status => {
+    const option = make('option', '', status)
+    option.value = status
+    if (status === (task?.status || defaults.status || 'To do')) option.selected = true
+    statusSelect.append(option)
+  })
+  statusLabel.append(statusSelect)
+
+  const startDateLabel = make('label', '', 'Start date')
+  const startDateInput = make('input')
+  startDateInput.type = 'date'
+  startDateInput.value = task?.start_date ? String(task.start_date).slice(0, 10) : (defaults.startDate || '')
+  startDateLabel.append(startDateInput)
+
+  const dueDateLabel = make('label', '', 'Due date')
+  const dueDateInput = make('input')
+  dueDateInput.type = 'date'
+  dueDateInput.value = task?.due_date ? String(task.due_date).slice(0, 10) : (defaults.dueDate || '')
+  dueDateLabel.append(dueDateInput)
+
+  const assignmentRow = make('div', 'form-row')
+  assignmentRow.append(sprintLabel, assigneeLabel)
+  const metadataRow = make('div', 'form-row')
+  metadataRow.append(categoryLabel, statusLabel)
+  const dateRow = make('div', 'form-row')
+  dateRow.append(startDateLabel, dueDateLabel)
+  const submit = make('button', 'primary-button full gold', task ? 'Save Task' : 'Create Task')
+  submit.type = 'submit'
+  form.append(close, heading, copy, titleLabel, descriptionLabel, assignmentRow, metadataRow, dateRow, submit)
+  backdrop.append(form)
+  root.replaceChildren(backdrop)
+  titleInput.focus()
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault()
+    submit.disabled = true
+    const payload = {
+      title: titleInput.value.trim(),
+      description: descriptionInput.value.trim(),
+      category: categorySelect.value,
+      sprintName: sprintSelect.value,
+      assigneeFirebaseUid: assigneeSelect.value,
+      status: statusSelect.value,
+      startDate: startDateInput.value || null,
+      dueDate: dueDateInput.value || null
+    }
+    try {
+      const projectId = encodeURIComponent(project.projectId)
+      if (task) {
+        await api.put(`/projects/${projectId}/tasks/${encodeURIComponent(task.task_id)}`, payload)
+      } else {
+        await api.post(`/projects/${projectId}/tasks`, payload)
+      }
+      closeModal()
+      showDashboardToast(task ? 'Project task updated.' : 'Project task created.', 'success')
+      renderAdminTasksTable()
+    } catch (error) {
+      submit.disabled = false
+      showDashboardToast(error.message || 'The project task could not be saved.', 'error')
+    }
   })
 }
 
@@ -284,7 +591,7 @@ export function openInviteModal() {
   openInviteCollaboratorModal()
 }
 
-export function openAdminTaskModal(prefilledStatus = 'To do', prefilledProject = null, prefilledDate = toLocalDateKey()) {
+export function openLegacyAdminTaskModal(prefilledStatus = 'To do', prefilledProject = null, prefilledDate = toLocalDateKey()) {
   const currentProj = prefilledProject ? (projects.find(p => p.name === prefilledProject) || getActiveProject()) : getActiveProject()
 
   const backdrop = make('div', 'modal-backdrop')
@@ -438,7 +745,74 @@ export function openAdminTaskModal(prefilledStatus = 'To do', prefilledProject =
   })
 }
 
+export function openAdminTaskModal(prefilledStatus = 'To do', prefilledProject = null, prefilledDate = toLocalDateKey()) {
+  const ownedProjects = projects.filter(project => project.creatorFirebaseUid === firebaseAuth.currentUser?.uid)
+  const requestedProject = (prefilledProject && typeof prefilledProject === 'object'
+    ? prefilledProject
+    : ownedProjects.find(project =>
+      project.name === prefilledProject ||
+      project.projectId === prefilledProject ||
+      project.id === prefilledProject
+    ))
+  if (prefilledProject && requestedProject?.creatorFirebaseUid !== firebaseAuth.currentUser?.uid) {
+    showDashboardToast('Only the project creator can create tasks for that project.', 'error')
+    return
+  }
+  const activeProject = getActiveProject()
+  const targetProject = requestedProject ||
+    (!prefilledProject
+      ? ownedProjects.find(project => project.projectId === activeProject?.projectId) ||
+        (!activeProject && ownedProjects.length === 1 ? ownedProjects[0] : null)
+      : null)
+  const defaults = { status: prefilledStatus, dueDate: prefilledDate }
+
+  if (targetProject) {
+    openProjectTaskModal(targetProject, null, defaults)
+    return
+  }
+  if (!ownedProjects.length) {
+    showDashboardToast('Only a project creator can create project tasks.', 'error')
+    return
+  }
+
+  const backdrop = make('div', 'modal-backdrop')
+  const form = make('form', 'modal')
+  const close = make('button', 'close-modal', '×')
+  close.type = 'button'
+  close.addEventListener('click', closeModal)
+  const projectLabel = make('label', '', 'Choose a project')
+  const projectSelect = document.createElement('select')
+  ownedProjects.forEach(project => {
+    const option = make('option', '', project.name)
+    option.value = project.projectId
+    projectSelect.append(option)
+  })
+  projectLabel.append(projectSelect)
+  const submit = make('button', 'primary-button full gold', 'Continue')
+  submit.type = 'submit'
+  form.append(close, make('h2', '', 'Create Project Task'), projectLabel, submit)
+  backdrop.append(form)
+  root.replaceChildren(backdrop)
+  form.addEventListener('submit', event => {
+    event.preventDefault()
+    const project = ownedProjects.find(item => item.projectId === projectSelect.value)
+    if (project) openProjectTaskModal(project, null, defaults)
+  })
+}
+
 export function openAdminEditTaskModal(task) {
+  const project = projects.find(item => item.projectId === (task?.project_id || task?.projectId))
+  if (!project || !(task?.task_id || task?.taskId)) {
+    showDashboardToast('Open a project in Admin Task Creation to edit its persisted tasks.', 'error')
+    return
+  }
+  openProjectTaskModal(project, {
+    ...task,
+    task_id: task.task_id || task.taskId
+  })
+}
+
+export function openLegacyAdminEditTaskModal(task) {
   const backdrop = make('div', 'modal-backdrop')
   const form = make('form', 'modal')
   const close = make('button', 'close-modal', '×')

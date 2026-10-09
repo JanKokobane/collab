@@ -97,21 +97,7 @@ const getProjectMembers = async (req, res) => {
                               AND access_invitation.status = 'accepted'
                         )
                 ),
-                project_members AS (
-                    SELECT
-                        p.project_id,
-                        p.name AS project_name,
-                        p.creator_firebase_uid,
-                        NULL::uuid AS invitation_id,
-                        p.creator_firebase_uid AS firebase_uid,
-                        p.creator_email AS email,
-                        p.creator_name AS name,
-                        'Project Creator'::text AS role,
-                        'Active'::text AS status
-                    FROM accessible_projects p
-
-                    UNION ALL
-
+                invited_members AS (
                     SELECT
                         p.project_id,
                         p.name AS project_name,
@@ -121,7 +107,13 @@ const getProjectMembers = async (req, res) => {
                         i.invited_email AS email,
                         i.invited_name AS name,
                         i.role,
-                        CASE WHEN i.status = 'pending' THEN 'Pending' ELSE 'Active' END AS status
+                        CASE WHEN i.status = 'pending' THEN 'Pending' ELSE 'Active' END AS status,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY p.project_id, i.invited_firebase_uid
+                            ORDER BY
+                                CASE WHEN i.status = 'accepted' THEN 0 ELSE 1 END,
+                                i.created_at DESC
+                        ) AS invitation_rank
                     FROM accessible_projects p
                     JOIN project_invitations i
                       ON i.project_id = p.project_id
@@ -143,9 +135,10 @@ const getProjectMembers = async (req, res) => {
                     pm.role,
                     pm.status,
                     up.profile_image
-                FROM project_members pm
+                FROM invited_members pm
                 LEFT JOIN user_profiles up
                   ON up.firebase_uid = pm.firebase_uid
+                WHERE pm.invitation_rank = 1
                 ORDER BY LOWER(pm.project_name), LOWER(pm.name)
             `,
             [req.firebaseUid]

@@ -38,6 +38,27 @@ links expire after 14 days. The recipient signs in or creates an account with
 the invited email before accepting, and accepted membership grants project
 view access only; project writes remain restricted to the creator.
 
+## Project tasks and sprints
+
+Project sprints are persisted in the existing `projects.sprints` JSONB field.
+Migration `005_project_tasks.sql` adds PostgreSQL-backed, project-scoped tasks.
+Authenticated project owners can create, edit, and delete tasks; project owners
+and accepted project invitees can read them. A task must reference a sprint on
+its project and an invitee whose invitation has been accepted. Pending invitees
+and the project creator are not valid task assignees.
+
+- `GET /api/projects/:projectId/tasks`: list tasks for a project the caller
+  owns or has accepted an invitation to.
+- `POST /api/projects/:projectId/tasks`: create a task as the project creator.
+- `PUT /api/projects/:projectId/tasks/:taskId`: update a task as its project
+  creator.
+- `PATCH /api/projects/:projectId/tasks/:taskId/status`: update status as the
+  project creator or the invitee assigned to that task.
+- `DELETE /api/projects/:projectId/tasks/:taskId`: delete a task as its project
+  creator.
+- `PUT /api/projects/:projectId` with a `sprints` array: persist sprint changes
+  as the project creator.
+
 ## Implemented API foundation
 
 All endpoints below require `Authorization: Bearer <Firebase ID token>`.
@@ -78,11 +99,8 @@ announcements, resources, polls, brainstorm, notifications, activity, and
 files features. A table existing does not mean its API or frontend feature is
 implemented.
 
-## Not yet integrated
+## Remaining local demo features
 
-The dashboard still seeds and reads local demo records in `localStorage`.
-`frontend/dashboard/js/api.js` provides the shared authenticated API client,
-but dashboard feature modules do not yet use it. Most requested resource APIs
-and end-to-end authorization tests are also not implemented. Therefore this
-backend is not yet a complete multi-user replacement for the local dashboard,
-and local demo data must not be treated as shared or access-controlled.
+Other dashboard sections still seed and read demo records in `localStorage`.
+That data is not shared or access-controlled; only features with documented
+API endpoints should be treated as backend-persistent.

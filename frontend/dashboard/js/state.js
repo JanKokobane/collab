@@ -703,6 +703,74 @@ export function getAccessibleTasks() {
   return tasks.filter(task => accessibleProjectNames.has(task.project))
 }
 
+export function replaceProjectTasksFromBackend(projectTaskGroups = []) {
+  const accessibleProjectNames = new Set(projects.map(project => project.name))
+  const projectById = new Map(projects.map(project => [project.projectId, project]))
+  const backendTasks = projectTaskGroups.flatMap(({ projectId, tasks: projectTasks }) => {
+    const project = projectById.get(projectId)
+    if (!project || !Array.isArray(projectTasks)) return []
+    return projectTasks.map(task => {
+      const assigneeName = task.assignee_name || task.assignee_email || 'Project invitee'
+      const assignee = assigneeName
+        .trim()
+        .split(/\s+/)
+        .map(part => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+      const dueDate = task.due_date ? String(task.due_date).slice(0, 10) : null
+      const tagTone = {
+        Design: 'purple',
+        Development: 'blue',
+        Marketing: 'green',
+        Product: 'yellow'
+      }[task.category] || 'blue'
+
+      return {
+        id: task.task_id,
+        taskId: task.task_id,
+        task_id: task.task_id,
+        projectId,
+        project_id: projectId,
+        backendPersistent: true,
+        project: project.name,
+        title: task.title,
+        description: task.description || '',
+        tag: task.category || 'Product',
+        category: task.category || 'Product',
+        tagTone,
+        due: dueDate ? formatRelativeDate(dueDate) : '—',
+        date: dueDate,
+        due_date: dueDate,
+        startDate: task.start_date ? String(task.start_date).slice(0, 10) : null,
+        start_date: task.start_date ? String(task.start_date).slice(0, 10) : null,
+        assignee,
+        assigneeName,
+        assignee_name: task.assignee_name,
+        assignee_email: task.assignee_email,
+        assigneeFirebaseUid: task.assignee_firebase_uid,
+        assignee_firebase_uid: task.assignee_firebase_uid,
+        assigneeTone: 'teal',
+        status: task.status || 'To do',
+        done: task.status === 'Done',
+        progress: task.status === 'Done' ? 100 : task.status === 'In progress' ? 50 : 0,
+        sprint: task.sprint_name,
+        sprint_name: task.sprint_name,
+        approvalStatus: 'none',
+        comments: 0,
+        commentsList: []
+      }
+    })
+  })
+
+  tasks = [
+    ...tasks.filter(task =>
+      !task.backendPersistent && !accessibleProjectNames.has(task.project)
+    ),
+    ...backendTasks
+  ]
+}
+
 export function getAccessibleMembers() {
   const memberMap = new Map()
   const addMember = member => {
@@ -805,7 +873,7 @@ export const saveReminders = () =>
 export const saveTasks = () =>
   localStorage.setItem(
     'collab-tasks',
-    JSON.stringify(tasks)
+    JSON.stringify(tasks.filter(task => !task.backendPersistent))
   )
 
 export const saveMembers = () =>

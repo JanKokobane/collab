@@ -11,6 +11,13 @@ const {
     listProjectInvitations,
     revokeInvitation
 } = require('../controllers/invitationController');
+const {
+    createProjectTask,
+    deleteProjectTask,
+    getProjectTasks,
+    updateProjectTask,
+    updateProjectTaskStatus
+} = require('../controllers/taskController');
 
 const {
     requireFirebaseAuth
@@ -33,6 +40,11 @@ router.get(
 
 router.get('/:projectId/invitations', listProjectInvitations);
 router.delete('/:projectId/invitations/:invitationId', revokeInvitation);
+router.get('/:projectId/tasks', getProjectTasks);
+router.post('/:projectId/tasks', createProjectTask);
+router.patch('/:projectId/tasks/:taskId/status', updateProjectTaskStatus);
+router.put('/:projectId/tasks/:taskId', updateProjectTask);
+router.delete('/:projectId/tasks/:taskId', deleteProjectTask);
 
 router.get(
     '/:projectId',

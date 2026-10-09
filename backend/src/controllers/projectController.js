@@ -305,14 +305,24 @@ const getProjects = async (req, res) => {
                 COALESCE(
                     (
                         SELECT json_agg(json_build_object(
-                            'firebaseUid', pi.invited_firebase_uid,
-                            'email', pi.invited_email,
-                            'name', pi.invited_name,
-                            'role', pi.role
-                        ) ORDER BY pi.created_at)
-                        FROM project_invitations pi
-                        WHERE pi.project_id = projects.project_id
-                          AND pi.status = 'accepted'
+                            'firebaseUid', accepted_member.invited_firebase_uid,
+                            'email', accepted_member.invited_email,
+                            'name', accepted_member.invited_name,
+                            'role', accepted_member.role
+                        ) ORDER BY accepted_member.created_at)
+                        FROM (
+                            SELECT DISTINCT ON (invited_firebase_uid)
+                                invited_firebase_uid,
+                                invited_email,
+                                invited_name,
+                                role,
+                                created_at
+                            FROM project_invitations
+                            WHERE project_id = projects.project_id
+                              AND status = 'accepted'
+                              AND invited_firebase_uid IS NOT NULL
+                            ORDER BY invited_firebase_uid, created_at DESC
+                        ) accepted_member
                     ),
                     '[]'::json
                 ) AS accepted_members,
@@ -389,14 +399,24 @@ const getProject = async (req, res) => {
                 COALESCE(
                     (
                         SELECT json_agg(json_build_object(
-                            'firebaseUid', pi.invited_firebase_uid,
-                            'email', pi.invited_email,
-                            'name', pi.invited_name,
-                            'role', pi.role
-                        ) ORDER BY pi.created_at)
-                        FROM project_invitations pi
-                        WHERE pi.project_id = projects.project_id
-                          AND pi.status = 'accepted'
+                            'firebaseUid', accepted_member.invited_firebase_uid,
+                            'email', accepted_member.invited_email,
+                            'name', accepted_member.invited_name,
+                            'role', accepted_member.role
+                        ) ORDER BY accepted_member.created_at)
+                        FROM (
+                            SELECT DISTINCT ON (invited_firebase_uid)
+                                invited_firebase_uid,
+                                invited_email,
+                                invited_name,
+                                role,
+                                created_at
+                            FROM project_invitations
+                            WHERE project_id = projects.project_id
+                              AND status = 'accepted'
+                              AND invited_firebase_uid IS NOT NULL
+                            ORDER BY invited_firebase_uid, created_at DESC
+                        ) accepted_member
                     ),
                     '[]'::json
                 ) AS accepted_members,
