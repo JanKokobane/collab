@@ -118,6 +118,8 @@ import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/f
 import { firebaseAuth } from '../firebase.js'
 import { api } from './js/api.js'
 
+let notificationRefreshInterval = null
+
 // Register all actions on the central hub for synchronous, zero-lag coordination
 registerHub({
   renderWorkspaceHub,
@@ -172,6 +174,10 @@ initProfileOnboarding()
 enhanceInputsWithIcons(document)
 
 onAuthStateChanged(firebaseAuth, async user => {
+  if (notificationRefreshInterval) {
+    clearInterval(notificationRefreshInterval)
+    notificationRefreshInterval = null
+  }
   clearNotificationsForSignedOutUser()
   if (!user) return
 
@@ -189,14 +195,36 @@ onAuthStateChanged(firebaseAuth, async user => {
     renderProjectNav()
     renderAdminProjectsTable()
     const selectedProject = projects.find(project => project.id === acceptedProjectId)
-    const ownsProject = projects.some(project => project.creatorFirebaseUid === user.uid)
-    switchView(selectedProject?.name || (activeView === 'Admin Console' && !ownsProject ? 'Workspace' : activeView))
+    const builtInViews = [
+      'Overview',
+      'Calendar',
+      'Admin Console',
+      'Settings',
+      'Notifications',
+      'Brainstorm',
+      'Messages',
+      'Workspace',
+      'My Tasks'
+    ]
+    const activeProjectIsAvailable = projects.some(project => project.name === activeView)
+    switchView(
+      selectedProject?.name ||
+      (builtInViews.includes(activeView) || activeProjectIsAvailable ? activeView : 'Workspace')
+    )
   } catch (error) {
     console.error('Unable to load projects for the dashboard:', error)
   }
 
   try {
     await loadNotificationsFromAPI()
+    notificationRefreshInterval = setInterval(async () => {
+      if (document.visibilityState !== 'visible') return
+      try {
+        await loadNotificationsFromAPI()
+      } catch (error) {
+        console.error('Unable to refresh notifications for the signed-in user:', error)
+      }
+    }, 30_000)
   } catch (error) {
     console.error('Unable to load notifications for the signed-in user:', error)
   }

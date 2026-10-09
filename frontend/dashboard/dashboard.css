@@ -220,6 +220,64 @@ body {
     font-size: 12px;
 }
 
+.invite-user-search-results {
+    display: grid;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.invite-user-search-result {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #E4E4E7;
+    border-radius: 8px;
+    background: #FFFFFF;
+    color: #27272A;
+    text-align: left;
+    cursor: pointer;
+}
+
+.invite-user-search-result:hover,
+.invite-user-search-result:focus-visible {
+    border-color: #E0A800;
+    background: #FFFBEB;
+    outline: none;
+}
+
+.invite-user-search-result span {
+    color: #71717A;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.action-btn:disabled {
+    cursor: wait;
+    opacity: .6;
+}
+
+body.dark-mode .invite-user-search-result,
+[data-theme="dark"] .invite-user-search-result {
+    border-color: #3F3F46;
+    background: #18181B;
+    color: #F4F4F5;
+}
+
+body.dark-mode .invite-user-search-result:hover,
+body.dark-mode .invite-user-search-result:focus-visible,
+[data-theme="dark"] .invite-user-search-result:hover,
+[data-theme="dark"] .invite-user-search-result:focus-visible {
+    background: #292524;
+}
+
+body.dark-mode .invite-user-search-result span,
+[data-theme="dark"] .invite-user-search-result span {
+    color: #A1A1AA;
+}
+
 .sidebar-bottom {
     margin-top: auto;
     display: grid;

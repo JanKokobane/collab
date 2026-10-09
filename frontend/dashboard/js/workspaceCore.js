@@ -1,8 +1,9 @@
-import { members, tasks, meetings, notifications, currentUser, markNotificationRead, markAllNotificationsRead, clearAllNotifications, make, getUserInitials, renderAvatarElement, root, closeModal } from './state.js'
+import { members, projects, tasks, meetings, notifications, currentUser, loadNotificationsFromAPI, loadProjectsFromAPI, markNotificationRead, markAllNotificationsRead, clearAllNotifications, make, getUserInitials, renderAvatarElement, root, closeModal, hub } from './state.js'
 import { renderAnnouncements, initAnnouncementEvents } from './announcements.js'
 import { renderStickyNotes, initBrainstormEvents } from './brainstorm.js'
 import { renderTeamPolls, initPollEvents } from './polls.js'
 import { renderScratchpad, renderHubResources, initWorkspaceResourceEvents } from './workspaceResources.js'
+import { api } from './api.js'
 
 // RENDER WORKSPACE HUB
 export function renderWorkspaceHub() {
@@ -204,7 +205,46 @@ export function renderNotifications() {
     const statusCell = make('td')
     statusCell.append(status)
     const actionCell = make('td')
-    if (notification.unread) {
+    const invitationIsPending =
+      notification.invitationId &&
+      notification.invitationStatus === 'pending' &&
+      (!notification.invitationExpiresAt || new Date(notification.invitationExpiresAt) > new Date())
+
+    if (invitationIsPending) {
+      const respond = async (action, button) => {
+        button.disabled = true
+        const buttons = actionCell.querySelectorAll('button')
+        buttons.forEach(item => { item.disabled = true })
+        let result
+        try {
+          result = await api.post(
+            action === 'accept' ? '/invitations/accept' : '/invitations/decline-in-app',
+            { invitationId: notification.invitationId }
+          )
+          await loadNotificationsFromAPI()
+          if (action === 'accept') {
+            await loadProjectsFromAPI()
+            hub.renderProjectNav?.()
+            const project = projects.find(item => item.id === result?.data?.projectId)
+            if (project) hub.switchView?.(project.name)
+          }
+        } catch (error) {
+          const message = make('span', 'project-form-error', error.message || 'The invitation response could not be saved.')
+          message.setAttribute('role', 'alert')
+          actionCell.append(message)
+          buttons.forEach(item => { item.disabled = false })
+        }
+      }
+      const acceptButton = make('button', 'action-btn primary gold', 'Accept')
+      acceptButton.type = 'button'
+      acceptButton.addEventListener('click', () => respond('accept', acceptButton))
+      const declineButton = make('button', 'action-btn delete', 'Decline')
+      declineButton.type = 'button'
+      declineButton.addEventListener('click', () => respond('decline', declineButton))
+      actionCell.append(acceptButton, declineButton)
+    } else if (notification.invitationId && notification.invitationStatus === 'pending') {
+      actionCell.append(make('span', 'notification-read-label', 'Expired'))
+    } else if (notification.unread) {
       const readButton = make('button', 'action-btn', 'Mark read')
       readButton.type = 'button'
       readButton.addEventListener('click', () => {

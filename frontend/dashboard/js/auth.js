@@ -170,10 +170,20 @@ export function updateUserUI() {
 
   const adminTag = document.querySelector('#admin-active-status-tag')
   if (adminTag) {
-    adminTag.textContent = ownsProject ? 'Project Creator' : 'Invited Member (Read Only)'
+    adminTag.textContent = isCreator
+      ? 'Project Creator'
+      : ownsProject
+        ? 'Workspace Collaborator'
+        : 'Invited Collaborator'
   }
   const adminNav = document.querySelector('#admin-nav-item')
-  if (adminNav) adminNav.style.display = ownsProject ? '' : 'none'
+  if (adminNav) adminNav.style.display = ''
+
+  const projectInviteButton = document.querySelector('#project-invite-collab-btn')
+  if (projectInviteButton) projectInviteButton.style.display = isCreator ? '' : 'none'
+
+  const projectManageButton = document.querySelector('#project-manage-collab-btn')
+  if (projectManageButton) projectManageButton.style.display = isCreator ? '' : 'none'
 
   const creatorBadge = document.querySelector('#project-creator-badge')
   const creatorBadgeText = document.querySelector('#project-creator-badge-text')

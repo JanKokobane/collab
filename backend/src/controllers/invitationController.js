@@ -8,6 +8,7 @@ const {
     pool,
     query
 } = require('../config/db');
+const { getFirebaseAdmin } = require('../config/firebaseAdmin');
 
 const allowedRoles = new Set([
     'Workspace Admin',
@@ -1338,6 +1339,119 @@ const acceptInvitation = async (
     req,
     res
 ) => {
+    const invitationId =
+        typeof req.body?.invitationId === 'string'
+            ? req.body.invitationId.trim()
+            : '';
+
+    if (invitationId) {
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(invitationId)) {
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_INVITATION_ID',
+                message: 'Invitation ID is invalid.'
+            });
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const result = await client.query(
+                `
+                    UPDATE project_invitations i
+                    SET status = 'accepted', responded_at = NOW()
+                    FROM projects p
+                    WHERE i.invitation_id = $1::uuid
+                      AND i.invited_firebase_uid = $2
+                      AND i.status = 'pending'
+                      AND i.expires_at > NOW()
+                      AND i.project_id = p.project_id
+                    RETURNING i.project_id, i.invited_by_firebase_uid,
+                              i.invited_name, i.role, p.name AS project_name
+                `,
+                [invitationId, req.firebaseUid]
+            );
+
+            if (!result.rowCount) {
+                const alreadyAccepted = await client.query(
+                    `
+                        SELECT i.project_id, i.role
+                        FROM project_invitations i
+                        WHERE i.invitation_id = $1::uuid
+                          AND i.invited_firebase_uid = $2
+                          AND i.status = 'accepted'
+                    `,
+                    [invitationId, req.firebaseUid]
+                );
+                if (alreadyAccepted.rowCount) {
+                    await client.query('COMMIT');
+                    return res.status(200).json({
+                        success: true,
+                        message: 'Invitation was already accepted.',
+                        data: alreadyAccepted.rows[0]
+                    });
+                }
+                await client.query('ROLLBACK');
+                return res.status(404).json({
+                    success: false,
+                    code: 'INVITATION_NOT_FOUND',
+                    message: 'This invitation is invalid, expired, already used, or belongs to another user.'
+                });
+            }
+
+            const invitation = result.rows[0];
+            await client.query(
+                `
+                    UPDATE notifications
+                    SET is_read = TRUE
+                    WHERE invitation_id = $1::uuid
+                      AND recipient_firebase_uid = $2
+                `,
+                [invitationId, req.firebaseUid]
+            );
+            await client.query(
+                `
+                    INSERT INTO notifications (
+                        recipient_firebase_uid, project_id, type, title, detail, avatar, tone_class
+                    )
+                    VALUES ($1, $2, 'invitation_accepted', 'Invitation accepted', $3, $4, 'green-bg')
+                `,
+                [
+                    invitation.invited_by_firebase_uid,
+                    invitation.project_id,
+                    `${invitation.invited_name} accepted the invitation to "${invitation.project_name}".`,
+                    invitation.invited_name
+                        .split(/\s+/)
+                        .map(part => part[0])
+                        .join('')
+                        .slice(0, 2)
+                        .toUpperCase()
+                ]
+            );
+            await client.query('COMMIT');
+            return res.status(200).json({
+                success: true,
+                message: 'Invitation accepted.',
+                data: {
+                    projectId: invitation.project_id,
+                    role: invitation.role
+                }
+            });
+        } catch (error) {
+            await client.query('ROLLBACK').catch(rollbackError => {
+                console.error('In-app invitation acceptance rollback failed:', rollbackError);
+            });
+            console.error('Accept in-app invitation error:', error);
+            return res.status(500).json({
+                success: false,
+                code: 'INVITATION_ACCEPT_FAILED',
+                message: 'The invitation could not be accepted.'
+            });
+        } finally {
+            client.release();
+        }
+    }
+
     const token =
         typeof req.body?.token === 'string'
             ? req.body.token.trim()
@@ -1879,12 +1993,345 @@ const declineInvitation = async (
     }
 };
 
+const declineInAppInvitation = async (
+    req,
+    res
+) => {
+    const invitationId =
+        typeof req.body?.invitationId === 'string'
+            ? req.body.invitationId.trim()
+            : '';
+
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(invitationId)) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_INVITATION_ID',
+            message: 'Invitation ID is invalid.'
+        });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const result = await client.query(
+            `
+                UPDATE project_invitations i
+                SET status = 'declined', responded_at = NOW()
+                FROM projects p
+                WHERE i.invitation_id = $1::uuid
+                  AND i.invited_firebase_uid = $2
+                  AND i.status = 'pending'
+                  AND i.expires_at > NOW()
+                  AND i.project_id = p.project_id
+                RETURNING i.project_id, i.invited_by_firebase_uid,
+                          i.invited_name, p.name AS project_name
+            `,
+            [invitationId, req.firebaseUid]
+        );
+
+        if (!result.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                success: false,
+                code: 'INVITATION_NOT_FOUND',
+                message: 'This invitation is invalid, expired, already used, or belongs to another user.'
+            });
+        }
+
+        const invitation = result.rows[0];
+        await client.query(
+            `
+                UPDATE notifications
+                SET is_read = TRUE
+                WHERE invitation_id = $1::uuid
+                  AND recipient_firebase_uid = $2
+            `,
+            [invitationId, req.firebaseUid]
+        );
+        await client.query(
+            `
+                INSERT INTO notifications (
+                    recipient_firebase_uid, project_id, type, title, detail, avatar, tone_class
+                )
+                VALUES ($1, $2, 'invitation_declined', 'Invitation declined', $3, $4, 'coral-bg')
+            `,
+            [
+                invitation.invited_by_firebase_uid,
+                invitation.project_id,
+                `${invitation.invited_name} declined the invitation to "${invitation.project_name}".`,
+                invitation.invited_name
+                    .split(/\s+/)
+                    .map(part => part[0])
+                    .join('')
+                    .slice(0, 2)
+                    .toUpperCase()
+            ]
+        );
+        await client.query('COMMIT');
+        return res.status(200).json({
+            success: true,
+            message: 'Invitation declined.'
+        });
+    } catch (error) {
+        await client.query('ROLLBACK').catch(rollbackError => {
+            console.error('In-app invitation decline rollback failed:', rollbackError);
+        });
+        console.error('Decline in-app invitation error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'INVITATION_DECLINE_FAILED',
+            message: 'The invitation could not be declined.'
+        });
+    } finally {
+        client.release();
+    }
+};
+
+const createInAppInvitations = async (
+    req,
+    res
+) => {
+    const projectIds = [
+        ...new Set(
+            (
+                Array.isArray(req.body?.project_ids)
+                    ? req.body.project_ids
+                    : [req.body?.projectId]
+            )
+                .filter(id => typeof id === 'string' && id.trim())
+                .map(id => id.trim())
+        )
+    ];
+    const invitedFirebaseUid =
+        typeof req.body?.firebaseUid === 'string'
+            ? req.body.firebaseUid.trim()
+            : '';
+    const role =
+        typeof req.body?.role === 'string'
+            ? req.body.role.trim()
+            : '';
+
+    if (!projectIds.length || projectIds.length > 50) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_PROJECT_SELECTION',
+            message: 'Choose at least one project you created.'
+        });
+    }
+
+    if (!invitedFirebaseUid) {
+        return res.status(400).json({
+            success: false,
+            code: 'REGISTERED_USER_REQUIRED',
+            message: 'Select a registered Collab user to invite.'
+        });
+    }
+
+    if (invitedFirebaseUid === req.firebaseUid) {
+        return res.status(400).json({
+            success: false,
+            code: 'CANNOT_INVITE_SELF',
+            message: 'You cannot invite yourself to a project.'
+        });
+    }
+
+    if (!allowedRoles.has(role)) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_INVITEE_ROLE',
+            message: 'Choose a valid project role.'
+        });
+    }
+
+    let invitee;
+    try {
+        invitee = await getFirebaseAdmin().auth().getUser(invitedFirebaseUid);
+    } catch (error) {
+        if (error.code === 'auth/user-not-found') {
+            return res.status(404).json({
+                success: false,
+                code: 'REGISTERED_USER_NOT_FOUND',
+                message: 'The selected Collab user could not be found.'
+            });
+        }
+        console.error('Unable to verify invitation recipient:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'INVITEE_LOOKUP_FAILED',
+            message: 'The selected user could not be verified.'
+        });
+    }
+
+    const invitedEmail =
+        typeof invitee.email === 'string'
+            ? invitee.email.trim().toLowerCase()
+            : '';
+    const invitedName =
+        (invitee.displayName || invitedEmail).trim();
+
+    if (!invitedEmail || !invitedName) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVITEE_PROFILE_INCOMPLETE',
+            message: 'The selected user needs a name and email on their Collab account.'
+        });
+    }
+
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        const ownedProjects = await client.query(
+            `
+                SELECT project_id, name, creator_name
+                FROM projects
+                WHERE project_id = ANY($1::text[])
+                  AND creator_firebase_uid = $2
+                FOR UPDATE
+            `,
+            [projectIds, req.firebaseUid]
+        );
+
+        if (ownedProjects.rowCount !== projectIds.length) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({
+                success: false,
+                code: 'PROJECT_INVITE_FORBIDDEN',
+                message: 'You may invite users only to projects you created.'
+            });
+        }
+
+        const created = [];
+        for (const project of ownedProjects.rows) {
+            const existing = await client.query(
+                `
+                    SELECT status
+                    FROM project_invitations
+                    WHERE project_id = $1
+                      AND (invited_firebase_uid = $2 OR LOWER(invited_email) = $3)
+                      AND status IN ('pending', 'accepted')
+                    LIMIT 1
+                `,
+                [project.project_id, invitedFirebaseUid, invitedEmail]
+            );
+
+            if (existing.rowCount) {
+                await client.query('ROLLBACK');
+                const isMember = existing.rows[0].status === 'accepted';
+                return res.status(409).json({
+                    success: false,
+                    code: isMember ? 'USER_ALREADY_MEMBER' : 'INVITATION_ALREADY_PENDING',
+                    message: isMember
+                        ? 'This user is already a member of the project.'
+                        : 'This user already has a pending invitation.'
+                });
+            }
+
+            const invitationId = randomUUID();
+            const tokenHash = createHash('sha256')
+                .update(randomBytes(32).toString('base64url'))
+                .digest('hex');
+            await client.query(
+                `
+                    INSERT INTO project_invitations (
+                        invitation_id,
+                        project_id,
+                        invited_by_firebase_uid,
+                        invited_email,
+                        invited_name,
+                        role,
+                        token_hash,
+                        invited_firebase_uid,
+                        expires_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + INTERVAL '14 days')
+                `,
+                [
+                    invitationId,
+                    project.project_id,
+                    req.firebaseUid,
+                    invitedEmail,
+                    invitedName,
+                    role,
+                    tokenHash,
+                    invitedFirebaseUid
+                ]
+            );
+
+            const inviterName =
+                project.creator_name ||
+                req.firebaseUser?.name ||
+                req.firebaseEmail ||
+                'A Collab user';
+            const initials = inviterName
+                .split(/\s+/)
+                .filter(Boolean)
+                .map(part => part[0])
+                .join('')
+                .slice(0, 2)
+                .toUpperCase();
+
+            const notification = await client.query(
+                `
+                    INSERT INTO notifications (
+                        recipient_firebase_uid,
+                        project_id,
+                        invitation_id,
+                        type,
+                        title,
+                        detail,
+                        avatar,
+                        tone_class
+                    )
+                    VALUES ($1, $2, $3, 'project_invitation', 'You''ve been invited to a project', $4, $5, 'blue-bg')
+                    RETURNING id, project_id, invitation_id, type, title, detail, avatar, tone_class, is_read, created_at
+                `,
+                [
+                    invitedFirebaseUid,
+                    project.project_id,
+                    invitationId,
+                    `${inviterName} invited you to join ${project.name} as a ${role}.`,
+                    initials || '•'
+                ]
+            );
+            created.push(notification.rows[0]);
+        }
+
+        await client.query('COMMIT');
+        return res.status(201).json({
+            success: true,
+            message: 'Invitation sent successfully.',
+            data: { invitations: created }
+        });
+    } catch (error) {
+        await client.query('ROLLBACK').catch(rollbackError => {
+            console.error('In-app invitation rollback failed:', rollbackError);
+        });
+        if (error.code === '23505') {
+            return res.status(409).json({
+                success: false,
+                code: 'INVITATION_ALREADY_PENDING',
+                message: 'This user already has an invitation for the selected project.'
+            });
+        }
+        console.error('Create in-app invitation error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'INVITATION_CREATE_FAILED',
+            message: 'The invitation could not be created.'
+        });
+    } finally {
+        client.release();
+    }
+};
+
 module.exports = {
-    createInvitations,
+    createInAppInvitations,
     listProjectInvitations,
     revokeInvitation,
     acceptInvitation,
     declineInvitation,
+    declineInAppInvitation,
     showDeclineConfirmation
 };
-

@@ -5,18 +5,23 @@ const getNotifications = async (req, res) => {
         const result = await query(
             `
                 SELECT
-                    id,
-                    project_id,
-                    type,
-                    title,
-                    detail,
-                    avatar,
-                    tone_class,
-                    is_read,
-                    created_at
-                FROM notifications
-                WHERE recipient_firebase_uid = $1
-                ORDER BY created_at DESC
+                    n.id,
+                    n.project_id,
+                    n.invitation_id,
+                    pi.status AS invitation_status,
+                    pi.expires_at AS invitation_expires_at,
+                    n.type,
+                    n.title,
+                    n.detail,
+                    n.avatar,
+                    n.tone_class,
+                    n.is_read,
+                    n.created_at
+                FROM notifications n
+                LEFT JOIN project_invitations pi
+                    ON pi.invitation_id = n.invitation_id
+                WHERE n.recipient_firebase_uid = $1
+                ORDER BY n.created_at DESC
             `,
             [req.firebaseUid]
         );
@@ -111,6 +116,13 @@ const clearNotifications = async (req, res) => {
             `
                 DELETE FROM notifications
                 WHERE recipient_firebase_uid = $1
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM project_invitations pi
+                      WHERE pi.invitation_id = notifications.invitation_id
+                        AND pi.status = 'pending'
+                        AND pi.expires_at > NOW()
+                  )
             `,
             [req.firebaseUid]
         );
@@ -145,6 +157,13 @@ const deleteNotification = async (req, res) => {
                 DELETE FROM notifications
                 WHERE id = $1
                   AND recipient_firebase_uid = $2
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM project_invitations pi
+                      WHERE pi.invitation_id = notifications.invitation_id
+                        AND pi.status = 'pending'
+                        AND pi.expires_at > NOW()
+                  )
                 RETURNING id
             `,
             [notificationId, req.firebaseUid]

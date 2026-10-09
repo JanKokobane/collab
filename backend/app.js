@@ -6,6 +6,7 @@ const phoneRouter = require('./src/routes/phone');
 const projectRouter = require('./src/routes/project');
 const notificationRouter = require('./src/routes/notification');
 const invitationRouter = require('./src/routes/invitation');
+const userRouter = require('./src/routes/user');
 
 const { pool } = require('./src/config/db');
 
@@ -117,6 +118,7 @@ app.use('/api/phone', phoneRouter);
 app.use('/api/projects', projectRouter);
 app.use('/api/notifications', notificationRouter);
 app.use('/api/invitations', invitationRouter);
+app.use('/api/users', userRouter);
 
 app.use((req, res) => {
     res.status(404).json({

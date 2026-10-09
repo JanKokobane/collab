@@ -1089,6 +1089,9 @@ function normalizeNotification(notification) {
     detail: notification.detail,
     avatar: notification.avatar || '•',
     toneClass: notification.tone_class || 'coral-bg',
+    invitationId: notification.invitation_id || null,
+    invitationStatus: notification.invitation_status || null,
+    invitationExpiresAt: notification.invitation_expires_at || null,
     time: notification.created_at
       ? new Date(notification.created_at).toLocaleString()
       : 'Just now',

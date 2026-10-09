@@ -713,7 +713,7 @@ export function openAddSprintModal() {
 }
 
 // ============================================================
-// INVITE COLLABORATOR BY EMAIL TO PROJECT
+// INVITE A REGISTERED COLLAB USER TO A PROJECT
 // ============================================================
 
 export function openInviteCollaboratorModal(
@@ -760,53 +760,29 @@ export function openInviteCollaboratorModal(
     make(
       'p',
       'modal-copy',
-      'Invite a collaborator. Their selected role is informational; access is limited to selected projects, and only each project creator can edit it.'
+      'Search for an existing Collab user. They will receive an invitation in their dashboard and can accept or decline it there.'
     )
 
-  // ==========================================================
-  // EMAIL
-  // ==========================================================
+  const searchLabel = make('label', '', 'Search registered Collab users')
+  const searchInput = make('input')
+  searchInput.type = 'search'
+  searchInput.placeholder = 'Search by name or email...'
+  searchInput.autocomplete = 'off'
+  searchInput.minLength = 2
+  searchLabel.append(searchInput)
 
-  const emailLabel =
-    make(
-      'label',
-      '',
-      'Collaborator Email'
-    )
+  const searchStatus = make('p', 'modal-copy')
+  searchStatus.setAttribute('role', 'status')
+  searchStatus.setAttribute('aria-live', 'polite')
+  searchStatus.textContent = 'Enter at least 2 characters to search.'
 
-  const emailInput =
-    make('input')
+  const searchResults = make('div', 'invite-user-search-results')
+  const selectedUserInfo = make('p', 'modal-copy')
+  selectedUserInfo.hidden = true
 
-  emailInput.type = 'email'
-  emailInput.required = true
-  emailInput.placeholder =
-    'e.g. teammate@collab.io'
-
-  emailLabel.append(emailInput)
-
-  // ==========================================================
-  // NAME
-  // ==========================================================
-
-  const nameLabel =
-    make(
-      'label',
-      '',
-      'Full Name'
-    )
-
-  const nameInput =
-    make('input')
-
-  nameInput.required = true
-  nameInput.placeholder =
-    'e.g. Alex Taylor'
-
-  nameLabel.append(nameInput)
-
-  // ==========================================================
-  // ROLE
-  // ==========================================================
+  let selectedUser = null
+  let searchTimer = null
+  let searchSequence = 0
 
   const roleLabel =
     make(
@@ -818,7 +794,7 @@ export function openInviteCollaboratorModal(
   const roleSelect =
     document.createElement('select')
 
-  ;[
+  const invitationRoles = [
     'Workspace Admin',
     'Product Lead',
     'Designer',
@@ -826,7 +802,8 @@ export function openInviteCollaboratorModal(
     'QA Specialist',
     'Content Strategist',
     'Member'
-  ].forEach(role => {
+  ]
+  invitationRoles.forEach(role => {
     const opt =
       make(
         'option',
@@ -854,17 +831,6 @@ export function openInviteCollaboratorModal(
 
   const projectSelect =
     document.createElement('select')
-
-  const allOpt =
-    make(
-      'option',
-      '',
-      'All Workspace Projects'
-    )
-
-  allOpt.value = 'all'
-
-  projectSelect.append(allOpt)
 
   ownedProjects.forEach(project => {
     const opt =
@@ -898,6 +864,10 @@ export function openInviteCollaboratorModal(
     )
 
   submit.type = 'submit'
+  submit.disabled = true
+  const errorNotice = make('p', 'project-form-error')
+  errorNotice.setAttribute('role', 'alert')
+  errorNotice.hidden = true
 
   form.append(
     close,
@@ -908,80 +878,115 @@ export function openInviteCollaboratorModal(
     ),
     title,
     copy,
-    emailLabel,
-    nameLabel,
+    searchLabel,
+    searchStatus,
+    searchResults,
+    selectedUserInfo,
     roleLabel,
     projectLabel,
+    errorNotice,
     submit
   )
 
-  // ==========================================================
-  // SUBMIT INVITATION
-  // ==========================================================
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimer)
+    const requestSequence = ++searchSequence
+    const search = searchInput.value.trim()
+    selectedUser = null
+    selectedUserInfo.hidden = true
+    selectedUserInfo.textContent = ''
+    submit.disabled = true
+    errorNotice.hidden = true
+    searchResults.replaceChildren()
+
+    if (search.length < 2) {
+      searchStatus.textContent = 'Enter at least 2 characters to search.'
+      return
+    }
+
+    searchStatus.textContent = 'Waiting to search...'
+    searchTimer = setTimeout(async () => {
+      searchStatus.textContent = 'Searching registered users...'
+      try {
+        const response = await api.get(`/users/search?q=${encodeURIComponent(search)}`)
+        if (requestSequence !== searchSequence) return
+        const users = response?.users
+        if (!Array.isArray(users)) {
+          throw new Error('The server returned an invalid user search response.')
+        }
+        searchResults.replaceChildren()
+        if (!users.length) {
+          searchStatus.textContent = 'No users found.'
+          return
+        }
+
+        users.forEach(user => {
+          const resultButton = make('button', 'invite-user-search-result')
+          resultButton.type = 'button'
+          resultButton.append(
+            make('strong', '', user.name),
+            make('span', '', user.email)
+          )
+          resultButton.addEventListener('click', () => {
+            selectedUser = user
+            selectedUserInfo.textContent = `Selected: ${user.name} (${user.email})`
+            selectedUserInfo.hidden = false
+            submit.disabled = false
+            errorNotice.hidden = true
+          })
+          searchResults.append(resultButton)
+        })
+        searchStatus.textContent = `${users.length} user${users.length === 1 ? '' : 's'} found. Select one to invite.`
+      } catch (error) {
+        if (requestSequence !== searchSequence) return
+        searchStatus.textContent = error.message || 'User search failed. Please try again.'
+      }
+    }, 300)
+  })
 
   form.addEventListener(
     'submit',
     async e => {
       e.preventDefault()
-
-      const email =
-        emailInput.value.trim()
-
-      const name =
-        nameInput.value.trim()
-
       const role =
         roleSelect.value
 
-      if (!email || !name) {
+      if (!selectedUser) {
+        errorNotice.textContent = 'Search for and select a registered Collab user first.'
+        errorNotice.hidden = false
         return
       }
 
-      const projectIds = projectSelect.value === 'all'
-        ? ownedProjects.map(project => project.id)
-        : [projectSelect.value]
-
+      const invitee = selectedUser
+      const selectedProjectId = projectSelect.value
       submit.disabled = true
-      let inviteResult
       try {
-        inviteResult = await api.post('/invitations', {
-          email,
-          name,
+        await api.post('/invitations', {
+          firebaseUid: invitee.firebaseUid,
           role,
-          project_ids: projectIds
+          projectId: selectedProjectId
         })
       } catch (error) {
-        let notice = form.querySelector('.project-form-error')
-        if (!notice) {
-          notice = make('p', 'project-form-error')
-          notice.setAttribute('role', 'alert')
-          submit.before(notice)
-        }
-        notice.textContent = error.code
+        errorNotice.textContent = error.code
           ? `${error.message} (${error.code})`
           : error.message || 'The invitation could not be sent.'
+        errorNotice.hidden = false
         submit.disabled = false
         return
       }
 
-      closeModal()
-
       addAuditLog(
         'Member invited',
-        `${currentUser.name || 'Project creator'} invited ${name} (${email}) to ${projectIds.length === 1 ? 'a project' : `${projectIds.length} projects`}.`,
+        `${currentUser.name || 'Project creator'} invited ${invitee.name} (${invitee.email}) to ${proj.name}.`,
         'userPlus'
       )
-
       pushNotification(
-        inviteResult?.data?.failedCount
-          ? 'Some Invitations Failed'
-          : 'Invitation Sent',
-        inviteResult?.data?.failedCount
-          ? `Sent ${inviteResult.data.invitations.length} invitation email(s); ${inviteResult.data.failedCount} could not be delivered.`
-          : `An invitation was emailed to ${name} (${email}).`,
+        'Invitation Sent',
+        `${invitee.name} will see your invitation in their Collab dashboard.`,
         '✉️',
-        inviteResult?.data?.failedCount ? 'orange-bg' : 'blue-bg'
+        'blue-bg'
       )
+      closeModal()
     }
   )
 
@@ -989,7 +994,7 @@ export function openInviteCollaboratorModal(
 
   root.replaceChildren(backdrop)
 
-  emailInput.focus()
+  searchInput.focus()
 }
 
 // ============================================================

@@ -2,9 +2,10 @@ const express = require('express');
 const { rateLimit } = require('express-rate-limit');
 
 const {
-    createInvitations,
+    createInAppInvitations,
     acceptInvitation,
     declineInvitation,
+    declineInAppInvitation,
     showDeclineConfirmation
 } = require('../controllers/invitationController');
 
@@ -13,10 +14,7 @@ const { requireFirebaseAuth } = require('../middleware/requireFirebaseAuth');
 const router = express.Router();
 
 /*
- * Public invitation response routes
- *
- * These must remain above requireFirebaseAuth because
- * recipients access them directly from their email.
+ * Public token response routes retained for previously issued invitations.
  */
 
 // Show the decline confirmation page.
@@ -51,12 +49,17 @@ router.post(
                 'Too many invitation requests. Please try again later.'
         }
     }),
-    createInvitations
+    createInAppInvitations
 );
 
 router.post(
     '/accept',
     acceptInvitation
+);
+
+router.post(
+    '/decline-in-app',
+    declineInAppInvitation
 );
 
 module.exports = router;
