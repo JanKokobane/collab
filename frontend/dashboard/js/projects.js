@@ -18,6 +18,7 @@ import {
 } from './state.js'
 import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
+import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 
 import {
   getActiveProject,
@@ -729,6 +730,45 @@ export function openAddSprintModal() {
 // INVITE A REGISTERED COLLAB USER TO A PROJECT
 // ============================================================
 
+function prepareInvitationAvatar(source) {
+  const value = String(source || '').trim()
+  if (!value) return Promise.resolve('')
+
+  if (value.startsWith('https://')) {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' || !url.hostname || value.length > 2048) {
+      return Promise.reject(new Error('The profile photo URL is invalid.'))
+    }
+    return Promise.resolve(value)
+  }
+
+  if (!/^data:image\/(?:jpeg|png|webp|gif);base64,/.test(value)) {
+    return Promise.reject(new Error('The profile photo format is not supported.'))
+  }
+
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => {
+      const size = 256
+      const canvas = document.createElement('canvas')
+      canvas.width = size
+      canvas.height = size
+      const context = canvas.getContext('2d')
+      if (!context) {
+        reject(new Error('The profile photo could not be prepared.'))
+        return
+      }
+      const scale = Math.max(size / image.width, size / image.height)
+      const width = image.width * scale
+      const height = image.height * scale
+      context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height)
+      resolve(canvas.toDataURL('image/jpeg', 0.75))
+    }
+    image.onerror = () => reject(new Error('The profile photo could not be loaded.'))
+    image.src = value
+  })
+}
+
 export function openInviteCollaboratorModal(
   targetProject = null
 ) {
@@ -1014,6 +1054,9 @@ export function openInviteCollaboratorModal(
       submit.setAttribute('aria-busy', 'true')
       submitLabel.textContent = 'Sending invitations...'
       try {
+        const inviterAvatar = await prepareInvitationAvatar(
+          currentUser.profileImage || currentUser.photoURL || firebaseAuth.currentUser?.photoURL
+        )
         await api.post('/invitations', {
           firebaseUids: invitees.map(user => user.firebaseUid),
           firebaseUid: invitees.length === 1 ? invitees[0].firebaseUid : undefined,
@@ -1023,7 +1066,8 @@ export function openInviteCollaboratorModal(
           })),
           emails: invitees.map(user => user.email),
           role,
-          projectId: selectedProjectId
+          projectId: selectedProjectId,
+          inviterAvatar
         })
       } catch (error) {
         errorNotice.textContent = error.code
@@ -1049,6 +1093,10 @@ export function openInviteCollaboratorModal(
         'blue-bg'
       )
       closeModal()
+      showDashboardToast(
+        `Invitation${invitees.length === 1 ? '' : 's'} sent to ${invitees.map(user => user.name).join(', ')}.`,
+        'success'
+      )
     }
   )
 
@@ -1373,8 +1421,8 @@ export function openManageCollaboratorsModal() {
   const notice = make('p', 'project-form-error')
   notice.setAttribute('role', 'alert')
   notice.hidden = true
-  const tableWrap = make('div', 'admin-table-wrapper')
-  const table = make('table', 'admin-table')
+  const tableWrap = make('div', 'admin-table-wrapper invitation-table-wrapper')
+  const table = make('table', 'admin-table invitation-table')
   table.innerHTML = '<thead><tr><th>Collaborator</th><th>Role</th><th>Status</th><th>Invited</th><th>Action</th></tr></thead><tbody></tbody>'
   tableWrap.append(table)
   const tbody = table.querySelector('tbody')
@@ -1396,21 +1444,56 @@ export function openManageCollaboratorsModal() {
       }
       invitations.forEach(invitation => {
         const row = document.createElement('tr')
-        row.append(
-          make('td', '', `${invitation.invited_name} (${invitation.invited_email})`),
-          make('td', '', invitation.role),
-          make('td', '', invitation.status),
-          make('td', '', new Date(invitation.created_at).toLocaleDateString())
+        const identity = make('div', 'member-info invitation-identity')
+        identity.append(
+          make('strong', '', invitation.invited_name || 'Collab user'),
+          make('small', '', invitation.invited_email || 'Email unavailable')
         )
+        const identityCell = make('td')
+        identityCell.append(identity)
+
+        const roleCell = make('td')
+        roleCell.append(make('span', 'invitation-role', invitation.role || 'Member'))
+
+        const statusCell = make('td')
+        const normalizedStatus = String(invitation.status || 'unknown').toLowerCase()
+        const statusClass = normalizedStatus === 'accepted'
+          ? 'active'
+          : normalizedStatus === 'pending'
+            ? 'pending'
+            : 'invitation-status-other'
+        statusCell.append(make('span', `status-badge invitation-status ${statusClass}`, normalizedStatus))
+
+        const invitedDate = new Date(invitation.created_at)
+        const invitedCell = make(
+          'td',
+          'invitation-date',
+          Number.isNaN(invitedDate.getTime()) ? 'Date unavailable' : invitedDate.toLocaleDateString()
+        )
+
+        row.append(identityCell, roleCell, statusCell, invitedCell)
+
         const actions = make('td')
         if (invitation.status === 'pending' || invitation.status === 'accepted') {
           const remove = make('button', 'action-btn delete', invitation.status === 'pending' ? 'Revoke' : 'Remove')
           remove.type = 'button'
           remove.addEventListener('click', async () => {
+            const confirmed = await showDashboardConfirmation({
+              title: invitation.status === 'pending' ? 'Revoke invitation?' : 'Remove collaborator?',
+              message: `Are you sure you want to ${invitation.status === 'pending' ? 'revoke this invitation for' : 'remove access for'} ${invitation.invited_name || invitation.invited_email}?`,
+              confirmText: invitation.status === 'pending' ? 'Revoke invitation' : 'Remove access',
+              danger: true
+            })
+            if (!confirmed) return
+
             remove.disabled = true
             try {
               await api.delete(`/projects/${encodeURIComponent(project.projectId || project.id)}/invitations/${encodeURIComponent(invitation.invitation_id)}`)
               await refresh()
+              showDashboardToast(
+                invitation.status === 'pending' ? 'Invitation revoked.' : 'Collaborator access removed.',
+                'success'
+              )
             } catch (error) {
               notice.textContent = error.message || 'The invitation or access could not be removed.'
               notice.hidden = false

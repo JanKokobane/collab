@@ -807,28 +807,33 @@ body.dark-mode .brainstorm-link-type {
 }
 
 .notification-settings-table {
-    min-width: 620px;
+    min-width: 1120px;
     table-layout: fixed;
 }
 
 .notification-settings-table th:first-child,
 .notification-settings-table td:first-child {
-    width: 110px;
+    width: 150px;
 }
 
 .notification-settings-table th:nth-child(2),
 .notification-settings-table td:nth-child(2) {
-    width: 190px;
+    width: 250px;
+}
+
+.notification-settings-table th:nth-child(3),
+.notification-settings-table td:nth-child(3) {
+    width: 450px;
 }
 
 .notification-settings-table th:nth-child(4),
 .notification-settings-table td:nth-child(4) {
-    width: 92px;
+    width: 100px;
 }
 
-.notification-settings-table th:last-child,
-.notification-settings-table td:last-child {
-    width: 112px;
+.notification-settings-table th:nth-child(5),
+.notification-settings-table td:nth-child(5) {
+    width: 170px;
 }
 
 .upcoming-meetings-table th,
@@ -1231,13 +1236,41 @@ body.dark-mode .notification-confirmation-body {
 .settings-notification-title {
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 11px;
     min-width: 0;
 }
 
+.notification-settings-table .settings-notification-title .notif-avatar.notification-person-avatar {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    flex: 0 0 38px;
+    overflow: hidden;
+    border: 2px solid #FFFFFF;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #DBEAFE, #BFDBFE);
+    box-shadow: 0 0 0 1px #93C5FD, 0 2px 6px rgba(37, 99, 235, 0.16);
+    color: #1D4ED8;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    line-height: 1;
+}
+
+.notification-person-avatar img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    object-fit: cover;
+}
+
 .settings-notification-title strong {
+    min-width: 0;
     color: var(--ink);
     font-size: 12px;
+    overflow-wrap: anywhere;
 }
 
 .notification-detail-cell {
@@ -1450,7 +1483,7 @@ body.dark-mode .workspace-updates-panel-header {
     }
 
     .notification-settings-table {
-        min-width: 620px;
+        min-width: 1120px;
     }
 
     .notification-confirmation-modal {
@@ -2258,6 +2291,13 @@ body.dark-mode .upcoming-meeting-row:hover {
 
 body.dark-mode .notification-row-unread {
     background: #211F19;
+}
+
+body.dark-mode .notification-settings-table .settings-notification-title .notif-avatar.notification-person-avatar {
+    border-color: #27272F;
+    background: linear-gradient(145deg, #1E3A8A, #1D4ED8);
+    box-shadow: 0 0 0 1px #60A5FA, 0 2px 7px rgba(0, 0, 0, 0.3);
+    color: #EFF6FF;
 }
 
 body.dark-mode .notification-status.read {

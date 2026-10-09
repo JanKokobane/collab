@@ -58,6 +58,8 @@ All endpoints below require `Authorization: Bearer <Firebase ID token>`.
   `DELETE /api/notifications[/:notificationId]`: manage only the signed-in
   user's notifications. Creating a project inserts a notification for its
   creator in the same database transaction.
+- `GET|PUT /api/users/profile-image`: retrieve or save the authenticated user's
+  compressed profile photo, keyed only by their verified Firebase UID.
 - `POST /api/invitations`: create invitations for projects owned by the caller
   and send branded Resend emails. `GET /api/projects/:projectId/invitations`
   lists their invitation status, and

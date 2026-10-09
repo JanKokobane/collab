@@ -42,6 +42,25 @@ const mailerSendFromName = (
 const isValidEmail = email =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
+const isValidNotificationAvatar = value => {
+    if (typeof value !== 'string' || value.length > 350_000) {
+        return false;
+    }
+
+    if (/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)) {
+        return true;
+    }
+
+    try {
+        const url = new URL(value);
+        return url.protocol === 'https:' &&
+            Boolean(url.hostname) &&
+            value.length <= 2048;
+    } catch {
+        return false;
+    }
+};
+
 function makeEmailError(
     code,
     message,
@@ -2135,6 +2154,18 @@ const createInAppInvitations = async (
         typeof req.body?.role === 'string'
             ? req.body.role.trim()
             : '';
+    const inviterAvatar =
+        typeof req.body?.inviterAvatar === 'string'
+            ? req.body.inviterAvatar.trim()
+            : '';
+
+    if (inviterAvatar && !isValidNotificationAvatar(inviterAvatar)) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_PROFILE_PHOTO',
+            message: 'The inviter profile photo is invalid or too large.'
+        });
+    }
 
     if (!projectIds.length || projectIds.length > 50) {
         return res.status(400).json({
@@ -2276,6 +2307,10 @@ const createInAppInvitations = async (
                 .join('')
                 .slice(0, 2)
                 .toUpperCase();
+            const firebaseAvatar = isValidNotificationAvatar(req.firebaseUser?.picture)
+                ? req.firebaseUser.picture
+                : '';
+            const avatar = inviterAvatar || firebaseAvatar || initials || '•';
             for (const invitee of invitees) {
                 const existing = await client.query(
                     `
@@ -2357,7 +2392,7 @@ const createInAppInvitations = async (
                         RETURNING id, project_id, invitation_id, type, title, detail,
                                   avatar, tone_class, is_read, created_at
                     `,
-                    [detail, initials || '•', invitationId, invitee.firebaseUid]
+                    [detail, avatar, invitationId, invitee.firebaseUid]
                 );
                 if (!notification.rowCount) {
                     notification = await client.query(
@@ -2376,7 +2411,7 @@ const createInAppInvitations = async (
                             project.project_id,
                             invitationId,
                             detail,
-                            initials || '•'
+                            avatar
                         ]
                     );
                 }

@@ -100,6 +100,7 @@ import {
   toggleDarkLightMode,
   collabSettings
 } from './js/theme.js'
+import { api } from './js/api.js'
 
 import {
   initEventListeners,
@@ -113,7 +114,7 @@ import {
   renderNotifications,
   initWorkspaceHubEvents
 } from './js/workspaceHub.js'
-import { initMessages, renderMessages } from './js/messages.js'
+import { initMessages, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js'
 import { initModalChrome } from './js/modalChrome.js'
 import { initProfileOnboarding } from './js/profileOnboarding.js'
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
@@ -212,7 +213,38 @@ onAuthStateChanged(firebaseAuth, async user => {
     role: savedUser?.uid === user.uid ? savedUser.role || 'Member' : 'Member',
     isAdmin: savedUser?.uid === user.uid ? Boolean(savedUser.isAdmin) : false
   })
+
+  try {
+    let profileImageResponse = await api.get('/users/profile-image')
+    let savedProfileImage = profileImageResponse?.data?.profileImage || ''
+
+    const legacyProfileImage = savedUser?.uid === user.uid
+      ? savedUser.profileImage || ''
+      : ''
+    if (
+      !savedProfileImage &&
+      /^data:image\/(?:jpeg|png|webp);base64,/.test(legacyProfileImage) &&
+      legacyProfileImage.length <= 350_000
+    ) {
+      profileImageResponse = await api.put('/users/profile-image', {
+        profileImage: legacyProfileImage
+      })
+      savedProfileImage = profileImageResponse?.data?.profileImage || ''
+    }
+
+    if (savedProfileImage) {
+      setCurrentUser({
+        ...currentUser,
+        profileImage: savedProfileImage,
+        photoURL: savedProfileImage
+      })
+    }
+  } catch (error) {
+    console.error('Unable to restore the signed-in user profile photo:', error)
+  }
+
   updateUserUI()
+  populateProfileForm()
 
   try {
     const inviteToken = new URLSearchParams(window.location.search).get('invite')
@@ -225,6 +257,7 @@ onAuthStateChanged(firebaseAuth, async user => {
       window.history.replaceState({}, '', url)
     }
     await loadProjectsFromAPI()
+    refreshMessagesForCurrentUser()
     renderProjectNav()
     renderAdminProjectsTable()
     const selectedProject = projects.find(project => project.id === acceptedProjectId)

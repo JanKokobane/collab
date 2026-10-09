@@ -876,6 +876,16 @@ body.dark-mode .invite-user-search-result span,
     background: #E5AA00;
 }
 
+.primary-button.danger {
+    background: #DC2626;
+    color: #FFFFFF;
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.22);
+}
+
+.primary-button.danger:hover {
+    background: #B91C1C;
+}
+
 /* Stats */
 .stats {
     display: grid;
@@ -1335,6 +1345,93 @@ body.dark-mode .invite-user-search-result span,
     scrollbar-width: thin;
     scrollbar-color: #D4D4D8 #F4F4F5;
     animation: dashboard-modal-in .2s cubic-bezier(.2, .75, .25, 1) both;
+}
+
+.dashboard-toast {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 2200;
+    max-width: min(420px, calc(100vw - 32px));
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: #fff;
+    background: #0F766E;
+    box-shadow: 0 18px 46px rgba(15, 15, 20, 0.2);
+    opacity: 1;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.dashboard-toast.is-error {
+    background: #B91C1C;
+}
+
+.dashboard-toast.is-leaving {
+    opacity: 0;
+    transform: translateY(4px);
+}
+
+.dashboard-confirmation-modal {
+    width: min(430px, calc(100vw - 32px));
+    padding: 24px;
+    gap: 14px;
+}
+
+.dashboard-confirmation-modal h2 {
+    margin: 0;
+    font-size: 24px;
+    line-height: 1.2;
+    color: #171717;
+}
+
+.dashboard-confirmation-modal .modal-copy {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.dashboard-confirmation-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.invitation-table-wrapper {
+    max-width: 100%;
+}
+
+.invitation-table td {
+    max-width: 200px;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.invitation-table .invitation-identity {
+    min-width: 180px;
+}
+
+.invitation-table .invitation-role {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: #F3F4F6;
+    color: #374151;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.invitation-table .invitation-status {
+    text-transform: capitalize;
+}
+
+.invitation-table .invitation-status-other {
+    background: #F3F4F6;
+    color: #374151;
 }
 
 form.modal {

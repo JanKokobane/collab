@@ -24,6 +24,7 @@ import { addDaysToDateKey, toLocalDateKey } from './dateUtils.js'
 import { openInviteCollaboratorModal, openCreateProjectModal, openEditProjectModal } from './projects.js'
 import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
+import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 
 // ============================================================
 // ADMIN CONSOLE TABLE & FUNCTIONS
@@ -492,8 +493,22 @@ export function renderAdminProjectsTable() {
     // 5. Team / Collaborators
     const tdTeam = document.createElement('td')
     const teamWrap = make('div', 'collaborators-cell')
-    const teamCount = (project.invitedMembers || []).length || members.length
-    const teamBadge = make('span', 'status-badge active', `${teamCount} members`)
+    const projectMembers = [
+      {
+        firebaseUid: project.creatorFirebaseUid,
+        email: project.creatorEmail
+      },
+      ...(project.acceptedMembers || [])
+    ]
+    const teamCount = new Set(
+      projectMembers
+        .map(member => {
+          const email = member.email?.trim().toLowerCase()
+          return email || member.firebaseUid || member.firebase_uid
+        })
+        .filter(Boolean)
+    ).size
+    const teamBadge = make('span', 'status-badge active', `${teamCount} ${teamCount === 1 ? 'member' : 'members'}`)
     teamWrap.append(teamBadge)
     tdTeam.append(teamWrap)
 
@@ -533,36 +548,42 @@ export function renderAdminProjectsTable() {
       deleteBtn.type = 'button'
       deleteBtn.title = `Delete ${project.name}`
       deleteBtn.addEventListener('click', async () => {
-      if (projects.length <= 1) {
-        pushNotification('Action Denied', 'Workspace must maintain at least one project.', '⚠️', 'coral-bg')
-        return
-      }
-      const confirmed = window.confirm ? window.confirm(`Are you sure you want to remove project "${project.name}"?`) : true
-      if (!confirmed) return
+        if (projects.length <= 1) {
+          pushNotification('Action Denied', 'Workspace must maintain at least one project.', '⚠️', 'coral-bg')
+          return
+        }
+        const confirmed = await showDashboardConfirmation({
+          title: 'Delete project?',
+          message: `Are you sure you want to permanently delete "${project.name}"? This will remove the project and its related project access.`,
+          confirmText: 'Delete project',
+          danger: true
+        })
+        if (!confirmed) return
 
-      deleteBtn.disabled = true
-      try {
-        await api.delete(`/projects/${encodeURIComponent(project.projectId || project.id)}`)
-      } catch (error) {
-        deleteBtn.disabled = false
-        pushNotification(
-          'Project Removal Failed',
-          error.message || `Unable to remove "${project.name}".`,
-          '⚠️',
-          'coral-bg'
-        )
-        return
-      }
+        deleteBtn.disabled = true
+        try {
+          await api.delete(`/projects/${encodeURIComponent(project.projectId || project.id)}`)
+        } catch (error) {
+          deleteBtn.disabled = false
+          pushNotification(
+            'Project Removal Failed',
+            error.message || `Unable to remove "${project.name}".`,
+            '⚠️',
+            'coral-bg'
+          )
+          return
+        }
 
-      const idx = projects.findIndex(p => p.id === project.id)
-      if (idx !== -1) {
-        const removed = projects.splice(idx, 1)[0]
-        saveProjects()
-        renderAdminProjectsTable()
-        hub.renderProjectNav?.()
-        addAuditLog('Project deleted', `${currentUser.name} removed project "${removed.name}".`, 'trash')
-        pushNotification('Project Removed', `"${removed.name}" was deleted.`, '🗑️', 'coral-bg')
-      }
+        const idx = projects.findIndex(p => p.id === project.id)
+        if (idx !== -1) {
+          const removed = projects.splice(idx, 1)[0]
+          saveProjects()
+          renderAdminProjectsTable()
+          hub.renderProjectNav?.()
+          addAuditLog('Project deleted', `${currentUser.name} removed project "${removed.name}".`, 'trash')
+          pushNotification('Project Removed', `"${removed.name}" was deleted.`, '🗑️', 'coral-bg')
+          showDashboardToast(`"${removed.name}" was deleted.`, 'success')
+        }
       })
       actionsWrap.append(editBtn, inviteBtn, deleteBtn)
     } else {

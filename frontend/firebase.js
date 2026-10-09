@@ -1,5 +1,9 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js'
-import { getAuth } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
+import {
+  browserPopupRedirectResolver,
+  browserSessionPersistence,
+  initializeAuth
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
 
 const firebaseConfig = {
   apiKey: 'AIzaSyAjQOsgPTgrc3VyNxx58UppAbm7JvP1Vuo',
@@ -11,7 +15,10 @@ const firebaseConfig = {
 }
 
 export const firebaseApp = initializeApp(firebaseConfig)
-export const firebaseAuth = getAuth(firebaseApp)
+export const firebaseAuth = initializeAuth(firebaseApp, {
+  persistence: browserSessionPersistence,
+  popupRedirectResolver: browserPopupRedirectResolver
+})
 
 
 

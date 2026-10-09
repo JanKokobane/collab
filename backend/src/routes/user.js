@@ -1,11 +1,17 @@
 const express = require('express');
 const { rateLimit } = require('express-rate-limit');
-const { searchUsers } = require('../controllers/userController');
+const {
+    getProfileImage,
+    saveProfileImage,
+    searchUsers
+} = require('../controllers/userController');
 const { requireFirebaseAuth } = require('../middleware/requireFirebaseAuth');
 
 const router = express.Router();
 
 router.use(requireFirebaseAuth);
+router.get('/profile-image', getProfileImage);
+router.put('/profile-image', saveProfileImage);
 router.get(
     '/search',
     rateLimit({

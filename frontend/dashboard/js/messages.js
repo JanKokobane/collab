@@ -1,14 +1,19 @@
-import { activeView, currentUser, getAvatarSource, make, members, projects, renderAvatarElement } from './state.js'
+import { activeView, currentUser, getAccessibleMembers, getAvatarSource, make, renderAvatarElement } from './state.js'
+import { firebaseAuth } from '../../firebase.js'
 
-const storageKey = 'collab-demo-messaging'
+const storageKey = () => {
+  const uid = firebaseAuth.currentUser?.uid
+  return uid ? `collab-demo-messaging-${uid}` : null
+}
 const maxAttachmentBytes = 512 * 1024
 const demoReadDelayMs = 1800
 const reactionChoices = ['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']
-let demoState = loadDemoState()
-let selectedConversationId = demoState.conversations[0]?.id || null
+let demoState = { conversations: [], messages: [] }
+let selectedConversationId = null
 let pendingFiles = []
 let replyTargetId = null
 let editingMessageId = null
+let messagesInitialized = false
 const pendingReadReceipts = new Set()
 
 function getElements() {
@@ -40,23 +45,17 @@ function setSendButtonMode(isSaving = Boolean(editingMessageId)) {
 }
 
 function getContacts() {
-  const contactMap = new Map()
-  ;[...members, ...projects.flatMap(project => project.invitedMembers || [])].forEach(member => {
+  return getAccessibleMembers().filter(member => {
     const email = member.email?.trim().toLowerCase()
-    if (email && email !== currentUser.email?.toLowerCase() && !contactMap.has(email)) {
-      contactMap.set(email, {
-        email,
-        name: member.name || email,
-        initials: member.initials || initialsFor(member.name || email),
-        tone: member.tone || 'teal',
-        profileImage: getAvatarSource(member)
-      })
-    } else if (email && email !== currentUser.email?.toLowerCase() && contactMap.has(email)) {
-      const contact = contactMap.get(email)
-      contact.profileImage ||= getAvatarSource(member)
-    }
+    return email &&
+      member.firebaseUid !== firebaseAuth.currentUser?.uid &&
+      email !== currentUser.email?.toLowerCase()
   })
-  return [...contactMap.values()].sort((a, b) => a.name.localeCompare(b.name))
+    .map(member => ({
+      ...member,
+      profileImage: getAvatarSource(member)
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 function initialsFor(name) {
@@ -64,11 +63,34 @@ function initialsFor(name) {
 }
 
 function loadDemoState() {
-  const saved = localStorage.getItem(storageKey)
+  const key = storageKey()
+  const selfEmail = currentUser.email?.trim().toLowerCase()
+  if (!key || !selfEmail) return { conversations: [], messages: [] }
+
+  const saved = localStorage.getItem(key)
   if (saved) {
     try {
       const parsed = JSON.parse(saved)
-      if (Array.isArray(parsed.conversations) && Array.isArray(parsed.messages)) return parsed
+      if (Array.isArray(parsed.conversations) && Array.isArray(parsed.messages)) {
+        const allowedEmails = new Set([
+          selfEmail,
+          ...getContacts().map(contact => contact.email)
+        ])
+        const conversations = parsed.conversations.filter(conversation =>
+          Array.isArray(conversation.members) &&
+          conversation.members.includes(selfEmail) &&
+          conversation.members.every(email => allowedEmails.has(email?.toLowerCase()))
+        )
+        const conversationsById = new Map(conversations.map(conversation => [conversation.id, conversation]))
+        const messages = parsed.messages.filter(message => {
+          const conversation = conversationsById.get(message.conversationId)
+          return conversation && allowedEmails.has(message.senderEmail?.toLowerCase()) &&
+            conversation.members.includes(message.senderEmail?.toLowerCase())
+        })
+        const filtered = { conversations, messages }
+        localStorage.setItem(key, JSON.stringify(filtered))
+        return filtered
+      }
     } catch (error) {
       console.error('Saved demo messages could not be read.', error)
     }
@@ -79,47 +101,30 @@ function loadDemoState() {
     id: `demo-channel-${now}`,
     type: 'channel',
     name: 'general',
-    createdAt: new Date(now - 60000).toISOString(),
-    members: [currentUser.email, ...contacts.map(contact => contact.email)]
+    createdAt: new Date(now).toISOString(),
+    members: [selfEmail, ...contacts.map(contact => contact.email)]
   }
   const firstContact = contacts[0]
   const direct = firstContact ? {
     id: `demo-direct-${now}`,
     type: 'direct',
     name: '',
-    createdAt: new Date(now - 30000).toISOString(),
-    members: [currentUser.email, firstContact.email]
+    createdAt: new Date(now).toISOString(),
+    members: [selfEmail, firstContact.email]
   } : null
-  const messages = [
-    {
-      id: `demo-message-${now}-1`,
-      conversationId: general.id,
-      senderEmail: firstContact?.email || currentUser.email,
-      senderName: firstContact?.name || currentUser.name,
-      body: 'Welcome to the team chat! Share updates, files, and ideas here. 👋',
-      createdAt: new Date(now - 3600000).toISOString(),
-      attachments: [],
-      reactions: [{ emoji: '👋', users: [currentUser.email] }, { emoji: '🎉', users: [firstContact?.email || currentUser.email] }]
-    },
-    {
-      id: `demo-message-${now}-2`,
-      conversationId: general.id,
-      senderEmail: currentUser.email,
-      senderName: currentUser.name,
-      body: 'Thanks! Use the buttons on a message to add a reaction, or the smiley beside the composer to insert an emoji.',
-      createdAt: new Date(now - 1800000).toISOString(),
-      attachments: [],
-      reactions: []
-    }
-  ]
-  const state = { conversations: direct ? [general, direct] : [general], messages }
-  localStorage.setItem(storageKey, JSON.stringify(state))
+  const state = {
+    conversations: contacts.length ? (direct ? [general, direct] : [general]) : [],
+    messages: []
+  }
+  localStorage.setItem(key, JSON.stringify(state))
   return state
 }
 
 function persistDemoState() {
   try {
-    localStorage.setItem(storageKey, JSON.stringify(demoState))
+    const key = storageKey()
+    if (!key) throw new Error('Sign in to save messages.')
+    localStorage.setItem(key, JSON.stringify(demoState))
     return true
   } catch (error) {
     showError(new Error('This browser could not save the demo conversation. Remove a large attachment or free up browser storage and try again.'))
@@ -1171,6 +1176,8 @@ function closeEmojiPicker() {
 }
 
 export function initMessages() {
+  if (messagesInitialized) return
+  messagesInitialized = true
   document.querySelector('#messages-new-channel')?.addEventListener('click', () => openConversationModal('channel'))
   document.querySelector('#messages-new-group')?.addEventListener('click', () => openConversationModal('group'))
   document.querySelector('#messages-new-direct')?.addEventListener('click', () => openConversationModal('direct'))
@@ -1217,7 +1224,7 @@ export function initMessages() {
     }
   })
   window.addEventListener('storage', event => {
-    if (event.key !== storageKey || !event.newValue) return
+    if (event.key !== storageKey() || !event.newValue) return
     try {
       demoState = JSON.parse(event.newValue)
       updateMessagesNavigationBadge()
@@ -1226,4 +1233,14 @@ export function initMessages() {
       showError(new Error('Updated demo messages could not be read from browser storage.'))
     }
   })
+}
+
+export function refreshMessagesForCurrentUser() {
+  demoState = loadDemoState()
+  selectedConversationId = demoState.conversations[0]?.id || null
+  pendingFiles = []
+  replyTargetId = null
+  editingMessageId = null
+  updateMessagesNavigationBadge()
+  renderMessages()
 }

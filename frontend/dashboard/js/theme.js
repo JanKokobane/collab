@@ -21,6 +21,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
 import { firebaseAuth } from '../../firebase.js'
 import { validatePhoneNumber } from '../../shared/phoneValidation.js'
+import { api } from './api.js'
 
 let passwordProviderObserverInitialized = false
 
@@ -221,6 +222,40 @@ export function updateProfilePreview() {
   if (nm) nm.textContent = currentUser.name || 'Alex Morgan'
   if (em) em.textContent = currentUser.email || 'admin@collab.io'
   if (rl) rl.textContent = currentUser.role || 'Workspace Admin'
+}
+
+function resizeProfileImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('The selected photo could not be read.'))
+    reader.onload = () => {
+      const image = new Image()
+      image.onerror = () => reject(new Error('The selected photo could not be loaded.'))
+      image.onload = () => {
+        const size = 256
+        const canvas = document.createElement('canvas')
+        canvas.width = size
+        canvas.height = size
+        const context = canvas.getContext('2d')
+        if (!context) {
+          reject(new Error('The selected photo could not be prepared.'))
+          return
+        }
+        const scale = Math.max(size / image.width, size / image.height)
+        const width = image.width * scale
+        const height = image.height * scale
+        context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height)
+        const imageData = canvas.toDataURL('image/jpeg', 0.75)
+        if (imageData.length > 350_000) {
+          reject(new Error('The photo is too large after processing. Please choose another image.'))
+          return
+        }
+        resolve(imageData)
+      }
+      image.src = String(reader.result || '')
+    }
+    reader.readAsDataURL(file)
+  })
 }
 
 function showProfileSavedToast() {
@@ -478,27 +513,42 @@ export function initSettingsControls() {
   populateProfileForm()
 
   const profileImageInput = document.querySelector('#profile-image-input')
-  profileImageInput?.addEventListener('change', (event) => {
+  profileImageInput?.addEventListener('change', async (event) => {
     const file = event.target.files?.[0]
     if (!file) return
 
-    if (file.size > 2 * 1024 * 1024) {
-      pushNotification('Image Too Large', 'Please upload a profile photo smaller than 2 MB.', '⚠️', 'coral-bg')
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) {
+      pushNotification('Invalid Profile Photo', 'Choose a JPEG, PNG, or WebP image smaller than 2 MB.', '⚠️', 'coral-bg')
       return
     }
 
-    const reader = new FileReader()
-    reader.onload = () => {
-      const imageData = String(reader.result || '')
-      event.target.dataset.imageData = imageData
-      currentUser.profileImage = imageData
-      currentUser.photoURL = imageData
+    const input = event.currentTarget
+    input.disabled = true
+    try {
+      const imageData = await resizeProfileImage(file)
+      const response = await api.put('/users/profile-image', { profileImage: imageData })
+      const savedImage = response?.data?.profileImage
+      if (typeof savedImage !== 'string' || !savedImage) {
+        throw new Error('The server did not confirm saving the profile photo.')
+      }
+      input.dataset.imageData = savedImage
+      currentUser.profileImage = savedImage
+      currentUser.photoURL = savedImage
       setCurrentUser(currentUser)
       updateProfilePreview()
       updateUserUI()
-      pushNotification('Profile Photo Updated', 'Your new picture is now visible in the workspace.', '✅', 'teal-bg')
+      pushNotification('Profile Photo Updated', 'Your profile photo is securely saved to your account.', '✅', 'teal-bg')
+    } catch (error) {
+      console.error('Unable to save profile photo:', error)
+      pushNotification(
+        'Profile Photo Save Failed',
+        error.message || 'The profile photo could not be saved. Please try again.',
+        '⚠️',
+        'coral-bg'
+      )
+    } finally {
+      input.disabled = false
     }
-    reader.readAsDataURL(file)
   })
 
   // Profile Form Submit

@@ -156,6 +156,12 @@ function normalizeProject(project) {
         ? project.invitedMembers
         : [],
 
+    acceptedMembers: Array.isArray(project.accepted_members)
+      ? project.accepted_members
+      : Array.isArray(project.acceptedMembers)
+        ? project.acceptedMembers
+        : [],
+
     sprints: Array.isArray(project.sprints)
       ? project.sprints
       : [],
@@ -692,6 +698,51 @@ localStorage.setItem(
   JSON.stringify(tasks)
 )
 
+export function getAccessibleTasks() {
+  const accessibleProjectNames = new Set(projects.map(project => project.name))
+  return tasks.filter(task => accessibleProjectNames.has(task.project))
+}
+
+export function getAccessibleMembers() {
+  const memberMap = new Map()
+  const addMember = member => {
+    const email = member.email?.trim().toLowerCase()
+    if (!email) return
+    const name = member.name || email
+    if (!memberMap.has(email)) {
+      memberMap.set(email, {
+        ...member,
+        email,
+        name,
+        initials: member.initials || name.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase(),
+        tone: member.tone || 'teal'
+      })
+    }
+  }
+
+  projects.forEach(project => {
+    addMember({
+      firebaseUid: project.creatorFirebaseUid,
+      email: project.creatorEmail,
+      name: project.creatorName,
+      initials: project.creatorInitials,
+      tone: project.creatorTone
+    })
+    project.acceptedMembers?.forEach(addMember)
+  })
+  if (projects.length) {
+    addMember({
+      firebaseUid: currentUser.uid,
+      email: currentUser.email,
+      name: currentUser.name,
+      initials: currentUser.initials,
+      tone: currentUser.tone
+    })
+  }
+
+  return [...memberMap.values()]
+}
+
 // ============================================================
 // LOCAL MEETING STATE
 // ============================================================
@@ -827,9 +878,18 @@ export let currentUser =
 export function setCurrentUser(user) {
   currentUser = user
 
+  const storedUser = {
+    ...currentUser,
+    profileImage: /^data:image\//i.test(currentUser.profileImage || '')
+      ? ''
+      : currentUser.profileImage || '',
+    photoURL: /^data:image\//i.test(currentUser.photoURL || '')
+      ? ''
+      : currentUser.photoURL || ''
+  }
   localStorage.setItem(
     'collab-user',
-    JSON.stringify(currentUser)
+    JSON.stringify(storedUser)
   )
 }
 

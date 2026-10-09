@@ -1,9 +1,9 @@
 import { getSvg } from './icons.js'
 import {
-  tasks,
+  getAccessibleTasks,
   meetings,
   reminders,
-  members,
+  getAccessibleMembers,
   currentUser,
   make,
   closeModal,
@@ -79,7 +79,7 @@ export function renderPinnedMeetingsStrip() {
   pinned.forEach(meet => {
     const card = make('div', 'pinned-meeting-card')
     const attendeesHtml = (meet.attendees || ['AM', 'SK']).map(initials => {
-      const mem = members.find(m => m.initials === initials)
+      const mem = getAccessibleMembers().find(m => m.initials === initials)
       const tone = mem ? mem.tone : 'coral'
       return `<span class="avatar pinned-attendee-avatar ${tone}-bg" title="${mem ? mem.name : initials}">${initials}</span>`
     }).join('')
@@ -203,7 +203,7 @@ export function renderActualCalendarGrid() {
     cell.append(dayNumEl)
 
     const dayMeetings = meetings.filter(m => m.date === cellDateStr)
-    const dayTasks = tasks.filter(t => t.date === cellDateStr)
+    const dayTasks = getAccessibleTasks().filter(t => t.date === cellDateStr)
 
     const dayReminders = reminders.filter(r => r.date === cellDateStr)
 
@@ -265,7 +265,7 @@ export function openDayScheduleModal(dateStr) {
   close.addEventListener('click', closeModal)
 
   const dayMeetings = meetings.filter(m => m.date === dateStr)
-  const dayTasks = tasks.filter(t => t.date === dateStr)
+  const dayTasks = getAccessibleTasks().filter(t => t.date === dateStr)
   const dayReminders = reminders.filter(r => r.date === dateStr)
 
   const todayKey = toLocalDateKey()
@@ -427,7 +427,7 @@ export function renderCalendarDaysGrid() {
   ]
 
   columns.forEach(col => {
-    const colTasks = tasks.filter(col.filterFn)
+    const colTasks = getAccessibleTasks().filter(col.filterFn)
     const colEl = make('div', 'calendar-day-col')
     colEl.dataset.urgency = col.label.toLowerCase().replace(' ', '-')
 
@@ -443,7 +443,7 @@ export function renderCalendarDaysGrid() {
       colTasks.forEach(t => {
         const chip = make('button', 'calendar-task-chip')
         chip.type = 'button'
-        const assignee = members.find(member => member.initials === t.assignee)
+        const assignee = getAccessibleMembers().find(member => member.initials === t.assignee)
         const assigneeName = t.assigneeName || assignee?.name || t.assignee || 'Unassigned'
         const assigneeTone = t.assigneeTone || assignee?.tone || 'teal'
         chip.setAttribute('aria-label', `Open task: ${t.title}, ${t.project}, assigned to ${assigneeName}`)

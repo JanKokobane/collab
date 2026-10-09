@@ -1,4 +1,4 @@
-import { members, projects, tasks, meetings, notifications, currentUser, loadNotificationsFromAPI, loadProjectsFromAPI, markNotificationRead, markAllNotificationsRead, clearAllNotifications, make, getUserInitials, renderAvatarElement, root, closeModal, hub } from './state.js'
+import { projects, getAccessibleMembers, getAccessibleTasks, meetings, notifications, currentUser, loadNotificationsFromAPI, loadProjectsFromAPI, markNotificationRead, markAllNotificationsRead, clearAllNotifications, make, getUserInitials, renderAvatarElement, root, closeModal, hub } from './state.js'
 import { renderAnnouncements, initAnnouncementEvents } from './announcements.js'
 import { renderStickyNotes, initBrainstormEvents } from './brainstorm.js'
 import { renderTeamPolls, initPollEvents } from './polls.js'
@@ -25,6 +25,7 @@ export function renderBrainstorm() {
 }
 
 export function renderWorkspaceSummary() {
+  const accessibleMembers = getAccessibleMembers()
   const firstName = currentUser?.name?.trim().split(/\s+/)[0] || 'there'
   const userName = document.querySelector('#hub-user-name')
   const openTaskCount = document.querySelector('#hub-open-task-count')
@@ -37,7 +38,8 @@ export function renderWorkspaceSummary() {
   weekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7))
   const weekEnd = new Date(weekStart)
   weekEnd.setDate(weekStart.getDate() + 6)
-  const dueThisWeek = tasks.filter(task => {
+  const accessibleTasks = getAccessibleTasks()
+  const dueThisWeek = accessibleTasks.filter(task => {
     if (!task.date) return false
     const dueDate = new Date(`${task.date}T00:00:00`)
     return !Number.isNaN(dueDate.getTime()) && dueDate >= weekStart && dueDate <= weekEnd
@@ -48,7 +50,7 @@ export function renderWorkspaceSummary() {
   }).length
 
   if (userName) userName.textContent = firstName
-  const completedCount = tasks.filter(task => task.status === 'Done').length
+  const completedCount = accessibleTasks.filter(task => task.status === 'Done').length
   const completedTaskCount = document.querySelector('#hub-completed-task-count')
   const totalTaskCount = document.querySelector('#hub-task-total-count')
   const dueWeekCount = document.querySelector('#hub-due-week-count')
@@ -61,27 +63,27 @@ export function renderWorkspaceSummary() {
   const statsTeamMemberAvatars = document.querySelector('#stats-team-member-avatars')
   const hubTeamMemberAvatars = document.querySelector('#hub-team-member-avatars')
   if (completedTaskCount) completedTaskCount.textContent = completedCount
-  if (totalTaskCount) totalTaskCount.textContent = tasks.length
+  if (totalTaskCount) totalTaskCount.textContent = accessibleTasks.length
   if (dueWeekCount) dueWeekCount.textContent = dueThisWeek.length
   if (dueWeekPending) dueWeekPending.textContent = dueThisWeek.filter(task => task.status !== 'Done').length
   if (statsCompletedCount) statsCompletedCount.textContent = completedCount
-  if (statsTotalCount) statsTotalCount.textContent = tasks.length
+  if (statsTotalCount) statsTotalCount.textContent = accessibleTasks.length
   if (statsDueWeekCount) statsDueWeekCount.textContent = dueThisWeek.length
   if (statsDueWeekPending) statsDueWeekPending.textContent = dueThisWeek.filter(task => task.status !== 'Done').length
-  if (statsTeamMemberCount) statsTeamMemberCount.textContent = members.length
+  if (statsTeamMemberCount) statsTeamMemberCount.textContent = accessibleMembers.length
   ;[statsTeamMemberAvatars, hubTeamMemberAvatars].forEach(container => {
     if (!container) return
     container.replaceChildren()
-    members.slice(0, 3).forEach(member => {
+    accessibleMembers.slice(0, 3).forEach(member => {
       container.append(make('span', `avatar ${member.tone || 'coral'}-bg`, member.initials))
     })
-    if (members.length > 3) {
-      container.append(make('span', 'avatar more-avatar', `+${members.length - 3}`))
+    if (accessibleMembers.length > 3) {
+      container.append(make('span', 'avatar more-avatar', `+${accessibleMembers.length - 3}`))
     }
   })
-  if (openTaskCount) openTaskCount.textContent = tasks.filter(task => task.status !== 'Done').length
+  if (openTaskCount) openTaskCount.textContent = accessibleTasks.filter(task => task.status !== 'Done').length
   if (meetingCount) meetingCount.textContent = upcomingCount
-  if (memberCount) memberCount.textContent = members.length
+  if (memberCount) memberCount.textContent = accessibleMembers.length
   if (unreadCount) unreadCount.textContent = notifications.filter(notification => notification.unread).length
 }
 
@@ -119,7 +121,7 @@ export function renderUpcomingMeetings() {
     const attendeeCell = make('td')
     const attendeeWrap = make('div', 'meeting-attendees')
     ;(meeting.attendees || []).forEach(initials => {
-      const member = members.find(person => person.initials === initials)
+      const member = getAccessibleMembers().find(person => person.initials === initials)
       const avatar = make('span', `avatar ${member?.tone || 'coral'}-bg meeting-attendee`)
       renderAvatarElement(avatar, member || { name: initials, initials }, 'meeting-attendee')
       avatar.title = member?.name || initials
@@ -127,7 +129,7 @@ export function renderUpcomingMeetings() {
     })
     attendeeCell.append(attendeeWrap)
     const hostName = meeting.host || 'Not assigned'
-    const hostMember = members.find(person =>
+    const hostMember = getAccessibleMembers().find(person =>
       person.name?.toLowerCase() === hostName.toLowerCase() ||
       person.email?.toLowerCase() === hostName.toLowerCase() ||
       person.initials?.toLowerCase() === hostName.toLowerCase()
@@ -196,7 +198,35 @@ export function renderNotifications() {
   notifications.forEach(notification => {
     const row = document.createElement('tr')
     row.classList.toggle('notification-row-unread', notification.unread)
-    const source = make('span', `notif-avatar ${notification.toneClass || 'coral-bg'}`, notification.avatar || '•')
+    const avatarValue = notification.avatar || '•'
+    const hasProfilePhoto = Boolean(
+      notification.invitationId &&
+      (/^data:image\/(?:jpeg|png|webp);base64,/.test(avatarValue) ||
+        /^https:\/\//.test(avatarValue))
+    )
+    const source = make(
+      'span',
+      `notif-avatar ${notification.toneClass || 'coral-bg'}`,
+      hasProfilePhoto ? '' : avatarValue
+    )
+    source.classList.toggle('notification-person-avatar', Boolean(notification.invitationId))
+    if (hasProfilePhoto) {
+      const image = document.createElement('img')
+      image.src = avatarValue
+      image.alt = 'Inviter profile photo'
+      image.loading = 'lazy'
+      image.decoding = 'async'
+      image.referrerPolicy = 'no-referrer'
+      image.addEventListener('error', () => {
+        image.remove()
+        source.classList.remove('notification-person-avatar')
+        const inviterName = notification.detail.match(/^(.+?) invited you to join\b/i)?.[1]
+        source.textContent = inviterName
+          ? inviterName.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase()
+          : '•'
+      }, { once: true })
+      source.append(image)
+    }
     const title = make('div', 'settings-notification-title')
     title.append(source, make('strong', '', notification.title))
     const titleCell = make('td')

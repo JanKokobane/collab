@@ -43,7 +43,7 @@ export function updateCreatorControlStrip() {
 
   if (!strip) return
 
-  if (activeView === 'Overview' || activeView === 'Calendar' || activeView === 'Admin Console' || activeView === 'Settings' || activeView === 'Notifications' || activeView === 'Brainstorm' || activeView === 'Messages' || activeView === 'Workspace' || activeView === 'My Tasks') {
+  if (!proj || activeView === 'Overview' || activeView === 'Calendar' || activeView === 'Admin Console' || activeView === 'Settings' || activeView === 'Notifications' || activeView === 'Brainstorm' || activeView === 'Messages' || activeView === 'Workspace' || activeView === 'My Tasks') {
     strip.style.display = 'none'
     return
   }
@@ -68,7 +68,7 @@ export function renderSprintChips() {
   const proj = getActiveProject()
   if (!container || !strip) return
 
-  if (activeView === 'Overview' || activeView === 'Calendar' || activeView === 'Admin Console' || activeView === 'Settings' || activeView === 'Notifications' || activeView === 'Brainstorm' || activeView === 'Messages' || activeView === 'Workspace' || activeView === 'My Tasks') {
+  if (!proj || activeView === 'Overview' || activeView === 'Calendar' || activeView === 'Admin Console' || activeView === 'Settings' || activeView === 'Notifications' || activeView === 'Brainstorm' || activeView === 'Messages' || activeView === 'Workspace' || activeView === 'My Tasks') {
     strip.style.display = 'none'
     return
   }
@@ -188,7 +188,7 @@ export function updateUserUI() {
   const creatorBadge = document.querySelector('#project-creator-badge')
   const creatorBadgeText = document.querySelector('#project-creator-badge-text')
   if (creatorBadge) {
-    if (activeView === 'Calendar' || activeView === 'Admin Console') {
+    if (!proj || ['Overview', 'Calendar', 'Admin Console', 'Settings', 'Notifications', 'Brainstorm', 'Messages'].includes(activeView)) {
       creatorBadge.style.display = 'none'
     } else if (activeView === 'Workspace' || activeView === 'My Tasks') {
       creatorBadge.style.display = 'inline-flex'
@@ -208,11 +208,15 @@ export function updateUserUI() {
 
   const newTaskBtn = document.querySelector('#new-task-btn')
   if (newTaskBtn) {
-    if (activeView === 'Workspace' || activeView === 'My Tasks' || isCreator) {
+    if (!proj && activeView !== 'Workspace' && activeView !== 'My Tasks') {
+      newTaskBtn.style.display = 'none'
+    } else if (activeView === 'Workspace' || activeView === 'My Tasks' || isCreator) {
+      newTaskBtn.style.display = ''
       newTaskBtn.className = 'primary-button gold'
       newTaskBtn.innerHTML = '+ <span>New task</span>'
       newTaskBtn.title = `Create and assign a task`
     } else {
+      newTaskBtn.style.display = ''
       newTaskBtn.className = 'primary-button disabled-permission'
       newTaskBtn.innerHTML = `${getSvg('lock', 'btn-lock-svg', 13, 13)} <span>New task (${proj.creatorName} Only)</span>`
       newTaskBtn.title = `Only ${proj.creatorName} (Project Creator) can create and assign tasks for ${proj.name}.`
@@ -264,6 +268,7 @@ export function toggleAdminRole() {
 
 export function switchTestingPerspective(mode) {
   const proj = getActiveProject()
+  if (!proj) return
   if (mode === 'creator') {
     setCurrentUser({
       name: proj.creatorName,
@@ -294,6 +299,7 @@ export function switchTestingPerspective(mode) {
 
 export function showPermissionNotice() {
   const proj = getActiveProject()
+  if (!proj) return
   const backdrop = make('div', 'modal-backdrop')
   const box = make('div', 'modal')
   const close = make('button', 'close-modal', '×')

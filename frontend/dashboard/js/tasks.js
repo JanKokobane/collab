@@ -2,6 +2,7 @@ import { getSvg } from './icons.js'
 import {
   tasks,
   projects,
+  getAccessibleTasks,
   members,
   currentUser,
   activeView,
@@ -71,7 +72,7 @@ export function updateTaskCounts(filtered) {
   if (countDone) countDone.textContent = doneCount
 
   const workspaceNavBadge = document.querySelector('#workspace-tasks-nav-count') || document.querySelector('#my-tasks-nav-count')
-  if (workspaceNavBadge) workspaceNavBadge.textContent = `${tasks.length}`
+  if (workspaceNavBadge) workspaceNavBadge.textContent = `${getAccessibleTasks().length}`
 }
 
 export function moveTaskStatus(taskId, newStatus) {
