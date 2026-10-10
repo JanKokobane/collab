@@ -96,6 +96,8 @@ accepted invitee when edited.
   accepted members of that project.
 - `GET|PUT /api/projects/brainstorm-boards/:boardId`: load or save board notes
   and links as a board member.
+- `PATCH|DELETE /api/projects/brainstorm-boards/:boardId`: rename or remove a
+  board as its creator.
 - `POST /api/projects/brainstorm-boards/:boardId/members`: invite additional
   accepted project members as the board creator. Membership and in-dashboard
   invitation notifications are saved in the same transaction. Board saves also

@@ -437,6 +437,80 @@ const getBoard = async (req, res) => {
     }
 };
 
+const updateBoardTitle = async (req, res) => {
+    const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+    if (!title || title.length > 160) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_BRAINSTORM_BOARD_TITLE',
+            message: 'Provide a board title of 1 to 160 characters.'
+        });
+    }
+
+    try {
+        const result = await pool.query(
+            `
+                UPDATE brainstorm_boards
+                SET title = $3, updated_at = NOW()
+                WHERE board_id = $1
+                  AND created_by_firebase_uid = $2
+                RETURNING board_id, project_id, title, created_by_firebase_uid, updated_at
+            `,
+            [req.params.boardId, req.firebaseUid, title]
+        );
+        if (!result.rowCount) {
+            return res.status(404).json({
+                success: false,
+                code: 'BRAINSTORM_BOARD_NOT_FOUND',
+                message: 'The board was not found or you are not its creator.'
+            });
+        }
+        return res.status(200).json({
+            success: true,
+            data: { board: result.rows[0] }
+        });
+    } catch (error) {
+        console.error('Update brainstorm board title error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'BRAINSTORM_BOARD_UPDATE_FAILED',
+            message: 'The brainstorm board title could not be updated.'
+        });
+    }
+};
+
+const deleteBoard = async (req, res) => {
+    try {
+        const result = await pool.query(
+            `
+                DELETE FROM brainstorm_boards
+                WHERE board_id = $1
+                  AND created_by_firebase_uid = $2
+                RETURNING board_id, project_id
+            `,
+            [req.params.boardId, req.firebaseUid]
+        );
+        if (!result.rowCount) {
+            return res.status(404).json({
+                success: false,
+                code: 'BRAINSTORM_BOARD_NOT_FOUND',
+                message: 'The board was not found or you are not its creator.'
+            });
+        }
+        return res.status(200).json({
+            success: true,
+            data: { board: result.rows[0] }
+        });
+    } catch (error) {
+        console.error('Delete brainstorm board error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'BRAINSTORM_BOARD_DELETE_FAILED',
+            message: 'The brainstorm board could not be removed.'
+        });
+    }
+};
+
 const saveBoard = async (req, res) => {
     const boardData = req.body?.boardData;
     if (!boardDataIsValid(boardData)) {
@@ -530,8 +604,10 @@ const saveBoard = async (req, res) => {
 
 module.exports = {
     createProjectBoard,
+    deleteBoard,
     getBoard,
     getProjectBoards,
     inviteBoardMembers,
+    updateBoardTitle,
     saveBoard
 };

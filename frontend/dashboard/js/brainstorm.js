@@ -1,7 +1,8 @@
-import { projects, currentUser, addAuditLog, make, root, closeModal, loadNotificationsFromAPI } from './state.js'
+import { projects, currentUser, addAuditLog, make, root, closeModal, loadNotificationsFromAPI, renderAvatarElement } from './state.js'
 import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
-import { showDashboardToast } from './modalChrome.js'
+import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
+import { getSvg } from './icons.js'
 
 export let stickyNotes = []
 export let stickyLinks = []
@@ -48,7 +49,8 @@ function renderBrainstormControls() {
   const projectSelect = document.querySelector('#brainstorm-project-select')
   const boardSelect = document.querySelector('#brainstorm-board-select')
   const createButton = document.querySelector('#brainstorm-create-board-btn')
-  const inviteButton = document.querySelector('#brainstorm-invite-btn')
+  const editButton = document.querySelector('#brainstorm-edit-board-btn')
+  const removeButton = document.querySelector('#brainstorm-remove-board-btn')
   if (!projectSelect || !boardSelect) return
 
   const selectedProjectId = projectSelect.value || activeBoard?.project_id || getAccessibleProjects()[0]?.projectId || ''
@@ -74,9 +76,14 @@ function renderBrainstormControls() {
     ? activeBoard.board_id
     : ''
   if (createButton) createButton.disabled = !selectedProjectId || boardsLoading
-  if (inviteButton) {
-    inviteButton.hidden = !activeBoard || activeBoard.created_by_firebase_uid !== firebaseAuth.currentUser?.uid
-  }
+  const canManageBoard = Boolean(
+    activeBoard &&
+    activeBoard.created_by_firebase_uid === firebaseAuth.currentUser?.uid
+  )
+  if (editButton) editButton.hidden = !canManageBoard
+  if (removeButton) removeButton.hidden = !canManageBoard
+  if (editButton) editButton.disabled = boardsLoading || brainstormSaving
+  if (removeButton) removeButton.disabled = boardsLoading || brainstormSaving
   projectSelect.disabled = boardsLoading || brainstormSaving
   boardSelect.disabled = boardsLoading || brainstormSaving
 }
@@ -173,6 +180,97 @@ async function loadBrainstormBoard(boardId) {
   if (saveStatus) saveStatus.textContent = 'Saved'
 }
 
+function openEditBrainstormBoardModal() {
+  if (!activeBoard || activeBoard.created_by_firebase_uid !== firebaseAuth.currentUser?.uid) return
+  if (brainstormDirty || brainstormSaving) {
+    showDashboardToast('Save your board changes before editing the board name.', 'error')
+    return
+  }
+
+  const backdrop = make('div', 'modal-backdrop')
+  const form = make('form', 'modal')
+  const close = make('button', 'close-modal', '×')
+  close.type = 'button'
+  close.addEventListener('click', closeModal)
+  const title = make('h2', 'brainstorm-create-board-title', 'Edit brainstorm board')
+  const nameLabel = make('label', 'brainstorm-create-board-field', 'Board name')
+  const nameInput = document.createElement('input')
+  nameInput.type = 'text'
+  nameInput.maxLength = 160
+  nameInput.required = true
+  nameInput.value = activeBoard.title
+  nameLabel.append(nameInput)
+  const submit = make('button', 'primary-button full gold', 'Save changes')
+  submit.type = 'submit'
+  form.append(close, title, nameLabel, submit)
+  backdrop.append(form)
+  root.replaceChildren(backdrop)
+  nameInput.focus()
+  nameInput.select()
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault()
+    submit.disabled = true
+    submit.textContent = 'Saving…'
+    try {
+      const response = await api.patch(
+        `/projects/brainstorm-boards/${encodeURIComponent(activeBoard.board_id)}`,
+        { title: nameInput.value.trim() }
+      )
+      const updatedBoard = response?.data?.board
+      if (!updatedBoard?.board_id) throw new Error('The server did not confirm the board name change.')
+      activeBoard = { ...activeBoard, ...updatedBoard }
+      brainstormBoards = brainstormBoards.map(board =>
+        board.board_id === updatedBoard.board_id ? { ...board, ...updatedBoard } : board
+      )
+      closeModal()
+      renderBrainstormControls()
+      showDashboardToast('Board name updated.', 'success')
+    } catch (error) {
+      console.error('Unable to update brainstorm board name:', error)
+      submit.disabled = false
+      submit.textContent = 'Save changes'
+      showDashboardToast(error.message || 'The board name could not be updated.', 'error')
+    }
+  })
+}
+
+async function removeActiveBrainstormBoard() {
+  if (!activeBoard || activeBoard.created_by_firebase_uid !== firebaseAuth.currentUser?.uid) return
+  if (brainstormDirty || brainstormSaving) {
+    showDashboardToast('Save your board changes before removing the board.', 'error')
+    return
+  }
+  const board = activeBoard
+  const confirmed = await showDashboardConfirmation({
+    title: 'Remove brainstorm board?',
+    message: `Remove "${board.title}" and all its ideas and member access? This cannot be undone.`,
+    confirmText: 'Remove board',
+    danger: true
+  })
+  if (!confirmed) return
+
+  const removeButton = document.querySelector('#brainstorm-remove-board-btn')
+  if (removeButton) removeButton.disabled = true
+  try {
+    await api.delete(`/projects/brainstorm-boards/${encodeURIComponent(board.board_id)}`)
+    localStorage.removeItem('collab_active_brainstorm_board')
+    activeBoard = null
+    activeBoardMembers = []
+    stickyNotes = []
+    stickyLinks = []
+    brainstormDirty = false
+    boardsLoaded = false
+    await loadBrainstormBoards()
+    showDashboardToast('Brainstorm board removed.', 'success')
+  } catch (error) {
+    console.error('Unable to remove brainstorm board:', error)
+    showDashboardToast(error.message || 'The brainstorm board could not be removed.', 'error')
+  } finally {
+    renderBrainstormControls()
+  }
+}
+
 async function saveBrainstormBoard() {
   if (!activeBoard || !brainstormDirty) return
   const saveButton = document.querySelector('#save-brainstorm-btn')
@@ -250,12 +348,10 @@ export function renderStickyNotes() {
   const addButton = document.querySelector('#hub-add-sticky-btn')
   const saveButton = document.querySelector('#save-brainstorm-btn')
   const connectionButton = document.querySelector('#sticky-connect-btn')
-  const linkTypeSelect = document.querySelector('#sticky-link-type')
   const deleteLinkButton = document.querySelector('#sticky-delete-link-btn')
-  if (addButton) addButton.disabled = !activeBoard
+  if (addButton) addButton.disabled = !getAccessibleProjects().length || boardsLoading || brainstormSaving
   if (saveButton) saveButton.disabled = !activeBoard || !brainstormDirty
   if (connectionButton) connectionButton.disabled = !activeBoard
-  if (linkTypeSelect) linkTypeSelect.disabled = !activeBoard
   if (deleteLinkButton) deleteLinkButton.disabled = !activeBoard || !selectedStickyLinkId
   const status = document.querySelector('#brainstorm-save-status')
   if (!activeBoard && status) status.textContent = getAccessibleProjects().length
@@ -410,7 +506,7 @@ function selectStickyLinkNote(noteId) {
     return
   }
 
-  const selectedType = document.querySelector('#sticky-link-type')?.value || 'related'
+  const selectedType = 'related'
   let existingLink = stickyLinks.find(link =>
     (link.from === pendingStickyLinkId && link.to === noteId) ||
     (link.from === noteId && link.to === pendingStickyLinkId)
@@ -513,8 +609,6 @@ function renderStickyConnections() {
     hitTarget.setAttribute('aria-pressed', String(link.id === selectedStickyLinkId))
     const selectLink = () => {
       selectedStickyLinkId = link.id
-      const typeSelect = document.querySelector('#sticky-link-type')
-      if (typeSelect) typeSelect.value = stickyLinkTypes[link.type] ? link.type : 'related'
       const deleteButton = document.querySelector('#sticky-delete-link-btn')
       if (deleteButton) deleteButton.disabled = false
       const status = document.querySelector('#sticky-connection-status')
@@ -531,7 +625,11 @@ function renderStickyConnections() {
 
 export function openAddStickyNoteModal(initialCategory = 'Ideas') {
   if (!activeBoard) {
-    showDashboardToast('Choose or create a brainstorm board before adding an idea.', 'error')
+    if (getAccessibleProjects().length) {
+      openCreateBrainstormBoardModal()
+    } else {
+      showDashboardToast('Create or join a project before adding a brainstorm idea.', 'error')
+    }
     return
   }
   const backdrop = make('div', 'modal-backdrop')
@@ -549,7 +647,11 @@ export function openAddStickyNoteModal(initialCategory = 'Ideas') {
     catSelect.append(option)
   })
   catSelect.value = initialCategory
-  catLabel.append(catSelect)
+  const catSelectWrap = make('div', 'input-with-icon')
+  const catIcon = make('span', 'input-icon-svg')
+  catIcon.innerHTML = getSvg('lightbulb', '', 16, 16)
+  catSelectWrap.append(catIcon, catSelect)
+  catLabel.append(catSelectWrap)
   const colorLabel = make('label', '', 'Card color')
   const colorSelect = document.createElement('select')
   ;[{ name: 'Warm Yellow', value: 'yellow' }, { name: 'Mint Green', value: 'green' }, { name: 'Rose Coral', value: 'rose' }, { name: 'Sky Blue', value: 'blue' }].forEach(color => {
@@ -600,7 +702,28 @@ function getMemberUid(member) {
   return member.firebaseUid || member.firebase_uid || member.uid || ''
 }
 
-function appendProjectMemberOptions(container, project, excludedUids = []) {
+function appendBrainstormSearchIcon(container) {
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  icon.setAttribute('viewBox', '0 0 24 24')
+  icon.setAttribute('width', '17')
+  icon.setAttribute('height', '17')
+  icon.setAttribute('fill', 'none')
+  icon.setAttribute('stroke', 'currentColor')
+  icon.setAttribute('stroke-width', '2')
+  icon.setAttribute('stroke-linecap', 'round')
+  icon.setAttribute('stroke-linejoin', 'round')
+  icon.setAttribute('aria-hidden', 'true')
+  const lens = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+  lens.setAttribute('cx', '11')
+  lens.setAttribute('cy', '11')
+  lens.setAttribute('r', '7')
+  const handle = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  handle.setAttribute('d', 'm20 20-4-4')
+  icon.append(lens, handle)
+  container.append(icon)
+}
+
+function appendProjectMemberOptions(container, project, excludedUids = [], selectedUids = new Set(), searchQuery = '', onSelectionChange = () => {}) {
   const members = Array.isArray(project?.acceptedMembers) ? project.acceptedMembers : []
   const available = members.filter(member => {
     const uid = getMemberUid(member)
@@ -614,22 +737,47 @@ function appendProjectMemberOptions(container, project, excludedUids = []) {
     ? [{
       firebaseUid: creatorUid,
       name: project.creatorName || 'Project creator',
-      email: project.creatorEmail || ''
+      email: project.creatorEmail || '',
+      profileImage: project.creatorProfileImage || ''
     }, ...available]
     : available
-  if (!options.length) {
-    container.append(make('p', 'brainstorm-members-empty', 'No additional accepted project members are available to invite.'))
+  const query = searchQuery.trim().toLowerCase()
+  const filteredOptions = options.filter(member =>
+    `${member.name || ''} ${member.email || ''}`.toLowerCase().includes(query)
+  )
+  if (!filteredOptions.length) {
+    const emptyMessage = query
+      ? 'No matching project members.'
+      : 'No additional accepted project members are available to invite.'
+    container.append(make('p', 'messages-forward-empty', emptyMessage))
     return 0
   }
-  options.forEach(member => {
-    const label = make('label', 'brainstorm-member-option')
+  filteredOptions.forEach(member => {
+    const uid = getMemberUid(member)
+    const isSelected = selectedUids.has(uid)
+    const label = make('label', `brainstorm-board-member-option${isSelected ? ' selected' : ''}`)
+    const avatar = make('span', 'brainstorm-board-member-avatar')
+    renderAvatarElement(avatar, member, 'brainstorm-board-member-avatar')
+    const details = make('span', 'brainstorm-board-member-details')
+    details.append(
+      make('strong', '', member.name || 'Project member'),
+      make('small', '', member.email || '')
+    )
     const checkbox = document.createElement('input')
     checkbox.type = 'checkbox'
-    checkbox.value = getMemberUid(member)
-    label.append(checkbox, make('span', '', member.name || member.email || 'Project member'))
+    checkbox.name = 'brainstorm-board-members'
+    checkbox.value = uid
+    checkbox.checked = isSelected
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) selectedUids.add(uid)
+      else selectedUids.delete(uid)
+      label.classList.toggle('selected', checkbox.checked)
+      onSelectionChange(selectedUids)
+    })
+    label.append(avatar, details, checkbox)
     container.append(label)
   })
-  return options.length
+  return filteredOptions.length
 }
 
 function openCreateBrainstormBoardModal() {
@@ -648,8 +796,8 @@ function openCreateBrainstormBoardModal() {
   const close = make('button', 'close-modal', '×')
   close.type = 'button'
   close.addEventListener('click', closeModal)
-  const title = make('h2', '', 'Create brainstorm board')
-  const projectLabel = make('label', '', 'Project')
+  const title = make('h2', 'brainstorm-create-board-title', 'Create brainstorm board')
+  const projectLabel = make('label', 'brainstorm-create-board-field', 'Project')
   const projectSelect = document.createElement('select')
   availableProjects.forEach(project => {
     const option = make('option', '', project.name)
@@ -658,30 +806,55 @@ function openCreateBrainstormBoardModal() {
   })
   projectSelect.value = document.querySelector('#brainstorm-project-select')?.value || availableProjects[0].projectId
   projectLabel.append(projectSelect)
-  const nameLabel = make('label', '', 'Board name')
+  const nameLabel = make('label', 'brainstorm-create-board-field', 'Board name')
   const nameInput = make('input')
+  nameInput.type = 'text'
   nameInput.maxLength = 160
   nameInput.required = true
   nameInput.placeholder = 'e.g. Sprint retrospective'
-  nameLabel.append(nameInput)
+  const nameInputWrap = make('div', 'input-with-icon brainstorm-board-name-input')
+  const nameIcon = make('span', 'input-icon-svg')
+  nameIcon.innerHTML = getSvg('lightbulb', '', 16, 16)
+  nameInputWrap.append(nameIcon, nameInput)
+  nameLabel.append(nameInputWrap)
   const inviteField = document.createElement('fieldset')
-  inviteField.className = 'brainstorm-member-picker'
+  inviteField.className = 'brainstorm-create-board-members'
   inviteField.append(make('legend', '', 'Invite accepted project members'))
-  const memberList = make('div', 'brainstorm-member-list')
+  const selectedMembers = new Set()
+  const searchWrap = make('label', 'brainstorm-create-board-search')
+  appendBrainstormSearchIcon(searchWrap)
+  const memberSearch = document.createElement('input')
+  memberSearch.type = 'search'
+  memberSearch.placeholder = 'Search name or email'
+  memberSearch.setAttribute('aria-label', 'Search accepted project members')
+  searchWrap.append(memberSearch)
+  const selectedCount = make('span', 'brainstorm-create-board-selection-count', '')
+  const memberList = make('div', 'brainstorm-create-member-list')
+  const updateSelectedCount = () => {
+    selectedCount.textContent = selectedMembers.size
+      ? `${selectedMembers.size} selected`
+      : ''
+  }
   const renderMembers = () => {
     memberList.replaceChildren()
     const project = availableProjects.find(item => item.projectId === projectSelect.value)
-    appendProjectMemberOptions(memberList, project)
+    appendProjectMemberOptions(memberList, project, [], selectedMembers, memberSearch.value, updateSelectedCount)
   }
+  memberSearch.addEventListener('input', renderMembers)
   projectSelect.addEventListener('change', renderMembers)
   renderMembers()
-  inviteField.append(memberList)
+  inviteField.append(searchWrap, selectedCount, memberList)
   const submit = make('button', 'primary-button full gold', 'Create Board')
   submit.type = 'submit'
+  const submitSpinner = make('span', 'form-submit-spinner')
+  submitSpinner.setAttribute('aria-hidden', 'true')
+  submitSpinner.hidden = true
+  const submitLabel = make('span', '', 'Create Board')
+  submit.replaceChildren(submitSpinner, submitLabel)
   form.append(
     close,
     title,
-    make('p', 'modal-copy', 'Only selected project members will be able to see and use this board.'),
+    make('p', 'modal-copy brainstorm-create-board-copy', 'Only selected project members will be able to see and use this board.'),
     projectLabel,
     nameLabel,
     inviteField,
@@ -693,9 +866,11 @@ function openCreateBrainstormBoardModal() {
   form.addEventListener('submit', async event => {
     event.preventDefault()
     submit.disabled = true
-    submit.textContent = 'Creating…'
+    submitSpinner.hidden = false
+    submitLabel.textContent = 'Creating…'
+    submit.setAttribute('aria-busy', 'true')
     try {
-      const memberFirebaseUids = [...memberList.querySelectorAll('input:checked')].map(input => input.value)
+      const memberFirebaseUids = [...selectedMembers]
       const response = await api.post(
         `/projects/${encodeURIComponent(projectSelect.value)}/brainstorm-boards`,
         { title: nameInput.value.trim(), memberFirebaseUids }
@@ -716,7 +891,9 @@ function openCreateBrainstormBoardModal() {
     } catch (error) {
       console.error('Unable to create brainstorm board:', error)
       submit.disabled = false
-      submit.textContent = 'Create Board'
+      submitSpinner.hidden = true
+      submitLabel.textContent = 'Create Board'
+      submit.removeAttribute('aria-busy')
       showDashboardToast(error.message || 'The brainstorm board could not be created.', 'error')
     }
   })
@@ -730,23 +907,48 @@ function openInviteBrainstormMembersModal() {
   }
 
   const backdrop = make('div', 'modal-backdrop')
-  const form = make('form', 'modal')
+  const form = make('form', 'modal brainstorm-invite-board-modal')
   const close = make('button', 'close-modal', '×')
   close.type = 'button'
   close.addEventListener('click', closeModal)
-  const memberList = make('div', 'brainstorm-member-list')
-  appendProjectMemberOptions(
-    memberList,
-    project,
-    activeBoardMembers.map(member => member.firebaseUid)
-  )
-  const submit = make('button', 'primary-button full gold', 'Invite Members')
+  const memberList = make('div', 'brainstorm-board-member-list')
+  const selectedMembers = new Set()
+  const searchWrap = make('label', 'brainstorm-board-member-search')
+  appendBrainstormSearchIcon(searchWrap)
+  const memberSearch = document.createElement('input')
+  memberSearch.type = 'search'
+  memberSearch.placeholder = 'Search name or email'
+  memberSearch.setAttribute('aria-label', 'Search accepted project members')
+  searchWrap.append(memberSearch)
+  const selectedCount = make('span', 'brainstorm-board-selection-count', '')
+  let submit
+  const updateSelectedCount = () => {
+    selectedCount.textContent = selectedMembers.size ? `${selectedMembers.size} selected` : ''
+    if (submit) submit.disabled = selectedMembers.size === 0
+  }
+  const renderMembers = () => {
+    memberList.replaceChildren()
+    appendProjectMemberOptions(
+      memberList,
+      project,
+      activeBoardMembers.map(member => member.firebaseUid),
+      selectedMembers,
+      memberSearch.value,
+      updateSelectedCount
+    )
+    selectedCount.textContent = selectedMembers.size ? `${selectedMembers.size} selected` : ''
+  }
+  memberSearch.addEventListener('input', renderMembers)
+  renderMembers()
+  submit = make('button', 'primary-button full gold', 'Invite Members')
   submit.type = 'submit'
-  submit.disabled = !memberList.querySelector('input')
+  submit.disabled = true
   form.append(
     close,
     make('h2', '', 'Invite to brainstorm board'),
     make('p', 'modal-copy', `Select accepted members of ${project.name}. They will receive an in-dashboard notification.`),
+    searchWrap,
+    selectedCount,
     memberList,
     submit
   )
@@ -754,7 +956,7 @@ function openInviteBrainstormMembersModal() {
   root.replaceChildren(backdrop)
   form.addEventListener('submit', async event => {
     event.preventDefault()
-    const memberFirebaseUids = [...memberList.querySelectorAll('input:checked')].map(input => input.value)
+    const memberFirebaseUids = [...selectedMembers]
     if (!memberFirebaseUids.length) return
     submit.disabled = true
     submit.textContent = 'Inviting…'
@@ -765,6 +967,7 @@ function openInviteBrainstormMembersModal() {
       )
       const invitedUids = response?.data?.invitedFirebaseUids
       if (!Array.isArray(invitedUids)) throw new Error('The server did not confirm the board invitations.')
+      if (!invitedUids.length) throw new Error('Those members are already invited to this board.')
       await loadBrainstormBoard(activeBoard.board_id)
       closeModal()
       const notificationsRefreshed = await refreshBrainstormNotifications()
@@ -779,6 +982,26 @@ function openInviteBrainstormMembersModal() {
       showDashboardToast(error.message || 'The board invitations could not be sent.', 'error')
     }
   })
+}
+
+async function handleAddIdeaClick() {
+  if (!activeBoard) {
+    const projectId = document.querySelector('#brainstorm-project-select')?.value
+    const existingBoard = brainstormBoards.find(board => board.project_id === projectId)
+    if (existingBoard) {
+      try {
+        await loadBrainstormBoard(existingBoard.board_id)
+      } catch (error) {
+        console.error('Unable to open a brainstorm board for adding an idea:', error)
+        showDashboardToast(error.message || 'A brainstorm board could not be opened.', 'error')
+        return
+      }
+    } else {
+      openCreateBrainstormBoardModal()
+      return
+    }
+  }
+  openAddStickyNoteModal()
 }
 
 export function initBrainstormEvents() {
@@ -815,7 +1038,8 @@ export function initBrainstormEvents() {
     })
   })
   document.querySelector('#brainstorm-create-board-btn')?.addEventListener('click', openCreateBrainstormBoardModal)
-  document.querySelector('#brainstorm-invite-btn')?.addEventListener('click', openInviteBrainstormMembersModal)
+  document.querySelector('#brainstorm-edit-board-btn')?.addEventListener('click', openEditBrainstormBoardModal)
+  document.querySelector('#brainstorm-remove-board-btn')?.addEventListener('click', removeActiveBrainstormBoard)
   document.querySelector('#sticky-connect-btn')?.addEventListener('click', event => {
     if (!activeBoard) return
     stickyLinkMode = !stickyLinkMode
@@ -829,19 +1053,6 @@ export function initBrainstormEvents() {
     const status = document.querySelector('#sticky-connection-status')
     if (status) status.textContent = stickyLinkMode ? 'Choose a first note.' : ''
     renderStickyNotes()
-  })
-  const linkTypeSelect = document.querySelector('#sticky-link-type')
-  const savedLinkType = localStorage.getItem('collab_sticky_link_type')
-  if (linkTypeSelect && stickyLinkTypes[savedLinkType]) linkTypeSelect.value = savedLinkType
-  linkTypeSelect?.addEventListener('change', () => {
-    localStorage.setItem('collab_sticky_link_type', linkTypeSelect.value)
-    const selectedLink = stickyLinks.find(link => link.id === selectedStickyLinkId)
-    if (!selectedLink || selectedLink.type === linkTypeSelect.value) return
-    selectedLink.type = linkTypeSelect.value
-    markBrainstormDirty()
-    renderStickyConnections()
-    const status = document.querySelector('#sticky-connection-status')
-    if (status) status.textContent = `${stickyLinkTypes[selectedLink.type].label} link updated. Save board to keep it.`
   })
   document.querySelector('#sticky-delete-link-btn')?.addEventListener('click', () => {
     if (!selectedStickyLinkId) return
@@ -860,5 +1071,5 @@ export function initBrainstormEvents() {
     event.returnValue = ''
   })
   window.addEventListener('resize', renderStickyConnections)
-  document.querySelector('#hub-add-sticky-btn')?.addEventListener('click', openAddStickyNoteModal)
+  document.querySelector('#hub-add-sticky-btn')?.addEventListener('click', handleAddIdeaClick)
 }

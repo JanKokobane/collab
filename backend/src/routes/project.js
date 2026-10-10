@@ -40,6 +40,8 @@ const {
     getBoard,
     getProjectBoards,
     inviteBoardMembers,
+    deleteBoard,
+    updateBoardTitle,
     saveBoard
 } = require('../controllers/brainstormController');
 
@@ -83,6 +85,8 @@ router.delete('/:projectId/resources/:resourceId', deleteProjectResource);
 router.get('/:projectId/brainstorm-boards', getProjectBoards);
 router.post('/:projectId/brainstorm-boards', createProjectBoard);
 router.get('/brainstorm-boards/:boardId', getBoard);
+router.patch('/brainstorm-boards/:boardId', updateBoardTitle);
+router.delete('/brainstorm-boards/:boardId', deleteBoard);
 router.put('/brainstorm-boards/:boardId', saveBoard);
 router.post('/brainstorm-boards/:boardId/members', inviteBoardMembers);
 

@@ -1575,6 +1575,192 @@ form.modal {
     background: #F4F4F5;
 }
 
+form.modal.brainstorm-invite-board-modal {
+    gap: 14px;
+    padding: 24px;
+}
+
+.brainstorm-create-board-copy,
+form.modal.brainstorm-invite-board-modal > .modal-copy {
+    margin: 0;
+    text-align: left;
+}
+
+label.brainstorm-create-board-field {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    margin: 0;
+    color: #3F3F46;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: left;
+}
+
+label.brainstorm-create-board-field input:focus {
+    border-color: #18A98F;
+    box-shadow: 0 0 0 3px rgba(24, 169, 143, .22);
+}
+
+.brainstorm-board-name-input {
+    align-self: stretch;
+}
+
+.brainstorm-board-name-input:focus-within .input-icon-svg {
+    color: #18A98F;
+}
+
+.brainstorm-create-board-members {
+    min-width: 0;
+    margin: 0;
+    padding: 12px;
+    border: 1px solid #E2E8EE;
+    border-radius: 10px;
+}
+
+.brainstorm-create-board-members legend {
+    padding: 0 5px;
+    color: #394650;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.brainstorm-create-board-search,
+.brainstorm-board-member-search {
+    position: relative;
+    display: block !important;
+    margin: 8px 0 10px !important;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #71717A;
+    font-size: 12px;
+    font-weight: 400 !important;
+}
+
+.brainstorm-create-board-search > span,
+.brainstorm-board-member-search > span,
+.brainstorm-create-board-search > svg,
+.brainstorm-board-member-search > svg {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    z-index: 1;
+    transform: translateY(-50%);
+    color: #16806F;
+    pointer-events: none;
+}
+
+form.modal .brainstorm-create-board-search input,
+form.modal.brainstorm-invite-board-modal .brainstorm-board-member-search input {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    margin: 0;
+    padding: 10px 38px 10px 12px;
+    border: 1px solid #D5DDE5;
+    border-radius: 6px;
+    outline: 0;
+    background: #FBFCFD;
+    color: #182230;
+    font: 13px 'DM Sans', sans-serif;
+    box-shadow: none;
+}
+
+.brainstorm-create-board-selection-count,
+.brainstorm-board-selection-count {
+    display: block;
+    min-height: 14px;
+    margin: 0 4px 6px;
+    color: #287B6E;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: right;
+}
+
+.brainstorm-create-member-list,
+.brainstorm-board-member-list {
+    display: grid;
+    max-height: 240px;
+    gap: 2px;
+    overflow: auto;
+    padding: 0 2px;
+}
+
+form.modal label.brainstorm-board-member-option {
+    display: grid;
+    min-height: 54px;
+    grid-template-columns: 38px minmax(0, 1fr) 18px;
+    flex-direction: row;
+    align-items: center;
+    justify-items: stretch;
+    gap: 10px;
+    margin: 0;
+    padding: 6px 9px;
+    border-radius: 8px;
+    color: #27272A;
+    cursor: pointer;
+    text-align: left;
+}
+
+.brainstorm-board-member-option:hover,
+.brainstorm-board-member-option.selected {
+    background: #F1F5F4;
+}
+
+.brainstorm-board-member-avatar {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    place-items: center;
+    overflow: hidden;
+    border-radius: 50%;
+    background: #E6EFEC;
+    color: #176B63;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.brainstorm-board-member-details {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+    align-items: center;
+    gap: 7px;
+    text-align: left;
+}
+
+.brainstorm-board-member-details strong,
+.brainstorm-board-member-details small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.brainstorm-board-member-details strong {
+    color: #27272A;
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.brainstorm-board-member-details small {
+    color: #71717A;
+    font-size: 9px;
+}
+
+form.modal .brainstorm-board-member-option input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    min-height: 0;
+    margin: 0;
+    justify-self: end;
+    accent-color: #287B6E;
+    cursor: pointer;
+}
+
 .modal h2 {
     font: 800 20px 'Manrope';
     margin: 0;
@@ -6942,6 +7128,23 @@ body.dark-mode .modal h2 {
 
 body.dark-mode .modal label {
     color: #D4D4D8;
+}
+
+body.dark-mode .brainstorm-create-board-members {
+    border-color: #363646;
+}
+
+body.dark-mode .brainstorm-board-member-details strong {
+    color: #F4F4F6;
+}
+
+body.dark-mode .brainstorm-board-member-details small {
+    color: #A1A1AA;
+}
+
+body.dark-mode .brainstorm-board-member-option:hover,
+body.dark-mode .brainstorm-board-member-option.selected {
+    background: #252530;
 }
 
 body.dark-mode .modal input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="color"]),
