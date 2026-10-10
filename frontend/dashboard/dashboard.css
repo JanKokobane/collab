@@ -1384,10 +1384,14 @@ body.dark-mode .invite-user-search-result span,
 }
 
 .dashboard-toast {
+    display: flex;
     position: fixed;
     right: 24px;
     bottom: 24px;
     z-index: 2200;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
     max-width: min(420px, calc(100vw - 32px));
     padding: 12px 16px;
     border-radius: 10px;
@@ -1399,6 +1403,31 @@ body.dark-mode .invite-user-search-result span,
     box-shadow: 0 18px 46px rgba(15, 15, 20, 0.2);
     opacity: 1;
     transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.dashboard-toast-message {
+    min-width: 0;
+}
+
+.dashboard-toast-close {
+    display: inline-grid;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: 20px/1 sans-serif;
+    cursor: pointer;
+    opacity: .8;
+}
+
+.dashboard-toast-close:hover {
+    background: rgba(255, 255, 255, .16);
+    opacity: 1;
 }
 
 .dashboard-toast.is-error {

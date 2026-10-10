@@ -1,16 +1,32 @@
 import { enhanceInputsWithIcons } from './icons.js'
 import { closeModal, make, root } from './state.js'
 
-export function showDashboardToast(message, type = 'success') {
+export function showDashboardToast(message, type = 'success', { dismissible = false, duration = 4000 } = {}) {
   document.querySelector('.dashboard-toast')?.remove()
-  const toast = make('div', `dashboard-toast is-${type}`, message)
+  const toast = make('div', `dashboard-toast is-${type}${dismissible ? ' is-dismissible' : ''}`)
   toast.setAttribute('role', type === 'error' ? 'alert' : 'status')
   toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite')
-  document.body.append(toast)
-  window.setTimeout(() => {
+  const text = make('span', 'dashboard-toast-message', message)
+  toast.append(text)
+  let leaveTimer
+  let removeTimer
+  const dismiss = () => {
+    window.clearTimeout(leaveTimer)
+    window.clearTimeout(removeTimer)
     toast.classList.add('is-leaving')
-    window.setTimeout(() => toast.remove(), 200)
-  }, 4000)
+    removeTimer = window.setTimeout(() => toast.remove(), 200)
+  }
+  if (dismissible) {
+    const close = make('button', 'dashboard-toast-close', '×')
+    close.type = 'button'
+    close.setAttribute('aria-label', 'Dismiss notification')
+    close.addEventListener('click', dismiss)
+    toast.append(close)
+  }
+  document.body.append(toast)
+  if (duration > 0) {
+    leaveTimer = window.setTimeout(dismiss, duration)
+  }
 }
 
 export function showDashboardConfirmation({

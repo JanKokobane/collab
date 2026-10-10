@@ -438,12 +438,32 @@ const getBoard = async (req, res) => {
                     COALESCE((
                         SELECT json_agg(json_build_object(
                             'firebaseUid', member.firebase_uid,
-                            'name', profile.full_name,
+                            'name', COALESCE(
+                                NULLIF(profile.full_name, ''),
+                                NULLIF(invitation.invited_name, ''),
+                                NULLIF(split_part(profile.email, '@', 1), ''),
+                                NULLIF(split_part(invitation.invited_email, '@', 1), ''),
+                                member.firebase_uid
+                            ),
                             'profileImage', profile.profile_image
-                        ) ORDER BY profile.full_name NULLS LAST)
+                        ) ORDER BY COALESCE(
+                            NULLIF(profile.full_name, ''),
+                            NULLIF(invitation.invited_name, ''),
+                            profile.email,
+                            invitation.invited_email
+                        ) NULLS LAST)
                         FROM brainstorm_board_members member
                         LEFT JOIN user_profiles profile
                           ON profile.firebase_uid = member.firebase_uid
+                        LEFT JOIN LATERAL (
+                            SELECT invited_name, invited_email
+                            FROM project_invitations
+                            WHERE project_id = board.project_id
+                              AND invited_firebase_uid = member.firebase_uid
+                              AND status = 'accepted'
+                            ORDER BY created_at DESC
+                            LIMIT 1
+                        ) invitation ON TRUE
                         WHERE member.board_id = board.board_id
                     ), '[]'::json) AS members
                 FROM brainstorm_boards board

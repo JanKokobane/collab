@@ -513,11 +513,6 @@
     color: #12675A;
 }
 
-.brainstorm-connection-status {
-    color: #16806F;
-    font-size: 11px;
-}
-
 .brainstorm-board {
     padding: 14px;
     overflow: hidden;
@@ -548,6 +543,7 @@
 }
 
 .brainstorm-edit-controls {
+    margin-left: auto;
     padding-left: 12px;
     border-left: 1px solid #e2e8ee;
     gap: 6px;
@@ -843,11 +839,6 @@
     min-height: 36px;
     padding: 0 13px;
     font-size: 12px;
-}
-
-.brainstorm-connection-status {
-    flex: 0 0 auto;
-    min-width: 0;
 }
 
 .brainstorm-save-btn:disabled {

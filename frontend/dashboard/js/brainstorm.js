@@ -25,6 +25,10 @@ const stickyLinkTypes = {
   sequence: { label: 'Sequence', color: '#4E78A5', width: 2, markerStart: true, markerEnd: true }
 }
 
+function showBrainstormNotice(message) {
+  showDashboardToast(message, 'success', { dismissible: true, duration: 0 })
+}
+
 async function refreshBrainstormNotifications() {
   try {
     await loadNotificationsFromAPI()
@@ -308,10 +312,14 @@ async function loadBrainstormBoard(boardId) {
     delete note.upvotes
     delete note.upvotedBy
     delete note.userUpvoted
-    const member = activeBoardMembers.find(item => item.firebaseUid === note.authorUid)
+    const member = activeBoardMembers.find(item => getMemberUid(item) === note.authorUid)
     if (member) {
-      note.author = member.name || note.author
-      note.authorProfileImage = member.profileImage || ''
+      note.author = note.authorUid === firebaseAuth.currentUser?.uid
+        ? currentUser.name || member.name || 'Project member'
+        : member.name || 'Project member'
+      note.authorProfileImage = member.profileImage || note.authorProfileImage || ''
+    } else if (note.authorUid === firebaseAuth.currentUser?.uid) {
+      note.author = currentUser.name || 'Project member'
     }
   })
   brainstormDirty = false
@@ -527,7 +535,7 @@ export function renderStickyNotes() {
   })
 
   stickyNotes.forEach(note => {
-    note.author = note.author || currentUser.name || 'Project member'
+    note.author = note.author || 'Project member'
     const card = make('article', `sticky-note-card ${note.color || 'yellow'}`)
     card.dataset.noteId = note.id
     card.tabIndex = 0
@@ -693,18 +701,17 @@ function toggleIdeaReaction(note, emoji) {
 }
 
 function selectStickyLinkNote(noteId) {
-  const status = document.querySelector('#sticky-connection-status')
   const sourceCard = document.querySelector(`[data-note-id="${CSS.escape(noteId)}"]`)
   if (!pendingStickyLinkId) {
     pendingStickyLinkId = noteId
     sourceCard?.classList.add('link-source')
-    if (status) status.textContent = 'Now choose the idea to connect.'
+    showBrainstormNotice('Choose another idea to connect.')
     return
   }
   if (pendingStickyLinkId === noteId) {
     pendingStickyLinkId = null
     sourceCard?.classList.remove('link-source')
-    if (status) status.textContent = 'Choose an idea to start.'
+    showBrainstormNotice('Idea connection cancelled.')
     return
   }
 
@@ -729,10 +736,8 @@ function selectStickyLinkNote(noteId) {
   const deleteButton = document.querySelector('#sticky-delete-link-btn')
   if (deleteButton) deleteButton.disabled = false
   renderStickyNotes()
-  if (status) {
-    const typeLabel = stickyLinkTypes[selectedType]?.label || stickyLinkTypes.related.label
-    status.textContent = `${typeLabel} link ready. Save board to keep it.`
-  }
+  const typeLabel = stickyLinkTypes[selectedType]?.label || stickyLinkTypes.related.label
+  showBrainstormNotice(`${typeLabel} link ready. Save board to keep it.`)
 }
 
 function renderStickyConnections() {
@@ -813,8 +818,7 @@ function renderStickyConnections() {
       selectedStickyLinkId = link.id
       const deleteButton = document.querySelector('#sticky-delete-link-btn')
       if (deleteButton) deleteButton.disabled = false
-      const status = document.querySelector('#sticky-connection-status')
-      if (status) status.textContent = `${style.label} link selected.`
+      showBrainstormNotice(`${style.label} link selected.`)
       renderStickyConnections()
     }
     hitTarget.addEventListener('click', selectLink)
@@ -1270,8 +1274,8 @@ export function initBrainstormEvents() {
     const button = event.currentTarget
     button.setAttribute('aria-pressed', String(stickyLinkMode))
     button.classList.toggle('active', stickyLinkMode)
-    const status = document.querySelector('#sticky-connection-status')
-    if (status) status.textContent = stickyLinkMode ? 'Choose a first note.' : ''
+    if (stickyLinkMode) showBrainstormNotice('Choose the first idea to connect.')
+    else showBrainstormNotice('Idea connection mode closed.')
     renderStickyNotes()
   })
   document.querySelector('#sticky-delete-link-btn')?.addEventListener('click', () => {
@@ -1281,8 +1285,7 @@ export function initBrainstormEvents() {
     document.querySelector('#sticky-delete-link-btn').disabled = true
     markBrainstormDirty()
     renderStickyConnections()
-    const status = document.querySelector('#sticky-connection-status')
-    if (status) status.textContent = 'Link removed. Save board to keep the change.'
+    showBrainstormNotice('Link removed. Save board to keep the change.')
   })
   document.querySelector('#save-brainstorm-btn')?.addEventListener('click', saveBrainstormBoard)
   window.addEventListener('beforeunload', event => {
