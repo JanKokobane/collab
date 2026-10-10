@@ -2355,10 +2355,70 @@ body.dark-mode .workspace-updates-panel-header {
     transition: all .15s;
 }
 
+.hub-resource-link {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    color: inherit;
+    text-decoration: none;
+}
+
 .hub-resource-item:hover {
     background: #F4F4F6;
     border-color: #D4D4D8;
     transform: translateY(-1px);
+}
+
+.hub-resource-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
+}
+
+.hub-resource-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #FFFFFF;
+    color: var(--muted);
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+}
+
+.hub-resource-action:not(.is-danger) {
+    border-color: #1C1C1F;
+    background: #1C1C1F;
+    color: #FFFFFF;
+}
+
+.hub-resource-action:not(.is-danger):hover {
+    border-color: #000000;
+    background: #000000;
+    color: #FFFFFF;
+}
+
+.hub-resource-action:hover {
+    border-color: #A1A1AA;
+    color: #1C1C1F;
+}
+
+.hub-resource-action.is-danger {
+    border-color: #B91C1C;
+    background: #DC2626;
+    color: #FFFFFF;
+}
+
+.hub-resource-action.is-danger:hover {
+    border-color: #991B1B;
+    background: #B91C1C;
+    color: #FFFFFF;
 }
 
 .hub-res-logo {
@@ -2525,6 +2585,37 @@ body.dark-mode .poll-option-row {
     background: #16161C;
     border-color: #272733;
     color: #E4E4E7;
+}
+
+body.dark-mode .hub-resource-action {
+    border-color: #383844;
+    background: #202028;
+    color: #A1A1AA;
+}
+
+body.dark-mode .hub-resource-action:hover {
+    color: #FFFFFF;
+}
+
+body.dark-mode .hub-resource-action:not(.is-danger) {
+    border-color: #3F3F46;
+    background: #27272A;
+    color: #FFFFFF;
+}
+
+body.dark-mode .hub-resource-action:not(.is-danger):hover {
+    background: #3F3F46;
+}
+
+body.dark-mode .hub-resource-action.is-danger {
+    border-color: #DC2626;
+    background: #B91C1C;
+    color: #FFFFFF;
+}
+
+body.dark-mode .hub-resource-action.is-danger:hover {
+    border-color: #EF4444;
+    background: #DC2626;
 }
 
 body.dark-mode .poll-option-row.selected {

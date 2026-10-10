@@ -31,6 +31,8 @@ const {
 } = require('../controllers/reminderController');
 const {
     createProjectResource,
+    deleteProjectResource,
+    updateProjectResource,
     getProjectResources
 } = require('../controllers/resourceController');
 
@@ -69,6 +71,8 @@ router.get('/:projectId/reminders', getProjectReminders);
 router.post('/:projectId/reminders', createProjectReminder);
 router.get('/:projectId/resources', getProjectResources);
 router.post('/:projectId/resources', createProjectResource);
+router.put('/:projectId/resources/:resourceId', updateProjectResource);
+router.delete('/:projectId/resources/:resourceId', deleteProjectResource);
 
 router.get(
     '/:projectId',

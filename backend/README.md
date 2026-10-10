@@ -80,8 +80,11 @@ accepted invitee when edited.
 - `GET /api/projects/:projectId/resources`: list pinned resources for a project
   the caller owns or has accepted an invitation to join.
 - `POST /api/projects/:projectId/resources`: pin an HTTP(S) resource to a
-  project as its creator. Resource links are only returned to that project's
-  creator and accepted invitees.
+  project as its creator.
+- `PUT|DELETE /api/projects/:projectId/resources/:resourceId`: edit or remove a
+  specific resource as its project creator. Create, edit, and removal persist
+  in-dashboard notifications for the other accepted project members. Resource
+  links are only returned to the project creator and accepted invitees.
 - `PUT /api/projects/:projectId` with a `sprints` array: persist sprint changes
   as the project creator. Sprint deletion may include a `sprint_name_map`
   object mapping every existing sprint name to a remaining sprint name; the

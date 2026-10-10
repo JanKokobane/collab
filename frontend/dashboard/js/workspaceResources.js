@@ -2,7 +2,7 @@ import { projects, pushNotification, make, root, closeModal } from './state.js'
 import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
 import { getSvg } from './icons.js'
-import { showDashboardToast } from './modalChrome.js'
+import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { getActiveProject } from './auth.js'
 
 export const defaultScratchpad = `## 🎯 Q4 Deliverables & Architecture Notes
@@ -66,12 +66,12 @@ export function renderScratchpad() {
 }
 
 export function renderHubResources() {
-  const brandLogos = {
-    'figma.com': 'https://cdn.simpleicons.org/figma/F24E1E',
-    'github.com': 'https://cdn.simpleicons.org/github/181717',
-    'notion.so': 'https://cdn.simpleicons.org/notion/000000',
-    'meet.google.com': 'https://cdn.simpleicons.org/googlemeet/00897B'
-  }
+  const brandLogos = [
+    { domains: ['figma.com'], hint: 'figma', logo: 'https://cdn.simpleicons.org/figma/F24E1E' },
+    { domains: ['github.com'], hint: 'github', logo: 'https://cdn.simpleicons.org/github/181717' },
+    { domains: ['notion.so', 'notion.site'], hint: 'notion', logo: 'https://cdn.simpleicons.org/notion/000000' },
+    { domains: ['meet.google.com'], hint: 'googlemeet', logo: 'https://cdn.simpleicons.org/googlemeet/00897B' }
+  ]
   const workspaceLogo = new URL('../images/favicon.png', window.location.href).href
 
   const addButton = document.querySelector('#hub-add-resource-btn')
@@ -90,10 +90,11 @@ export function renderHubResources() {
       return
     }
     teamResources.forEach(resource => {
-      const item = make('a', 'hub-resource-item')
-      item.href = resource.url
-      item.target = '_blank'
-      item.rel = 'noopener noreferrer'
+      const item = make('div', 'hub-resource-item')
+      const link = make('a', 'hub-resource-link')
+      link.href = resource.url
+      link.target = '_blank'
+      link.rel = 'noopener noreferrer'
 
       let hostname = ''
       try {
@@ -101,9 +102,22 @@ export function renderHubResources() {
       } catch {
         hostname = ''
       }
-      const brandDomain = Object.keys(brandLogos).find(domain => hostname === domain || hostname.endsWith(`.${domain}`))
+      const resourceIdentity = `${hostname} ${resource.url} ${resource.title}`.toLowerCase()
+      const brand = brandLogos.find(candidate =>
+        candidate.domains.some(domain => hostname === domain || hostname.endsWith(`.${domain}`)) ||
+        resourceIdentity.includes(candidate.hint)
+      )
+      const isLocalHost = !hostname ||
+        hostname === 'localhost' ||
+        hostname.endsWith('.localhost') ||
+        hostname === '127.0.0.1' ||
+        hostname === '::1'
       const logo = make('img', 'hub-res-logo')
-      logo.src = brandLogos[brandDomain] || workspaceLogo
+      logo.src = brand?.logo || (
+        isLocalHost
+          ? workspaceLogo
+          : `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=64`
+      )
       logo.alt = `${resource.title} logo`
       logo.loading = 'lazy'
       logo.decoding = 'async'
@@ -118,16 +132,63 @@ export function renderHubResources() {
       titleRow.append(make('strong', '', resource.title), make('span', 'hub-res-tag', resource.category))
       const domain = make('small', '', `${resource.projectName ? `${resource.projectName} · ` : ''}${hostname || resource.url}`)
       content.append(titleRow, domain)
-      item.append(logo, content, make('span', 'hub-res-arrow', '↗'))
+      link.append(logo, content, make('span', 'hub-res-arrow', '↗'))
+      item.append(link)
+
+      if (
+        container.id === 'admin-hub-resources-list' &&
+        getOwnedProjects().some(project => project.projectId === resource.projectId)
+      ) {
+        const actions = make('div', 'hub-resource-actions')
+        const editButton = make('button', 'hub-resource-action', 'Edit')
+        editButton.type = 'button'
+        editButton.setAttribute('aria-label', `Edit ${resource.title}`)
+        editButton.addEventListener('click', () => openAddResourceModal(resource))
+
+        const removeButton = make('button', 'hub-resource-action is-danger', 'Remove')
+        removeButton.type = 'button'
+        removeButton.setAttribute('aria-label', `Remove ${resource.title}`)
+        removeButton.addEventListener('click', () => removeProjectResource(resource))
+        actions.append(editButton, removeButton)
+        item.append(actions)
+      }
       container.append(item)
     })
   })
 }
 
-export function openAddResourceModal() {
+async function removeProjectResource(resource) {
+  const confirmed = await showDashboardConfirmation({
+    title: 'Remove project resource?',
+    message: `Remove "${resource.title}" from ${resource.projectName}? Project members will be notified.`,
+    confirmText: 'Remove resource',
+    danger: true
+  })
+  if (!confirmed) return
+
+  try {
+    await api.delete(`/projects/${encodeURIComponent(resource.projectId)}/resources/${encodeURIComponent(resource.id)}`)
+    teamResources = teamResources.filter(item => item.id !== resource.id)
+    renderHubResources()
+    showDashboardToast('Resource removed. Project members have been notified.', 'success')
+  } catch (error) {
+    console.error('Unable to remove project resource:', error)
+    showDashboardToast(error.message || 'The project resource could not be removed.', 'error')
+  }
+}
+
+export function openAddResourceModal(resourceToEdit = null) {
   const ownedProjects = getOwnedProjects()
-  if (!ownedProjects.length) {
-    showDashboardToast('Only project creators can pin resources. Create a project to get started.', 'error')
+  const editableProject = resourceToEdit
+    ? ownedProjects.find(project => project.projectId === resourceToEdit.projectId)
+    : null
+  if (!ownedProjects.length || (resourceToEdit && !editableProject)) {
+    showDashboardToast(
+      resourceToEdit
+        ? 'Only the project creator can edit this resource.'
+        : 'Only project creators can pin resources. Create a project to get started.',
+      'error'
+    )
     return
   }
 
@@ -136,8 +197,11 @@ export function openAddResourceModal() {
   const close = make('button', 'close-modal', '×')
   close.type = 'button'
   close.addEventListener('click', closeModal)
-  const title = make('h2', '', 'Add Pinned Resource')
-  const copy = make('p', 'modal-copy', 'Pin a resource to one of your projects. Only that project’s members can view it.')
+  const editing = Boolean(resourceToEdit)
+  const title = make('h2', '', editing ? 'Edit Pinned Resource' : 'Add Pinned Resource')
+  const copy = make('p', 'modal-copy', editing
+    ? 'Update this project resource. Project members will be notified.'
+    : 'Pin a resource to one of your projects. Only that project’s members can view it.')
   const addField = (labelText, iconName, control) => {
     const label = make('label', 'resource-form-label', labelText)
     const field = make('div', 'input-with-icon')
@@ -154,19 +218,26 @@ export function openAddResourceModal() {
     option.value = project.projectId
     projectSelect.append(option)
   })
-  const activeProjectId = getActiveProject()?.projectId
-  const initialProjectId = ownedProjects.find(project => project.projectId === activeProjectId)?.projectId
-  if (initialProjectId) projectSelect.value = initialProjectId
+  if (editing) {
+    projectSelect.value = editableProject.projectId
+    projectSelect.disabled = true
+  } else {
+    const activeProjectId = getActiveProject()?.projectId
+    const initialProjectId = ownedProjects.find(project => project.projectId === activeProjectId)?.projectId
+    if (initialProjectId) projectSelect.value = initialProjectId
+  }
 
   const titleInput = make('input')
   titleInput.maxLength = 255
   titleInput.placeholder = 'e.g. Design Tokens Figma'
   titleInput.required = true
+  titleInput.value = resourceToEdit?.title || ''
   const urlInput = make('input')
   urlInput.type = 'url'
   urlInput.maxLength = 2048
   urlInput.placeholder = 'https://figma.com/@your-project'
   urlInput.required = true
+  urlInput.value = resourceToEdit?.url || ''
   const catSelect = document.createElement('select')
   ;[
     'Design',
@@ -224,12 +295,13 @@ export function openAddResourceModal() {
     option.value = category
     catSelect.append(option)
   })
+  if (resourceToEdit) catSelect.value = resourceToEdit.category
 
   const projectLabel = addField('Project', 'folder', projectSelect)
-  const titleLabel = addField('Resource title', 'link', titleInput)
+  const titleLabel = addField('Resource title', 'title', titleInput)
   const urlLabel = addField('Target URL', 'link', urlInput)
   const catLabel = addField('Category', 'grid', catSelect)
-  const submit = make('button', 'primary-button full gold', 'Pin Resource')
+  const submit = make('button', 'primary-button full gold', editing ? 'Save Changes' : 'Pin Resource')
   submit.type = 'submit'
   form.append(close, title, copy, projectLabel, titleLabel, urlLabel, catLabel, submit)
   backdrop.append(form)
@@ -237,26 +309,35 @@ export function openAddResourceModal() {
   form.addEventListener('submit', async e => {
     e.preventDefault()
     submit.disabled = true
-    submit.textContent = 'Pinning…'
+    submit.textContent = editing ? 'Saving…' : 'Pinning…'
     try {
       const project = ownedProjects.find(item => item.projectId === projectSelect.value)
-      const response = await api.post(`/projects/${encodeURIComponent(projectSelect.value)}/resources`, {
+      const requestBody = {
         title: titleInput.value.trim(),
         targetUrl: urlInput.value.trim(),
         category: catSelect.value
-      })
-      teamResources = [
-        normalizeResource(response?.data?.resource, project),
-        ...teamResources
-      ]
+      }
+      const resourcePath = `/projects/${encodeURIComponent(projectSelect.value)}/resources`
+      const response = editing
+        ? await api.put(`${resourcePath}/${encodeURIComponent(resourceToEdit.id)}`, requestBody)
+        : await api.post(resourcePath, requestBody)
+      const savedResource = normalizeResource(response?.data?.resource, project)
+      teamResources = editing
+        ? teamResources.map(item => item.id === resourceToEdit.id ? savedResource : item)
+        : [savedResource, ...teamResources]
       closeModal()
       renderHubResources()
-      showDashboardToast('Resource pinned to the project.', 'success')
-      pushNotification('Resource Pinned', `"${titleInput.value.trim()}" is now available to ${project.name} members.`, '🔗', 'teal-bg')
+      showDashboardToast(
+        editing ? 'Resource updated. Project members have been notified.' : 'Resource pinned to the project.',
+        'success'
+      )
+      if (!editing) {
+        pushNotification('Resource Pinned', `"${titleInput.value.trim()}" is now available to ${project.name} members.`, '🔗', 'teal-bg')
+      }
     } catch (error) {
-      console.error('Unable to pin project resource:', error)
+      console.error(`Unable to ${editing ? 'update' : 'pin'} project resource:`, error)
       submit.disabled = false
-      submit.textContent = 'Pin Resource'
+      submit.textContent = editing ? 'Save Changes' : 'Pin Resource'
       showDashboardToast(error.message || 'The project resource could not be pinned.', 'error')
     }
   })
