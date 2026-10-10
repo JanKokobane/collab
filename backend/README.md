@@ -28,6 +28,12 @@ Startup also applies pending migrations before the HTTP server listens.
 Migrations run transactionally and use a PostgreSQL advisory lock so multiple
 server instances do not apply the same migration simultaneously.
 
+Authenticated users can retrieve and update their profile through
+`GET|PUT /api/users/profile`. Profile fields are stored in PostgreSQL's
+`user_profiles` table. Profile photos remain stored in the same table and are
+managed through `GET|PUT /api/users/profile-image`. Migration
+`011_persistent_user_profile_fields.sql` adds the profile detail columns.
+
 ## Project invitations
 
 Set `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `FRONTEND_URL`, and `PUBLIC_API_URL`
@@ -85,6 +91,15 @@ accepted invitee when edited.
   specific resource as its project creator. Create, edit, and removal persist
   in-dashboard notifications for the other accepted project members. Resource
   links are only returned to the project creator and accepted invitees.
+- `GET|POST /api/projects/:projectId/brainstorm-boards`: list boards the caller
+  belongs to, or create a private project board. Board invitees must already be
+  accepted members of that project.
+- `GET|PUT /api/projects/brainstorm-boards/:boardId`: load or save board notes
+  and links as a board member.
+- `POST /api/projects/brainstorm-boards/:boardId/members`: invite additional
+  accepted project members as the board creator. Membership and in-dashboard
+  invitation notifications are saved in the same transaction. Board saves also
+  notify the other board members.
 - `PUT /api/projects/:projectId` with a `sprints` array: persist sprint changes
   as the project creator. Sprint deletion may include a `sprint_name_map`
   object mapping every existing sprint name to a remaining sprint name; the
@@ -139,6 +154,8 @@ Migration `007_project_meetings.sql` adds persistent project-scoped meetings,
 `009_project_resources.sql` creates project-scoped pinned resources, and
 `010_expand_project_resource_categories.sql` permits the full set of 50
 resource categories. These are applied automatically during backend startup.
+Migration `012_project_brainstorm_boards.sql` creates private project-scoped
+brainstorm boards and their membership table.
 
 ## Remaining local demo features
 

@@ -477,38 +477,53 @@
                     </header>
                     <section class="hub-card brainstorm-board" aria-label="Open brainstorming board">
                         <div class="mindmap-toolbar">
-                            <label class="brainstorm-link-type-label" for="sticky-link-type">Link type</label>
-                            <div class="input-with-icon" style="width: auto;">
-                                <svg class="input-icon-svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
-                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                    stroke-linejoin="round">
-                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                                </svg>
-                                <select id="sticky-link-type" class="brainstorm-link-type" aria-label="Connection type"
-                                    title="Connection type">
-                                    <option value="related">Related</option>
-                                    <option value="leads-to">Leads to</option>
-                                    <option value="supports">Supports</option>
-                                    <option value="sequence">Sequence</option>
-                                </select>
+                            <div class="brainstorm-board-controls">
+                                <label class="brainstorm-control-label" for="brainstorm-project-select">Select Project</label>
+                                <select id="brainstorm-project-select" class="brainstorm-board-select"
+                                    aria-label="Brainstorm project"></select>
+                                <label class="brainstorm-control-label" for="brainstorm-board-select">Board</label>
+                                <select id="brainstorm-board-select" class="brainstorm-board-select"
+                                    aria-label="Brainstorm board"></select>
+                                <button type="button" class="outline-button brainstorm-board-action"
+                                    id="brainstorm-create-board-btn">+ Create board</button>
+                                <button type="button" class="outline-button brainstorm-board-action"
+                                    id="brainstorm-invite-btn" hidden>Invite members</button>
                             </div>
-                            <button type="button" class="outline-button brainstorm-remove-link"
-                                id="sticky-delete-link-btn" disabled>Remove link</button>
-                            <button type="button" class="brainstorm-connect" id="sticky-connect-btn"
-                                aria-pressed="false" title="Connect two notes">
-                                <svg viewBox="0 0 24 24" aria-hidden="true">
-                                    <path
-                                        d="M10 13.5 14 9.5M8.2 15.3l-1.4 1.4a3.2 3.2 0 0 1-4.5-4.5l4-4a3.2 3.2 0 0 1 4.5 0M15.8 8.2l1.4-1.4a3.2 3.2 0 0 1 4.5 4.5l-4 4a3.2 3.2 0 0 1-4.5 0">
-                                    </path>
-                                </svg>
-                                <span>Connect</span>
-                            </button>
-                            <span class="brainstorm-connection-status" id="sticky-connection-status"
-                                aria-live="polite"></span>
-                            <span class="brainstorm-local-status" id="brainstorm-save-status" role="status">Saved</span>
-                            <button type="button" class="primary-button gold brainstorm-save-btn"
-                                id="save-brainstorm-btn" disabled>Save board</button>
+                            <div class="brainstorm-edit-controls">
+                                <label class="brainstorm-link-type-label" for="sticky-link-type">Link type</label>
+                                <div class="input-with-icon brainstorm-link-select-wrap">
+                                    <svg class="input-icon-svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                                    </svg>
+                                    <select id="sticky-link-type" class="brainstorm-link-type"
+                                        aria-label="Connection type" title="Connection type">
+                                        <option value="related">Related</option>
+                                        <option value="leads-to">Leads to</option>
+                                        <option value="supports">Supports</option>
+                                        <option value="sequence">Sequence</option>
+                                    </select>
+                                </div>
+                                <button type="button" class="outline-button brainstorm-remove-link"
+                                    id="sticky-delete-link-btn" disabled>Remove link</button>
+                                <button type="button" class="brainstorm-connect" id="sticky-connect-btn"
+                                    aria-pressed="false" title="Connect two notes">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path
+                                            d="M10 13.5 14 9.5M8.2 15.3l-1.4 1.4a3.2 3.2 0 0 1-4.5-4.5l4-4a3.2 3.2 0 0 1 4.5 0M15.8 8.2l1.4-1.4a3.2 3.2 0 0 1 4.5 4.5l-4 4a3.2 3.2 0 0 1-4.5 0">
+                                        </path>
+                                    </svg>
+                                    <span>Connect</span>
+                                </button>
+                                <span class="brainstorm-connection-status" id="sticky-connection-status"
+                                    aria-live="polite"></span>
+                                <span class="brainstorm-local-status" id="brainstorm-save-status"
+                                    role="status">Saved</span>
+                                <button type="button" class="primary-button gold brainstorm-save-btn"
+                                    id="save-brainstorm-btn" disabled>Save board</button>
+                            </div>
                         </div>
                         <div class="mindmap-viewport" id="mindmap-viewport">
                             <div class="mindmap-canvas" id="sticky-notes-grid" aria-label="Idea map">
@@ -1357,7 +1372,7 @@
                                     <div class="settings-toggle-item">
                                         <div class="toggle-text">
                                             <strong>Inactivity Auto-Logout</strong>
-                                            <p>Automatically lock workspace after periods of inactivity.</p>
+                                            <p>Sign out automatically after 30 minutes without activity.</p>
                                         </div>
                                         <label class="switch">
                                             <input type="checkbox" id="toggle-sec-timeout" checked />

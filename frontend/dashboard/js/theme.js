@@ -327,25 +327,56 @@ export async function saveUserProfile(e) {
     return
   }
 
+  let savedProfile
+  try {
+    const response = await api.put('/users/profile', {
+      name,
+      email,
+      phoneCountryCode,
+      phoneNumber,
+      workspace,
+      role,
+      collaborationType,
+      collaborationDetails,
+      industry,
+      tone,
+      status,
+      timezone
+    })
+    savedProfile = response?.data?.profile
+    if (!savedProfile) {
+      throw new Error('The server did not confirm saving your profile.')
+    }
+  } catch (error) {
+    console.error('Unable to save user profile:', error)
+    pushNotification(
+      'Profile Update Failed',
+      error.message || 'Your profile could not be saved. Please try again.',
+      '⚠️',
+      'coral-bg'
+    )
+    return
+  }
+
   // Calculate clean 2-letter initials
   const words = name.split(/\s+/).filter(Boolean)
   const initials = words.length > 1
     ? (words[0][0] + words[words.length - 1][0]).toUpperCase()
     : (words[0] ? words[0].slice(0, 2).toUpperCase() : 'AM')
 
-  currentUser.name = name
-  currentUser.email = email
-  currentUser.phoneCountryCode = phoneCountryCode
-  currentUser.phoneNumber = phoneNumber
-  currentUser.workspace = workspace
-  currentUser.role = role
-  currentUser.collaborationType = collaborationType
-  currentUser.collaborationDetails = collaborationDetails
-  currentUser.industry = industry
-  currentUser.tone = tone
+  currentUser.name = savedProfile.name
+  currentUser.email = savedProfile.email
+  currentUser.phoneCountryCode = savedProfile.phoneCountryCode
+  currentUser.phoneNumber = savedProfile.phoneNumber
+  currentUser.workspace = savedProfile.workspace
+  currentUser.role = savedProfile.role
+  currentUser.collaborationType = savedProfile.collaborationType
+  currentUser.collaborationDetails = savedProfile.collaborationDetails
+  currentUser.industry = savedProfile.industry
+  currentUser.tone = savedProfile.tone
   currentUser.initials = initials
-  currentUser.status = status
-  currentUser.timezone = timezone
+  currentUser.status = savedProfile.status
+  currentUser.timezone = savedProfile.timezone
   currentUser.profileImage = selectedImage
   currentUser.photoURL = selectedImage
 

@@ -333,6 +333,9 @@ export function initEventListeners() {
     collabSettings.adminAuthority = document.querySelector('#toggle-sec-admin-authority')?.checked ?? true
     collabSettings.sessionTimeout = document.querySelector('#toggle-sec-timeout')?.checked ?? true
     saveCollabSettings()
+    window.dispatchEvent(new CustomEvent('collab-session-timeout-setting-changed', {
+      detail: { enabled: collabSettings.sessionTimeout }
+    }))
 
     document.body.classList.toggle('high-contrast', !!collabSettings.highContrast)
 

@@ -4,6 +4,7 @@ import { firebaseAuth } from '../../firebase.js'
 import { getSvg } from './icons.js'
 import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { getActiveProject } from './auth.js'
+import { openCreateProjectModal } from './projects.js'
 
 export const defaultScratchpad = `## 🎯 Q4 Deliverables & Architecture Notes
 - [x] Finalize authentication and session timeout policy
@@ -75,7 +76,7 @@ export function renderHubResources() {
   const workspaceLogo = new URL('../images/favicon.png', window.location.href).href
 
   const addButton = document.querySelector('#hub-add-resource-btn')
-  if (addButton) addButton.hidden = getOwnedProjects().length === 0
+  if (addButton) addButton.hidden = false
 
   document.querySelectorAll('.hub-resources-grid').forEach(container => {
     container.replaceChildren()
@@ -179,16 +180,17 @@ async function removeProjectResource(resource) {
 
 export function openAddResourceModal(resourceToEdit = null) {
   const ownedProjects = getOwnedProjects()
+  if (!resourceToEdit && ownedProjects.length === 0) {
+    showDashboardToast('Create a project first, then you can pin resources to it.', 'error')
+    openCreateProjectModal()
+    return
+  }
+
   const editableProject = resourceToEdit
     ? ownedProjects.find(project => project.projectId === resourceToEdit.projectId)
     : null
-  if (!ownedProjects.length || (resourceToEdit && !editableProject)) {
-    showDashboardToast(
-      resourceToEdit
-        ? 'Only the project creator can edit this resource.'
-        : 'Only project creators can pin resources. Create a project to get started.',
-      'error'
-    )
+  if (resourceToEdit && !editableProject) {
+    showDashboardToast('Only the creator of this project can edit this resource.', 'error')
     return
   }
 
@@ -382,5 +384,5 @@ export function initWorkspaceResourceEvents() {
     if (saveStatus) saveStatus.textContent = '● Cleared'
     pushNotification('Scratchpad Cleared', 'Workspace notes were cleared.', '📝', 'coral-bg')
   })
-  document.querySelector('#hub-add-resource-btn')?.addEventListener('click', openAddResourceModal)
+  document.querySelector('#hub-add-resource-btn')?.addEventListener('click', () => openAddResourceModal())
 }

@@ -1,5 +1,5 @@
 import { projects, activeView, getAccessibleMembers, getAccessibleTasks, meetings, notifications, currentUser, loadNotificationsFromAPI, loadProjectsFromAPI, markNotificationRead, markAllNotificationsRead, clearAllNotifications, make, getUserInitials, renderAvatarElement, root, closeModal, hub } from './state.js'
-import { renderStickyNotes, initBrainstormEvents } from './brainstorm.js'
+import { renderStickyNotes, renderPersistentBrainstorm, initBrainstormEvents } from './brainstorm.js'
 import { renderScratchpad, renderHubResources, initWorkspaceResourceEvents } from './workspaceResources.js'
 import { api } from './api.js'
 import { getSafeMeetingUrl } from './meetings.js'
@@ -18,7 +18,7 @@ export function renderWorkspaceManagement() {
 }
 
 export function renderBrainstorm() {
-  renderStickyNotes()
+  renderPersistentBrainstorm()
 }
 
 export function renderWorkspaceSummary() {

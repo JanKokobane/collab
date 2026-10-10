@@ -328,6 +328,13 @@
     font-weight: 800;
 }
 
+.sticky-author-avatar img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
 .brainstorm-board .sticky-upvote-btn {
     flex: 0 0 auto;
     padding: 4px 7px;
@@ -420,19 +427,141 @@
 .mindmap-toolbar {
     display: flex;
     align-items: center;
-    gap: 11px;
+    flex-wrap: nowrap;
+    gap: 12px;
     min-height: 40px;
     padding: 0 2px 12px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+.brainstorm-board-controls,
+.brainstorm-edit-controls {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 8px;
+}
+
+.brainstorm-edit-controls {
+    padding-left: 12px;
+    border-left: 1px solid #e2e8ee;
+    gap: 6px;
+}
+
+.brainstorm-control-label {
+    flex: 0 0 auto;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.brainstorm-board-select {
+    width: 170px;
+    min-width: 130px;
+    max-width: 170px;
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding: 0 10px;
+    border: 1px solid #d6dce2;
+    border-radius: 8px;
+    background: #fff;
+    color: #26333b;
+    font: inherit;
+    font-size: 12px;
+}
+
+.brainstorm-board-action {
+    width: auto;
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+#brainstorm-invite-btn[hidden] {
+    display: none !important;
+}
+
+.brainstorm-link-select-wrap {
+    width: auto;
+    flex: 0 0 auto;
+}
+
+.brainstorm-link-type {
+    width: 110px;
+}
+
+.brainstorm-empty-state {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: min(440px, calc(100% - 40px));
+    margin: 0;
+    color: #64748b;
+    font-size: 14px;
+    line-height: 1.6;
+    text-align: center;
+    transform: translate(-50%, -50%);
+}
+
+.brainstorm-member-picker {
+    min-width: 0;
+    margin: 0;
+    padding: 12px;
+    border: 1px solid #e2e8ee;
+    border-radius: 10px;
+}
+
+.brainstorm-member-picker legend {
+    padding: 0 5px;
+    color: #394650;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.brainstorm-member-list {
+    display: grid;
+    gap: 9px;
+    max-height: 220px;
+    overflow: auto;
+}
+
+.brainstorm-member-option {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: #34414a;
+    font-size: 13px;
+}
+
+.brainstorm-members-empty {
+    margin: 4px 0;
+    color: #71808b;
+    font-size: 12px;
 }
 
 .mindmap-toolbar .brainstorm-local-status {
-    margin-left: auto;
+    flex: 0 0 auto;
+    min-width: 0;
+    margin-left: 0;
+    white-space: nowrap;
 }
 
 .brainstorm-save-btn {
+    width: auto;
+    flex: 0 0 auto;
     min-height: 36px;
     padding: 0 13px;
     font-size: 12px;
+}
+
+.brainstorm-connection-status {
+    flex: 0 0 auto;
+    min-width: 0;
 }
 
 .brainstorm-save-btn:disabled {
@@ -645,11 +774,7 @@ body.dark-mode .brainstorm-link-type {
 
 @media (max-width: 640px) {
     .mindmap-toolbar {
-        flex-wrap: wrap;
-    }
-
-    .mindmap-toolbar .brainstorm-local-status {
-        margin-left: auto;
+        flex-wrap: nowrap;
     }
 
     .mindmap-viewport {

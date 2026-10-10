@@ -35,6 +35,13 @@ const {
     updateProjectResource,
     getProjectResources
 } = require('../controllers/resourceController');
+const {
+    createProjectBoard,
+    getBoard,
+    getProjectBoards,
+    inviteBoardMembers,
+    saveBoard
+} = require('../controllers/brainstormController');
 
 const {
     requireFirebaseAuth
@@ -73,6 +80,11 @@ router.get('/:projectId/resources', getProjectResources);
 router.post('/:projectId/resources', createProjectResource);
 router.put('/:projectId/resources/:resourceId', updateProjectResource);
 router.delete('/:projectId/resources/:resourceId', deleteProjectResource);
+router.get('/:projectId/brainstorm-boards', getProjectBoards);
+router.post('/:projectId/brainstorm-boards', createProjectBoard);
+router.get('/brainstorm-boards/:boardId', getBoard);
+router.put('/brainstorm-boards/:boardId', saveBoard);
+router.post('/brainstorm-boards/:boardId/members', inviteBoardMembers);
 
 router.get(
     '/:projectId',

@@ -37,7 +37,7 @@ Firebase authentication is separate from the dashboard's demo data storage; sign
 
 1. `index.html` is the public entry page. It loads `main.js` for the landing page's testimonial carousel, newsletter-form feedback, and current-year labels.
 2. The landing page links to `auth/auth.html` and `dashboard/dashboard.html`.
-3. `auth/auth.html` loads `auth/auth.js`. Users register and sign in with an email and password, or use a social provider. Registration also collects collaboration type, brand/company, job title, and industry; choosing “Other” requires a collaboration description. Successful authentication saves a browser-local user profile and redirects to the dashboard.
+3. `auth/auth.html` loads `auth/auth.js`. Users register and sign in with an email and password, or use a social provider. Registration also collects collaboration type, brand/company, job title, and industry; choosing “Other” requires a collaboration description. Sign-in uses Firebase Authentication, while profile details are loaded and persisted through the authenticated backend.
 4. `dashboard/dashboard.html` is the application shell and loads `dashboard.js` as a module.
 5. `dashboard.js` imports the dashboard feature modules, registers their render/actions in the shared `hub` object from `dashboard/js/state.js`, initializes event handlers and modal chrome, and renders the initial view.
 6. `dashboard/js/navigation.js` switches views by showing the matching dashboard section and asking the relevant module to render it.
@@ -51,11 +51,12 @@ Firebase authentication is separate from the dashboard's demo data storage; sign
 - **Calendar:** Month navigation, backend-persisted project meetings, pinned meetings, task dates, reminders, and scheduling dialogs are handled by `dashboard/js/calendar.js`. Meeting API loading and normalization are in `dashboard/js/meetings.js`; `dashboard/js/dateUtils.js` centralizes local date-key parsing and relative date display.
 - **Administration:** Member, task, meeting, and audit-log tables are rendered by `dashboard/js/admin.js`. Role and project-creator helpers are in `dashboard/js/auth.js`.
 - **Workspace hub:** Workspace summaries, project-scoped pinned resources, scratchpad, and team notifications are managed by `dashboard/js/workspaceHub.js`. Resources load from the backend for projects the user can access; only project creators can add links, and accepted project members can view them.
-- **Brainstorming:** Sticky notes can be categorized, repositioned, and linked on a board; board changes can be explicitly saved. The same workspace module manages this feature.
+- **Brainstorming:** Choose an accessible project, create private brainstorm boards, invite accepted project members, and receive in-dashboard invitation and board-update notifications. Notes, votes, positions, and links are saved to PostgreSQL through the backend; only board members can read or update a board.
 - **Polls:** Polls are created in the workspace-management area. Only included audience members see them; votes are stored per member, and a new poll can appear in a dismissible voting popup.
 - **Messages:** The browser-local messaging demo supports direct conversations, groups, channels, attachments, media previews, reactions, reply/edit/forward/pin/delete actions, simulated read receipts, and unread badges. Its UI and persistence are in `dashboard/js/messages.js`.
 - **Notifications:** Workspace notifications can be marked read individually or in bulk, or cleared. The notification state and badge updates are in `dashboard/js/state.js`; the table and confirmation flows are in `dashboard/js/workspaceHub.js`.
 - **Settings and appearance:** Profile controls, collaboration settings, theme, and accent handling are implemented in `dashboard/js/theme.js`.
+- **User profile:** Profile details are loaded and saved with `GET|PUT /api/users/profile`; the profile photo uses `GET|PUT /api/users/profile-image`.
 - **Responsive navigation and dialogs:** `dashboard/js/events.js` wires dashboard controls, while `dashboard/js/modalChrome.js` applies shared headers and body structure to supported dialogs.
 
 ## Frontend file map

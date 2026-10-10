@@ -110,7 +110,10 @@ import {
 } from './js/workspaceHub.js'
 import { initMessages, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js'
 import { initProfileOnboarding } from './js/profileOnboarding.js'
-import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
+import {
+  onAuthStateChanged,
+  signOut
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
 import { firebaseAuth } from '../firebase.js'
 import { loadProjectMeetings } from './js/meetings.js'
 import { initModalChrome, showDashboardToast } from './js/modalChrome.js'
@@ -118,6 +121,132 @@ import { initModalChrome, showDashboardToast } from './js/modalChrome.js'
 let notificationRefreshInterval = null
 let notificationRefreshDelay = 30_000
 let notificationRefreshWarningShown = false
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000
+let inactivityTimer = null
+let inactivityUserUid = null
+let lastActivityAt = 0
+let inactivityLogoutStarted = false
+
+function isInactivityLogoutEnabled() {
+  try {
+    const savedSettings = JSON.parse(localStorage.getItem('collab_tool_settings') || '{}')
+    return savedSettings.sessionTimeout !== false
+  } catch (error) {
+    console.warn('Unable to read the inactivity logout setting; using the enabled default.', error)
+    return true
+  }
+}
+
+function inactivityStorageKey(uid) {
+  return `collab-last-activity-${uid}`
+}
+
+function clearInactivityTimer() {
+  if (inactivityTimer !== null) {
+    window.clearTimeout(inactivityTimer)
+    inactivityTimer = null
+  }
+}
+
+function scheduleInactivityLogout() {
+  clearInactivityTimer()
+  if (!inactivityUserUid || !firebaseAuth.currentUser || inactivityLogoutStarted || !isInactivityLogoutEnabled()) return
+
+  const remaining = Math.max(0, INACTIVITY_TIMEOUT_MS - (Date.now() - lastActivityAt))
+  inactivityTimer = window.setTimeout(() => {
+    if (Date.now() - lastActivityAt >= INACTIVITY_TIMEOUT_MS) {
+      logoutForInactivity()
+    } else {
+      scheduleInactivityLogout()
+    }
+  }, remaining)
+}
+
+function recordUserActivity() {
+  const user = firebaseAuth.currentUser
+  if (!user || !isInactivityLogoutEnabled() || inactivityLogoutStarted) return
+
+  const now = Date.now()
+  if (now - lastActivityAt < 5_000) return
+  lastActivityAt = now
+  localStorage.setItem(inactivityStorageKey(user.uid), String(now))
+  scheduleInactivityLogout()
+}
+
+async function logoutForInactivity() {
+  if (inactivityLogoutStarted || !firebaseAuth.currentUser) return
+  if (!isInactivityLogoutEnabled()) {
+    scheduleInactivityLogout()
+    return
+  }
+  inactivityLogoutStarted = true
+  clearInactivityTimer()
+  const expiredUid = inactivityUserUid
+  localStorage.removeItem('collab-logged-in')
+  try {
+    await signOut(firebaseAuth)
+    if (expiredUid) localStorage.removeItem(inactivityStorageKey(expiredUid))
+    window.location.replace('../auth/auth.html?mode=signin&reason=inactivity')
+  } catch (error) {
+    inactivityLogoutStarted = false
+    console.error('Unable to sign out after inactivity:', error)
+    showDashboardToast('Automatic sign-out failed. Please sign out manually.', 'error')
+    scheduleInactivityLogout()
+  }
+}
+
+function initializeInactivityLogout(user) {
+  clearInactivityTimer()
+  inactivityUserUid = user?.uid || null
+  inactivityLogoutStarted = false
+  if (!user) {
+    lastActivityAt = 0
+    return
+  }
+
+  const key = inactivityStorageKey(user.uid)
+  const storedActivity = Number(localStorage.getItem(key))
+  lastActivityAt = Number.isFinite(storedActivity) && storedActivity > 0
+    ? storedActivity
+    : Date.now()
+  if (!storedActivity) localStorage.setItem(key, String(lastActivityAt))
+  scheduleInactivityLogout()
+}
+
+for (const activityEvent of ['pointerdown', 'keydown', 'touchstart', 'scroll', 'mousemove']) {
+  document.addEventListener(activityEvent, recordUserActivity, { passive: true })
+}
+
+window.addEventListener('storage', event => {
+  if (event.key === 'collab_tool_settings') {
+    scheduleInactivityLogout()
+    return
+  }
+  if (inactivityUserUid && event.key === inactivityStorageKey(inactivityUserUid)) {
+    const sharedActivity = Number(event.newValue)
+    if (Number.isFinite(sharedActivity) && sharedActivity > lastActivityAt) {
+      lastActivityAt = sharedActivity
+      scheduleInactivityLogout()
+    }
+  }
+})
+
+window.addEventListener('collab-session-timeout-setting-changed', event => {
+  if (event.detail?.enabled) {
+    lastActivityAt = Date.now()
+    if (inactivityUserUid) {
+      localStorage.setItem(inactivityStorageKey(inactivityUserUid), String(lastActivityAt))
+    }
+  }
+  scheduleInactivityLogout()
+})
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && inactivityUserUid &&
+      Date.now() - lastActivityAt >= INACTIVITY_TIMEOUT_MS && isInactivityLogoutEnabled()) {
+    logoutForInactivity()
+  }
+})
 
 function scheduleNotificationRefresh(delay = notificationRefreshDelay) {
   clearTimeout(notificationRefreshInterval)
@@ -202,6 +331,7 @@ initProfileOnboarding()
 enhanceInputsWithIcons(document)
 
 onAuthStateChanged(firebaseAuth, async user => {
+  initializeInactivityLogout(user)
   clearTimeout(notificationRefreshInterval)
   notificationRefreshInterval = null
   notificationRefreshDelay = 30_000
@@ -266,6 +396,24 @@ onAuthStateChanged(firebaseAuth, async user => {
     }
   } catch (error) {
     console.error('Unable to restore the signed-in user profile photo:', error)
+  }
+
+  try {
+    const response = await api.get('/users/profile')
+    const savedProfile = response?.data?.profile
+    if (savedProfile) {
+      setCurrentUser({
+        ...currentUser,
+        ...Object.fromEntries(
+          Object.entries(savedProfile).filter(([, value]) => value !== null && value !== undefined)
+        ),
+        uid: user.uid,
+        initials: getUserInitials(savedProfile.name || currentUser.name)
+      })
+    }
+  } catch (error) {
+    console.error('Unable to restore the signed-in user profile:', error)
+    showDashboardToast(error.message || 'Your profile could not be loaded from the server.', 'error')
   }
 
   updateUserUI()
