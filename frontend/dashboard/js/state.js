@@ -1093,8 +1093,10 @@ export function saveNotifications() {
 function normalizeNotification(notification) {
   return {
     id: String(notification.id),
+    type: notification.type,
     title: notification.title,
     detail: notification.detail,
+    boardId: notification.brainstorm_board_id || null,
     avatar: notification.avatar || '•',
     toneClass: notification.tone_class || 'coral-bg',
     invitationId: notification.invitation_id || null,

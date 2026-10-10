@@ -1,6 +1,8 @@
 const { randomUUID } = require('node:crypto');
 const { pool } = require('../config/db');
 
+const allowedIdeaReactions = new Set(['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']);
+
 const boardDataIsValid = value => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
     if (!Array.isArray(value.notes) || !Array.isArray(value.links)) return false;
@@ -27,7 +29,20 @@ const boardDataIsValid = value => {
                 (!Array.isArray(note.upvotedBy) ||
                     note.upvotedBy.length > 1000 ||
                     note.upvotedBy.some(uid => typeof uid !== 'string' || !uid || uid.length > 128) ||
-                    new Set(note.upvotedBy).size !== note.upvotedBy.length))
+                    new Set(note.upvotedBy).size !== note.upvotedBy.length)) ||
+            (note.reactions !== undefined &&
+                (!Array.isArray(note.reactions) ||
+                    note.reactions.length > 1000 ||
+                    note.reactions.some(reaction =>
+                        !reaction ||
+                        typeof reaction !== 'object' ||
+                        !allowedIdeaReactions.has(reaction.emoji) ||
+                        typeof reaction.firebaseUid !== 'string' ||
+                        !reaction.firebaseUid ||
+                        reaction.firebaseUid.length > 128
+                    ) ||
+                    new Set(note.reactions.map(reaction => `${reaction.emoji}:${reaction.firebaseUid}`)).size !==
+                        note.reactions.length))
         ) return false;
         noteIds.add(note.id);
     }
@@ -44,6 +59,24 @@ const boardDataIsValid = value => {
         linkIds.add(link.id);
     }
     return true;
+};
+
+const stableValue = value => {
+    if (Array.isArray(value)) return value.map(stableValue);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(
+        Object.keys(value).sort().map(key => [key, stableValue(value[key])])
+    );
+};
+
+const noteContentForComparison = note => {
+    const comparable = { ...note };
+    delete comparable.upvotes;
+    delete comparable.upvotedBy;
+    delete comparable.userUpvoted;
+    delete comparable.authorProfileImage;
+    delete comparable.reactions;
+    return JSON.stringify(stableValue(comparable));
 };
 
 const getAccessibleProject = async (client, projectId, firebaseUid) => {
@@ -202,20 +235,23 @@ const createProjectBoard = async (req, res) => {
             await client.query(
                 `
                     INSERT INTO notifications (
-                        recipient_firebase_uid, project_id, type, title, detail, avatar, tone_class
+                        recipient_firebase_uid, project_id, brainstorm_board_id,
+                        type, title, detail, avatar, tone_class
                     )
                     SELECT
                         member_uid,
                         $1,
+                        $2,
                         'brainstorm_board_invitation',
                         'You were invited to a brainstorm board',
-                        $2,
+                        $3,
                         '💡',
                         'teal-bg'
-                    FROM unnest($3::text[]) AS member_uid
+                    FROM unnest($4::text[]) AS member_uid
                 `,
                 [
                     project.project_id,
+                    boardId,
                     `${inviter.rows[0]?.name || 'A project member'} invited you to "${title}" for ${project.name}.`,
                     requestedMembers
                 ]
@@ -342,20 +378,23 @@ const inviteBoardMembers = async (req, res) => {
             await client.query(
                 `
                     INSERT INTO notifications (
-                        recipient_firebase_uid, project_id, type, title, detail, avatar, tone_class
+                        recipient_firebase_uid, project_id, brainstorm_board_id,
+                        type, title, detail, avatar, tone_class
                     )
                     SELECT
                         member_uid,
                         $1,
+                        $2,
                         'brainstorm_board_invitation',
                         'You were invited to a brainstorm board',
-                        $2,
+                        $3,
                         '💡',
                         'teal-bg'
-                    FROM unnest($3::text[]) AS member_uid
+                    FROM unnest($4::text[]) AS member_uid
                 `,
                 [
                     board.project_id,
+                    board.board_id,
                     `${inviter.rows[0]?.name || 'A project member'} invited you to "${board.title}" for ${board.project_name}.`,
                     newUids
                 ]
@@ -524,6 +563,91 @@ const saveBoard = async (req, res) => {
     try {
         client = await pool.connect();
         await client.query('BEGIN');
+        const currentBoard = await client.query(
+            `
+                SELECT board_id, project_id, created_by_firebase_uid, board_data
+                FROM brainstorm_boards
+                WHERE board_id = $1
+                  AND EXISTS (
+                      SELECT 1
+                      FROM brainstorm_board_members membership
+                      WHERE membership.board_id = brainstorm_boards.board_id
+                        AND membership.firebase_uid = $2
+                  )
+                FOR UPDATE
+            `,
+            [req.params.boardId, req.firebaseUid]
+        );
+        if (!currentBoard.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                success: false,
+                code: 'BRAINSTORM_BOARD_NOT_FOUND',
+                message: 'Brainstorm board not found.'
+            });
+        }
+
+        const board = currentBoard.rows[0];
+        const oldNotes = Array.isArray(board.board_data?.notes) ? board.board_data.notes : [];
+        const oldNotesById = new Map(oldNotes.map(note => [note.id, note]));
+        const newNotesById = new Map(boardData.notes.map(note => [note.id, note]));
+
+        for (const oldNote of oldNotes) {
+            const updatedNote = newNotesById.get(oldNote.id);
+            if (
+                oldNote.authorUid !== req.firebaseUid &&
+                (!updatedNote || noteContentForComparison(oldNote) !== noteContentForComparison(updatedNote))
+            ) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({
+                    success: false,
+                    code: 'BRAINSTORM_NOTE_PERMISSION_DENIED',
+                    message: 'You can only edit or remove ideas that you created.'
+                });
+            }
+            if (!updatedNote) continue;
+            const previousReactions = Array.isArray(oldNote.reactions) ? oldNote.reactions : [];
+            const submittedReactions = Array.isArray(updatedNote.reactions) ? updatedNote.reactions : [];
+            updatedNote.reactions = [
+                ...previousReactions.filter(reaction => reaction.firebaseUid !== req.firebaseUid),
+                ...submittedReactions.filter(reaction => reaction.firebaseUid === req.firebaseUid)
+            ];
+            delete updatedNote.upvotes;
+            delete updatedNote.upvotedBy;
+            delete updatedNote.userUpvoted;
+        }
+
+        for (const note of boardData.notes) {
+            const existingNote = oldNotesById.get(note.id);
+            if (existingNote) {
+                if (existingNote.authorUid === req.firebaseUid && note.authorUid !== req.firebaseUid) {
+                    await client.query('ROLLBACK');
+                    return res.status(403).json({
+                        success: false,
+                        code: 'BRAINSTORM_NOTE_PERMISSION_DENIED',
+                        message: 'You cannot change the creator of an idea.'
+                    });
+                }
+                continue;
+            }
+            if (note.authorUid !== req.firebaseUid) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({
+                    success: false,
+                    code: 'BRAINSTORM_NOTE_PERMISSION_DENIED',
+                    message: 'New ideas must be attributed to the signed-in board member.'
+                });
+            }
+            if (note.reactions?.some(reaction => reaction.firebaseUid !== req.firebaseUid)) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({
+                    success: false,
+                    code: 'BRAINSTORM_REACTION_PERMISSION_DENIED',
+                    message: 'New idea reactions must be attributed to the signed-in board member.'
+                });
+            }
+        }
+
         const result = await client.query(
             `
                 UPDATE brainstorm_boards board
@@ -559,24 +683,26 @@ const saveBoard = async (req, res) => {
         await client.query(
             `
                 INSERT INTO notifications (
-                    recipient_firebase_uid, project_id, type, title, detail, avatar, tone_class
+                    recipient_firebase_uid, project_id, brainstorm_board_id,
+                    type, title, detail, avatar, tone_class
                 )
                 SELECT
                     membership.firebase_uid,
                     $1,
+                    $2,
                     'brainstorm_board_updated',
                     'A brainstorm board was updated',
-                    $2,
+                    $3,
                     '💡',
                     'teal-bg'
                 FROM brainstorm_board_members membership
-                WHERE membership.board_id = $3
+                WHERE membership.board_id = $2
                   AND membership.firebase_uid <> $4
             `,
             [
                 result.rows[0].project_id,
-                `${profile.rows[0]?.name || 'A project member'} updated "${result.rows[0].title}".`,
                 result.rows[0].board_id,
+                `${profile.rows[0]?.name || 'A project member'} updated "${result.rows[0].title}".`,
                 req.firebaseUid
             ]
         );

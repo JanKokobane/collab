@@ -95,13 +95,15 @@ accepted invitee when edited.
   belongs to, or create a private project board. Board invitees must already be
   accepted members of that project.
 - `GET|PUT /api/projects/brainstorm-boards/:boardId`: load or save board notes
-  and links as a board member.
+  and links as a board member. Members can create, edit, and remove their own
+  ideas; edits to other members' ideas are rejected.
 - `PATCH|DELETE /api/projects/brainstorm-boards/:boardId`: rename or remove a
   board as its creator.
 - `POST /api/projects/brainstorm-boards/:boardId/members`: invite additional
   accepted project members as the board creator. Membership and in-dashboard
-  invitation notifications are saved in the same transaction. Board saves also
-  notify the other board members.
+  invitation notifications with a direct board reference are saved in the same
+  transaction. Board members can contribute ideas and remove only their own
+  ideas. Board updates notify the other members.
 - `PUT /api/projects/:projectId` with a `sprints` array: persist sprint changes
   as the project creator. Sprint deletion may include a `sprint_name_map`
   object mapping every existing sprint name to a remaining sprint name; the
@@ -157,7 +159,9 @@ Migration `007_project_meetings.sql` adds persistent project-scoped meetings,
 `010_expand_project_resource_categories.sql` permits the full set of 50
 resource categories. These are applied automatically during backend startup.
 Migration `012_project_brainstorm_boards.sql` creates private project-scoped
-brainstorm boards and their membership table.
+brainstorm boards and their membership table. Migration
+`013_brainstorm_board_notifications.sql` links invitations and board updates
+to their boards so dashboard notifications can open the correct board.
 
 ## Remaining local demo features
 

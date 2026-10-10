@@ -9,13 +9,15 @@ export let stickyLinks = []
 let brainstormBoards = []
 let activeBoard = null
 let activeBoardMembers = []
-let boardsLoaded = false
+const loadedBoardProjectIds = new Set()
+const boardLoadPromises = new Map()
 let boardsLoading = false
 let brainstormSaving = false
 let stickyLinkMode = false
 let pendingStickyLinkId = null
 let selectedStickyLinkId = null
 let brainstormDirty = false
+const ideaReactionEmojis = ['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']
 const stickyLinkTypes = {
   related: { label: 'Related', color: '#526675', width: 2, markerStart: true, markerEnd: true },
   'leads-to': { label: 'Leads to', color: '#16806F', width: 2.5, markerEnd: true },
@@ -45,17 +47,43 @@ function getAccessibleProjects() {
   return projects.filter(project => project.projectId && project.name)
 }
 
+function closeBrainstormBoardMenu() {
+  const trigger = document.querySelector('#brainstorm-board-select')
+  const menu = document.querySelector('#brainstorm-board-menu')
+  if (!trigger || !menu) return
+  menu.hidden = true
+  trigger.setAttribute('aria-expanded', 'false')
+}
+
+function positionBrainstormBoardMenu() {
+  const trigger = document.querySelector('#brainstorm-board-select')
+  const menu = document.querySelector('#brainstorm-board-menu')
+  if (!trigger || !menu || menu.hidden) return
+  const bounds = trigger.getBoundingClientRect()
+  const width = Math.min(370, window.innerWidth - 24)
+  menu.style.width = `${width}px`
+  menu.style.left = `${Math.max(12, Math.min(bounds.left, window.innerWidth - width - 12))}px`
+  menu.style.top = `${Math.max(12, Math.min(bounds.bottom + 6, window.innerHeight - menu.offsetHeight - 12))}px`
+}
+
 function renderBrainstormControls() {
   const projectSelect = document.querySelector('#brainstorm-project-select')
-  const boardSelect = document.querySelector('#brainstorm-board-select')
+  const boardTrigger = document.querySelector('#brainstorm-board-select')
+  const boardLabel = document.querySelector('#brainstorm-board-picker-label')
+  const boardMenu = document.querySelector('#brainstorm-board-menu')
   const createButton = document.querySelector('#brainstorm-create-board-btn')
-  const editButton = document.querySelector('#brainstorm-edit-board-btn')
-  const removeButton = document.querySelector('#brainstorm-remove-board-btn')
-  if (!projectSelect || !boardSelect) return
+  if (!projectSelect || !boardTrigger || !boardMenu || !boardLabel) return
 
-  const selectedProjectId = projectSelect.value || activeBoard?.project_id || getAccessibleProjects()[0]?.projectId || ''
+  const accessibleProjects = getAccessibleProjects()
+  const preferredProjectId = activeBoard?.project_id ||
+    localStorage.getItem('collab_active_brainstorm_project')
+  const selectedProjectId = accessibleProjects.some(project => project.projectId === projectSelect.value)
+    ? projectSelect.value
+    : accessibleProjects.some(project => project.projectId === preferredProjectId)
+      ? preferredProjectId
+      : accessibleProjects[0]?.projectId || ''
   projectSelect.replaceChildren()
-  getAccessibleProjects().forEach(project => {
+  accessibleProjects.forEach(project => {
     const option = make('option', '', project.name)
     option.value = project.projectId
     projectSelect.append(option)
@@ -63,33 +91,98 @@ function renderBrainstormControls() {
   projectSelect.value = selectedProjectId
 
   const projectBoards = brainstormBoards.filter(board => board.project_id === selectedProjectId)
-  boardSelect.replaceChildren()
-  const placeholder = make('option', '', boardsLoading ? 'Loading boards…' : 'Choose a board')
-  placeholder.value = ''
-  boardSelect.append(placeholder)
-  projectBoards.forEach(board => {
-    const option = make('option', '', board.title)
-    option.value = board.board_id
-    boardSelect.append(option)
-  })
-  boardSelect.value = projectBoards.some(board => board.board_id === activeBoard?.board_id)
-    ? activeBoard.board_id
-    : ''
-  if (createButton) createButton.disabled = !selectedProjectId || boardsLoading
-  const canManageBoard = Boolean(
-    activeBoard &&
-    activeBoard.created_by_firebase_uid === firebaseAuth.currentUser?.uid
+  const selectedProject = projects.find(project => project.projectId === selectedProjectId)
+  const projectIsLoading = boardLoadPromises.has(selectedProjectId)
+  const selectedBoard = projectBoards.find(board => board.board_id === activeBoard?.board_id)
+  boardLabel.textContent = selectedBoard?.title || (projectIsLoading ? 'Loading boards…' : 'Choose a board')
+  boardTrigger.disabled = !selectedProjectId || brainstormSaving
+  boardTrigger.setAttribute('aria-label', selectedBoard?.title || 'Choose a board')
+  boardMenu.replaceChildren()
+  const menuHeader = make('div', 'brainstorm-board-menu-header')
+  menuHeader.append(
+    make('strong', '', 'Brainstorm boards'),
+    make('span', '', selectedProject?.name || '')
   )
-  if (editButton) editButton.hidden = !canManageBoard
-  if (removeButton) removeButton.hidden = !canManageBoard
-  if (editButton) editButton.disabled = boardsLoading || brainstormSaving
-  if (removeButton) removeButton.disabled = boardsLoading || brainstormSaving
-  projectSelect.disabled = boardsLoading || brainstormSaving
-  boardSelect.disabled = boardsLoading || brainstormSaving
+  boardMenu.append(menuHeader)
+  if (projectIsLoading) {
+    boardMenu.append(make('p', 'brainstorm-board-menu-empty is-loading', 'Loading boards…'))
+  } else if (!projectBoards.length) {
+    const emptyState = make('div', 'brainstorm-board-menu-empty-state')
+    emptyState.append(
+      make('strong', '', 'No boards yet'),
+      make('span', '', 'Create a board to start collecting ideas.')
+    )
+    boardMenu.append(emptyState)
+  }
+  projectBoards.forEach(board => {
+    const isSelected = board.board_id === activeBoard?.board_id
+    const row = make('div', `brainstorm-board-menu-row${isSelected ? ' is-selected' : ''}`)
+    const selectBoardButton = make('button', 'brainstorm-board-menu-select')
+    selectBoardButton.type = 'button'
+    selectBoardButton.setAttribute('role', 'menuitemradio')
+    selectBoardButton.setAttribute('aria-checked', String(isSelected))
+    selectBoardButton.disabled = projectIsLoading || brainstormSaving
+    const details = make('span', 'brainstorm-board-menu-details')
+    details.append(
+      make('strong', 'brainstorm-board-menu-title', board.title),
+      make('span', 'brainstorm-board-menu-subtitle', isSelected ? 'Currently open' : 'Open board')
+    )
+    const indicator = make('span', 'brainstorm-board-menu-indicator', isSelected ? '✓' : '')
+    indicator.setAttribute('aria-hidden', 'true')
+    selectBoardButton.append(details, indicator)
+    selectBoardButton.addEventListener('click', () => {
+      closeBrainstormBoardMenu()
+      selectBrainstormBoard(board.board_id)
+    })
+    row.append(selectBoardButton)
+    if (board.created_by_firebase_uid === firebaseAuth.currentUser?.uid) {
+      const actions = make('div', 'brainstorm-board-menu-actions')
+      const editBoardButton = make('button', 'brainstorm-board-menu-action', 'Edit')
+      editBoardButton.type = 'button'
+      editBoardButton.setAttribute('role', 'menuitem')
+      editBoardButton.disabled = projectIsLoading || brainstormSaving
+      editBoardButton.setAttribute('aria-label', `Edit ${board.title}`)
+      editBoardButton.addEventListener('click', () => {
+        closeBrainstormBoardMenu()
+        openEditBrainstormBoardModal(board)
+      })
+      const removeBoardButton = make('button', 'brainstorm-board-menu-action is-danger', 'Remove')
+      removeBoardButton.type = 'button'
+      removeBoardButton.setAttribute('role', 'menuitem')
+      removeBoardButton.disabled = projectIsLoading || brainstormSaving
+      removeBoardButton.setAttribute('aria-label', `Remove ${board.title}`)
+      removeBoardButton.addEventListener('click', () => {
+        closeBrainstormBoardMenu()
+        removeBrainstormBoard(board)
+      })
+      actions.append(editBoardButton, removeBoardButton)
+      row.append(actions)
+    }
+    boardMenu.append(row)
+  })
+  boardTrigger.setAttribute('aria-expanded', String(!boardMenu.hidden))
+  if (createButton) createButton.disabled = !selectedProjectId || brainstormSaving
+  projectSelect.disabled = brainstormSaving
 }
 
-export async function loadBrainstormBoards() {
-  if (boardsLoading) return
+async function selectBrainstormBoard(boardId) {
+  if (brainstormDirty || brainstormSaving) {
+    renderBrainstormControls()
+    showDashboardToast('Finish saving board changes before switching boards.', 'error')
+    return
+  }
+  try {
+    await loadBrainstormBoard(boardId)
+  } catch (error) {
+    console.error('Unable to open brainstorm board:', error)
+    showDashboardToast(error.message || 'The selected board could not be opened.', 'error')
+  }
+}
+
+export async function loadBrainstormBoards(
+  projectId = document.querySelector('#brainstorm-project-select')?.value || activeBoard?.project_id || getAccessibleProjects()[0]?.projectId || '',
+  { force = false, activate = true } = {}
+) {
   const availableProjects = getAccessibleProjects()
   if (!availableProjects.length) {
     brainstormBoards = []
@@ -97,46 +190,97 @@ export async function loadBrainstormBoards() {
     activeBoardMembers = []
     stickyNotes = []
     stickyLinks = []
-    boardsLoaded = true
+    loadedBoardProjectIds.clear()
     renderBrainstormControls()
     renderStickyNotes()
     return
   }
+  const project = availableProjects.find(item => item.projectId === projectId)
+  if (!project) return
+  if (!force && loadedBoardProjectIds.has(projectId)) {
+    if (activate && document.querySelector('#brainstorm-project-select')?.value === projectId) {
+      const projectBoards = brainstormBoards.filter(board => board.project_id === projectId)
+      const savedBoardId = localStorage.getItem('collab_active_brainstorm_board')
+      const boardId = projectBoards.some(board => board.board_id === savedBoardId)
+        ? savedBoardId
+        : projectBoards[0]?.board_id
+      if (boardId) await loadBrainstormBoard(boardId)
+      else {
+        activeBoard = null
+        activeBoardMembers = []
+        stickyNotes = []
+        stickyLinks = []
+        brainstormDirty = false
+        renderBrainstormControls()
+        renderStickyNotes()
+      }
+      localStorage.setItem('collab_active_brainstorm_project', projectId)
+    }
+    return
+  }
+  const existingLoad = boardLoadPromises.get(projectId)
+  if (existingLoad) return existingLoad
 
-  boardsLoading = true
-  renderBrainstormControls()
-  try {
-    const lists = await Promise.all(availableProjects.map(async project => {
+  const loadPromise = Promise.resolve().then(async () => {
+    boardsLoading = true
+    renderBrainstormControls()
+    try {
       const response = await api.get(`/projects/${encodeURIComponent(project.projectId)}/brainstorm-boards`)
-      return (response?.data?.boards || []).map(board => ({
+      if (!Array.isArray(response?.data?.boards)) {
+        throw new Error('The server returned an invalid brainstorm boards response.')
+      }
+      const projectBoards = response.data.boards.map(board => ({
         ...board,
         project_name: project.name
       }))
-    }))
-    brainstormBoards = lists.flat()
-    boardsLoaded = true
-    const savedBoardId = localStorage.getItem('collab_active_brainstorm_board')
-    const boardId = brainstormBoards.some(board => board.board_id === savedBoardId)
-      ? savedBoardId
-      : brainstormBoards[0]?.board_id
-    if (boardId) {
-      await loadBrainstormBoard(boardId)
-    } else {
-      activeBoard = null
-      activeBoardMembers = []
-      stickyNotes = []
-      stickyLinks = []
-      brainstormDirty = false
+      brainstormBoards = [
+        ...brainstormBoards.filter(board => board.project_id !== projectId),
+        ...projectBoards
+      ]
+      loadedBoardProjectIds.add(projectId)
+      const selectedProjectId = document.querySelector('#brainstorm-project-select')?.value
+      if (activate && selectedProjectId === projectId) {
+        const savedBoardId = localStorage.getItem('collab_active_brainstorm_board')
+        const boardId = projectBoards.some(board => board.board_id === savedBoardId)
+          ? savedBoardId
+          : projectBoards[0]?.board_id
+        if (boardId) {
+          await loadBrainstormBoard(boardId)
+        } else {
+          activeBoard = null
+          activeBoardMembers = []
+          stickyNotes = []
+          stickyLinks = []
+          brainstormDirty = false
+        }
+        localStorage.setItem('collab_active_brainstorm_project', projectId)
+      }
+    } catch (error) {
+      console.error('Unable to load brainstorm boards:', error)
+      showDashboardToast(error.message || 'Brainstorm boards could not be loaded.', 'error')
+      throw error
+    } finally {
+      boardLoadPromises.delete(projectId)
+      boardsLoading = boardLoadPromises.size > 0
+      renderBrainstormControls()
+      renderStickyNotes()
     }
-  } catch (error) {
-    console.error('Unable to load brainstorm boards:', error)
-    showDashboardToast(error.message || 'Brainstorm boards could not be loaded.', 'error')
-    throw error
-  } finally {
-    boardsLoading = false
-    renderBrainstormControls()
-    renderStickyNotes()
+  })
+  boardLoadPromises.set(projectId, loadPromise)
+  return loadPromise
+}
+
+export async function openBrainstormBoardFromNotification(boardId) {
+  if (brainstormDirty || brainstormSaving) {
+    throw new Error('Save your board changes before opening another board.')
   }
+  await loadBrainstormBoard(boardId)
+  if (!brainstormBoards.some(board => board.board_id === activeBoard.board_id)) {
+    const project = projects.find(item => item.projectId === activeBoard.project_id)
+    brainstormBoards = [...brainstormBoards, { ...activeBoard, project_name: project?.name || '' }]
+  }
+  localStorage.setItem('collab_active_brainstorm_project', activeBoard.project_id)
+  renderBrainstormControls()
 }
 
 async function loadBrainstormBoard(boardId) {
@@ -160,18 +304,19 @@ async function loadBrainstormBoard(boardId) {
   stickyNotes = Array.isArray(board.board_data?.notes) ? board.board_data.notes : []
   stickyLinks = Array.isArray(board.board_data?.links) ? board.board_data.links : []
   stickyNotes.forEach(note => {
+    note.reactions = Array.isArray(note.reactions) ? note.reactions : []
+    delete note.upvotes
+    delete note.upvotedBy
+    delete note.userUpvoted
     const member = activeBoardMembers.find(item => item.firebaseUid === note.authorUid)
     if (member) {
       note.author = member.name || note.author
       note.authorProfileImage = member.profileImage || ''
     }
-    note.userUpvoted = Array.isArray(note.upvotedBy)
-      ? note.upvotedBy.includes(firebaseAuth.currentUser?.uid)
-      : Boolean(note.userUpvoted)
-    note.upvotes = Array.isArray(note.upvotedBy) ? note.upvotedBy.length : Number(note.upvotes) || 0
   })
   brainstormDirty = false
   localStorage.setItem('collab_active_brainstorm_board', board.board_id)
+  localStorage.setItem('collab_active_brainstorm_project', board.project_id)
   renderBrainstormControls()
   renderStickyNotes()
   const saveButton = document.querySelector('#save-brainstorm-btn')
@@ -180,12 +325,13 @@ async function loadBrainstormBoard(boardId) {
   if (saveStatus) saveStatus.textContent = 'Saved'
 }
 
-function openEditBrainstormBoardModal() {
-  if (!activeBoard || activeBoard.created_by_firebase_uid !== firebaseAuth.currentUser?.uid) return
+function openEditBrainstormBoardModal(board = activeBoard) {
+  if (!board || board.created_by_firebase_uid !== firebaseAuth.currentUser?.uid) return
   if (brainstormDirty || brainstormSaving) {
     showDashboardToast('Save your board changes before editing the board name.', 'error')
     return
   }
+  const boardToEdit = board
 
   const backdrop = make('div', 'modal-backdrop')
   const form = make('form', 'modal')
@@ -198,7 +344,7 @@ function openEditBrainstormBoardModal() {
   nameInput.type = 'text'
   nameInput.maxLength = 160
   nameInput.required = true
-  nameInput.value = activeBoard.title
+  nameInput.value = boardToEdit.title
   nameLabel.append(nameInput)
   const submit = make('button', 'primary-button full gold', 'Save changes')
   submit.type = 'submit'
@@ -214,12 +360,14 @@ function openEditBrainstormBoardModal() {
     submit.textContent = 'Saving…'
     try {
       const response = await api.patch(
-        `/projects/brainstorm-boards/${encodeURIComponent(activeBoard.board_id)}`,
+        `/projects/brainstorm-boards/${encodeURIComponent(boardToEdit.board_id)}`,
         { title: nameInput.value.trim() }
       )
       const updatedBoard = response?.data?.board
       if (!updatedBoard?.board_id) throw new Error('The server did not confirm the board name change.')
-      activeBoard = { ...activeBoard, ...updatedBoard }
+      if (activeBoard?.board_id === updatedBoard.board_id) {
+        activeBoard = { ...activeBoard, ...updatedBoard }
+      }
       brainstormBoards = brainstormBoards.map(board =>
         board.board_id === updatedBoard.board_id ? { ...board, ...updatedBoard } : board
       )
@@ -235,39 +383,41 @@ function openEditBrainstormBoardModal() {
   })
 }
 
-async function removeActiveBrainstormBoard() {
-  if (!activeBoard || activeBoard.created_by_firebase_uid !== firebaseAuth.currentUser?.uid) return
+async function removeBrainstormBoard(board) {
+  if (!board || board.created_by_firebase_uid !== firebaseAuth.currentUser?.uid) return
   if (brainstormDirty || brainstormSaving) {
     showDashboardToast('Save your board changes before removing the board.', 'error')
     return
   }
-  const board = activeBoard
   const confirmed = await showDashboardConfirmation({
     title: 'Remove brainstorm board?',
     message: `Remove "${board.title}" and all its ideas and member access? This cannot be undone.`,
     confirmText: 'Remove board',
-    danger: true
+    danger: true,
+    className: 'brainstorm-board-remove-confirmation'
   })
   if (!confirmed) return
 
-  const removeButton = document.querySelector('#brainstorm-remove-board-btn')
-  if (removeButton) removeButton.disabled = true
   try {
     await api.delete(`/projects/brainstorm-boards/${encodeURIComponent(board.board_id)}`)
-    localStorage.removeItem('collab_active_brainstorm_board')
-    activeBoard = null
-    activeBoardMembers = []
-    stickyNotes = []
-    stickyLinks = []
-    brainstormDirty = false
-    boardsLoaded = false
-    await loadBrainstormBoards()
+    brainstormBoards = brainstormBoards.filter(item => item.board_id !== board.board_id)
+    if (activeBoard?.board_id === board.board_id) {
+      localStorage.removeItem('collab_active_brainstorm_board')
+      activeBoard = null
+      activeBoardMembers = []
+      stickyNotes = []
+      stickyLinks = []
+      brainstormDirty = false
+      const projectId = document.querySelector('#brainstorm-project-select')?.value
+      const nextBoard = brainstormBoards.find(item => item.project_id === projectId)
+      await loadBrainstormBoard(nextBoard?.board_id || '')
+    }
+    renderBrainstormControls()
+    renderStickyNotes()
     showDashboardToast('Brainstorm board removed.', 'success')
   } catch (error) {
     console.error('Unable to remove brainstorm board:', error)
     showDashboardToast(error.message || 'The brainstorm board could not be removed.', 'error')
-  } finally {
-    renderBrainstormControls()
   }
 }
 
@@ -282,17 +432,14 @@ async function saveBrainstormBoard() {
   brainstormSaving = true
   renderBrainstormControls()
   try {
-    const userUid = firebaseAuth.currentUser?.uid
     const boardData = {
       notes: stickyNotes.map(note => {
         const persistedNote = { ...note }
         delete persistedNote.authorProfileImage
         return {
           ...persistedNote,
-          authorUid: note.authorUid || userUid,
-          upvotedBy: Array.isArray(note.upvotedBy)
-            ? note.upvotedBy
-            : (note.userUpvoted && userUid ? [userUid] : [])
+          authorUid: note.authorUid,
+          reactions: Array.isArray(note.reactions) ? note.reactions : []
         }
       }),
       links: stickyLinks
@@ -320,8 +467,17 @@ async function saveBrainstormBoard() {
 
 export function renderPersistentBrainstorm() {
   renderBrainstormControls()
-  if (!boardsLoaded && !boardsLoading) {
-    loadBrainstormBoards().catch(() => {})
+  const selectedProjectId = document.querySelector('#brainstorm-project-select')?.value
+  if (!selectedProjectId && !getAccessibleProjects().length) {
+    activeBoard = null
+    activeBoardMembers = []
+    stickyNotes = []
+    stickyLinks = []
+    renderStickyNotes()
+    return
+  }
+  if (selectedProjectId && !loadedBoardProjectIds.has(selectedProjectId)) {
+    loadBrainstormBoards(selectedProjectId).catch(() => {})
     return
   }
   renderStickyNotes()
@@ -427,11 +583,16 @@ export function renderStickyNotes() {
 
     const top = make('div', 'sticky-note-header')
     top.append(make('span', 'sticky-cat-badge', note.category))
-    const deleteButton = make('button', 'sticky-delete-btn', '×')
-    deleteButton.type = 'button'
-    deleteButton.setAttribute('aria-label', `Delete note by ${note.author}`)
-    deleteButton.title = 'Delete idea'
-    top.append(deleteButton)
+    const userUid = firebaseAuth.currentUser?.uid
+    const canDeleteNote = note.authorUid === userUid
+    let deleteButton
+    if (canDeleteNote) {
+      deleteButton = make('button', 'sticky-delete-btn', '×')
+      deleteButton.type = 'button'
+      deleteButton.setAttribute('aria-label', `Delete note by ${note.author}`)
+      deleteButton.title = 'Delete idea'
+      top.append(deleteButton)
+    }
 
     const body = make('p', 'sticky-note-text', note.content)
     const footer = make('div', 'sticky-note-footer')
@@ -451,32 +612,56 @@ export function renderStickyNotes() {
       avatar.append(image)
     }
     author.append(avatar, make('span', '', note.author))
-    const vote = make('button', `sticky-upvote-btn ${note.userUpvoted ? 'active' : ''}`)
-    vote.type = 'button'
-    vote.title = note.userUpvoted ? 'Remove your support' : 'Support this idea'
-    vote.setAttribute('aria-pressed', String(Boolean(note.userUpvoted)))
-    vote.append(make('span', '', note.userUpvoted ? '❤️' : '🤍'), make('span', '', note.upvotes || 0))
-    footer.append(author, vote)
+    const reactions = Array.isArray(note.reactions) ? note.reactions : []
+    const reactionCounts = new Map()
+    reactions.forEach(reaction => {
+      reactionCounts.set(reaction.emoji, (reactionCounts.get(reaction.emoji) || 0) + 1)
+    })
+    const reactionControls = make('div', 'sticky-reaction-controls')
+    const reactionList = make('div', 'sticky-reaction-list')
+    ideaReactionEmojis.forEach(emoji => {
+      const count = reactionCounts.get(emoji) || 0
+      if (!count) return
+      const userReacted = reactions.some(reaction =>
+        reaction.emoji === emoji && reaction.firebaseUid === userUid
+      )
+      const reactionButton = make('button', `sticky-reaction-chip${userReacted ? ' active' : ''}`)
+      reactionButton.type = 'button'
+      reactionButton.title = `${emoji} reaction${count === 1 ? '' : 's'}`
+      reactionButton.setAttribute('aria-pressed', String(userReacted))
+      reactionButton.append(make('span', '', emoji), make('span', '', count))
+      reactionButton.addEventListener('click', () => toggleIdeaReaction(note, emoji))
+      reactionList.append(reactionButton)
+    })
+    const pickerWrap = make('div', 'sticky-reaction-picker-wrap')
+    const pickerButton = make('button', 'sticky-reaction-picker-trigger', '☺')
+    pickerButton.type = 'button'
+    pickerButton.title = 'Add a reaction'
+    pickerButton.setAttribute('aria-label', 'Add a reaction')
+    pickerButton.setAttribute('aria-expanded', 'false')
+    const picker = make('div', 'sticky-reaction-picker')
+    picker.hidden = true
+    ideaReactionEmojis.forEach(emoji => {
+      const emojiButton = make('button', 'sticky-reaction-option', emoji)
+      emojiButton.type = 'button'
+      emojiButton.setAttribute('aria-label', `React with ${emoji}`)
+      emojiButton.addEventListener('click', () => {
+        toggleIdeaReaction(note, emoji)
+        picker.hidden = true
+        pickerButton.setAttribute('aria-expanded', 'false')
+      })
+      picker.append(emojiButton)
+    })
+    pickerButton.addEventListener('click', () => {
+      picker.hidden = !picker.hidden
+      pickerButton.setAttribute('aria-expanded', String(!picker.hidden))
+    })
+    pickerWrap.append(pickerButton, picker)
+    reactionControls.append(reactionList, pickerWrap)
+    footer.append(author, reactionControls)
     card.append(top, body, footer)
 
-    vote.addEventListener('click', () => {
-      const uid = firebaseAuth.currentUser?.uid
-      if (!uid) {
-        showDashboardToast('Sign in to support an idea.', 'error')
-        return
-      }
-      const upvotedBy = Array.isArray(note.upvotedBy) ? note.upvotedBy : []
-      if (upvotedBy.includes(uid)) {
-        note.upvotedBy = upvotedBy.filter(memberUid => memberUid !== uid)
-      } else {
-        note.upvotedBy = [...upvotedBy, uid]
-      }
-      note.userUpvoted = note.upvotedBy.includes(uid)
-      note.upvotes = note.upvotedBy.length
-      markBrainstormDirty()
-      renderStickyNotes()
-    })
-    deleteButton.addEventListener('click', () => {
+    deleteButton?.addEventListener('click', () => {
       stickyNotes = stickyNotes.filter(item => item.id !== note.id)
       stickyLinks = stickyLinks.filter(link => link.from !== note.id && link.to !== note.id)
       if (!stickyLinks.some(link => link.id === selectedStickyLinkId)) selectedStickyLinkId = null
@@ -488,6 +673,23 @@ export function renderStickyNotes() {
     container.append(card)
   })
   renderStickyConnections()
+}
+
+function toggleIdeaReaction(note, emoji) {
+  const uid = firebaseAuth.currentUser?.uid
+  if (!uid) {
+    showDashboardToast('Sign in to react to an idea.', 'error')
+    return
+  }
+  const reactions = Array.isArray(note.reactions) ? note.reactions : []
+  const alreadyReacted = reactions.some(reaction =>
+    reaction.emoji === emoji && reaction.firebaseUid === uid
+  )
+  note.reactions = alreadyReacted
+    ? reactions.filter(reaction => reaction.emoji !== emoji || reaction.firebaseUid !== uid)
+    : [...reactions, { emoji, firebaseUid: uid }]
+  markBrainstormDirty()
+  renderStickyNotes()
 }
 
 function selectStickyLinkNote(noteId) {
@@ -685,9 +887,7 @@ export function openAddStickyNoteModal(initialCategory = 'Ideas') {
       authorUid: userUid,
       authorProfileImage: currentUser.profileImage || currentUser.photoURL || '',
       color: colorSelect.value,
-      upvotes: userUid ? 1 : 0,
-      userUpvoted: Boolean(userUid),
-      upvotedBy: userUid ? [userUid] : [],
+      reactions: [],
       position: defaultMindmapPosition(stickyNotes.length)
     }
     stickyNotes.unshift(note)
@@ -878,8 +1078,7 @@ function openCreateBrainstormBoardModal() {
       const board = response?.data?.board
       if (!board?.board_id) throw new Error('The server did not return the created brainstorm board.')
       closeModal()
-      boardsLoaded = false
-      await loadBrainstormBoards()
+      await loadBrainstormBoards(projectSelect.value, { force: true })
       await loadBrainstormBoard(board.board_id)
       const notificationsRefreshed = await refreshBrainstormNotifications()
       showDashboardToast(
@@ -1012,7 +1211,6 @@ export function initBrainstormEvents() {
       showDashboardToast('Finish saving board changes before switching projects.', 'error')
       return
     }
-    const projectBoard = brainstormBoards.find(board => board.project_id === projectId)
     activeBoard = null
     activeBoardMembers = []
     stickyNotes = []
@@ -1020,26 +1218,48 @@ export function initBrainstormEvents() {
     brainstormDirty = false
     renderBrainstormControls()
     renderStickyNotes()
-    loadBrainstormBoard(projectBoard?.board_id || '').catch(error => {
-      console.error('Unable to open brainstorm board:', error)
-      showDashboardToast(error.message || 'The selected board could not be opened.', 'error')
-    })
-    renderBrainstormControls()
+    loadBrainstormBoards(projectId).catch(() => {})
   })
-  document.querySelector('#brainstorm-board-select')?.addEventListener('change', event => {
-    if (brainstormDirty || brainstormSaving) {
-      event.currentTarget.value = activeBoard?.board_id || ''
-      showDashboardToast('Finish saving board changes before switching boards.', 'error')
-      return
+  document.querySelector('#brainstorm-board-select')?.addEventListener('click', event => {
+    const trigger = event.currentTarget
+    const menu = document.querySelector('#brainstorm-board-menu')
+    if (!menu || trigger.disabled) return
+    if (menu.hidden) {
+      menu.hidden = false
+      trigger.setAttribute('aria-expanded', 'true')
+      positionBrainstormBoardMenu()
+      loadBrainstormBoards(document.querySelector('#brainstorm-project-select')?.value, {
+        force: true,
+        activate: false
+      }).then(positionBrainstormBoardMenu).catch(() => {})
+    } else {
+      closeBrainstormBoardMenu()
     }
-    loadBrainstormBoard(event.currentTarget.value).catch(error => {
-      console.error('Unable to open brainstorm board:', error)
-      showDashboardToast(error.message || 'The selected board could not be opened.', 'error')
-    })
   })
+  document.querySelector('#brainstorm-board-select')?.addEventListener('keydown', event => {
+    if (event.key !== 'ArrowDown') return
+    event.preventDefault()
+    const menu = document.querySelector('#brainstorm-board-menu')
+    if (menu?.hidden) event.currentTarget.click()
+    menu?.querySelector('button:not(:disabled)')?.focus()
+  })
+  document.addEventListener('pointerdown', event => {
+    const picker = document.querySelector('#brainstorm-board-picker')
+    if (picker && !picker.contains(event.target)) closeBrainstormBoardMenu()
+  })
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return
+    const menu = document.querySelector('#brainstorm-board-menu')
+    if (!menu || menu.hidden) return
+    closeBrainstormBoardMenu()
+    document.querySelector('#brainstorm-board-select')?.focus()
+  })
+  window.addEventListener('resize', closeBrainstormBoardMenu)
+  window.addEventListener('scroll', event => {
+    const menu = document.querySelector('#brainstorm-board-menu')
+    if (!menu?.contains(event.target)) closeBrainstormBoardMenu()
+  }, true)
   document.querySelector('#brainstorm-create-board-btn')?.addEventListener('click', openCreateBrainstormBoardModal)
-  document.querySelector('#brainstorm-edit-board-btn')?.addEventListener('click', openEditBrainstormBoardModal)
-  document.querySelector('#brainstorm-remove-board-btn')?.addEventListener('click', removeActiveBrainstormBoard)
   document.querySelector('#sticky-connect-btn')?.addEventListener('click', event => {
     if (!activeBoard) return
     stickyLinkMode = !stickyLinkMode

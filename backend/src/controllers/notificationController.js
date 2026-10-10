@@ -7,6 +7,7 @@ const getNotifications = async (req, res) => {
                 SELECT
                     n.id,
                     n.project_id,
+                    n.brainstorm_board_id,
                     n.invitation_id,
                     pi.status AS invitation_status,
                     pi.expires_at AS invitation_expires_at,

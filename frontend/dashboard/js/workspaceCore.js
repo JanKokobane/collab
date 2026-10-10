@@ -1,8 +1,9 @@
 import { projects, activeView, getAccessibleMembers, getAccessibleTasks, meetings, notifications, currentUser, loadNotificationsFromAPI, loadProjectsFromAPI, markNotificationRead, markAllNotificationsRead, clearAllNotifications, make, getUserInitials, renderAvatarElement, root, closeModal, hub } from './state.js'
-import { renderStickyNotes, renderPersistentBrainstorm, initBrainstormEvents } from './brainstorm.js'
+import { renderStickyNotes, renderPersistentBrainstorm, initBrainstormEvents, openBrainstormBoardFromNotification } from './brainstorm.js'
 import { renderScratchpad, renderHubResources, initWorkspaceResourceEvents } from './workspaceResources.js'
 import { api } from './api.js'
 import { getSafeMeetingUrl } from './meetings.js'
+import { showDashboardToast } from './modalChrome.js'
 
 // RENDER WORKSPACE HUB
 export function renderWorkspaceHub() {
@@ -346,6 +347,28 @@ export function renderNotifications() {
       actionCell.append(actionButtons)
     } else if (notification.invitationId && notification.invitationStatus === 'pending') {
       actionCell.append(make('span', 'notification-read-label', 'Expired'))
+    } else if (
+      notification.boardId &&
+      ['brainstorm_board_invitation', 'brainstorm_board_updated'].includes(notification.type)
+    ) {
+      const openBoardButton = make('button', 'action-btn primary gold', 'Open board')
+      openBoardButton.type = 'button'
+      openBoardButton.addEventListener('click', async () => {
+        openBoardButton.disabled = true
+        openBoardButton.textContent = 'Opening…'
+        try {
+          await openBrainstormBoardFromNotification(notification.boardId)
+          if (notification.unread) await markNotificationRead(notification.id)
+          hub.switchView?.('Brainstorm')
+        } catch (error) {
+          console.error('Unable to open brainstorm board from notification:', error)
+          openBoardButton.disabled = false
+          openBoardButton.textContent = 'Open board'
+          showDashboardToast(error.message || 'The brainstorm board could not be opened.', 'error')
+        }
+      })
+      actionButtons.append(openBoardButton)
+      actionCell.append(actionButtons)
     } else if (notification.unread) {
       const readButton = make('button', 'action-btn', 'Mark read')
       readButton.type = 'button'

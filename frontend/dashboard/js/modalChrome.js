@@ -19,13 +19,14 @@ export function showDashboardConfirmation({
   confirmText = 'Confirm',
   cancelText = 'Cancel',
   danger = false,
-  compact = false
+  compact = false,
+  className = ''
 }) {
   return new Promise(resolve => {
     const backdrop = make('div', 'modal-backdrop')
     const dialog = make(
       'section',
-      `modal notification-confirmation-modal${compact ? ' is-compact' : ''}`
+      `modal notification-confirmation-modal${compact ? ' is-compact' : ''}${className ? ` ${className}` : ''}`
     )
     dialog.setAttribute('role', 'alertdialog')
     dialog.setAttribute('aria-modal', 'true')
