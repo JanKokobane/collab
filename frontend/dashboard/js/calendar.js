@@ -4,26 +4,25 @@ import {
   meetings,
   reminders,
   getAccessibleMembers,
-  currentUser,
   make,
   closeModal,
   root,
-  saveReminders,
   addAuditLog,
-  pushNotification,
   hub,
   projects,
   activeView,
   renderAvatarElement
 } from './state.js'
 import { createProjectMeeting, deleteProjectMeeting, getMeetingProjectMembers, getSafeMeetingUrl } from './meetings.js'
+import { createProjectReminder } from './calendarData.js'
 import { showDashboardToast } from './modalChrome.js'
 import {
   addDaysToDateKey,
   formatRelativeDate,
   getDateDayOffset,
   parseLocalDate,
-  toLocalDateKey
+  toLocalDateKey,
+  notBeforeTodayDateKey
 } from './dateUtils.js'
 
 // ============================================================
@@ -251,7 +250,11 @@ export function renderActualCalendarGrid() {
       dayTasks.forEach(t => {
         const workChip = make('div', 'cal-event-pin work')
         workChip.title = `Deliverable: ${t.title} (${t.project}) • Assignee: ${t.assignee}`
-        workChip.innerHTML = `<span>📋</span> <span>${t.title}</span> <small>(${t.assignee})</small>`
+        workChip.append(
+          make('span', '', '📋'),
+          make('span', '', t.title),
+          make('small', '', `(${t.assignee})`)
+        )
         cell.append(workChip)
       })
     }
@@ -259,8 +262,8 @@ export function renderActualCalendarGrid() {
     if (activeCalendarFilter === 'all' || activeCalendarFilter === 'reminder') {
       dayReminders.forEach(r => {
         const remChip = make('div', 'cal-event-pin reminder')
-        remChip.title = `Reminder: ${r.title} (${r.time})`
-        remChip.innerHTML = `<span>🔔</span> <span>${r.title}</span>`
+        remChip.title = `Reminder: ${r.title} (${r.time}) · ${r.projectName}`
+        remChip.append(make('span', '', '🔔'), make('span', '', `${r.title} · ${r.projectName}`))
         cell.append(remChip)
       })
     }
@@ -359,13 +362,17 @@ export function openDayScheduleModal(dateStr) {
       row.style.display = 'flex'
       row.style.justifyContent = 'space-between'
       row.style.alignItems = 'center'
-      row.innerHTML = `
-        <div>
-          <strong style="font-size: 12px; color: #1E293B; display: block;">📋 ${t.title}</strong>
-          <small style="color: #64748B; font-size: 11px;">${t.project} • Assignee: <b>${t.assignee}</b> (${t.assigneeName || t.assignee})</small>
-        </div>
-        <span class="status-badge ${t.status.toLowerCase().replace(' ', '-')}">${t.status}</span>
-      `
+      const description = make('div')
+      const taskTitle = make('strong', '', `📋 ${t.title}`)
+      taskTitle.style.fontSize = '12px'
+      taskTitle.style.color = '#1E293B'
+      taskTitle.style.display = 'block'
+      const taskDetails = make('small', '', `${t.project} • Assignee: ${t.assigneeName || t.assignee}`)
+      taskDetails.style.color = '#64748B'
+      taskDetails.style.fontSize = '11px'
+      description.append(taskTitle, taskDetails)
+      const status = make('span', `status-badge ${t.status.toLowerCase().replace(' ', '-')}`, t.status)
+      row.append(description, status)
       taskSec.append(row)
     })
   }
@@ -382,7 +389,7 @@ export function openDayScheduleModal(dateStr) {
       rBox.style.padding = '6px 10px'
       rBox.style.fontSize = '12px'
       rBox.style.color = '#6B21A8'
-      rBox.innerHTML = `🔔 <strong>${r.title}</strong> • ${r.time} (${r.priority} Priority)`
+      rBox.textContent = `🔔 ${r.title} • ${r.time} (${r.priority} Priority) · ${r.projectName}`
       remSec.append(rBox)
     })
     contentWrap.append(remSec)
@@ -400,13 +407,6 @@ export function openDayScheduleModal(dateStr) {
     openScheduleMeetingModal(dateStr)
   })
 
-  const addTaskBtn = make('button', 'outline-button-action', '+ Add Deliverable')
-  addTaskBtn.type = 'button'
-  addTaskBtn.addEventListener('click', () => {
-    closeModal()
-    hub.openAdminTaskModal?.('To do', null, dateStr)
-  })
-
   const addRemBtn = make('button', 'outline-button-action', '+ Add Reminder')
   addRemBtn.type = 'button'
   addRemBtn.addEventListener('click', () => {
@@ -414,7 +414,7 @@ export function openDayScheduleModal(dateStr) {
     openAddReminderModal(dateStr)
   })
 
-  actionsRow.append(scheduleBtn, addTaskBtn, addRemBtn)
+  actionsRow.append(scheduleBtn, addRemBtn)
 
   modal.append(close, title, copy, contentWrap, actionsRow)
   backdrop.append(modal)
@@ -474,17 +474,19 @@ export function renderCalendarDaysGrid() {
         const assigneeName = t.assigneeName || assignee?.name || t.assignee || 'Unassigned'
         const assigneeTone = t.assigneeTone || assignee?.tone || 'teal'
         chip.setAttribute('aria-label', `${t.title}, ${t.project}, assigned to ${assigneeName}`)
-        chip.innerHTML = `
-          <div class="calendar-task-top">
-            <span class="calendar-task-project">${t.project}</span>
-            <span class="calendar-task-due">${t.due || col.label}</span>
-          </div>
-          <strong>${t.title}</strong>
-          <div class="calendar-chip-meta">
-            <span class="calendar-task-assignee"><span class="avatar calendar-task-avatar ${assigneeTone}-bg">${t.assignee || '?'}</span><span>${assigneeName}</span></span>
-            <span class="calendar-task-category">${t.tag || 'Task'}</span>
-          </div>
-        `
+        const taskTop = make('div', 'calendar-task-top')
+        taskTop.append(
+          make('span', 'calendar-task-project', t.project),
+          make('span', 'calendar-task-due', t.due || col.label)
+        )
+        const taskTitle = make('strong', '', t.title)
+        const meta = make('div', 'calendar-chip-meta')
+        const assigneeWrap = make('span', 'calendar-task-assignee')
+        const avatar = make('span', `avatar calendar-task-avatar ${assigneeTone}-bg`, t.assignee || '?')
+        const assigneeLabel = make('span', '', assigneeName)
+        assigneeWrap.append(avatar, assigneeLabel)
+        meta.append(assigneeWrap, make('span', 'calendar-task-category', t.tag || 'Task'))
+        chip.append(taskTop, taskTitle, meta)
         colEl.append(chip)
       })
     }
@@ -493,8 +495,10 @@ export function renderCalendarDaysGrid() {
 }
 
 export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey(), initialDueDate = toLocalDateKey()) {
-  let startDate = initialStartDate || toLocalDateKey()
-  let dueDate = initialDueDate || toLocalDateKey()
+  const todayKey = toLocalDateKey()
+  let startDate = notBeforeTodayDateKey(initialStartDate, todayKey)
+  let dueDate = notBeforeTodayDateKey(initialDueDate, todayKey)
+  if (dueDate < startDate) dueDate = startDate
   let activeField = 'due'
 
   const initialDateObj = parseLocalDate(dueDate)
@@ -511,7 +515,6 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
   header.append(title, summary)
 
   const presetsRow = make('div', 'cal-schedule-presets')
-  const todayKey = toLocalDateKey()
   const today = parseLocalDate(todayKey)
   const tomorrowKey = addDaysToDateKey(todayKey, 1)
   const thisWeekEndKey = addDaysToDateKey(todayKey, 6 - today.getDay())
@@ -531,6 +534,7 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
   const startLabel = make('label', '', 'Start Date')
   const startInput = make('input')
   startInput.type = 'date'
+  startInput.min = todayKey
   startInput.value = startDate
   startField.append(startLabel, startInput)
 
@@ -538,6 +542,7 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
   const dueLabel = make('label', '', 'Due Date')
   const dueInput = make('input')
   dueInput.type = 'date'
+  dueInput.min = todayKey
   dueInput.value = dueDate
   dueField.append(dueLabel, dueInput)
 
@@ -587,6 +592,9 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
     const firstDay = new Date(curYear, curMonth, 1)
     const lastDay = new Date(curYear, curMonth + 1, 0)
     const daysInMonth = lastDay.getDate()
+    const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+    const displayedMonthStart = new Date(curYear, curMonth, 1)
+    prevBtn.disabled = displayedMonthStart <= currentMonthStart
     
     let startDayOfWeek = firstDay.getDay() - 1
     if (startDayOfWeek === -1) startDayOfWeek = 6
@@ -601,6 +609,11 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
       const cell = make('div', 'mini-cal-day', day)
+      const isPastDate = dateStr < todayKey
+      if (isPastDate) {
+        cell.classList.add('is-past')
+        cell.setAttribute('aria-disabled', 'true')
+      }
 
       if (dateStr === toLocalDateKey()) cell.classList.add('is-today')
 
@@ -613,6 +626,7 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
       if (inRange) cell.classList.add('in-range')
 
       cell.addEventListener('click', () => {
+        if (isPastDate) return
         if (activeField === 'start') {
           startDate = dateStr
           if (dueDate < startDate) dueDate = startDate
@@ -697,7 +711,7 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
   })
 
   startInput.addEventListener('change', () => {
-    if (startInput.value) {
+    if (startInput.value && startInput.value >= todayKey) {
       startDate = startInput.value
       if (dueDate < startDate) dueDate = startDate
       const d = parseLocalDate(startDate)
@@ -708,7 +722,7 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
   })
 
   dueInput.addEventListener('change', () => {
-    if (dueInput.value) {
+    if (dueInput.value && dueInput.value >= todayKey) {
       dueDate = dueInput.value
       if (startDate > dueDate) startDate = dueDate
       const d = parseLocalDate(dueDate)
@@ -739,6 +753,7 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
   })
 
   prevBtn.addEventListener('click', () => {
+    if (prevBtn.disabled) return
     curMonth--
     if (curMonth < 0) {
       curMonth = 11
@@ -830,7 +845,7 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey()) {
     copy.textContent = 'Create or join a project before scheduling a project meeting.'
   }
 
-  const titleLabel = make('label', '', 'Meeting Title')
+  const titleLabel = make('label', 'no-input-icon', 'Meeting Title')
   const titleInput = make('input')
   titleInput.required = true
   titleInput.maxLength = 255
@@ -840,7 +855,8 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey()) {
   const dateLabel = make('label', '', 'Date')
   const dateInput = make('input')
   dateInput.type = 'date'
-  dateInput.value = prefilledDate
+  dateInput.min = toLocalDateKey()
+  dateInput.value = notBeforeTodayDateKey(prefilledDate)
   dateInput.required = true
   dateLabel.append(dateInput)
 
@@ -889,7 +905,7 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey()) {
   locInput.title = 'Enter an HTTPS or HTTP meeting link, or a physical location.'
   locLabel.append(locInput)
 
-  const notesLabel = make('label', '', 'Agenda & Discussion Topics')
+  const notesLabel = make('label', 'no-input-icon', 'Agenda & Discussion Topics')
   const notesInput = document.createElement('textarea')
   notesInput.rows = 2
   notesInput.maxLength = 10000
@@ -899,6 +915,11 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey()) {
   const submit = make('button', 'primary-button gold', 'Schedule & Pin Meeting')
   submit.type = 'submit'
   submit.disabled = projects.length === 0
+  const submitLabel = make('span', '', 'Schedule & Pin Meeting')
+  const submitSpinner = make('span', 'form-submit-spinner')
+  submitSpinner.setAttribute('aria-hidden', 'true')
+  submitSpinner.hidden = true
+  submit.replaceChildren(submitSpinner, submitLabel)
 
   form.append(close, title, copy, projectLabel, attendeesFieldset, titleLabel, dateLabel, timeRange, pinLabel, locLabel, notesLabel, submit)
   backdrop.append(form)
@@ -909,10 +930,13 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey()) {
     validateMeetingTime()
     if (!form.reportValidity()) return
     if (!projectSelect.value) {
-      showDashboardToast('Choose a project before scheduling a meeting.')
+      showDashboardToast('Choose a project before scheduling a meeting.', 'error')
       return
     }
     submit.disabled = true
+    submitSpinner.hidden = false
+    submitLabel.textContent = 'Scheduling…'
+    submit.setAttribute('aria-busy', 'true')
     try {
       const newMeet = await createProjectMeeting(projectSelect.value, {
         title: titleInput.value.trim(),
@@ -930,10 +954,12 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey()) {
       hub.renderAdminMeetingsTable?.()
       hub.renderWorkspaceHub?.()
       addAuditLog('Project meeting scheduled', `${newMeet.title} scheduled for ${newMeet.meeting_date}.`, 'sync')
-      pushNotification('New Team Meeting Scheduled', `${newMeet.title} on ${newMeet.meeting_date}`, '📅', 'coral-bg')
       showDashboardToast('Meeting scheduled.')
     } catch (error) {
       submit.disabled = false
+      submitSpinner.hidden = true
+      submitLabel.textContent = 'Schedule & Pin Meeting'
+      submit.removeAttribute('aria-busy')
       showDashboardToast(error.message || 'Unable to schedule this meeting.', 'error')
     }
   })
@@ -947,18 +973,36 @@ export function openAddReminderModal(prefilledDate = toLocalDateKey()) {
   close.addEventListener('click', closeModal)
 
   const title = make('h2', '', 'Add Team Reminder')
-  const copy = make('p', 'modal-copy', 'Set a deadline alert or deliverable check on the calendar.')
+  const copy = make('p', 'modal-copy', 'Set a project reminder visible to everyone with access to that project.')
+
+  const projectLabel = make('label', '', 'Project')
+  const projectSelect = document.createElement('select')
+  projectSelect.required = true
+  projects.forEach(project => {
+    const option = make('option', '', project.name)
+    option.value = project.projectId
+    projectSelect.append(option)
+  })
+  const activeProject = projects.find(project => project.name === activeView)
+  if (activeProject) projectSelect.value = activeProject.projectId
+  projectLabel.append(projectSelect)
+  if (!projects.length) {
+    projectSelect.disabled = true
+    copy.textContent = 'Create or join a project before adding a reminder.'
+  }
 
   const titleLabel = make('label', '', 'Reminder Title')
   const titleInput = make('input')
   titleInput.required = true
+  titleInput.maxLength = 255
   titleInput.placeholder = 'e.g. Submit newsletter draft copy'
   titleLabel.append(titleInput)
 
   const dateLabel = make('label', '', 'Date')
   const dateInput = make('input')
   dateInput.type = 'date'
-  dateInput.value = prefilledDate
+  dateInput.min = toLocalDateKey()
+  dateInput.value = notBeforeTodayDateKey(prefilledDate)
   dateInput.required = true
   dateLabel.append(dateInput)
 
@@ -980,26 +1024,45 @@ export function openAddReminderModal(prefilledDate = toLocalDateKey()) {
 
   const submit = make('button', 'primary-button gold', 'Save Reminder')
   submit.type = 'submit'
+  submit.disabled = projects.length === 0
+  const submitLabel = make('span', '', 'Save Reminder')
+  const submitSpinner = make('span', 'form-submit-spinner')
+  submitSpinner.setAttribute('aria-hidden', 'true')
+  submitSpinner.hidden = true
+  submit.replaceChildren(submitSpinner, submitLabel)
 
-  form.append(close, title, copy, titleLabel, dateLabel, timeLabel, prioLabel, submit)
+  form.append(close, title, copy, projectLabel, titleLabel, dateLabel, timeLabel, prioLabel, submit)
   backdrop.append(form)
   root.replaceChildren(backdrop)
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async e => {
     e.preventDefault()
-    const newRem = {
-      id: `rem-${Date.now()}`,
-      title: titleInput.value.trim(),
-      date: dateInput.value,
-      timeValue: timeInput.value,
-      time: formatTimeForDisplay(timeInput.value),
-      priority: prioSelect.value,
-      author: currentUser.name
+    if (!form.reportValidity()) return
+    if (!projectSelect.value) {
+      showDashboardToast('Choose a project before adding a reminder.', 'error')
+      return
     }
-    reminders.push(newRem)
-    saveReminders()
-    closeModal()
-    renderCalendarPanel()
-    addAuditLog('Reminder added', `${newRem.title} on ${newRem.date}`, 'bell')
+    submit.disabled = true
+    submitSpinner.hidden = false
+    submitLabel.textContent = 'Saving Reminder…'
+    submit.setAttribute('aria-busy', 'true')
+    try {
+      const newRem = await createProjectReminder(projectSelect.value, {
+        title: titleInput.value.trim(),
+        date: dateInput.value,
+        time: timeInput.value,
+        priority: prioSelect.value
+      })
+      closeModal()
+      renderCalendarPanel()
+      addAuditLog('Project reminder added', `${newRem.title} on ${newRem.date} in ${newRem.projectName}.`, 'bell')
+      showDashboardToast('Reminder saved.')
+    } catch (error) {
+      submit.disabled = false
+      submitSpinner.hidden = true
+      submitLabel.textContent = 'Save Reminder'
+      submit.removeAttribute('aria-busy')
+      showDashboardToast(error.message || 'Unable to save this reminder.', 'error')
+    }
   })
 }

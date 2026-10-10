@@ -1003,7 +1003,20 @@ export function renderAdminMeetingsTable() {
     const tr = template.content.firstElementChild.cloneNode(true)
     const field = name => tr.querySelector(`[data-ref="${name}"]`)
     field('title').textContent = meet.title
-    field('host').textContent = `Host: ${meet.host} · Project: ${meet.projectName}`
+    const host = field('host')
+    host.replaceChildren()
+    host.classList.add('admin-meeting-host')
+    const hostAvatar = make('span', 'avatar admin-meeting-host-avatar')
+    renderAvatarElement(hostAvatar, {
+      name: meet.host,
+      profileImage: meet.hostProfileImage,
+      tone: 'teal'
+    }, 'admin-meeting-host-avatar')
+    hostAvatar.setAttribute('aria-hidden', 'true')
+    host.append(
+      hostAvatar,
+      make('span', '', `Host: ${meet.host} · Project: ${meet.projectName}`)
+    )
     field('date').textContent = `${meet.date} • ${meet.time}`
 
     const pin = field('pin')

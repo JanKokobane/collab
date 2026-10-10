@@ -1,7 +1,5 @@
 import { projects, activeView, getAccessibleMembers, getAccessibleTasks, meetings, notifications, currentUser, loadNotificationsFromAPI, loadProjectsFromAPI, markNotificationRead, markAllNotificationsRead, clearAllNotifications, make, getUserInitials, renderAvatarElement, root, closeModal, hub } from './state.js'
-import { renderAnnouncements, initAnnouncementEvents } from './announcements.js'
 import { renderStickyNotes, initBrainstormEvents } from './brainstorm.js'
-import { renderTeamPolls, initPollEvents } from './polls.js'
 import { renderScratchpad, renderHubResources, initWorkspaceResourceEvents } from './workspaceResources.js'
 import { api } from './api.js'
 import { getSafeMeetingUrl } from './meetings.js'
@@ -16,8 +14,6 @@ export function renderWorkspaceHub() {
 }
 
 export function renderWorkspaceManagement() {
-  renderAnnouncements()
-  renderTeamPolls()
   renderHubResources()
 }
 
@@ -162,7 +158,7 @@ export function renderUpcomingMeetings() {
   if (upcoming.length === 0) {
     const row = document.createElement('tr')
     const cell = make('td', 'meeting-empty-state', 'No upcoming meetings scheduled.')
-    cell.colSpan = 6
+    cell.colSpan = 7
     row.append(cell)
     tbody.append(row)
     return
@@ -218,12 +214,14 @@ export function renderUpcomingMeetings() {
     const meetingCell = make('td', 'meeting-title-cell', meeting.title)
     const dateCell = make('td', '', formattedDate)
     const timeCell = make('td', '', meeting.time || 'Time not set')
+    const projectCell = make('td', 'meeting-project-name', meeting.projectName || 'Project')
     const labeledCells = [
       [meetingCell, 'Meeting'],
       [dateCell, 'Date'],
       [timeCell, 'Time'],
       [hostCell, 'Host'],
       [attendeeCell, 'Attendees'],
+      [projectCell, 'Project'],
       [locationCell, 'Location']
     ]
     labeledCells.forEach(([cell, label]) => cell.dataset.label = label)
@@ -233,6 +231,7 @@ export function renderUpcomingMeetings() {
       timeCell,
       hostCell,
       attendeeCell,
+      projectCell,
       locationCell
     )
     const openSchedule = () => hub.openDayScheduleModal?.(meeting.date)
@@ -451,23 +450,6 @@ export function initWorkspaceHubEvents() {
       isDestructive: true
     })
   })
-  document.querySelectorAll('.workspace-updates-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      const selectedTab = tab.dataset.workspaceUpdateTab
-      document.querySelectorAll('.workspace-updates-tab').forEach(item => {
-        const isSelected = item === tab
-        item.classList.toggle('active', isSelected)
-        item.setAttribute('aria-selected', String(isSelected))
-      })
-      document.querySelectorAll('.workspace-updates-panel').forEach(panel => {
-        const isSelected = panel.id === `workspace-updates-panel-${selectedTab}`
-        panel.hidden = !isSelected
-        panel.classList.toggle('active', isSelected)
-      })
-    })
-  })
-  initAnnouncementEvents()
   initBrainstormEvents()
-  initPollEvents()
   initWorkspaceResourceEvents()
 }

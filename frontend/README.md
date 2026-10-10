@@ -50,7 +50,7 @@ Firebase authentication is separate from the dashboard's demo data storage; sign
 - **Tasks:** Filtering, task status changes, board drag-and-drop, list rendering, and task creation are handled by `dashboard/js/tasks.js`.
 - **Calendar:** Month navigation, backend-persisted project meetings, pinned meetings, task dates, reminders, and scheduling dialogs are handled by `dashboard/js/calendar.js`. Meeting API loading and normalization are in `dashboard/js/meetings.js`; `dashboard/js/dateUtils.js` centralizes local date-key parsing and relative date display.
 - **Administration:** Member, task, meeting, and audit-log tables are rendered by `dashboard/js/admin.js`. Role and project-creator helpers are in `dashboard/js/auth.js`.
-- **Workspace hub:** Workspace summaries, announcements, resources, scratchpad, and team notifications are managed by `dashboard/js/workspaceHub.js`.
+- **Workspace hub:** Workspace summaries, project-scoped pinned resources, scratchpad, and team notifications are managed by `dashboard/js/workspaceHub.js`. Resources load from the backend for projects the user can access; only project creators can add links, and accepted project members can view them.
 - **Brainstorming:** Sticky notes can be categorized, repositioned, and linked on a board; board changes can be explicitly saved. The same workspace module manages this feature.
 - **Polls:** Polls are created in the workspace-management area. Only included audience members see them; votes are stored per member, and a new poll can appear in a dismissible voting popup.
 - **Messages:** The browser-local messaging demo supports direct conversations, groups, channels, attachments, media previews, reactions, reply/edit/forward/pin/delete actions, simulated read receipts, and unread badges. Its UI and persistence are in `dashboard/js/messages.js`.
@@ -82,6 +82,7 @@ frontend/
 │       ├── admin.js           Administration tables and dialogs
 │       ├── auth.js            User UI and role/creator helpers
 │       ├── calendar.js        Calendar, meetings, reminders, date dialogs
+│       ├── calendarData.js    Project task and reminder API loading
 │       ├── dateUtils.js       Local date parsing and formatting
 │       ├── events.js          Dashboard UI event wiring
 │       ├── icons.js           Shared inline SVG icon generator
@@ -103,7 +104,7 @@ frontend/
 
 ## State and persistence
 
-Some dashboard sections still seed demo members, tasks, reminders, notifications, and collaboration activity in `dashboard/js/state.js`; local-only state remains scoped to the browser origin and device. Projects and project tasks use the backend API, and project meetings are stored in PostgreSQL through the authenticated project meeting endpoints. Meetings are not loaded from or saved to browser storage.
+Some dashboard sections still seed demo members, tasks, notifications, and collaboration activity in `dashboard/js/state.js`; local-only state remains scoped to the browser origin and device. Calendar task events, project meetings, and reminders are fetched from authenticated project APIs and stored by the backend. These calendar entries are not loaded from or saved to browser storage.
 
 Common storage keys include:
 
@@ -112,7 +113,6 @@ Common storage keys include:
 | Authenticated profile and login marker | `collab-user`, `collab-logged-in` |
 | Pending registration and email-link flow | `collab-pending-user`, `emailForSignIn` |
 | Members, projects, tasks | `collab-members`, `collab-projects`, `collab-tasks` |
-| Local reminders | `collab-reminders` |
 | Workspace notifications | `collab_notifications` |
 | Announcements, sticky notes, links, polls, resources | `collab_announcements`, `collab_sticky_notes`, `collab_sticky_links`, `collab_team_polls`, `collab_team_resources` |
 | Scratchpad and workspace preferences | `collab_workspace_scratchpad`, `collab-workspace-settings`, `collab_tool_settings` |
@@ -121,7 +121,7 @@ Common storage keys include:
 
 Messaging attachments are converted to data URLs and stored with the conversation; the current implementation limits the combined attachment size to 512 KB per message to reduce browser storage pressure. Incoming-message read state and outgoing demo read receipts are simulated in local state.
 
-Firebase provides authentication tokens to the backend API. Project meetings and other documented project APIs are persisted by the server; reminders, polls, and demo messaging remain local unless their module is explicitly wired to an API.
+Firebase provides authentication tokens to the backend API. Calendar tasks, meetings, and reminders use the project APIs; polls and demo messaging remain local unless their module is explicitly wired to an API.
 
 The backend provides Firebase-ID-token authenticated project, task, invitation,
 notification, and meeting APIs. Other dashboard features may still use

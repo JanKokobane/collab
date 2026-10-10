@@ -13,6 +13,8 @@ import {
 import { updateUserUI } from './auth.js'
 import { initSettingsControls } from './theme.js'
 import { loadProjectMeetings } from './meetings.js'
+import { loadProjectCalendarData } from './calendarData.js'
+import { loadProjectResources } from './workspaceResources.js'
 import { showDashboardToast } from './modalChrome.js'
 
 // ============================================================
@@ -132,15 +134,24 @@ export function switchView(viewName) {
 
   enhanceInputsWithIcons(document)
   if (['Calendar', 'Workspace', 'Admin Console'].includes(viewName)) {
-    loadProjectMeetings().then(() => {
+    const dataLoad = viewName === 'Calendar'
+      ? Promise.all([loadProjectMeetings(), loadProjectCalendarData()])
+      : Promise.all([
+        loadProjectMeetings(),
+        ...(viewName === 'Workspace' || viewName === 'Admin Console' ? [loadProjectResources()] : [])
+      ])
+    dataLoad.then(() => {
       if (activeView !== viewName) return
       if (viewName === 'Calendar') hub.renderCalendarPanel?.()
       if (viewName === 'Workspace') hub.renderWorkspaceHub?.()
-      if (viewName === 'Admin Console') hub.renderAdminMeetingsTable?.()
+      if (viewName === 'Admin Console') {
+        hub.renderAdminMeetingsTable?.()
+        hub.renderWorkspaceManagement?.()
+      }
     }).catch(error => {
-      console.error('Unable to refresh project meetings for this view:', error)
+      console.error('Unable to refresh collaboration data for this view:', error)
       if (activeView === viewName) {
-        showDashboardToast(error.message || 'Project meetings could not be refreshed.', 'error')
+        showDashboardToast(error.message || 'Collaboration data could not be refreshed.', 'error')
       }
     })
   }

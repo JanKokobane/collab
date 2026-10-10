@@ -785,6 +785,7 @@ body.dark-mode .brainstorm-link-type {
 }
 
 .upcoming-meetings-table-wrap {
+    overflow-x: hidden;
     border: 1px solid var(--line);
     border-radius: 8px;
 }
@@ -798,8 +799,8 @@ body.dark-mode .brainstorm-link-type {
 }
 
 .upcoming-meetings-table {
-    min-width: 1080px;
-    table-layout: auto;
+    min-width: 0;
+    table-layout: fixed;
 }
 
 .notification-settings-table-wrap {
@@ -876,10 +877,43 @@ body.dark-mode .brainstorm-link-type {
     white-space: nowrap;
 }
 
+.upcoming-meetings-table th:nth-child(1),
+.upcoming-meetings-table td:nth-child(1) {
+    width: 18%;
+}
+
+.upcoming-meetings-table th:nth-child(2),
+.upcoming-meetings-table td:nth-child(2) {
+    width: 12%;
+}
+
+.upcoming-meetings-table th:nth-child(3),
+.upcoming-meetings-table td:nth-child(3) {
+    width: 12%;
+}
+
+.upcoming-meetings-table th:nth-child(4),
+.upcoming-meetings-table td:nth-child(4) {
+    width: 17%;
+}
+
+.upcoming-meetings-table th:nth-child(5),
+.upcoming-meetings-table td:nth-child(5) {
+    width: 12%;
+}
+
+.upcoming-meetings-table th:nth-child(6),
+.upcoming-meetings-table td:nth-child(6) {
+    width: 13%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .upcoming-meetings-table th:last-child,
 .upcoming-meetings-table td:last-child {
-    min-width: 180px;
+    width: 16%;
     white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .upcoming-meeting-row {
@@ -950,6 +984,11 @@ body.dark-mode .brainstorm-link-type {
 .meeting-location {
     line-height: 1.45;
     overflow-wrap: break-word;
+}
+
+.meeting-location a {
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .meeting-empty-state,
@@ -2281,6 +2320,16 @@ body.dark-mode .workspace-updates-panel-header {
     max-height: 340px;
     overflow-y: auto;
     padding-right: 4px;
+}
+
+.hub-resources-empty {
+    margin: 0;
+    padding: 14px;
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
 }
 
 .hub-resources-grid::-webkit-scrollbar {

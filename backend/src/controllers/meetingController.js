@@ -1,5 +1,5 @@
 const { randomUUID } = require('node:crypto');
-const { query } = require('../config/db');
+const { pool, query } = require('../config/db');
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
@@ -113,6 +113,13 @@ const createMeeting = async (req, res) => {
             message: 'Choose a valid meeting date.'
         });
     }
+    if (date < new Date().toISOString().slice(0, 10)) {
+        return res.status(400).json({
+            success: false,
+            code: 'MEETING_DATE_IN_PAST',
+            message: 'Meeting dates cannot be in the past.'
+        });
+    }
 
     try {
         const project = await getAccessibleProject(req.params.projectId, req.firebaseUid);
@@ -152,54 +159,107 @@ const createMeeting = async (req, res) => {
             req.firebaseUser?.displayName ||
             req.firebaseEmail ||
             'Project member';
-        const result = await query(
-            `
-                INSERT INTO project_meetings (
-                    meeting_id,
-                    project_id,
+        const hostInitials = hostName
+            .trim()
+            .split(/\s+/)
+            .map(part => part[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase() || '📅';
+
+        const client = await pool.connect();
+        let result;
+        try {
+            await client.query('BEGIN');
+            result = await client.query(
+                `
+                    INSERT INTO project_meetings (
+                        meeting_id,
+                        project_id,
+                        title,
+                        meeting_date,
+                        start_time,
+                        end_time,
+                        pinned,
+                        location,
+                        notes,
+                        host_firebase_uid,
+                        host_name,
+                        attendee_firebase_uids
+                    )
+                    VALUES ($1, $2, $3, $4::date, $5::time, $6::time, $7, $8, $9, $10, $11, $12::jsonb)
+                    RETURNING
+                        meeting_id,
+                        project_id,
+                        title,
+                        meeting_date,
+                        start_time,
+                        end_time,
+                        pinned,
+                        location,
+                        notes,
+                        host_firebase_uid,
+                        host_name,
+                        attendee_firebase_uids,
+                        created_at,
+                        updated_at
+                `,
+                [
+                    meetingId,
+                    project.project_id,
                     title,
-                    meeting_date,
-                    start_time,
-                    end_time,
+                    date,
+                    startTime,
+                    endTime,
                     pinned,
                     location,
                     notes,
-                    host_firebase_uid,
-                    host_name,
-                    attendee_firebase_uids
-                )
-                VALUES ($1, $2, $3, $4::date, $5::time, $6::time, $7, $8, $9, $10, $11, $12::jsonb)
-                RETURNING
-                    meeting_id,
-                    project_id,
-                    title,
-                    meeting_date,
-                    start_time,
-                    end_time,
-                    pinned,
-                    location,
-                    notes,
-                    host_firebase_uid,
-                    host_name,
-                    attendee_firebase_uids,
-                    created_at,
-                    updated_at
-            `,
-            [
-                meetingId,
-                project.project_id,
-                title,
-                date,
-                startTime,
-                endTime,
-                pinned,
-                location,
-                notes,
-                req.firebaseUid,
-                hostName,
-                JSON.stringify(attendees)
-            ]
-        );
+                    req.firebaseUid,
+                    hostName,
+                    JSON.stringify(attendees)
+                ]
+            );
+            const notificationRecipients = attendees.filter(uid => uid !== req.firebaseUid);
+            if (notificationRecipients.length > 0) {
+                await client.query(
+                    `
+                        INSERT INTO notifications (
+                            recipient_firebase_uid,
+                            project_id,
+                            type,
+                            title,
+                            detail,
+                            avatar,
+                            tone_class
+                        )
+                        SELECT
+                            recipient_uid,
+                            $2,
+                            'meeting_invitation',
+                            'You are invited to a project meeting',
+                            $3,
+                            $4,
+                            'blue-bg'
+                        FROM unnest($1::text[]) AS recipient_uid
+                    `,
+                    [
+                        notificationRecipients,
+                        project.project_id,
+                        `${hostName} invited you to "${title}" for ${date}, ${startTime}–${endTime} in ${project.name}.`,
+                        hostInitials
+                    ]
+                );
+            }
+            await client.query('COMMIT');
+        } catch (error) {
+            await client.query('ROLLBACK').catch(rollbackError => {
+                console.error('Create meeting rollback error:', rollbackError);
+            });
+            throw error;
+        } finally {
+            client.release();
+        }
+
         return res.status(201).json({
             success: true,
             data: {

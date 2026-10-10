@@ -5,6 +5,18 @@ export function toLocalDateKey(date = new Date()) {
   return `${year}-${month}-${day}`
 }
 
+export function notBeforeTodayDateKey(dateKey, todayKey = toLocalDateKey()) {
+  if (typeof dateKey !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+    return todayKey
+  }
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const parsedDate = new Date(year, month - 1, day)
+  const isValidDate = parsedDate.getFullYear() === year &&
+    parsedDate.getMonth() === month - 1 &&
+    parsedDate.getDate() === day
+  return isValidDate && dateKey >= todayKey ? dateKey : todayKey
+}
+
 export function parseLocalDate(dateKey) {
   const [year, month, day] = dateKey.split('-').map(Number)
   return new Date(year, month - 1, day)

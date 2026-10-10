@@ -308,6 +308,7 @@
                                         <th>Time</th>
                                         <th>Host</th>
                                         <th>Attendees</th>
+                                        <th>Project</th>
                                         <th>Location</th>
                                     </tr>
                                 </thead>
@@ -722,7 +723,6 @@
                                 <button type="button" class="cal-filter-pill active" data-type="all">All Events</button>
                                 <button type="button" class="cal-filter-pill" data-type="meeting">Pinned
                                     Meetings</button>
-                                <button type="button" class="cal-filter-pill" data-type="task">Deliverables</button>
                                 <button type="button" class="cal-filter-pill" data-type="reminder">Reminders</button>
                             </div>
                         </div>
@@ -751,7 +751,7 @@
                             Assignments</button>
                         <button type="button" class="admin-tab-btn" data-tab="meetings">Meetings & Pinned
                             Schedules</button>
-                        <button type="button" class="admin-tab-btn" data-tab="updates">Workspace Updates</button>
+                        <button type="button" class="admin-tab-btn" data-tab="updates">Resources</button>
                     </div>
 
                     <!-- TAB 0: Workspace Projects Management -->
@@ -892,86 +892,18 @@
                         </div>
                     </div>
 
-                    <div class="admin-tab-panel admin-workspace-updates-panel" id="admin-tab-updates"
-                        style="display: none;">
-                        <div class="workspace-updates-shell">
-                            <header class="workspace-updates-header">
+                    <div class="admin-tab-panel" id="admin-tab-updates" style="display: none;">
+                        <div class="admin-card admin-resources-card">
+                            <div class="admin-card-header">
                                 <div>
-                                    <p class="hub-eyebrow">PUBLISHED TO HOME</p>
-                                    <h2>Workspace updates</h2>
-                                    <p>Manage the announcements, resources, and decisions your team sees.</p>
+                                    <h3>Project Resources</h3>
+                                    <p>Shared links and tools for projects you can access.</p>
                                 </div>
-                            </header>
-                            <nav class="workspace-updates-tabs" aria-label="Workspace update types" role="tablist">
-                                <button type="button" class="workspace-updates-tab active"
-                                    id="workspace-updates-tab-announcements" data-workspace-update-tab="announcements"
-                                    role="tab" aria-selected="true"
-                                    aria-controls="workspace-updates-panel-announcements">Announcements</button>
-                                <button type="button" class="workspace-updates-tab" id="workspace-updates-tab-resources"
-                                    data-workspace-update-tab="resources" role="tab" aria-selected="false"
-                                    aria-controls="workspace-updates-panel-resources">Resources</button>
-                                <button type="button" class="workspace-updates-tab" id="workspace-updates-tab-decisions"
-                                    data-workspace-update-tab="decisions" role="tab" aria-selected="false"
-                                    aria-controls="workspace-updates-panel-decisions">Decisions & RFCs</button>
-                            </nav>
-
-                            <section class="workspace-updates-panel active" id="workspace-updates-panel-announcements"
-                                role="tabpanel" aria-labelledby="workspace-updates-tab-announcements">
-                                <div class="workspace-updates-panel-header">
-                                    <div>
-                                        <h3>Team announcements</h3>
-                                        <p>Share a release note, milestone, or team update.</p>
-                                    </div>
-                                    <button type="button" class="primary-button gold" id="hub-toggle-announcement-btn">+
-                                        New announcement</button>
-                                </div>
-                                <form id="announcement-composer-form" class="announcement-composer"
-                                    style="display: none;">
-                                    <div class="input-with-icon">
-                                        <svg class="input-icon-svg top-aligned" width="16" height="16"
-                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                            stroke-linecap="round" stroke-linejoin="round">
-                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z">
-                                            </path>
-                                        </svg>
-                                        <textarea id="announcement-input"
-                                            placeholder="Broadcast an update, sprint goal, or release note to the workspace..."
-                                            rows="2" required></textarea>
-                                    </div>
-                                    <div class="announcement-composer-footer"><span class="announcement-scope">Visible
-                                            to all workspace collaborators</span><button type="submit"
-                                            class="primary-button gold">Post Update</button></div>
-                                </form>
-                                <div class="announcements-feed" id="admin-announcements-feed-list"
-                                    data-interactive="true"></div>
-                            </section>
-
-                            <section class="workspace-updates-panel" id="workspace-updates-panel-resources"
-                                role="tabpanel" aria-labelledby="workspace-updates-tab-resources" hidden>
-                                <div class="workspace-updates-panel-header">
-                                    <div>
-                                        <h3>Pinned resources</h3>
-                                        <p>Keep useful documents, tools, and links close at hand.</p>
-                                    </div>
-                                    <button type="button" class="primary-button gold" id="hub-add-resource-btn">+ Add
-                                        resource</button>
-                                </div>
-                                <div class="hub-resources-grid" id="admin-hub-resources-list"></div>
-                            </section>
-
-                            <section class="workspace-updates-panel" id="workspace-updates-panel-decisions"
-                                role="tabpanel" aria-labelledby="workspace-updates-tab-decisions" hidden>
-                                <div class="workspace-updates-panel-header">
-                                    <div>
-                                        <h3>Team decisions & RFCs</h3>
-                                        <p>Gather votes and keep decisions visible on Home.</p>
-                                    </div>
-                                    <button type="button" class="primary-button gold" id="hub-create-poll-btn">+ New
-                                        poll</button>
-                                </div>
-                                <div class="team-polls-container" id="admin-team-polls-container"
-                                    data-interactive="true"></div>
-                            </section>
+                                <button type="button" class="primary-button gold" id="hub-add-resource-btn" hidden>
+                                    + Add Resource
+                                </button>
+                            </div>
+                            <div class="hub-resources-grid" id="admin-hub-resources-list"></div>
                         </div>
                     </div>
 

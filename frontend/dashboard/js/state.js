@@ -534,32 +534,6 @@ export const seedTasks = [
 ]
 
 // ============================================================
-// REMINDERS
-// ============================================================
-
-export const defaultReminders = [
-  {
-    id: 'rem-1',
-    title: 'Submit newsletter draft copy for review',
-    date: seedDate(1),
-    timeValue: '09:00',
-    time: '09:00 AM',
-    author: 'Devon Patel',
-    priority: 'High'
-  },
-
-  {
-    id: 'rem-2',
-    title: 'Freeze code branch for candidate build QA',
-    date: seedDate(4),
-    timeValue: '17:00',
-    time: '05:00 PM',
-    author: 'Elena Rostova',
-    priority: 'Normal'
-  }
-]
-
-// ============================================================
 // LOCAL TASK STATE
 // ============================================================
 
@@ -654,7 +628,9 @@ localStorage.setItem(
 
 export function getAccessibleTasks() {
   const accessibleProjectNames = new Set(projects.map(project => project.name))
-  return tasks.filter(task => accessibleProjectNames.has(task.project))
+  return tasks.filter(task =>
+    task.backendPersistent && accessibleProjectNames.has(task.project)
+  )
 }
 
 export function replaceProjectTasksFromBackend(projectTaskGroups = []) {
@@ -772,35 +748,10 @@ export function getAccessibleMembers() {
 export let meetings = []
 
 // ============================================================
-// LOCAL REMINDER STATE
+// BACKEND-PERSISTED PROJECT REMINDERS
 // ============================================================
 
-const storedReminders =
-  JSON.parse(
-    localStorage.getItem('collab-reminders') || 'null'
-  )
-
-export let reminders = storedReminders
-  ? rebaseSeedDates(
-      storedReminders,
-      defaultReminders,
-      {
-        'rem-1': '2026-10-05',
-        'rem-2': '2026-10-08'
-      },
-      'collab-reminders'
-    )
-  : defaultReminders
-
-// ============================================================
-// LOCAL STORAGE SAVE HELPERS
-// ============================================================
-
-export const saveReminders = () =>
-  localStorage.setItem(
-    'collab-reminders',
-    JSON.stringify(reminders)
-  )
+export let reminders = []
 
 export const saveTasks = () =>
   localStorage.setItem(
@@ -834,7 +785,6 @@ export function setMeetings(newMeetings) {
 
 export function setReminders(newReminders) {
   reminders = newReminders
-  saveReminders()
 }
 
 // ============================================================

@@ -314,6 +314,20 @@ body {
     display: none;
 }
 
+.form-submit-spinner {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: invite-submit-spin .7s linear infinite;
+}
+
+.form-submit-spinner[hidden] {
+    display: none;
+}
+
 @keyframes invite-submit-spin {
     to {
         transform: rotate(360deg);
@@ -1913,9 +1927,14 @@ form.modal {
     user-select: none;
 }
 
-.mini-cal-nav-btn:hover {
+.mini-cal-nav-btn:hover:not(:disabled) {
     background: #F4F4F5;
     border-color: #A1A1AA;
+}
+
+.mini-cal-nav-btn:disabled {
+    cursor: not-allowed;
+    opacity: .45;
 }
 
 .mini-cal-weekdays {
@@ -1956,9 +1975,15 @@ form.modal {
     cursor: default;
 }
 
-.mini-cal-day:hover:not(.other-month) {
+.mini-cal-day:hover:not(.other-month):not(.is-past) {
     background: #F4F4F5;
     border-color: #E4E4E7;
+}
+
+.mini-cal-day.is-past {
+    color: #A1A1AA;
+    cursor: not-allowed;
+    opacity: .55;
 }
 
 .mini-cal-day.is-today {
@@ -3552,6 +3577,19 @@ body.dark-mode .project-task-table td,
 .admin-meeting-cell small {
     color: #71717A;
     font-size: 11px;
+}
+
+.admin-meeting-host {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.admin-meeting-host-avatar {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    font-size: 9px;
 }
 
 .admin-meeting-date {

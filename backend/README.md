@@ -64,11 +64,24 @@ accepted invitee when edited.
   creator.
 - `GET|POST /api/projects/:projectId/tasks/:taskId/comments`: read or add task
   comments as the project creator or an accepted invitee.
+  Task start and due dates must be today or later; this is validated by the
+  API as well as the dashboard date picker.
 - `GET|POST /api/projects/:projectId/meetings` and
   `DELETE /api/projects/:projectId/meetings/:meetingId`: list, schedule, and
   cancel project meetings. Owners and accepted invitees can list or schedule;
   only the host or project owner can cancel. Meeting attendees must be accepted
-  members of that project.
+  members of that project. Scheduling creates persisted in-dashboard meeting
+  invitation notifications for selected attendees other than the host in the
+  same database transaction as the meeting. Meeting dates must be today or
+  later.
+- `GET|POST /api/projects/:projectId/reminders`: list and create reminders for
+  a project the caller owns or has joined. Reminder dates must be today or
+  later, and priorities are limited to Normal, High, and Urgent.
+- `GET /api/projects/:projectId/resources`: list pinned resources for a project
+  the caller owns or has accepted an invitation to join.
+- `POST /api/projects/:projectId/resources`: pin an HTTP(S) resource to a
+  project as its creator. Resource links are only returned to that project's
+  creator and accepted invitees.
 - `PUT /api/projects/:projectId` with a `sprints` array: persist sprint changes
   as the project creator. Sprint deletion may include a `sprint_name_map`
   object mapping every existing sprint name to a remaining sprint name; the
@@ -118,8 +131,11 @@ announcements, resources, polls, brainstorm, notifications, activity, and
 files features. A table existing does not mean its API or frontend feature is
 implemented.
 
-Migration `007_project_meetings.sql` adds persistent project-scoped meetings
-and is applied automatically during backend startup.
+Migration `007_project_meetings.sql` adds persistent project-scoped meetings,
+`008_project_reminders.sql` adds persistent project-scoped calendar reminders,
+`009_project_resources.sql` creates project-scoped pinned resources, and
+`010_expand_project_resource_categories.sql` permits the full set of 50
+resource categories. These are applied automatically during backend startup.
 
 ## Remaining local demo features
 

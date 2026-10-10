@@ -1,4 +1,9 @@
-import { currentUser, pushNotification, make, root, closeModal } from './state.js'
+import { projects, pushNotification, make, root, closeModal } from './state.js'
+import { api } from './api.js'
+import { firebaseAuth } from '../../firebase.js'
+import { getSvg } from './icons.js'
+import { showDashboardToast } from './modalChrome.js'
+import { getActiveProject } from './auth.js'
 
 export const defaultScratchpad = `## 🎯 Q4 Deliverables & Architecture Notes
 - [x] Finalize authentication and session timeout policy
@@ -12,18 +17,44 @@ export const defaultScratchpad = `## 🎯 Q4 Deliverables & Architecture Notes
 - Create keyboard shortcut guide (Cmd+K / Ctrl+K)
 `
 
-export const defaultResources = [
-  { id: 'res-1', title: 'Figma Design System', url: 'https://figma.com/@collab-workspace', category: 'Design' },
-  { id: 'res-2', title: 'GitHub CI/CD Pipelines', url: 'https://github.com/collab/workspace', category: 'Engineering' },
-  { id: 'res-3', title: 'Product Requirements Doc (PRD)', url: 'https://notion.so/collab/q4-specs', category: 'Product' },
-  { id: 'res-4', title: 'Staging Preview Server', url: 'https://staging.collab.io', category: 'Testing' },
-  { id: 'res-5', title: 'Team Standup Meet Room', url: 'https://meet.google.com/collab-sync', category: 'Meetings' }
-]
+export let teamResources = []
+let resourcesLoading = false
+let resourcesLoadFailed = false
 
-export let teamResources = JSON.parse(localStorage.getItem('collab_team_resources') || 'null') || defaultResources
+function normalizeResource(resource, project) {
+  return {
+    id: resource.resource_id || resource.id,
+    projectId: resource.project_id || project?.projectId || project?.id,
+    projectName: resource.project_name || project?.name || '',
+    title: resource.title,
+    url: resource.target_url || resource.url,
+    category: resource.category
+  }
+}
 
-export function saveTeamResources() {
-  localStorage.setItem('collab_team_resources', JSON.stringify(teamResources))
+function getOwnedProjects() {
+  const uid = firebaseAuth.currentUser?.uid
+  return uid ? projects.filter(project => project.creatorFirebaseUid === uid) : []
+}
+
+export async function loadProjectResources() {
+  resourcesLoading = true
+  resourcesLoadFailed = false
+  teamResources = []
+  renderHubResources()
+  try {
+    const results = await Promise.all(projects.map(async project => {
+      const response = await api.get(`/projects/${encodeURIComponent(project.projectId)}/resources`)
+      return (response?.data?.resources || []).map(resource => normalizeResource(resource, project))
+    }))
+    teamResources = results.flat()
+  } catch (error) {
+    resourcesLoadFailed = true
+    throw error
+  } finally {
+    resourcesLoading = false
+    renderHubResources()
+  }
 }
 
 export function renderScratchpad() {
@@ -43,8 +74,21 @@ export function renderHubResources() {
   }
   const workspaceLogo = new URL('../images/favicon.png', window.location.href).href
 
+  const addButton = document.querySelector('#hub-add-resource-btn')
+  if (addButton) addButton.hidden = getOwnedProjects().length === 0
+
   document.querySelectorAll('.hub-resources-grid').forEach(container => {
     container.replaceChildren()
+    if (!teamResources.length) {
+      const message = resourcesLoading
+        ? 'Loading project resources…'
+        : resourcesLoadFailed
+          ? 'Project resources could not be loaded. Please try again.'
+          : 'No resources have been pinned to your projects yet.'
+      const empty = make('p', 'hub-resources-empty', message)
+      container.append(empty)
+      return
+    }
     teamResources.forEach(resource => {
       const item = make('a', 'hub-resource-item')
       item.href = resource.url
@@ -72,7 +116,7 @@ export function renderHubResources() {
       const content = make('div', 'hub-res-content')
       const titleRow = make('div', 'hub-res-title-row')
       titleRow.append(make('strong', '', resource.title), make('span', 'hub-res-tag', resource.category))
-      const domain = make('small', '', hostname || resource.url)
+      const domain = make('small', '', `${resource.projectName ? `${resource.projectName} · ` : ''}${hostname || resource.url}`)
       content.append(titleRow, domain)
       item.append(logo, content, make('span', 'hub-res-arrow', '↗'))
       container.append(item)
@@ -81,46 +125,140 @@ export function renderHubResources() {
 }
 
 export function openAddResourceModal() {
+  const ownedProjects = getOwnedProjects()
+  if (!ownedProjects.length) {
+    showDashboardToast('Only project creators can pin resources. Create a project to get started.', 'error')
+    return
+  }
+
   const backdrop = make('div', 'modal-backdrop')
   const form = make('form', 'modal')
   const close = make('button', 'close-modal', '×')
   close.type = 'button'
   close.addEventListener('click', closeModal)
   const title = make('h2', '', 'Add Pinned Resource')
-  const copy = make('p', 'modal-copy', 'Pin a shared Figma file, documentation link, repository, or tool to the workspace.')
-  const titleLabel = make('label', '', 'Resource Title')
+  const copy = make('p', 'modal-copy', 'Pin a resource to one of your projects. Only that project’s members can view it.')
+  const addField = (labelText, iconName, control) => {
+    const label = make('label', 'resource-form-label', labelText)
+    const field = make('div', 'input-with-icon')
+    const icon = make('span', 'input-icon-svg')
+    icon.innerHTML = getSvg(iconName, '', 16, 16)
+    field.append(icon, control)
+    label.append(field)
+    return label
+  }
+
+  const projectSelect = document.createElement('select')
+  ownedProjects.forEach(project => {
+    const option = make('option', '', project.name)
+    option.value = project.projectId
+    projectSelect.append(option)
+  })
+  const activeProjectId = getActiveProject()?.projectId
+  const initialProjectId = ownedProjects.find(project => project.projectId === activeProjectId)?.projectId
+  if (initialProjectId) projectSelect.value = initialProjectId
+
   const titleInput = make('input')
+  titleInput.maxLength = 255
   titleInput.placeholder = 'e.g. Design Tokens Figma'
   titleInput.required = true
-  titleLabel.append(titleInput)
-  const urlLabel = make('label', '', 'Target URL')
   const urlInput = make('input')
   urlInput.type = 'url'
-  urlInput.placeholder = 'https://figma.com/@collab'
+  urlInput.maxLength = 2048
+  urlInput.placeholder = 'https://figma.com/@your-project'
   urlInput.required = true
-  urlLabel.append(urlInput)
-  const catLabel = make('label', '', 'Category')
   const catSelect = document.createElement('select')
-  ;['Design', 'Engineering', 'Product', 'Testing', 'Meetings', 'Analytics'].forEach(category => {
+  ;[
+    'Design',
+    'Engineering',
+    'Product',
+    'Testing',
+    'Meetings',
+    'Analytics',
+    'Documentation',
+    'Research',
+    'Marketing',
+    'Sales',
+    'Customer Support',
+    'Operations',
+    'Finance',
+    'Legal',
+    'Human Resources',
+    'Recruiting',
+    'Strategy',
+    'Planning',
+    'Roadmaps',
+    'Requirements',
+    'Specifications',
+    'Architecture',
+    'APIs & Integrations',
+    'Code Repositories',
+    'DevOps',
+    'Cybersecurity',
+    'Data Science',
+    'Databases',
+    'Infrastructure',
+    'Deployment',
+    'Monitoring',
+    'Incident Response',
+    'Quality Assurance',
+    'Bug Tracking',
+    'User Experience',
+    'Prototyping',
+    'Branding',
+    'Content',
+    'SEO',
+    'Social Media',
+    'Campaigns',
+    'Competitor Analysis',
+    'Training',
+    'Onboarding',
+    'Policies',
+    'Contracts',
+    'Vendor Management',
+    'Reports',
+    'Presentations',
+    'Other'
+  ].forEach(category => {
     const option = make('option', '', category)
     option.value = category
     catSelect.append(option)
   })
-  catLabel.append(catSelect)
+
+  const projectLabel = addField('Project', 'folder', projectSelect)
+  const titleLabel = addField('Resource title', 'link', titleInput)
+  const urlLabel = addField('Target URL', 'link', urlInput)
+  const catLabel = addField('Category', 'grid', catSelect)
   const submit = make('button', 'primary-button full gold', 'Pin Resource')
   submit.type = 'submit'
-  form.append(close, title, copy, titleLabel, urlLabel, catLabel, submit)
+  form.append(close, title, copy, projectLabel, titleLabel, urlLabel, catLabel, submit)
   backdrop.append(form)
   root.replaceChildren(backdrop)
-  form.addEventListener('submit', e => {
+  form.addEventListener('submit', async e => {
     e.preventDefault()
-    const resource = { id: `res_${Date.now()}`, title: titleInput.value.trim(), url: urlInput.value.trim(), category: catSelect.value }
-    teamResources.push(resource)
-    saveTeamResources()
-    closeModal()
-    renderHubResources()
-    addAuditLog('Resource pinned', `Added bookmark "${resource.title}".`, 'bookmark')
-    pushNotification('Resource Pinned', `"${resource.title}" is now available in Workspace Hub.`, '🔗', 'teal-bg')
+    submit.disabled = true
+    submit.textContent = 'Pinning…'
+    try {
+      const project = ownedProjects.find(item => item.projectId === projectSelect.value)
+      const response = await api.post(`/projects/${encodeURIComponent(projectSelect.value)}/resources`, {
+        title: titleInput.value.trim(),
+        targetUrl: urlInput.value.trim(),
+        category: catSelect.value
+      })
+      teamResources = [
+        normalizeResource(response?.data?.resource, project),
+        ...teamResources
+      ]
+      closeModal()
+      renderHubResources()
+      showDashboardToast('Resource pinned to the project.', 'success')
+      pushNotification('Resource Pinned', `"${titleInput.value.trim()}" is now available to ${project.name} members.`, '🔗', 'teal-bg')
+    } catch (error) {
+      console.error('Unable to pin project resource:', error)
+      submit.disabled = false
+      submit.textContent = 'Pin Resource'
+      showDashboardToast(error.message || 'The project resource could not be pinned.', 'error')
+    }
   })
 }
 

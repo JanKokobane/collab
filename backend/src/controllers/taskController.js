@@ -50,6 +50,10 @@ const normalizeTaskInput = body => {
     if (!isValidDate(startDate) || !isValidDate(dueDate)) {
         return { error: 'Task dates must use YYYY-MM-DD format.' };
     }
+    const today = new Date().toISOString().slice(0, 10);
+    if ([startDate, dueDate].some(date => date && date < today)) {
+        return { error: 'Task start and due dates cannot be in the past.' };
+    }
 
     return {
         value: {

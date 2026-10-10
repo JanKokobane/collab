@@ -25,6 +25,14 @@ const {
     deleteMeeting,
     getMeetings
 } = require('../controllers/meetingController');
+const {
+    createProjectReminder,
+    getProjectReminders
+} = require('../controllers/reminderController');
+const {
+    createProjectResource,
+    getProjectResources
+} = require('../controllers/resourceController');
 
 const {
     requireFirebaseAuth
@@ -57,6 +65,10 @@ router.delete('/:projectId/tasks/:taskId', deleteProjectTask);
 router.get('/:projectId/meetings', getMeetings);
 router.post('/:projectId/meetings', createMeeting);
 router.delete('/:projectId/meetings/:meetingId', deleteMeeting);
+router.get('/:projectId/reminders', getProjectReminders);
+router.post('/:projectId/reminders', createProjectReminder);
+router.get('/:projectId/resources', getProjectResources);
+router.post('/:projectId/resources', createProjectResource);
 
 router.get(
     '/:projectId',
