@@ -95,8 +95,8 @@ accepted invitee when edited.
   belongs to, or create a private project board. Board invitees must already be
   accepted members of that project.
 - `GET|PUT /api/projects/brainstorm-boards/:boardId`: load or save board notes
-  and links as a board member. Members can create, edit, and remove their own
-  ideas; edits to other members' ideas are rejected.
+  and links as a board member. Members can reposition shared ideas and create,
+  and edit any idea. Only the creator of an idea can remove it.
 - `PATCH|DELETE /api/projects/brainstorm-boards/:boardId`: rename or remove a
   board as its creator.
 - `POST /api/projects/brainstorm-boards/:boardId/members`: invite additional

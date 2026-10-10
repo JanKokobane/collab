@@ -513,7 +513,11 @@
                                     class="primary-button gold brainstorm-board-action"
                                     id="hub-add-sticky-btn">+ Add idea</button>
                                 <button type="button" class="primary-button gold brainstorm-save-btn"
-                                    id="save-brainstorm-btn" disabled>Save board</button>
+                                    id="save-brainstorm-btn" disabled>
+                                    <span class="form-submit-spinner brainstorm-save-spinner" aria-hidden="true"
+                                        hidden></span>
+                                    <span id="brainstorm-save-button-label">Save board</span>
+                                </button>
                                 <label class="brainstorm-autosave-switch" for="brainstorm-autosave-toggle">
                                     <input type="checkbox" id="brainstorm-autosave-toggle"
                                         aria-label="Automatically save board changes">

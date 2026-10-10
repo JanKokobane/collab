@@ -17,7 +17,8 @@ let stickyLinkMode = false
 let pendingStickyLinkId = null
 let selectedStickyLinkId = null
 let brainstormDirty = false
-let autoSaveEnabled = localStorage.getItem('collab_brainstorm_auto_save') === 'true'
+let autoSaveEnabled = false
+let autoSavePreferenceUid = null
 let autoSaveTimer = null
 let autoSaveFailed = false
 let brainstormRevision = 0
@@ -28,6 +29,25 @@ const stickyLinkTypes = {
   'leads-to': { label: 'Leads to', color: '#16806F', width: 2.5, markerEnd: true },
   supports: { label: 'Supports', color: '#47835F', width: 2, dash: '5 4', markerEnd: true },
   sequence: { label: 'Sequence', color: '#4E78A5', width: 2, markerStart: true, markerEnd: true }
+}
+
+function syncAutoSavePreference() {
+  const uid = firebaseAuth.currentUser?.uid
+  if (!uid || uid === autoSavePreferenceUid) return false
+
+  window.clearTimeout(autoSaveTimer)
+  autoSaveTimer = null
+  autoSavePreferenceUid = uid
+  autoSaveEnabled = localStorage.getItem(`collab_brainstorm_auto_save:${uid}`) === 'true'
+  const autoSaveToggle = document.querySelector('#brainstorm-autosave-toggle')
+  if (autoSaveToggle) autoSaveToggle.checked = autoSaveEnabled
+  return true
+}
+
+function getSafeAuthorName(name, email = '', uid = '') {
+  if (typeof name === 'string' && name.trim() && name.trim() !== uid) return name.trim()
+  if (typeof email === 'string' && email.trim() && email.trim() !== uid) return email.trim()
+  return ''
 }
 
 function showBrainstormNotice(message) {
@@ -61,7 +81,7 @@ function scheduleBrainstormAutoSave() {
   if (!autoSaveEnabled || autoSaveFailed || !activeBoard || !brainstormDirty || brainstormSaving) return
   autoSaveTimer = window.setTimeout(() => {
     autoSaveTimer = null
-    saveBrainstormBoard()
+    saveBrainstormBoard({ automatic: true })
   }, autoSaveDelay)
 }
 
@@ -89,6 +109,7 @@ function positionBrainstormBoardMenu() {
 }
 
 function renderBrainstormControls() {
+  syncAutoSavePreference()
   const projectSelect = document.querySelector('#brainstorm-project-select')
   const boardTrigger = document.querySelector('#brainstorm-board-select')
   const boardLabel = document.querySelector('#brainstorm-board-picker-label')
@@ -159,7 +180,7 @@ function renderBrainstormControls() {
     row.append(selectBoardButton)
     if (board.created_by_firebase_uid === firebaseAuth.currentUser?.uid) {
       const actions = make('div', 'brainstorm-board-menu-actions')
-      const editBoardButton = make('button', 'brainstorm-board-menu-action', 'Edit')
+      const editBoardButton = make('button', 'brainstorm-board-menu-action', 'Edit board')
       editBoardButton.type = 'button'
       editBoardButton.setAttribute('role', 'menuitem')
       editBoardButton.disabled = projectIsLoading || brainstormSaving
@@ -332,12 +353,15 @@ async function loadBrainstormBoard(boardId) {
     delete note.userUpvoted
     const member = activeBoardMembers.find(item => getMemberUid(item) === note.authorUid)
     if (member) {
+      const memberName = getSafeAuthorName(member.name, member.email, getMemberUid(member))
       note.author = note.authorUid === firebaseAuth.currentUser?.uid
-        ? currentUser.name || member.name || 'Project member'
-        : member.name || 'Project member'
+        ? getSafeAuthorName(currentUser.name, currentUser.email || member.email, note.authorUid) || memberName
+        : memberName
       note.authorProfileImage = member.profileImage || note.authorProfileImage || ''
     } else if (note.authorUid === firebaseAuth.currentUser?.uid) {
-      note.author = currentUser.name || 'Project member'
+      note.author = getSafeAuthorName(currentUser.name, currentUser.email, note.authorUid)
+    } else {
+      note.author = getSafeAuthorName(note.author, '', note.authorUid)
     }
   })
   brainstormDirty = false
@@ -450,18 +474,22 @@ async function removeBrainstormBoard(board) {
   }
 }
 
-async function saveBrainstormBoard() {
+async function saveBrainstormBoard({ automatic = false } = {}) {
   if (!activeBoard || !brainstormDirty || brainstormSaving) return
   window.clearTimeout(autoSaveTimer)
   autoSaveTimer = null
   autoSaveFailed = false
   const savedRevision = brainstormRevision
   const saveButton = document.querySelector('#save-brainstorm-btn')
+  const saveButtonLabel = document.querySelector('#brainstorm-save-button-label')
+  const saveSpinner = document.querySelector('.brainstorm-save-spinner')
   const saveStatus = document.querySelector('#brainstorm-save-status')
   if (saveButton) {
     saveButton.disabled = true
-    saveButton.textContent = 'Saving…'
+    saveButton.setAttribute('aria-busy', 'true')
   }
+  if (saveButtonLabel) saveButtonLabel.textContent = 'Saving…'
+  if (saveSpinner) saveSpinner.hidden = false
   brainstormSaving = true
   renderBrainstormControls()
   try {
@@ -488,7 +516,14 @@ async function saveBrainstormBoard() {
       brainstormDirty = false
     }
     activeBoard = { ...activeBoard, ...response.data.board }
-    if (saveStatus) saveStatus.textContent = brainstormDirty ? 'Unsaved changes' : 'Saved'
+    if (saveStatus) {
+      saveStatus.textContent = brainstormDirty
+        ? 'Unsaved changes'
+        : automatic ? 'Auto-saved' : 'Saved'
+    }
+    if (!automatic && !brainstormDirty) {
+      showDashboardToast('Brainstorm board saved.', 'success')
+    }
   } catch (error) {
     autoSaveFailed = true
     console.error('Unable to save brainstorm board:', error)
@@ -499,8 +534,10 @@ async function saveBrainstormBoard() {
     renderBrainstormControls()
     if (saveButton) {
       saveButton.disabled = !brainstormDirty
-      saveButton.textContent = 'Save board'
+      saveButton.removeAttribute('aria-busy')
     }
+    if (saveButtonLabel) saveButtonLabel.textContent = 'Save board'
+    if (saveSpinner) saveSpinner.hidden = true
     scheduleBrainstormAutoSave()
   }
 }
@@ -567,7 +604,7 @@ export function renderStickyNotes() {
   })
 
   stickyNotes.forEach(note => {
-    note.author = note.author || 'Project member'
+    note.author = note.author || ''
     const card = make('article', `sticky-note-card ${note.color || 'yellow'}`)
     card.dataset.noteId = note.id
     card.tabIndex = 0
@@ -625,14 +662,40 @@ export function renderStickyNotes() {
     top.append(make('span', 'sticky-cat-badge', note.category))
     const userUid = firebaseAuth.currentUser?.uid
     const canDeleteNote = note.authorUid === userUid
-    let deleteButton
+    const noteActions = make('div', 'sticky-note-actions')
+    const actionMenu = make('div', 'sticky-note-action-menu')
+    const actionMenuButton = make('button', 'sticky-note-action-menu-trigger', '⋯')
+    actionMenuButton.type = 'button'
+    actionMenuButton.setAttribute('aria-label', `Idea actions for ${note.author}'s idea`)
+    actionMenuButton.setAttribute('aria-haspopup', 'menu')
+    actionMenuButton.setAttribute('aria-expanded', 'false')
+    const actionMenuItems = make('div', 'sticky-note-action-menu-items')
+    actionMenuItems.setAttribute('role', 'menu')
+    actionMenuItems.hidden = true
+    const editButton = make('button', 'sticky-note-action-menu-item', 'Edit idea')
+    editButton.type = 'button'
+    editButton.setAttribute('role', 'menuitem')
+    editButton.addEventListener('click', () => {
+      actionMenuItems.hidden = true
+      actionMenuButton.setAttribute('aria-expanded', 'false')
+      openEditStickyNoteModal(note)
+    })
+    actionMenuButton.addEventListener('click', () => {
+      actionMenuItems.hidden = !actionMenuItems.hidden
+      actionMenuButton.setAttribute('aria-expanded', String(!actionMenuItems.hidden))
+    })
+    actionMenu.append(actionMenuButton, actionMenuItems)
+    actionMenuItems.append(editButton)
+    let deleteButton = null
     if (canDeleteNote) {
       deleteButton = make('button', 'sticky-delete-btn', '×')
       deleteButton.type = 'button'
       deleteButton.setAttribute('aria-label', `Delete note by ${note.author}`)
       deleteButton.title = 'Delete idea'
-      top.append(deleteButton)
+      noteActions.append(deleteButton)
     }
+    noteActions.prepend(actionMenu)
+    top.append(noteActions)
 
     const body = make('p', 'sticky-note-text', note.content)
     const footer = make('div', 'sticky-note-footer')
@@ -870,13 +933,25 @@ export function openAddStickyNoteModal(initialCategory = 'Ideas') {
     }
     return
   }
+  openStickyNoteModal({ initialCategory })
+}
+
+function openEditStickyNoteModal(note) {
+  if (!note) return
+  openStickyNoteModal({ note })
+}
+
+function openStickyNoteModal({ note = null, initialCategory = 'Ideas' } = {}) {
+  const isEditing = Boolean(note)
   const backdrop = make('div', 'modal-backdrop')
   const form = make('form', 'modal')
   const close = make('button', 'close-modal', '×')
   close.type = 'button'
   close.addEventListener('click', closeModal)
-  const title = make('h2', '', 'Add an idea')
-  const copy = make('p', 'modal-copy', 'Capture a thought and place it on the board. You can move and connect it any time.')
+  const title = make('h2', '', isEditing ? 'Edit idea' : 'Add an idea')
+  const copy = make('p', 'modal-copy', isEditing
+    ? 'Update this idea type, card color, or content.'
+    : 'Capture a thought and place it on the board. You can move and connect it any time.')
   const catLabel = make('label', '', 'Idea type')
   const catSelect = document.createElement('select')
   ;['Ideas', 'Blockers', 'Goals', 'Wins'].forEach(category => {
@@ -884,7 +959,7 @@ export function openAddStickyNoteModal(initialCategory = 'Ideas') {
     option.value = category
     catSelect.append(option)
   })
-  catSelect.value = initialCategory
+  catSelect.value = note?.category || initialCategory
   const catSelectWrap = make('div', 'input-with-icon')
   const catIcon = make('span', 'input-icon-svg')
   catIcon.innerHTML = getSvg('lightbulb', '', 16, 16)
@@ -897,15 +972,16 @@ export function openAddStickyNoteModal(initialCategory = 'Ideas') {
     option.value = color.value
     colorSelect.append(option)
   })
+  colorSelect.value = note?.color || 'yellow'
   colorLabel.append(colorSelect)
   const textLabel = make('label', '', 'Note Content')
   const textarea = make('textarea')
-  textarea.placeholder = 'Write your thoughts, proposal, or blocker here...'
+  textarea.placeholder = 'What is on your mind?'
   textarea.rows = 3
   textarea.required = true
-  textarea.placeholder = 'What is on your mind?'
+  textarea.value = note?.content || ''
   textLabel.append(textarea)
-  const submit = make('button', 'primary-button full gold', 'Add to board')
+  const submit = make('button', 'primary-button full gold', isEditing ? 'Save changes' : 'Add to board')
   submit.type = 'submit'
   form.append(close, title, copy, catLabel, colorLabel, textLabel, submit)
   backdrop.append(form)
@@ -914,23 +990,31 @@ export function openAddStickyNoteModal(initialCategory = 'Ideas') {
     e.preventDefault()
     const content = textarea.value.trim()
     if (!content) return
-    const userUid = firebaseAuth.currentUser?.uid
-    const note = {
-      id: `sn_${crypto.randomUUID()}`,
-      category: catSelect.value,
-      content,
-      author: currentUser.name,
-      authorUid: userUid,
-      authorProfileImage: currentUser.profileImage || currentUser.photoURL || '',
-      color: colorSelect.value,
-      reactions: [],
-      position: defaultMindmapPosition(stickyNotes.length)
+    if (isEditing) {
+      const currentNote = stickyNotes.find(item => item.id === note.id)
+      if (!currentNote) return
+      currentNote.category = catSelect.value
+      currentNote.content = content
+      currentNote.color = colorSelect.value
+    } else {
+      const userUid = firebaseAuth.currentUser?.uid
+      const newNote = {
+        id: `sn_${crypto.randomUUID()}`,
+        category: catSelect.value,
+        content,
+        author: currentUser.name,
+        authorUid: userUid,
+        authorProfileImage: currentUser.profileImage || currentUser.photoURL || '',
+        color: colorSelect.value,
+        reactions: [],
+        position: defaultMindmapPosition(stickyNotes.length)
+      }
+      stickyNotes.unshift(newNote)
+      addAuditLog('Sticky Note posted', `${currentUser.name} posted sticky note in ${newNote.category}.`, 'sticky')
     }
-    stickyNotes.unshift(note)
     markBrainstormDirty()
     closeModal()
     renderStickyNotes()
-    addAuditLog('Sticky Note posted', `${currentUser.name} posted sticky note in ${note.category}.`, 'sticky')
   })
 }
 
@@ -996,7 +1080,7 @@ function appendProjectMemberOptions(container, project, excludedUids = [], selec
     renderAvatarElement(avatar, member, 'brainstorm-board-member-avatar')
     const details = make('span', 'brainstorm-board-member-details')
     details.append(
-      make('strong', '', member.name || 'Project member'),
+      make('strong', '', getSafeAuthorName(member.name, member.email, uid)),
       make('small', '', member.email || '')
     )
     const checkbox = document.createElement('input')
@@ -1240,6 +1324,7 @@ async function handleAddIdeaClick() {
 }
 
 export function initBrainstormEvents() {
+  syncAutoSavePreference()
   document.querySelector('#brainstorm-project-select')?.addEventListener('change', event => {
     const projectId = event.currentTarget.value
     if (brainstormDirty || brainstormSaving) {
@@ -1282,13 +1367,25 @@ export function initBrainstormEvents() {
   document.addEventListener('pointerdown', event => {
     const picker = document.querySelector('#brainstorm-board-picker')
     if (picker && !picker.contains(event.target)) closeBrainstormBoardMenu()
+    document.querySelectorAll('.sticky-note-action-menu').forEach(actionMenu => {
+      if (actionMenu.contains(event.target)) return
+      const menu = actionMenu.querySelector('.sticky-note-action-menu-items')
+      const trigger = actionMenu.querySelector('.sticky-note-action-menu-trigger')
+      if (menu) menu.hidden = true
+      trigger?.setAttribute('aria-expanded', 'false')
+    })
   })
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return
     const menu = document.querySelector('#brainstorm-board-menu')
-    if (!menu || menu.hidden) return
-    closeBrainstormBoardMenu()
-    document.querySelector('#brainstorm-board-select')?.focus()
+    if (menu && !menu.hidden) {
+      closeBrainstormBoardMenu()
+      document.querySelector('#brainstorm-board-select')?.focus()
+    }
+    document.querySelectorAll('.sticky-note-action-menu-items:not([hidden])').forEach(openMenu => {
+      openMenu.hidden = true
+      openMenu.parentElement?.querySelector('.sticky-note-action-menu-trigger')?.setAttribute('aria-expanded', 'false')
+    })
   })
   window.addEventListener('resize', closeBrainstormBoardMenu)
   window.addEventListener('scroll', event => {
@@ -1324,8 +1421,16 @@ export function initBrainstormEvents() {
   if (autoSaveToggle) {
     autoSaveToggle.checked = autoSaveEnabled
     autoSaveToggle.addEventListener('change', event => {
+      if (syncAutoSavePreference()) return
+      const uid = firebaseAuth.currentUser?.uid
+      if (!uid) {
+        event.currentTarget.checked = false
+        autoSaveEnabled = false
+        showDashboardToast('Sign in to save your Auto-save preference.', 'error')
+        return
+      }
       autoSaveEnabled = event.currentTarget.checked
-      localStorage.setItem('collab_brainstorm_auto_save', String(autoSaveEnabled))
+      localStorage.setItem(`collab_brainstorm_auto_save:${uid}`, String(autoSaveEnabled))
       if (autoSaveEnabled) {
         autoSaveFailed = false
         scheduleBrainstormAutoSave()
@@ -1335,6 +1440,19 @@ export function initBrainstormEvents() {
       }
     })
   }
+  window.addEventListener('storage', event => {
+    const uid = firebaseAuth.currentUser?.uid
+    if (!uid || event.key !== `collab_brainstorm_auto_save:${uid}`) return
+    autoSaveEnabled = event.newValue === 'true'
+    if (autoSaveToggle) autoSaveToggle.checked = autoSaveEnabled
+    if (autoSaveEnabled) {
+      autoSaveFailed = false
+      scheduleBrainstormAutoSave()
+    } else {
+      window.clearTimeout(autoSaveTimer)
+      autoSaveTimer = null
+    }
+  })
   window.addEventListener('beforeunload', event => {
     if (!brainstormDirty) return
     event.preventDefault()

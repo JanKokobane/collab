@@ -131,10 +131,10 @@ async function request(
         }
 
         const message =
-            response.status === 403
+            payload?.message ||
+            (response.status === 403
                 ? "You don't have permission to access this resource."
-                : payload?.message ||
-                  'The request could not be completed.';
+                : 'The request could not be completed.');
 
         throw new ApiError(
             message,
@@ -177,4 +177,3 @@ export const api = {
 export {
     apiBaseUrl
 };
-

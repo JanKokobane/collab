@@ -61,24 +61,6 @@ const boardDataIsValid = value => {
     return true;
 };
 
-const stableValue = value => {
-    if (Array.isArray(value)) return value.map(stableValue);
-    if (!value || typeof value !== 'object') return value;
-    return Object.fromEntries(
-        Object.keys(value).sort().map(key => [key, stableValue(value[key])])
-    );
-};
-
-const noteContentForComparison = note => {
-    const comparable = { ...note };
-    delete comparable.upvotes;
-    delete comparable.upvotedBy;
-    delete comparable.userUpvoted;
-    delete comparable.authorProfileImage;
-    delete comparable.reactions;
-    return JSON.stringify(stableValue(comparable));
-};
-
 const getAccessibleProject = async (client, projectId, firebaseUid) => {
     const result = await client.query(
         `
@@ -440,11 +422,9 @@ const getBoard = async (req, res) => {
                             'firebaseUid', member.firebase_uid,
                             'name', COALESCE(
                                 NULLIF(profile.full_name, ''),
-                                NULLIF(invitation.invited_name, ''),
-                                NULLIF(split_part(profile.email, '@', 1), ''),
-                                NULLIF(split_part(invitation.invited_email, '@', 1), ''),
-                                member.firebase_uid
+                                NULLIF(invitation.invited_name, '')
                             ),
+                            'email', COALESCE(profile.email, invitation.invited_email),
                             'profileImage', profile.profile_image
                         ) ORDER BY COALESCE(
                             NULLIF(profile.full_name, ''),
@@ -614,18 +594,23 @@ const saveBoard = async (req, res) => {
 
         for (const oldNote of oldNotes) {
             const updatedNote = newNotesById.get(oldNote.id);
-            if (
-                oldNote.authorUid !== req.firebaseUid &&
-                (!updatedNote || noteContentForComparison(oldNote) !== noteContentForComparison(updatedNote))
-            ) {
+            if (!updatedNote && oldNote.authorUid !== req.firebaseUid) {
                 await client.query('ROLLBACK');
                 return res.status(403).json({
                     success: false,
                     code: 'BRAINSTORM_NOTE_PERMISSION_DENIED',
-                    message: 'You can only edit or remove ideas that you created.'
+                    message: 'You can only remove ideas that you created.'
                 });
             }
             if (!updatedNote) continue;
+            if (oldNote.authorUid !== updatedNote.authorUid) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({
+                    success: false,
+                    code: 'BRAINSTORM_NOTE_PERMISSION_DENIED',
+                    message: 'An idea creator cannot be changed.'
+                });
+            }
             const previousReactions = Array.isArray(oldNote.reactions) ? oldNote.reactions : [];
             const submittedReactions = Array.isArray(updatedNote.reactions) ? updatedNote.reactions : [];
             updatedNote.reactions = [
@@ -640,14 +625,6 @@ const saveBoard = async (req, res) => {
         for (const note of boardData.notes) {
             const existingNote = oldNotesById.get(note.id);
             if (existingNote) {
-                if (existingNote.authorUid === req.firebaseUid && note.authorUid !== req.firebaseUid) {
-                    await client.query('ROLLBACK');
-                    return res.status(403).json({
-                        success: false,
-                        code: 'BRAINSTORM_NOTE_PERMISSION_DENIED',
-                        message: 'You cannot change the creator of an idea.'
-                    });
-                }
                 continue;
             }
             if (note.authorUid !== req.firebaseUid) {
