@@ -846,6 +846,65 @@
     cursor: default;
 }
 
+.brainstorm-autosave-switch {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 7px;
+    color: #667085;
+    font-size: 11px;
+    font-weight: 650;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.brainstorm-autosave-switch input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.brainstorm-autosave-track {
+    position: relative;
+    width: 30px;
+    height: 17px;
+    flex: 0 0 30px;
+    border-radius: 999px;
+    background: #D0D5DD;
+    transition: background .16s ease;
+}
+
+.brainstorm-autosave-track::after {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: #FFFFFF;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, .2);
+    content: '';
+    transition: transform .16s ease;
+}
+
+.brainstorm-autosave-switch input:checked + .brainstorm-autosave-track {
+    background: #16806F;
+}
+
+.brainstorm-autosave-switch input:checked + .brainstorm-autosave-track::after {
+    transform: translateX(13px);
+}
+
+.brainstorm-autosave-switch input:focus-visible + .brainstorm-autosave-track {
+    outline: 2px solid #16806F;
+    outline-offset: 2px;
+}
+
 .brainstorm-remove-link {
     min-height: 30px;
     padding: 0 4px;
@@ -3128,6 +3187,18 @@ body.dark-mode .brainstorm-board-menu-empty.is-loading {
 
 body.dark-mode .brainstorm-board-menu-action.is-danger:hover {
     background: #3A2024;
+}
+
+body.dark-mode .brainstorm-autosave-switch {
+    color: #D4D4D8;
+}
+
+body.dark-mode .brainstorm-autosave-track {
+    background: #52525B;
+}
+
+body.dark-mode .brainstorm-autosave-switch input:checked + .brainstorm-autosave-track {
+    background: #287B6E;
 }
 
 body.dark-mode .brainstorm-connect.active {

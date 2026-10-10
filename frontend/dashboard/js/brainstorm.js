@@ -17,6 +17,11 @@ let stickyLinkMode = false
 let pendingStickyLinkId = null
 let selectedStickyLinkId = null
 let brainstormDirty = false
+let autoSaveEnabled = localStorage.getItem('collab_brainstorm_auto_save') === 'true'
+let autoSaveTimer = null
+let autoSaveFailed = false
+let brainstormRevision = 0
+const autoSaveDelay = 700
 const ideaReactionEmojis = ['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']
 const stickyLinkTypes = {
   related: { label: 'Related', color: '#526675', width: 2, markerStart: true, markerEnd: true },
@@ -41,10 +46,23 @@ async function refreshBrainstormNotifications() {
 
 function markBrainstormDirty() {
   brainstormDirty = true
+  autoSaveFailed = false
+  brainstormRevision += 1
   const saveButton = document.querySelector('#save-brainstorm-btn')
   const saveStatus = document.querySelector('#brainstorm-save-status')
-  if (saveButton) saveButton.disabled = !activeBoard
+  if (saveButton) saveButton.disabled = !activeBoard || brainstormSaving
   if (saveStatus) saveStatus.textContent = activeBoard ? 'Unsaved changes' : 'Choose a board'
+  scheduleBrainstormAutoSave()
+}
+
+function scheduleBrainstormAutoSave() {
+  window.clearTimeout(autoSaveTimer)
+  autoSaveTimer = null
+  if (!autoSaveEnabled || autoSaveFailed || !activeBoard || !brainstormDirty || brainstormSaving) return
+  autoSaveTimer = window.setTimeout(() => {
+    autoSaveTimer = null
+    saveBrainstormBoard()
+  }, autoSaveDelay)
 }
 
 function getAccessibleProjects() {
@@ -325,6 +343,9 @@ async function loadBrainstormBoard(boardId) {
   brainstormDirty = false
   localStorage.setItem('collab_active_brainstorm_board', board.board_id)
   localStorage.setItem('collab_active_brainstorm_project', board.project_id)
+  window.clearTimeout(autoSaveTimer)
+  autoSaveTimer = null
+  brainstormRevision += 1
   renderBrainstormControls()
   renderStickyNotes()
   const saveButton = document.querySelector('#save-brainstorm-btn')
@@ -430,7 +451,11 @@ async function removeBrainstormBoard(board) {
 }
 
 async function saveBrainstormBoard() {
-  if (!activeBoard || !brainstormDirty) return
+  if (!activeBoard || !brainstormDirty || brainstormSaving) return
+  window.clearTimeout(autoSaveTimer)
+  autoSaveTimer = null
+  autoSaveFailed = false
+  const savedRevision = brainstormRevision
   const saveButton = document.querySelector('#save-brainstorm-btn')
   const saveStatus = document.querySelector('#brainstorm-save-status')
   if (saveButton) {
@@ -447,19 +472,25 @@ async function saveBrainstormBoard() {
         return {
           ...persistedNote,
           authorUid: note.authorUid,
-          reactions: Array.isArray(note.reactions) ? note.reactions : []
+          position: { ...note.position },
+          reactions: Array.isArray(note.reactions)
+            ? note.reactions.map(reaction => ({ ...reaction }))
+            : []
         }
       }),
-      links: stickyLinks
+      links: stickyLinks.map(link => ({ ...link }))
     }
     const response = await api.put(`/projects/brainstorm-boards/${encodeURIComponent(activeBoard.board_id)}`, { boardData })
     if (!response?.data?.board) throw new Error('The server did not confirm saving this board.')
-    stickyNotes = boardData.notes
-    stickyLinks = boardData.links
+    if (brainstormRevision === savedRevision) {
+      stickyNotes = boardData.notes
+      stickyLinks = boardData.links
+      brainstormDirty = false
+    }
     activeBoard = { ...activeBoard, ...response.data.board }
-    brainstormDirty = false
-    if (saveStatus) saveStatus.textContent = 'Saved'
+    if (saveStatus) saveStatus.textContent = brainstormDirty ? 'Unsaved changes' : 'Saved'
   } catch (error) {
+    autoSaveFailed = true
     console.error('Unable to save brainstorm board:', error)
     if (saveStatus) saveStatus.textContent = 'Save failed'
     showDashboardToast(error.message || 'The brainstorm board could not be saved.', 'error')
@@ -470,6 +501,7 @@ async function saveBrainstormBoard() {
       saveButton.disabled = !brainstormDirty
       saveButton.textContent = 'Save board'
     }
+    scheduleBrainstormAutoSave()
   }
 }
 
@@ -514,7 +546,7 @@ export function renderStickyNotes() {
   const connectionButton = document.querySelector('#sticky-connect-btn')
   const deleteLinkButton = document.querySelector('#sticky-delete-link-btn')
   if (addButton) addButton.disabled = !getAccessibleProjects().length || boardsLoading || brainstormSaving
-  if (saveButton) saveButton.disabled = !activeBoard || !brainstormDirty
+  if (saveButton) saveButton.disabled = !activeBoard || !brainstormDirty || brainstormSaving
   if (connectionButton) connectionButton.disabled = !activeBoard
   if (deleteLinkButton) deleteLinkButton.disabled = !activeBoard || !selectedStickyLinkId
   const status = document.querySelector('#brainstorm-save-status')
@@ -1288,6 +1320,21 @@ export function initBrainstormEvents() {
     showBrainstormNotice('Link removed. Save board to keep the change.')
   })
   document.querySelector('#save-brainstorm-btn')?.addEventListener('click', saveBrainstormBoard)
+  const autoSaveToggle = document.querySelector('#brainstorm-autosave-toggle')
+  if (autoSaveToggle) {
+    autoSaveToggle.checked = autoSaveEnabled
+    autoSaveToggle.addEventListener('change', event => {
+      autoSaveEnabled = event.currentTarget.checked
+      localStorage.setItem('collab_brainstorm_auto_save', String(autoSaveEnabled))
+      if (autoSaveEnabled) {
+        autoSaveFailed = false
+        scheduleBrainstormAutoSave()
+      } else {
+        window.clearTimeout(autoSaveTimer)
+        autoSaveTimer = null
+      }
+    })
+  }
   window.addEventListener('beforeunload', event => {
     if (!brainstormDirty) return
     event.preventDefault()
