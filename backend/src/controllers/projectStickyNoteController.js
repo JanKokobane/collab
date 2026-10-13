@@ -71,7 +71,7 @@ const getProjectStickyNotes = async (req, res) => {
                     note.note_id,
                     note.project_id,
                     note.created_by_firebase_uid,
-                    COALESCE(NULLIF(author.full_name, ''), 'Project member') AS author_name,
+                    COALESCE(NULLIF(author.full_name, ''), NULLIF(author.email, ''), 'Project member') AS author_name,
                     author.profile_image AS author_profile_image,
                     note.content,
                     note.color,
@@ -256,7 +256,7 @@ const createProjectStickyNote = async (req, res) => {
             data: {
                 note: {
                     ...noteResult.rows[0],
-                    author_name: 'You',
+                    author_name: creator.rows[0]?.name || 'A project member',
                     author_profile_image: creator.rows[0]?.profile_image || '',
                     recipients: recipientUids.map(firebaseUid => ({ firebaseUid }))
                 }

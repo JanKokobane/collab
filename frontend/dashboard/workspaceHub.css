@@ -3032,12 +3032,9 @@ body.dark-mode .workspace-updates-panel-header {
 }
 
 .project-sticky-note-layer {
-    position: absolute;
-    z-index: 50;
-    top: 64px;
-    right: 0;
-    bottom: 0;
-    left: 0;
+    position: fixed;
+    z-index: 1500;
+    inset: 0;
     overflow: hidden;
     pointer-events: none;
 }
@@ -3048,6 +3045,11 @@ body.dark-mode .workspace-updates-panel-header {
 
 .project-sticky-note-modal {
     gap: 14px;
+    overflow-y: auto;
+}
+
+.project-sticky-note-modal .messages-create-submit {
+    flex: 0 0 auto;
 }
 
 .project-sticky-note-modal .messages-create-header {
@@ -3567,12 +3569,6 @@ body.dark-mode .project-sticky-note-modal .messages-member-option.selected {
 
 body.dark-mode .project-sticky-note-modal .project-sticky-color-option.selected {
     border-color: #F4F4F6;
-}
-
-@media (max-width: 640px) {
-    .project-sticky-note-layer {
-        top: 58px;
-    }
 }
 
 body.dark-mode .hub-card,

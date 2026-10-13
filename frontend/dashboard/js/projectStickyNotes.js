@@ -5,12 +5,23 @@ import { getSvg } from './icons.js'
 
 let notes = []
 let activeProjectId = ''
+let lastViewedProjectId = ''
 let loadVersion = 0
 let refreshTimer = null
 let draggingNote = null
 
 function getProjectForView() {
-  return projects.find(project => project.name === activeView && project.projectId) || null
+  const project = projects.find(project => project.name === activeView && project.projectId)
+  if (project) return project
+  return projects.find(item => item.projectId === lastViewedProjectId) || null
+}
+
+function getNoteLayer() {
+  const layer = document.querySelector('#project-sticky-note-layer')
+  if (layer && layer.parentElement !== document.body) {
+    document.body.append(layer)
+  }
+  return layer
 }
 
 function normalizeNote(note) {
@@ -86,17 +97,20 @@ function saveNotePosition(note, card, layer) {
 function createNoteCard(note, layer) {
   const card = make('article', `project-sticky-note ${note.color}`)
   card.dataset.noteId = note.id
-  card.setAttribute('aria-label', `Sticky note by ${note.authorName || 'project member'}`)
+  const authorName = note.authorName ||
+    (note.authorUid === currentUser?.uid ? currentUser?.name : '') ||
+    'Project member'
+  card.setAttribute('aria-label', `Sticky note by ${authorName}`)
 
   const handle = make('div', 'project-sticky-note-handle')
   const authorAvatar = make('span', 'project-sticky-note-author-avatar')
   renderAvatarElement(authorAvatar, {
-    name: note.authorName,
+    name: authorName,
     profileImage: note.authorProfileImage
   }, 'project-sticky-note-author-avatar')
   const dragIcon = make('span', 'project-sticky-note-grip')
   dragIcon.innerHTML = getSvg('dots', '', 15, 15)
-  handle.append(authorAvatar, dragIcon, make('span', '', note.authorUid === currentUser?.uid ? 'Your note' : note.authorName))
+  handle.append(authorAvatar, dragIcon, make('span', '', authorName))
 
   if (note.authorUid === currentUser?.uid) {
     const editButton = make('button', 'project-sticky-note-edit', 'Edit')
@@ -163,14 +177,14 @@ function createNoteCard(note, layer) {
 }
 
 function renderNotes() {
-  const layer = document.querySelector('#project-sticky-note-layer')
+  const layer = getNoteLayer()
   if (!layer) return
   layer.replaceChildren()
   notes.forEach(note => createNoteCard(note, layer))
 }
 
 export async function renderProjectStickyNotes() {
-  const layer = document.querySelector('#project-sticky-note-layer')
+  const layer = getNoteLayer()
   if (!layer) return
   const project = getProjectForView()
   setNoteLayerVisibility(layer, Boolean(project))
@@ -180,6 +194,7 @@ export async function renderProjectStickyNotes() {
     layer.replaceChildren()
     return
   }
+  lastViewedProjectId = project.projectId
   if (project.projectId === activeProjectId) return
 
   activeProjectId = project.projectId
@@ -297,7 +312,7 @@ function openStickyNoteModal(project, noteToEdit = null) {
     memberList
   )
 
-  const submit = make('button', 'primary-button full gold', 'Create Sticky Note')
+  const submit = make('button', 'primary-button full gold', noteToEdit ? 'Save Changes' : 'Create Sticky Note')
   submit.type = 'submit'
   form.append(
     header,
@@ -341,7 +356,7 @@ function openStickyNoteModal(project, noteToEdit = null) {
       } else {
         notes.push(normalizeNote({
           ...response.data.note,
-          author_name: currentUser?.name || 'You',
+          author_name: response.data.note.author_name || currentUser?.name || 'You',
           author_profile_image: currentUser?.profileImage || currentUser?.photoURL || '',
           recipients: recipients.map(firebaseUid => ({
             firebaseUid,
@@ -368,7 +383,7 @@ function openCreateStickyNoteModal() {
 }
 
 export function initProjectStickyNotes() {
-  const layer = document.querySelector('#project-sticky-note-layer')
+  const layer = getNoteLayer()
   const addButton = document.querySelector('#project-add-sticky-note')
   if (!layer || !addButton || addButton.dataset.initialized) return
   addButton.dataset.initialized = 'true'
