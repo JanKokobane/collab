@@ -311,10 +311,16 @@
 }
 
 .brainstorm-board .sticky-author {
-    flex: 1 1 100%;
+    flex: 0 1 auto;
     min-width: 0;
     gap: 7px;
     font-size: 10px;
+}
+
+.brainstorm-board .sticky-author > span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .sticky-author-avatar {
@@ -356,6 +362,9 @@
 
 .sticky-reaction-picker-wrap {
     position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+    margin-left: auto;
     z-index: 6;
     visibility: hidden;
     opacity: 0;

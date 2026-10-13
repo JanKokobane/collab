@@ -84,6 +84,34 @@ const getAccessibleProject = async (client, projectId, firebaseUid) => {
     return result.rows[0] || null;
 };
 
+const resolveBoardNoteAuthors = async (queryable, boardData) => {
+    const notes = Array.isArray(boardData?.notes) ? boardData.notes : [];
+    const authorUids = [...new Set(
+        notes.map(note => note.authorUid).filter(uid => typeof uid === 'string' && uid)
+    )];
+    if (!authorUids.length) return boardData;
+
+    const profiles = await queryable.query(
+        `
+            SELECT firebase_uid, NULLIF(full_name, '') AS full_name
+            FROM user_profiles
+            WHERE firebase_uid = ANY($1::text[])
+        `,
+        [authorUids]
+    );
+    const profilesByUid = new Map(profiles.rows.map(profile => [profile.firebase_uid, profile]));
+    return {
+        ...boardData,
+        notes: notes.map(note => {
+            const profile = profilesByUid.get(note.authorUid);
+            return {
+                ...note,
+                author: profile?.full_name || note.author || ''
+            };
+        })
+    };
+};
+
 const getProjectBoards = async (req, res) => {
     try {
         const client = await pool.connect();
@@ -463,22 +491,7 @@ const getBoard = async (req, res) => {
             });
         }
         const board = result.rows[0];
-        const membersByUid = new Map(
-            board.members.map(member => [member.firebaseUid, member])
-        );
-        if (Array.isArray(board.board_data?.notes)) {
-            board.board_data = {
-                ...board.board_data,
-                notes: board.board_data.notes.map(note => {
-                    const author = membersByUid.get(note.authorUid);
-                    const profileName = typeof author?.name === 'string' ? author.name.trim() : '';
-                    return {
-                        ...note,
-                        author: profileName || note.author || ''
-                    };
-                })
-            };
-        }
+        board.board_data = await resolveBoardNoteAuthors(pool, board.board_data);
         return res.status(200).json({
             success: true,
             data: { board }
@@ -823,7 +836,7 @@ const deleteBoard = async (req, res) => {
 };
 
 const saveBoard = async (req, res) => {
-    const boardData = req.body?.boardData;
+    let boardData = req.body?.boardData;
     if (!boardDataIsValid(boardData)) {
         return res.status(400).json({
             success: false,
@@ -917,6 +930,7 @@ const saveBoard = async (req, res) => {
             }
         }
 
+        boardData = await resolveBoardNoteAuthors(client, boardData);
         const result = await client.query(
             `
                 UPDATE brainstorm_boards board

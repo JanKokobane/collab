@@ -370,16 +370,15 @@ async function loadBrainstormBoard(boardId) {
     delete note.upvotedBy
     delete note.userUpvoted
     const member = activeBoardMembers.find(item => getMemberUid(item) === note.authorUid)
+    const savedAuthorName = getSafeAuthorName(note.author, '', note.authorUid)
     if (member) {
       const memberName = getSafeAuthorName(member.name, '', getMemberUid(member))
-      note.author = memberName ||
-        getSafeAuthorName(note.author, '', note.authorUid) ||
+      note.author = savedAuthorName ||
+        memberName ||
         getSafeAuthorName('', member.email, note.authorUid)
       note.authorProfileImage = member.profileImage || note.authorProfileImage || ''
-    } else if (note.authorUid === firebaseAuth.currentUser?.uid) {
-      note.author = getSafeAuthorName(currentUser.name, currentUser.email, note.authorUid)
     } else {
-      note.author = getSafeAuthorName(note.author, '', note.authorUid)
+      note.author = savedAuthorName
     }
   })
   brainstormDirty = false
@@ -676,6 +675,7 @@ async function saveBrainstormBoard({ automatic = false } = {}) {
         )
         stickyNotes = boardData.notes.map(note => ({
           ...note,
+          author: savedNotesById.get(note.id)?.author || note.author,
           reactions: savedNotesById.get(note.id)?.reactions || note.reactions
         }))
         stickyLinks = boardData.links
@@ -946,8 +946,8 @@ export function renderStickyNotes() {
       }
     })
     pickerWrap.append(pickerButton, picker)
-    reactionControls.append(reactionList, pickerWrap)
-    footer.append(author, reactionControls)
+    reactionControls.append(reactionList)
+    footer.append(author, pickerWrap, reactionControls)
     card.append(top, body, footer)
 
     deleteButton?.addEventListener('click', () => {
