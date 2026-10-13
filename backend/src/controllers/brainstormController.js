@@ -462,9 +462,26 @@ const getBoard = async (req, res) => {
                 message: 'Brainstorm board not found.'
             });
         }
+        const board = result.rows[0];
+        const membersByUid = new Map(
+            board.members.map(member => [member.firebaseUid, member])
+        );
+        if (Array.isArray(board.board_data?.notes)) {
+            board.board_data = {
+                ...board.board_data,
+                notes: board.board_data.notes.map(note => {
+                    const author = membersByUid.get(note.authorUid);
+                    const profileName = typeof author?.name === 'string' ? author.name.trim() : '';
+                    return {
+                        ...note,
+                        author: profileName || note.author || ''
+                    };
+                })
+            };
+        }
         return res.status(200).json({
             success: true,
-            data: { board: result.rows[0] }
+            data: { board }
         });
     } catch (error) {
         console.error('Get brainstorm board error:', error);
@@ -476,45 +493,300 @@ const getBoard = async (req, res) => {
     }
 };
 
-const updateBoardTitle = async (req, res) => {
-    const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
-    if (!title || title.length > 160) {
+const toggleBoardNoteReaction = async (req, res) => {
+    const { emoji } = req.body || {};
+    if (!allowedIdeaReactions.has(emoji)) {
         return res.status(400).json({
             success: false,
-            code: 'INVALID_BRAINSTORM_BOARD_TITLE',
-            message: 'Provide a board title of 1 to 160 characters.'
+            code: 'INVALID_BRAINSTORM_REACTION',
+            message: 'Choose a supported reaction.'
         });
     }
 
+    let client;
     try {
-        const result = await pool.query(
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const result = await client.query(
             `
-                UPDATE brainstorm_boards
-                SET title = $3, updated_at = NOW()
-                WHERE board_id = $1
-                  AND created_by_firebase_uid = $2
-                RETURNING board_id, project_id, title, created_by_firebase_uid, updated_at
+                SELECT board.board_data
+                FROM brainstorm_boards board
+                JOIN brainstorm_board_members membership
+                  ON membership.board_id = board.board_id
+                 AND membership.firebase_uid = $2
+                WHERE board.board_id = $1
+                FOR UPDATE OF board
             `,
-            [req.params.boardId, req.firebaseUid, title]
+            [req.params.boardId, req.firebaseUid]
         );
         if (!result.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                success: false,
+                code: 'BRAINSTORM_BOARD_NOT_FOUND',
+                message: 'Brainstorm board not found.'
+            });
+        }
+
+        const boardData = result.rows[0].board_data;
+        const notes = Array.isArray(boardData?.notes) ? boardData.notes : [];
+        const note = notes.find(item => item.id === req.params.noteId);
+        if (!note) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                success: false,
+                code: 'BRAINSTORM_NOTE_NOT_FOUND',
+                message: 'Idea not found on this board.'
+            });
+        }
+
+        const reactions = Array.isArray(note.reactions) ? note.reactions : [];
+        const alreadyReacted = reactions.some(
+            reaction => reaction.emoji === emoji && reaction.firebaseUid === req.firebaseUid
+        );
+        if (!alreadyReacted && reactions.length >= 1000) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                success: false,
+                code: 'BRAINSTORM_REACTION_LIMIT_REACHED',
+                message: 'This idea has reached its reaction limit.'
+            });
+        }
+        note.reactions = alreadyReacted
+            ? reactions.filter(
+                reaction => reaction.emoji !== emoji || reaction.firebaseUid !== req.firebaseUid
+            )
+            : [...reactions, { emoji, firebaseUid: req.firebaseUid }];
+
+        const updatedBoardData = { ...boardData, notes };
+        await client.query(
+            `
+                UPDATE brainstorm_boards
+                SET board_data = $2::jsonb, updated_at = NOW()
+                WHERE board_id = $1
+            `,
+            [req.params.boardId, JSON.stringify(updatedBoardData)]
+        );
+        await client.query('COMMIT');
+        return res.status(200).json({
+            success: true,
+            data: { note: { id: note.id, reactions: note.reactions } }
+        });
+    } catch (error) {
+        if (client) {
+            await client.query('ROLLBACK').catch(rollbackError => {
+                console.error('Toggle brainstorm reaction rollback error:', rollbackError);
+            });
+        }
+        console.error('Toggle brainstorm reaction error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'BRAINSTORM_REACTION_UPDATE_FAILED',
+            message: 'The idea reaction could not be updated.'
+        });
+    } finally {
+        client?.release();
+    }
+};
+
+const updateBoardSettings = async (req, res) => {
+    const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+    const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId.trim() : '';
+    const requestedMembers = req.body?.memberFirebaseUids;
+    if (
+        !title || title.length > 160 ||
+        !projectId || projectId.length > 128 ||
+        !Array.isArray(requestedMembers) ||
+        requestedMembers.length > 100 ||
+        requestedMembers.some(uid => typeof uid !== 'string' || !uid || uid.length > 128) ||
+        requestedMembers.includes(req.firebaseUid) ||
+        new Set(requestedMembers).size !== requestedMembers.length
+    ) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_BRAINSTORM_BOARD_SETTINGS',
+            message: 'Provide a board title and valid, unique project member IDs.'
+        });
+    }
+
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const boardResult = await client.query(
+            `
+                SELECT
+                    board.board_id,
+                    board.project_id,
+                    board.created_by_firebase_uid
+                FROM brainstorm_boards board
+                WHERE board.board_id = $1
+                  AND board.created_by_firebase_uid = $2
+                FOR UPDATE OF board
+            `,
+            [req.params.boardId, req.firebaseUid]
+        );
+        const board = boardResult.rows[0];
+        if (!board) {
+            await client.query('ROLLBACK');
             return res.status(404).json({
                 success: false,
                 code: 'BRAINSTORM_BOARD_NOT_FOUND',
                 message: 'The board was not found or you are not its creator.'
             });
         }
+
+        const projectResult = await client.query(
+            `
+                SELECT project_id, name, creator_firebase_uid
+                FROM projects
+                WHERE project_id = $1
+                  AND (
+                      creator_firebase_uid = $2
+                      OR EXISTS (
+                          SELECT 1
+                          FROM project_invitations invitation
+                          WHERE invitation.project_id = projects.project_id
+                            AND invitation.invited_firebase_uid = $2
+                            AND invitation.status = 'accepted'
+                      )
+                  )
+            `,
+            [projectId, req.firebaseUid]
+        );
+        const project = projectResult.rows[0];
+        if (!project) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                success: false,
+                code: 'BRAINSTORM_PROJECT_NOT_FOUND',
+                message: 'The selected project could not be found or accessed.'
+            });
+        }
+
+        const acceptedMembers = await client.query(
+            `
+                SELECT invited_firebase_uid
+                FROM project_invitations
+                WHERE project_id = $1
+                  AND status = 'accepted'
+                  AND invited_firebase_uid = ANY($2::text[])
+            `,
+            [project.project_id, requestedMembers]
+        );
+        const currentMembers = await client.query(
+            `
+                SELECT firebase_uid
+                FROM brainstorm_board_members
+                WHERE board_id = $1
+            `,
+            [board.board_id]
+        );
+        const validUids = new Set([
+            project.creator_firebase_uid,
+            ...acceptedMembers.rows.map(row => row.invited_firebase_uid),
+            ...(project.project_id === board.project_id
+                ? currentMembers.rows.map(row => row.firebase_uid)
+                : [])
+        ]);
+        if (requestedMembers.some(uid => !validUids.has(uid))) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_BRAINSTORM_BOARD_MEMBER',
+                message: 'Only accepted project members can be added to this board.'
+            });
+        }
+
+        const oldMemberUids = new Set(currentMembers.rows.map(row => row.firebase_uid));
+        const newMemberUids = requestedMembers.filter(uid =>
+            project.project_id !== board.project_id || !oldMemberUids.has(uid)
+        );
+        await client.query(
+            `
+                DELETE FROM brainstorm_board_members
+                WHERE board_id = $1
+                  AND firebase_uid <> $2
+                  AND NOT (firebase_uid = ANY($3::text[]))
+            `,
+            [board.board_id, req.firebaseUid, requestedMembers]
+        );
+        await client.query(
+            `
+                INSERT INTO brainstorm_board_members (board_id, firebase_uid, invited_by_firebase_uid)
+                SELECT $1, member_uid, $2
+                FROM unnest($3::text[]) AS member_uid
+                ON CONFLICT (board_id, firebase_uid) DO NOTHING
+            `,
+            [board.board_id, req.firebaseUid, requestedMembers]
+        );
+        const updatedBoard = await client.query(
+            `
+                UPDATE brainstorm_boards
+                SET project_id = $2, title = $3, updated_at = NOW()
+                WHERE board_id = $1
+                RETURNING board_id, project_id, title, created_by_firebase_uid, updated_at
+            `,
+            [board.board_id, project.project_id, title]
+        );
+
+        if (newMemberUids.length) {
+            const editor = await client.query(
+                `
+                    SELECT COALESCE(NULLIF(full_name, ''), email, 'A project member') AS name
+                    FROM user_profiles
+                    WHERE firebase_uid = $1
+                `,
+                [req.firebaseUid]
+            );
+            await client.query(
+                `
+                    INSERT INTO notifications (
+                        recipient_firebase_uid, project_id, brainstorm_board_id,
+                        type, title, detail, avatar, tone_class
+                    )
+                    SELECT
+                        member_uid,
+                        $1,
+                        $2,
+                        'brainstorm_board_invitation',
+                        'You were invited to a brainstorm board',
+                        $3,
+                        '💡',
+                        'teal-bg'
+                    FROM unnest($4::text[]) AS member_uid
+                `,
+                [
+                    project.project_id,
+                    board.board_id,
+                    `${editor.rows[0]?.name || 'A project member'} invited you to "${title}" for ${project.name}.`,
+                    newMemberUids
+                ]
+            );
+        }
+
+        await client.query('COMMIT');
         return res.status(200).json({
             success: true,
-            data: { board: result.rows[0] }
+            data: {
+                board: { ...updatedBoard.rows[0], project_name: project.name },
+                memberFirebaseUids: [...new Set([req.firebaseUid, ...requestedMembers])]
+            }
         });
     } catch (error) {
-        console.error('Update brainstorm board title error:', error);
+        if (client) {
+            await client.query('ROLLBACK').catch(rollbackError => {
+                console.error('Update brainstorm board settings rollback error:', rollbackError);
+            });
+        }
+        console.error('Update brainstorm board settings error:', error);
         return res.status(500).json({
             success: false,
-            code: 'BRAINSTORM_BOARD_UPDATE_FAILED',
-            message: 'The brainstorm board title could not be updated.'
+            code: 'BRAINSTORM_BOARD_SETTINGS_UPDATE_FAILED',
+            message: 'The brainstorm board could not be updated.'
         });
+    } finally {
+        client?.release();
     }
 };
 
@@ -731,6 +1003,7 @@ module.exports = {
     getBoard,
     getProjectBoards,
     inviteBoardMembers,
-    updateBoardTitle,
-    saveBoard
+    updateBoardSettings,
+    saveBoard,
+    toggleBoardNoteReaction
 };

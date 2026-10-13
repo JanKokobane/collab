@@ -41,8 +41,9 @@ const {
     getProjectBoards,
     inviteBoardMembers,
     deleteBoard,
-    updateBoardTitle,
-    saveBoard
+    updateBoardSettings,
+    saveBoard,
+    toggleBoardNoteReaction
 } = require('../controllers/brainstormController');
 
 const {
@@ -85,9 +86,10 @@ router.delete('/:projectId/resources/:resourceId', deleteProjectResource);
 router.get('/:projectId/brainstorm-boards', getProjectBoards);
 router.post('/:projectId/brainstorm-boards', createProjectBoard);
 router.get('/brainstorm-boards/:boardId', getBoard);
-router.patch('/brainstorm-boards/:boardId', updateBoardTitle);
+router.patch('/brainstorm-boards/:boardId', updateBoardSettings);
 router.delete('/brainstorm-boards/:boardId', deleteBoard);
 router.put('/brainstorm-boards/:boardId', saveBoard);
+router.post('/brainstorm-boards/:boardId/notes/:noteId/reactions', toggleBoardNoteReaction);
 router.post('/brainstorm-boards/:boardId/members', inviteBoardMembers);
 
 router.get(

@@ -305,11 +305,13 @@
 }
 
 .brainstorm-board .sticky-note-footer {
+    flex-wrap: wrap;
     gap: 8px;
     padding-top: 9px;
 }
 
 .brainstorm-board .sticky-author {
+    flex: 1 1 100%;
     min-width: 0;
     gap: 7px;
     font-size: 10px;
@@ -337,27 +339,27 @@
 
 .sticky-reaction-controls {
     display: flex;
+    flex: 1 1 100%;
     min-width: 0;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
     flex-wrap: wrap;
     gap: 4px;
 }
 
 .sticky-reaction-list {
     display: flex;
+    min-width: 0;
     flex-wrap: wrap;
     gap: 3px;
 }
 
 .sticky-reaction-picker-wrap {
-    position: absolute;
+    position: relative;
     z-index: 6;
-    top: 5px;
-    right: -29px;
     visibility: hidden;
     opacity: 0;
-    pointer-events: auto;
+    pointer-events: none;
     transition: opacity .12s ease;
 }
 
@@ -366,6 +368,7 @@
 .sticky-reaction-picker-wrap:focus-within {
     visibility: visible;
     opacity: 1;
+    pointer-events: auto;
 }
 
 .sticky-reaction-picker-trigger,
@@ -402,8 +405,8 @@
 .sticky-reaction-picker {
     position: absolute;
     z-index: 5;
-    right: 0;
-    bottom: calc(100% + 6px);
+    left: 0;
+    top: calc(100% + 6px);
     display: grid;
     grid-template-columns: repeat(5, 32px);
     gap: 3px;
@@ -416,6 +419,11 @@
 
 .sticky-reaction-picker[hidden] {
     display: none;
+}
+
+.sticky-reaction-picker.opens-up {
+    top: auto;
+    bottom: calc(100% + 6px);
 }
 
 .sticky-reaction-option {
@@ -436,6 +444,7 @@
     .sticky-reaction-picker-wrap {
         visibility: visible;
         opacity: 1;
+        pointer-events: auto;
     }
 }
 
