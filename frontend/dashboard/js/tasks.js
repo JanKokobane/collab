@@ -19,7 +19,7 @@ import {
 import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } from './auth.js'
 import { createScheduleCalendarPicker } from './calendar.js'
 import { api } from './api.js'
-import { showDashboardToast } from './modalChrome.js'
+import { setDashboardButtonLoading, showDashboardToast } from './modalChrome.js'
 
 // ============================================================
 // TASKS & BOARD MANAGEMENT
@@ -93,6 +93,12 @@ export async function moveTaskStatus(taskId, newStatus) {
     approvedBy: task.approvedBy
   }
 
+  if (!task.backendPersistent) {
+    task.statusUpdating = true
+    renderTasks()
+    await new Promise(resolve => window.requestAnimationFrame(resolve))
+  }
+
   task.status = newStatus
   task.done = newStatus === 'Done'
 
@@ -134,6 +140,7 @@ export async function moveTaskStatus(taskId, newStatus) {
       task.progress = 0
       task.approvalStatus = 'none'
     }
+    task.statusUpdating = false
   }
 
   saveTasks()
@@ -146,6 +153,7 @@ export async function moveTaskStatus(taskId, newStatus) {
 
   addAuditLog('Task status updated', `"${task.title}" moved from ${oldStatus} to ${newStatus}.`, newStatus === 'Done' ? 'check' : 'sync')
   pushNotification(`Task ${newStatus}`, `"${task.title}" moved to ${newStatus}`, newStatus === 'Done' ? '✓' : '⇄', newStatus === 'Done' ? 'green-bg' : 'coral-bg')
+  showDashboardToast(`"${task.title}" moved to ${newStatus}.`, 'success')
 }
 
 export function taskCard(task) {
@@ -227,28 +235,35 @@ export function taskCard(task) {
   }
 
   const moveRow = make('div', 'card-move-row')
-  if (canMoveTask && task.status !== 'Backlog') {
+  if (task.statusUpdating) {
+    const loading = make('span', 'task-status-loading')
+    const spinner = make('span', 'form-submit-spinner')
+    spinner.setAttribute('aria-hidden', 'true')
+    loading.append(spinner, make('span', '', 'Updating…'))
+    loading.setAttribute('role', 'status')
+    moveRow.append(loading)
+  } else if (canMoveTask && task.status !== 'Backlog') {
     const btnBacklog = make('button', 'card-move-btn')
     btnBacklog.type = 'button'
     btnBacklog.innerHTML = `${getSvg('arrowLeft', 'arrow-svg', 11, 11)} <span>Backlog</span>`
     btnBacklog.addEventListener('click', e => { e.stopPropagation(); moveTaskStatus(task.id, 'Backlog') })
     moveRow.append(btnBacklog)
   }
-  if (canMoveTask && task.status !== 'To do') {
+  if (!task.statusUpdating && canMoveTask && task.status !== 'To do') {
     const btnTodo = make('button', 'card-move-btn')
     btnTodo.type = 'button'
     btnTodo.innerHTML = `${getSvg('arrowLeft', 'arrow-svg', 11, 11)} <span>To do</span>`
     btnTodo.addEventListener('click', e => { e.stopPropagation(); moveTaskStatus(task.id, 'To do') })
     moveRow.append(btnTodo)
   }
-  if (canMoveTask && task.status !== 'In progress') {
+  if (!task.statusUpdating && canMoveTask && task.status !== 'In progress') {
     const btnProg = make('button', 'card-move-btn')
     btnProg.type = 'button'
     btnProg.innerHTML = `<span>In prog</span> ${getSvg('arrowRight', 'arrow-svg', 11, 11)}`
     btnProg.addEventListener('click', e => { e.stopPropagation(); moveTaskStatus(task.id, 'In progress') })
     moveRow.append(btnProg)
   }
-  if (canMoveTask && task.status !== 'Done') {
+  if (!task.statusUpdating && canMoveTask && task.status !== 'Done') {
     const btnDone = make('button', 'card-move-btn')
     btnDone.type = 'button'
     btnDone.innerHTML = `${getSvg('check', 'check-svg', 11, 11)} <span>Done</span>`
@@ -453,8 +468,10 @@ export function openTaskModal(prefilledStatus = 'To do') {
 
   form.append(close, make('p', 'eyebrow', 'NEW TASK ASSIGNMENT'), title, copy, titleLabel, descLabel, row1, row2, row3, schedulePicker.element, submit)
 
-  form.addEventListener('submit', event => {
+  form.addEventListener('submit', async event => {
     event.preventDefault()
+    setDashboardButtonLoading(submit, 'Creating task…')
+    await new Promise(resolve => window.requestAnimationFrame(resolve))
     const assignedMember = eligibleAssignees.find(m => m.initials === assigneeSelect.value) || eligibleAssignees[0]
     const tagTone = { Design: 'purple', Development: 'blue', Marketing: 'green', Product: 'yellow' }[tagSelect.value] || 'blue'
     const schedule = schedulePicker.getValues()
@@ -488,6 +505,7 @@ export function openTaskModal(prefilledStatus = 'To do') {
 
     addAuditLog('Task created', `${currentUser.name} assigned "${newTask.title}" to ${assignedMember.name}.`, 'task')
     pushNotification('Task Assigned', `"${newTask.title}" assigned to ${assignedMember.name}`, assignedMember.initials, `${assignedMember.tone}-bg`)
+    showDashboardToast(`Task "${newTask.title}" created.`, 'success')
   })
 
   backdrop.append(form)

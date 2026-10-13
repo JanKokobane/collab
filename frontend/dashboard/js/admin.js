@@ -23,7 +23,7 @@ import { addDaysToDateKey, toLocalDateKey } from './dateUtils.js'
 import { openInviteCollaboratorModal, openCreateProjectModal, openEditProjectModal } from './projects.js'
 import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
-import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
+import { setDashboardButtonLoading, showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
 
 // ============================================================
@@ -198,7 +198,7 @@ export function renderMembersTable() {
         })
         if (!confirmed) return
 
-        removeBtn.disabled = true
+        const restoreRemove = setDashboardButtonLoading(removeBtn, 'Removing…')
         try {
           await api.delete(
             `/projects/${encodeURIComponent(member.projectId)}/invitations/${encodeURIComponent(member.invitationId)}`
@@ -216,7 +216,7 @@ export function renderMembersTable() {
             'success'
           )
         } catch (error) {
-          removeBtn.disabled = false
+          restoreRemove()
           pushNotification('Member Removal Failed', error.message || 'The project member could not be removed.', '⚠️', 'coral-bg')
         }
       })
@@ -340,7 +340,7 @@ function renderProjectTaskDetails(project, taskRecords, loadError, refreshDetail
             if (targetSprint) sprintNameMap[item.name] = targetSprint.name
           })
 
-          removeSprintButton.disabled = true
+          const restoreRemove = setDashboardButtonLoading(removeSprintButton, 'Removing…')
           try {
             await api.put(`/projects/${encodeURIComponent(project.projectId)}`, {
               sprints: updatedSprints,
@@ -366,7 +366,7 @@ function renderProjectTaskDetails(project, taskRecords, loadError, refreshDetail
             refreshDetails()
             showDashboardToast('Sprint removed and remaining sprints renumbered.', 'success')
           } catch (error) {
-            removeSprintButton.disabled = false
+            restoreRemove()
             showDashboardToast(error.message || 'The sprint could not be removed.', 'error')
           }
         })
@@ -477,13 +477,13 @@ function renderProjectTaskDetails(project, taskRecords, loadError, refreshDetail
             danger: true
           })
           if (!confirmed) return
-          deleteButton.disabled = true
+          const restoreDelete = setDashboardButtonLoading(deleteButton, 'Deleting…')
           try {
             await api.delete(`/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(task.task_id)}`)
             showDashboardToast('Project task deleted.', 'success')
             renderAdminTasksTable()
           } catch (error) {
-            deleteButton.disabled = false
+            restoreDelete()
             showDashboardToast(error.message || 'The task could not be deleted.', 'error')
           }
         })
@@ -931,7 +931,6 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
 
   form.addEventListener('submit', async event => {
     event.preventDefault()
-    submit.disabled = true
     const schedule = schedulePicker.getValues()
     const payload = {
       title: titleInput.value.trim(),
@@ -943,6 +942,7 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
       startDate: schedule.startDate || null,
       dueDate: schedule.dueDate || null
     }
+    const restoreSubmit = setDashboardButtonLoading(submit, task ? 'Saving task…' : 'Creating task…')
     try {
       const projectId = encodeURIComponent(project.projectId)
       if (draftSprints.length) {
@@ -974,7 +974,7 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
       showDashboardToast(task ? 'Project task updated.' : 'Project task created.', 'success')
       renderAdminTasksTable()
     } catch (error) {
-      submit.disabled = false
+      restoreSubmit()
       showDashboardToast(error.message || 'The project task could not be saved.', 'error')
     }
   })
@@ -1243,6 +1243,7 @@ export function openLegacyAdminTaskModal(prefilledStatus = 'To do', prefilledPro
 
     addAuditLog('Admin task created', `Admin created deliverable "${newTask.title}" in ${newTask.project} assigned to ${assignedMember.name}.`, 'task')
     pushNotification('New Deliverable Assigned', `"${newTask.title}" in ${newTask.project}`, assignedMember.initials, `${assignedMember.tone}-bg`)
+    showDashboardToast(`Task "${newTask.title}" created.`, 'success')
   })
 }
 
@@ -1374,8 +1375,10 @@ export function openLegacyAdminEditTaskModal(task) {
   backdrop.append(form)
   root.replaceChildren(backdrop)
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async e => {
     e.preventDefault()
+    setDashboardButtonLoading(submit, 'Saving task…')
+    await new Promise(resolve => window.requestAnimationFrame(resolve))
     task.title = titleInput.value.trim()
     task.description = descInput.value.trim()
 
@@ -1400,6 +1403,7 @@ export function openLegacyAdminEditTaskModal(task) {
     renderAdminTasksTable()
     hub.renderCalendarPanel?.()
     addAuditLog('Admin updated task', `Updated "${task.title}".`, 'edit')
+    showDashboardToast(`Task "${task.title}" updated.`, 'success')
   })
 }
 
@@ -1425,11 +1429,11 @@ function renderProjectActionDropdown(container, label, availableProjects, onSele
       make('i', `dot ${project.color || 'blue'}`),
       make('span', '', project.name)
     )
-    option.addEventListener('click', () => {
+    option.addEventListener('click', async () => {
+      await onSelect(project, option)
       container.querySelectorAll('details[open]').forEach(item => {
         item.open = false
       })
-      onSelect(project)
     })
     menu.append(option)
   })
@@ -1452,11 +1456,13 @@ async function removeProject(project, deleteButton) {
   })
   if (!confirmed) return
 
-  if (deleteButton) deleteButton.disabled = true
+  const restoreDelete = deleteButton
+    ? setDashboardButtonLoading(deleteButton, 'Deleting…')
+    : null
   try {
     await api.delete(`/projects/${encodeURIComponent(project.projectId || project.id)}`)
   } catch (error) {
-    if (deleteButton) deleteButton.disabled = false
+    restoreDelete?.()
     pushNotification(
       'Project Removal Failed',
       error.message || `Unable to remove "${project.name}".`,
@@ -1515,7 +1521,7 @@ export function renderAdminProjectsTable() {
       projectActions,
       'Remove',
       ownedProjects,
-      project => removeProject(project),
+      (project, button) => removeProject(project, button),
       'admin-project-remove-action'
     )
   }

@@ -18,7 +18,7 @@ import {
 } from './state.js'
 import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
-import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
+import { setDashboardButtonLoading, showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 
 import {
   getActiveProject,
@@ -308,7 +308,7 @@ export function openCreateProjectModal() {
       ]
     }
 
-    submit.disabled = true
+    const restoreSubmit = setDashboardButtonLoading(submit, 'Creating project…')
     try {
       const response = await api.post('/projects', {
         project_id: newProject.id,
@@ -344,7 +344,7 @@ export function openCreateProjectModal() {
     } catch (error) {
       errorNotice.textContent = error.message || 'The project could not be created. Please try again.'
       errorNotice.hidden = false
-      submit.disabled = false
+      restoreSubmit()
       return
     }
 
@@ -381,6 +381,7 @@ export function openCreateProjectModal() {
       `${currentUser?.name || 'Admin'} created ${projectType} project "${name}".`,
       'sync'
     )
+    showDashboardToast(`Project "${name}" created.`, 'success')
 
   })
 
@@ -486,7 +487,7 @@ export function openEditProjectModal(project) {
     nameInput.setCustomValidity('')
 
     const oldName = project.name
-    submit.disabled = true
+    const restoreSubmit = setDashboardButtonLoading(submit, 'Saving project…')
     try {
       const response = await api.put(`/projects/${encodeURIComponent(project.projectId || project.id)}`, {
         name,
@@ -507,7 +508,7 @@ export function openEditProjectModal(project) {
     } catch (error) {
       errorNotice.textContent = error.message || 'The project could not be updated. Please try again.'
       errorNotice.hidden = false
-      submit.disabled = false
+      restoreSubmit()
       return
     }
 
@@ -545,6 +546,7 @@ export function openEditProjectModal(project) {
       '✏️',
       'teal-bg'
     )
+    showDashboardToast(`Project "${name}" updated.`, 'success')
   })
 
   backdrop.append(form)
@@ -696,14 +698,14 @@ export function openAddSprintModal(projectOverride = null) {
         status: statusSelect.value
         }
       ]
-      submit.disabled = true
+      const restoreSubmit = setDashboardButtonLoading(submit, 'Adding sprint…')
       try {
         await api.put(
           `/projects/${encodeURIComponent(proj.projectId || proj.id)}`,
           { sprints: updatedSprints }
         )
       } catch (error) {
-        submit.disabled = false
+        restoreSubmit()
         showDashboardToast(error.message || 'The sprint could not be saved.', 'error')
         return
       }
@@ -726,6 +728,7 @@ export function openAddSprintModal(projectOverride = null) {
         '⚡',
         'blue-bg'
       )
+      showDashboardToast(`Sprint "${sName}" added to ${proj.name}.`, 'success')
     }
   )
 
@@ -1496,7 +1499,7 @@ export function openManageCollaboratorsModal() {
             })
             if (!confirmed) return
 
-            remove.disabled = true
+            const restoreRemove = setDashboardButtonLoading(remove, 'Removing…')
             try {
               await api.delete(`/projects/${encodeURIComponent(project.projectId || project.id)}/invitations/${encodeURIComponent(invitation.invitation_id)}`)
               await refresh()
@@ -1507,7 +1510,7 @@ export function openManageCollaboratorsModal() {
             } catch (error) {
               notice.textContent = error.message || 'The invitation or access could not be removed.'
               notice.hidden = false
-              remove.disabled = false
+              restoreRemove()
             }
           })
           actions.append(remove)

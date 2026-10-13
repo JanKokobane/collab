@@ -14,7 +14,7 @@ import { updateUserUI } from './auth.js'
 import { initSettingsControls } from './theme.js'
 import { loadProjectMeetings } from './meetings.js'
 import { loadProjectCalendarData } from './calendarData.js'
-import { loadProjectResources } from './workspaceResources.js'
+import { loadProjectResources, loadProjectScratchpad } from './workspaceResources.js'
 import { showDashboardToast } from './modalChrome.js'
 
 // ============================================================
@@ -138,7 +138,8 @@ export function switchView(viewName) {
       ? Promise.all([loadProjectMeetings(), loadProjectCalendarData()])
       : Promise.all([
         loadProjectMeetings(),
-        ...(viewName === 'Workspace' || viewName === 'Admin Console' ? [loadProjectResources()] : [])
+        ...(viewName === 'Workspace' || viewName === 'Admin Console' ? [loadProjectResources()] : []),
+        ...(viewName === 'Workspace' ? [loadProjectScratchpad()] : [])
       ])
     dataLoad.then(() => {
       if (activeView !== viewName) return

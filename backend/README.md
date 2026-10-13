@@ -166,6 +166,9 @@ members, messages, reactions, and read receipts; it is applied automatically
 during backend startup.
 Migration `015_message_delete_scopes.sql` adds per-user message hiding and
 delete-for-everyone state for persistent messages.
+Migration `016_project_scratchpads.sql` adds a shared notes document for each
+project. Authenticated project creators and accepted members can load and save
+it through `GET` and `PUT /api/projects/:projectId/scratchpad`.
 
 ## Remaining local demo features
 

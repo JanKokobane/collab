@@ -36,6 +36,10 @@ const {
     getProjectResources
 } = require('../controllers/resourceController');
 const {
+    getProjectScratchpad,
+    saveProjectScratchpad
+} = require('../controllers/scratchpadController');
+const {
     createProjectBoard,
     getBoard,
     getProjectBoards,
@@ -83,6 +87,8 @@ router.get('/:projectId/resources', getProjectResources);
 router.post('/:projectId/resources', createProjectResource);
 router.put('/:projectId/resources/:resourceId', updateProjectResource);
 router.delete('/:projectId/resources/:resourceId', deleteProjectResource);
+router.get('/:projectId/scratchpad', getProjectScratchpad);
+router.put('/:projectId/scratchpad', saveProjectScratchpad);
 router.get('/:projectId/brainstorm-boards', getProjectBoards);
 router.post('/:projectId/brainstorm-boards', createProjectBoard);
 router.get('/brainstorm-boards/:boardId', getBoard);

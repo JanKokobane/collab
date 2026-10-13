@@ -368,6 +368,64 @@ function formatFileSize(bytes) {
   return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`
 }
 
+function createFileIcon(attachment) {
+  const fileName = attachment.fileName || ''
+  const extensionSeparator = fileName.lastIndexOf('.')
+  const extension = extensionSeparator > 0 ? fileName.slice(extensionSeparator + 1).toLowerCase() : ''
+  const mediaType = attachment.mediaType?.toLowerCase() || ''
+  const types = [
+    { category: 'pdf', label: 'PDF', extensions: ['pdf'], mediaTypes: ['application/pdf'] },
+    {
+      category: 'word',
+      label: 'DOC',
+      extensions: ['doc', 'docx', 'odt', 'rtf'],
+      mediaTypes: ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+    },
+    {
+      category: 'spreadsheet',
+      label: 'XLS',
+      extensions: ['xls', 'xlsx', 'ods', 'csv'],
+      mediaTypes: ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv']
+    },
+    {
+      category: 'presentation',
+      label: 'PPT',
+      extensions: ['ppt', 'pptx', 'odp'],
+      mediaTypes: ['application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']
+    },
+    { category: 'image', label: 'IMG', extensions: ['bmp', 'gif', 'heic', 'jpeg', 'jpg', 'png', 'svg', 'tif', 'tiff', 'webp'], mediaTypes: ['image/'] },
+    { category: 'audio', label: 'AUD', extensions: ['aac', 'flac', 'm4a', 'mp3', 'ogg', 'wav'], mediaTypes: ['audio/'] },
+    { category: 'video', label: 'VID', extensions: ['avi', 'm4v', 'mkv', 'mov', 'mp4', 'webm'], mediaTypes: ['video/'] },
+    { category: 'archive', label: 'ZIP', extensions: ['7z', 'bz2', 'gz', 'rar', 'tar', 'xz', 'zip'], mediaTypes: ['application/zip', 'application/x-7z-compressed', 'application/x-rar-compressed', 'application/gzip'] },
+    { category: 'text', label: 'TXT', extensions: ['css', 'html', 'js', 'json', 'md', 'sql', 'ts', 'txt', 'xml', 'yaml', 'yml'], mediaTypes: ['text/'] }
+  ]
+  const type = types.find(item =>
+    item.extensions.includes(extension) || item.mediaTypes.some(mime => mime.endsWith('/') ? mediaType.startsWith(mime) : mediaType === mime)
+  )
+  const label = type?.label || (extension ? extension.slice(0, 4).toUpperCase() : 'FILE')
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  icon.setAttribute('class', `message-file-icon message-file-icon-${type?.category || 'generic'}`)
+  icon.setAttribute('viewBox', '0 0 36 42')
+  icon.setAttribute('aria-hidden', 'true')
+  const page = document.createElementNS(icon.namespaceURI, 'path')
+  page.setAttribute('d', 'M7 1.5h14l8 8V39a1.5 1.5 0 0 1-1.5 1.5h-20A1.5 1.5 0 0 1 6 39V3a1.5 1.5 0 0 1 1-1.5Z')
+  page.setAttribute('fill', 'none')
+  page.setAttribute('stroke', 'currentColor')
+  page.setAttribute('stroke-width', '2')
+  const fold = document.createElementNS(icon.namespaceURI, 'path')
+  fold.setAttribute('d', 'M21 2v8h8')
+  fold.setAttribute('fill', 'none')
+  fold.setAttribute('stroke', 'currentColor')
+  fold.setAttribute('stroke-width', '2')
+  const format = document.createElementNS(icon.namespaceURI, 'text')
+  format.setAttribute('x', '18')
+  format.setAttribute('y', '29')
+  format.setAttribute('text-anchor', 'middle')
+  format.textContent = label
+  icon.append(page, fold, format)
+  return icon
+}
+
 function renderAttachment(attachment, container) {
   if (attachment.mediaType?.startsWith('image/')) {
     const preview = document.createElement('a')
@@ -386,14 +444,17 @@ function renderAttachment(attachment, container) {
   const link = make('a', 'message-attachment message-attachment-file')
   link.href = attachment.data
   link.download = attachment.fileName
-  link.append(make('strong', '', attachment.fileName), make('small', '', formatFileSize(attachment.size)))
+  const details = make('span', 'message-attachment-preview-details')
+  details.append(make('strong', '', attachment.fileName), make('small', '', formatFileSize(attachment.size)))
+  link.append(createFileIcon(attachment), details)
   container.append(link)
 }
 
 function renderReactions(message, container, bubble) {
   if (message.isDeleted) return
   const reactions = make('div', 'message-reactions')
-  ;(message.reactions || []).filter(reaction => reaction.users?.length).forEach(reaction => {
+  const activeReactions = (message.reactions || []).filter(reaction => reaction.users?.length)
+  activeReactions.forEach(reaction => {
     const active = reaction.users.includes(currentEmail())
     const button = make('button', `message-reaction${active ? ' active' : ''}`)
     button.type = 'button'
@@ -424,10 +485,11 @@ function renderReactions(message, container, bubble) {
     document.querySelectorAll('.messages-emoji-menu:not([hidden])').forEach(openPicker => { openPicker.hidden = true })
     picker.hidden = !shouldOpen
   })
-  addWrap.append(add)
-  reactions.append(addWrap)
-  container.append(reactions)
-  bubble.append(picker)
+  addWrap.append(add, picker)
+  bubble.append(addWrap)
+  if (activeReactions.length) {
+    container.append(reactions)
+  }
 }
 
 function renderMessageActions(message, container) {
@@ -478,8 +540,8 @@ function renderMessagesList() {
   }
   messages.forEach(message => {
     const own = message.senderUid === currentUid()
-    const row = make('article', `message-row${own ? ' own message-row-sent' : ''}`)
-    const body = make('div', `message-content${own ? ' message-content-sent' : ''}`)
+    const row = make('article', `message-row${own ? ' own message-row-sent' : ' message-row-received'}`)
+    const body = make('div', `message-content${own ? ' message-content-sent' : ' message-content-received'}`)
     const bubble = make('div', `message-bubble${own ? ' message-bubble-sent' : ''}`)
     if (message.pinned) bubble.append(make('div', 'message-pinned-label', '📌 Pinned'))
     if (!own) bubble.append(make('div', 'message-meta', message.senderName))
@@ -512,17 +574,61 @@ function renderMessagesList() {
   if (shouldScroll) feed.scrollTop = feed.scrollHeight
 }
 
-async function clearConversationMessages(conversation) {
-  const confirmed = window.confirm(
-    'Clear all messages from this conversation for you? Other members will still see them.'
-  )
-  if (!confirmed) return
-  try {
-    await api.delete(`${apiPath(conversation.id)}/messages`)
-    await refreshFromServer()
-  } catch (error) {
-    showError(error)
+function clearConversationMessages(conversation) {
+  const backdrop = make('div', 'modal-backdrop')
+  const form = make('form', 'modal messages-create-modal messages-clear-modal')
+  form.setAttribute('role', 'dialog')
+  form.setAttribute('aria-modal', 'true')
+  const title = make('h2', '', 'Clear all messages?')
+  title.id = 'messages-clear-title'
+  form.setAttribute('aria-labelledby', title.id)
+
+  const closeModal = () => {
+    backdrop.remove()
+    document.removeEventListener('keydown', onKeyDown)
   }
+  const onKeyDown = event => {
+    if (event.key === 'Escape') closeModal()
+  }
+
+  const close = make('button', 'close-modal', '×')
+  close.type = 'button'
+  close.setAttribute('aria-label', 'Close dialog')
+  close.addEventListener('click', closeModal)
+
+  const header = make('header', 'messages-create-header messages-clear-modal-header')
+  header.append(
+    make('span', 'messages-create-eyebrow', 'MESSAGES'),
+    title,
+    make('p', 'modal-copy', 'Clear all messages from this conversation for you? Other members will still see them.'),
+    close
+  )
+
+  const actions = make('div', 'messages-clear-actions')
+  const confirm = make('button', 'primary-button messages-create-submit messages-clear-confirm', 'Clear all messages')
+  confirm.type = 'submit'
+  actions.append(confirm)
+  form.append(header, actions)
+  backdrop.append(form)
+  backdrop.addEventListener('click', event => {
+    if (event.target === backdrop) closeModal()
+  })
+  document.querySelector('#modal-root').append(backdrop)
+  document.addEventListener('keydown', onKeyDown)
+  confirm.focus()
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault()
+    confirm.disabled = true
+    try {
+      await api.delete(`${apiPath(conversation.id)}/messages`)
+      closeModal()
+      await refreshFromServer()
+    } catch (error) {
+      confirm.disabled = false
+      showError(error)
+    }
+  })
 }
 
 function renderMessagesView() {

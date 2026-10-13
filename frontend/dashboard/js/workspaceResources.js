@@ -1,4 +1,4 @@
-import { projects, pushNotification, make, root, closeModal } from './state.js'
+import { projects, pushNotification, make, root, closeModal, activeView } from './state.js'
 import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
 import { getSvg } from './icons.js'
@@ -6,21 +6,16 @@ import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { getActiveProject } from './auth.js'
 import { openCreateProjectModal } from './projects.js'
 
-export const defaultScratchpad = `## 🎯 Q4 Deliverables & Architecture Notes
-- [x] Finalize authentication and session timeout policy
-- [x] Configure high-contrast and Dark Mode palettes
-- [ ] Review performance overhead on drag-and-drop task reordering
-- [ ] Schedule cross-browser smoke tests across Safari, Chrome, and Firefox
-
-### 💡 Ideas for Upcoming Sprint:
-- Implement real-time cursor presence on task detail pane
-- Add export to CSV/JSON for team velocity metrics
-- Create keyboard shortcut guide (Cmd+K / Ctrl+K)
-`
-
 export let teamResources = []
 let resourcesLoading = false
 let resourcesLoadFailed = false
+let scratchpadProjectId = ''
+let scratchpadLastSavedContent = ''
+let scratchpadDirty = false
+let scratchpadSaving = false
+let scratchpadSaveTimer = null
+let scratchpadPollTimer = null
+let scratchpadLoadVersion = 0
 
 function normalizeResource(resource, project) {
   return {
@@ -60,10 +55,173 @@ export async function loadProjectResources() {
 
 export function renderScratchpad() {
   const textarea = document.querySelector('#workspace-scratchpad-area')
-  if (!textarea || textarea.dataset.loaded) return
-  const saved = localStorage.getItem('collab_workspace_scratchpad')
-  textarea.value = saved !== null ? saved : defaultScratchpad
-  textarea.dataset.loaded = 'true'
+  const projectSelect = document.querySelector('#scratchpad-project-select')
+  if (!textarea || !projectSelect) return
+
+  const selectedProjectId = projectSelect.value || scratchpadProjectId ||
+    localStorage.getItem('collab_workspace_scratchpad_project') ||
+    getActiveProject()?.projectId ||
+    projects[0]?.projectId ||
+    ''
+  projectSelect.replaceChildren()
+  projects.filter(project => project.projectId && project.name).forEach(project => {
+    const option = make('option', '', project.name)
+    option.value = project.projectId
+    projectSelect.append(option)
+  })
+  projectSelect.disabled = !projectSelect.options.length
+  projectSelect.value = projects.some(project => project.projectId === selectedProjectId)
+    ? selectedProjectId
+    : projects[0]?.projectId || ''
+  scratchpadProjectId = projectSelect.value
+  textarea.disabled = !scratchpadProjectId
+  if (!scratchpadProjectId) {
+    textarea.value = ''
+    textarea.placeholder = 'Create or join a project to start shared notes.'
+    document.querySelectorAll('.scratchpad-toolbar .scratchpad-btn').forEach(button => {
+      button.disabled = true
+    })
+    updateScratchpadStatus('● Choose a project')
+  } else {
+    textarea.placeholder = 'Start typing team notes, sprint targets, or architectural decisions...'
+    document.querySelectorAll('.scratchpad-toolbar .scratchpad-btn').forEach(button => {
+      button.disabled = false
+    })
+  }
+}
+
+function updateScratchpadStatus(message, color = '') {
+  const saveStatus = document.querySelector('#scratchpad-save-status')
+  if (!saveStatus) return
+  saveStatus.textContent = message
+  if (color) saveStatus.style.color = color
+}
+
+async function saveScratchpad(projectId = scratchpadProjectId) {
+  const textarea = document.querySelector('#workspace-scratchpad-area')
+  if (!textarea || !projectId || !scratchpadDirty) return true
+  if (scratchpadSaving) return false
+
+  clearTimeout(scratchpadSaveTimer)
+  const content = textarea.value
+  scratchpadSaving = true
+  updateScratchpadStatus('● Saving...', '#F5B800')
+  try {
+    const response = await api.put(
+      `/projects/${encodeURIComponent(projectId)}/scratchpad`,
+      { content }
+    )
+    const savedContent = response?.data?.scratchpad?.content
+    if (typeof savedContent !== 'string') {
+      throw new Error('The server returned an invalid scratchpad response.')
+    }
+    if (projectId === scratchpadProjectId) {
+      scratchpadLastSavedContent = savedContent
+      scratchpadDirty = textarea.value !== savedContent
+      if (scratchpadDirty) {
+        scheduleScratchpadSave()
+      } else {
+        updateScratchpadStatus('● Synced', '#10B981')
+      }
+    }
+    return true
+  } catch (error) {
+    if (projectId === scratchpadProjectId) {
+      updateScratchpadStatus('● Save failed', '#DC2626')
+      showDashboardToast(error.message || 'The project scratchpad could not be saved.', 'error')
+    }
+    return false
+  } finally {
+    scratchpadSaving = false
+  }
+}
+
+function scheduleScratchpadSave() {
+  clearTimeout(scratchpadSaveTimer)
+  scratchpadSaveTimer = setTimeout(() => {
+    saveScratchpad()
+  }, 600)
+}
+
+export async function loadProjectScratchpad(projectId = document.querySelector('#scratchpad-project-select')?.value) {
+  const textarea = document.querySelector('#workspace-scratchpad-area')
+  if (!textarea || !projectId) return
+  if (projectId === scratchpadProjectId && scratchpadDirty && !await saveScratchpad(projectId)) {
+    throw new Error('Unsaved project scratchpad changes could not be saved.')
+  }
+
+  const loadVersion = ++scratchpadLoadVersion
+  scratchpadProjectId = projectId
+  scratchpadDirty = false
+  textarea.disabled = true
+  updateScratchpadStatus('● Loading...', '#F5B800')
+  try {
+    const response = await api.get(`/projects/${encodeURIComponent(projectId)}/scratchpad`)
+    if (loadVersion !== scratchpadLoadVersion ||
+        document.querySelector('#scratchpad-project-select')?.value !== projectId) return
+    const content = response?.data?.scratchpad?.content
+    if (typeof content !== 'string') {
+      throw new Error('The server returned an invalid scratchpad response.')
+    }
+    const legacyContent = localStorage.getItem('collab_workspace_scratchpad')
+    const legacyScratchpadMigrated = localStorage.getItem('collab_workspace_scratchpad_migrated')
+    if (!content && legacyContent && legacyScratchpadMigrated !== 'true') {
+      textarea.value = legacyContent
+      scratchpadLastSavedContent = ''
+      scratchpadDirty = true
+      if (!await saveScratchpad(projectId)) {
+        throw new Error('Your existing scratchpad notes could not be moved into this project.')
+      }
+      localStorage.setItem('collab_workspace_scratchpad_migrated', 'true')
+      localStorage.removeItem('collab_workspace_scratchpad')
+      textarea.disabled = false
+      localStorage.setItem('collab_workspace_scratchpad_project', projectId)
+      return
+    }
+    textarea.value = content
+    textarea.disabled = false
+    scratchpadLastSavedContent = content
+    scratchpadDirty = false
+    localStorage.setItem('collab_workspace_scratchpad_project', projectId)
+    updateScratchpadStatus('● Synced', '#10B981')
+  } catch (error) {
+    if (loadVersion === scratchpadLoadVersion) {
+      textarea.disabled = false
+      updateScratchpadStatus('● Load failed', '#DC2626')
+      throw error
+    }
+  }
+}
+
+async function refreshScratchpadFromServer() {
+  const textarea = document.querySelector('#workspace-scratchpad-area')
+  const projectId = scratchpadProjectId
+  if (
+    !textarea || !projectId || activeView !== 'Workspace' ||
+    document.hidden || document.activeElement === textarea ||
+    scratchpadDirty || scratchpadSaving
+  ) return
+
+  try {
+    const response = await api.get(`/projects/${encodeURIComponent(projectId)}/scratchpad`)
+    const content = response?.data?.scratchpad?.content
+    if (typeof content !== 'string') {
+      throw new Error('The server returned an invalid scratchpad response.')
+    }
+    if (
+      projectId === scratchpadProjectId &&
+      document.querySelector('#scratchpad-project-select')?.value === projectId &&
+      document.activeElement !== textarea &&
+      !scratchpadDirty &&
+      content !== scratchpadLastSavedContent
+    ) {
+      textarea.value = content
+      scratchpadLastSavedContent = content
+      updateScratchpadStatus('● Synced', '#10B981')
+    }
+  } catch (error) {
+    console.error('Unable to refresh the project scratchpad:', error)
+  }
 }
 
 export function renderHubResources() {
@@ -347,42 +505,58 @@ export function openAddResourceModal(resourceToEdit = null) {
 
 export function initWorkspaceResourceEvents() {
   const scratchpad = document.querySelector('#workspace-scratchpad-area')
-  const saveStatus = document.querySelector('#scratchpad-save-status')
+  const projectSelect = document.querySelector('#scratchpad-project-select')
   scratchpad?.addEventListener('input', () => {
-    localStorage.setItem('collab_workspace_scratchpad', scratchpad.value)
-    if (!saveStatus) return
-    saveStatus.textContent = '● Saving...'
-    saveStatus.style.color = '#F5B800'
-    clearTimeout(scratchpad._saveTimer)
-    scratchpad._saveTimer = setTimeout(() => {
-      saveStatus.textContent = '● Synced'
-      saveStatus.style.color = '#10B981'
-    }, 500)
+    scratchpadDirty = scratchpad.value !== scratchpadLastSavedContent
+    if (scratchpadDirty) {
+      updateScratchpadStatus('● Unsaved changes', '#F5B800')
+      scheduleScratchpadSave()
+    } else {
+      clearTimeout(scratchpadSaveTimer)
+      updateScratchpadStatus('● Synced', '#10B981')
+    }
+  })
+  projectSelect?.addEventListener('change', async () => {
+    const previousProjectId = scratchpadProjectId
+    if (scratchpadDirty && !await saveScratchpad(previousProjectId)) {
+      projectSelect.value = previousProjectId
+      return
+    }
+    try {
+      await loadProjectScratchpad(projectSelect.value)
+    } catch (error) {
+      console.error('Unable to load the selected project scratchpad:', error)
+      showDashboardToast(error.message || 'The selected project scratchpad could not be loaded.', 'error')
+    }
   })
   document.querySelector('#scratchpad-add-check')?.addEventListener('click', () => {
-    if (!scratchpad) return
+    if (!scratchpad || !scratchpadProjectId) return
     scratchpad.value = `${scratchpad.value.trimEnd()}\n- [ ] New sprint target: `
     scratchpad.focus()
-    localStorage.setItem('collab_workspace_scratchpad', scratchpad.value)
+    scratchpad.dispatchEvent(new Event('input', { bubbles: true }))
   })
   document.querySelector('#scratchpad-add-bullet')?.addEventListener('click', () => {
-    if (!scratchpad) return
+    if (!scratchpad || !scratchpadProjectId) return
     scratchpad.value = `${scratchpad.value.trimEnd()}\n- Note: `
     scratchpad.focus()
-    localStorage.setItem('collab_workspace_scratchpad', scratchpad.value)
+    scratchpad.dispatchEvent(new Event('input', { bubbles: true }))
   })
   document.querySelector('#scratchpad-add-code')?.addEventListener('click', () => {
-    if (!scratchpad) return
+    if (!scratchpad || !scratchpadProjectId) return
     scratchpad.value = `${scratchpad.value.trimEnd()}\n\`\`\`js\n// Architecture snippet\nconst config = {}\n\`\`\`\n`
     scratchpad.focus()
-    localStorage.setItem('collab_workspace_scratchpad', scratchpad.value)
+    scratchpad.dispatchEvent(new Event('input', { bubbles: true }))
   })
-  document.querySelector('#scratchpad-clear-btn')?.addEventListener('click', () => {
-    if (!scratchpad) return
+  document.querySelector('#scratchpad-clear-btn')?.addEventListener('click', async () => {
+    if (!scratchpad || !scratchpadProjectId) return
     scratchpad.value = ''
-    localStorage.setItem('collab_workspace_scratchpad', '')
-    if (saveStatus) saveStatus.textContent = '● Cleared'
-    pushNotification('Scratchpad Cleared', 'Workspace notes were cleared.', '📝', 'coral-bg')
+    scratchpad.dispatchEvent(new Event('input', { bubbles: true }))
+    if (await saveScratchpad()) {
+      pushNotification('Scratchpad Cleared', 'Project notes were cleared.', '📝', 'coral-bg')
+    }
   })
+  if (!scratchpadPollTimer) {
+    scratchpadPollTimer = window.setInterval(refreshScratchpadFromServer, 5000)
+  }
   document.querySelector('#hub-add-resource-btn')?.addEventListener('click', () => openAddResourceModal())
 }

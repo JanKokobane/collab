@@ -29,6 +29,23 @@ export function showDashboardToast(message, type = 'success', { dismissible = fa
   }
 }
 
+export function setDashboardButtonLoading(button, loadingText) {
+  const originalContent = document.createDocumentFragment()
+  while (button.firstChild) originalContent.append(button.firstChild)
+  const wasDisabled = button.disabled
+  const spinner = make('span', 'form-submit-spinner')
+  spinner.setAttribute('aria-hidden', 'true')
+  button.disabled = true
+  button.setAttribute('aria-busy', 'true')
+  button.replaceChildren(spinner, make('span', '', loadingText))
+
+  return () => {
+    button.replaceChildren(originalContent)
+    button.disabled = wasDisabled
+    button.removeAttribute('aria-busy')
+  }
+}
+
 export function showDashboardConfirmation({
   title,
   message,
