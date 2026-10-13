@@ -8,10 +8,40 @@ let notificationClient = null;
 let notificationRetryTimer = null;
 let shuttingDown = false;
 
-const deliverMessageEvent = (webSocketServer, notification) => {
+const deliverMessageEvent = async (webSocketServer, notification) => {
     if (notification.channel !== notificationChannel) return;
     try {
-        const { uids, event } = JSON.parse(notification.payload);
+        const { uids, event: initialEvent } = JSON.parse(notification.payload);
+        let event = initialEvent;
+        if (event.type === 'message.created') {
+            const result = await pool.query(
+                `SELECT m.message_id, m.conversation_id, m.sender_firebase_uid,
+                        sender.email AS sender_email, sender.display_name AS sender_name,
+                        m.body, m.reply_to_message_id, reply.body AS reply_to_body,
+                        reply_sender.display_name AS reply_to_sender_name,
+                        m.attachments, m.forwarded_from, m.is_pinned, m.edited_at, m.created_at
+                 FROM messages m
+                 JOIN message_conversation_members sender
+                   ON sender.conversation_id = m.conversation_id
+                  AND sender.firebase_uid = m.sender_firebase_uid
+                 LEFT JOIN messages reply ON reply.message_id = m.reply_to_message_id
+                 LEFT JOIN message_conversation_members reply_sender
+                   ON reply_sender.conversation_id = m.conversation_id
+                  AND reply_sender.firebase_uid = reply.sender_firebase_uid
+                 WHERE m.message_id = $1
+                   AND m.deleted_at IS NULL`,
+                [event.messageId]
+            );
+            if (!result.rowCount) return;
+            event = {
+                ...event,
+                message: {
+                    ...result.rows[0],
+                    reactions: [],
+                    read_at: null
+                }
+            };
+        }
         const payload = JSON.stringify(event);
         for (const client of webSocketServer.clients) {
             if (client.readyState === WebSocket.OPEN && uids.includes(client.firebaseUid)) {
@@ -19,7 +49,7 @@ const deliverMessageEvent = (webSocketServer, notification) => {
             }
         }
     } catch (error) {
-        console.error('Invalid PostgreSQL message notification:', error.message);
+        console.error('PostgreSQL message event delivery failed:', error.message);
     }
 };
 
@@ -45,7 +75,10 @@ const initializeMessageSocket = async server => {
                 return;
             }
             notificationClient = client;
-            client.on('notification', notification => deliverMessageEvent(webSocketServer, notification));
+            client.on('notification', notification => {
+                deliverMessageEvent(webSocketServer, notification)
+                    .catch(error => console.error('Message WebSocket delivery failed:', error.message));
+            });
             client.once('error', error => {
                 if (notificationClient !== client) return;
                 console.error('Message WebSocket database listener failed:', error.message);

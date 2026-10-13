@@ -94,6 +94,7 @@ function normalizeMessage(row) {
     replyToSenderName: row.reply_to_sender_name ?? row.replyToSenderName ?? null,
     forwardedFrom: row.forwarded_from ?? row.forwardedFrom ?? null,
     pinned: row.is_pinned ?? row.pinned ?? false,
+    isDeleted: Boolean(row.is_deleted ?? row.isDeleted),
     editedAt: row.edited_at ?? row.editedAt ?? null,
     createdAt: row.created_at || row.createdAt,
     attachments: Array.isArray(row.attachments) ? row.attachments : [],
@@ -145,6 +146,40 @@ function getConversationTitle(conversation) {
 
 function getConversationMessages(conversationId) {
   return messageState.messages.filter(message => message.conversationId === conversationId)
+}
+
+function upsertMessage(message) {
+  const normalized = normalizeMessage(message)
+  const currentIndex = messageState.messages.findIndex(item => item.id === normalized.id)
+  if (currentIndex < 0) {
+    messageState.messages.push(normalized)
+  } else {
+    messageState.messages[currentIndex] = normalized
+  }
+  messageState.messages.sort((a, b) =>
+    Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id))
+  return normalized
+}
+
+function receiveCreatedMessage(payload) {
+  if (!payload.message || !messageState.conversations.some(item => item.id === payload.conversationId)) {
+    refreshFromServer()
+    return
+  }
+  const message = upsertMessage(payload.message)
+  const conversation = messageState.conversations.find(item => item.id === message.conversationId)
+  conversation.latestMessage = message.body
+  conversation.latestMessageCreatedAt = message.createdAt
+  if (message.senderUid !== currentUid() &&
+      !(activeView === 'Messages' && selectedConversationId === message.conversationId)) {
+    conversation.unreadCount += 1
+  }
+  renderMessages()
+  if (activeView === 'Messages' && selectedConversationId === message.conversationId) {
+    conversation.unreadCount = 0
+    api.post(`${apiPath(message.conversationId)}/read`, {})
+      .catch(showError)
+  }
 }
 
 function updateMessagesNavigationBadge() {
@@ -286,7 +321,11 @@ function connectMessageSocket() {
       showError(new Error('The live messages update was invalid.'))
       return
     }
-    refreshFromServer()
+    if (payload.type === 'message.created') {
+      receiveCreatedMessage(payload)
+    } else {
+      refreshFromServer()
+    }
   })
   connection.addEventListener('close', () => {
     if (socket !== connection) return
@@ -351,7 +390,8 @@ function renderAttachment(attachment, container) {
   container.append(link)
 }
 
-function renderReactions(message, container) {
+function renderReactions(message, container, bubble) {
+  if (message.isDeleted) return
   const reactions = make('div', 'message-reactions')
   ;(message.reactions || []).filter(reaction => reaction.users?.length).forEach(reaction => {
     const active = reaction.users.includes(currentEmail())
@@ -378,27 +418,36 @@ function renderReactions(message, container) {
     })
     picker.append(choice)
   })
-  add.addEventListener('click', () => { picker.hidden = !picker.hidden })
-  addWrap.append(add, picker)
+  add.addEventListener('click', event => {
+    event.stopPropagation()
+    const shouldOpen = picker.hidden
+    document.querySelectorAll('.messages-emoji-menu:not([hidden])').forEach(openPicker => { openPicker.hidden = true })
+    picker.hidden = !shouldOpen
+  })
+  addWrap.append(add)
   reactions.append(addWrap)
   container.append(reactions)
+  bubble.append(picker)
 }
 
 function renderMessageActions(message, container) {
   const actions = make('div', 'message-actions')
-  const trigger = make('button', 'message-actions-trigger', '⋯')
+  const trigger = make('button', 'message-actions-trigger', '⋮')
   trigger.type = 'button'
   trigger.setAttribute('aria-label', 'Message actions')
   const menu = make('div', 'message-actions-menu')
   menu.hidden = true
   const own = message.senderUid === currentUid()
-  const options = [
-    { label: 'Reply', action: () => startReply(message) },
-    ...(own ? [{ label: 'Edit', action: () => startEdit(message) }] : []),
-    { label: 'Forward', action: () => openForwardModal(message) },
-    { label: message.pinned ? 'Unpin' : 'Pin', action: () => mutateMessage(message, 'pin') },
-    ...(own ? [{ label: 'Delete', action: () => mutateMessage(message, 'delete'), destructive: true }] : [])
-  ]
+  const options = message.isDeleted
+    ? [{ label: 'Delete for me', action: () => deleteMessage(message, 'me'), destructive: true }]
+    : [
+        { label: 'Reply', action: () => startReply(message) },
+        ...(own ? [{ label: 'Edit', action: () => startEdit(message) }] : []),
+        { label: 'Forward', action: () => openForwardModal(message) },
+        { label: message.pinned ? 'Unpin' : 'Pin', action: () => mutateMessage(message, 'pin') },
+        { label: 'Delete for me', action: () => deleteMessage(message, 'me'), destructive: true },
+        ...(own ? [{ label: 'Delete for everyone', action: () => deleteMessage(message, 'everyone'), destructive: true }] : [])
+      ]
   options.forEach(option => {
     const button = make('button', `message-action-option${option.destructive ? ' destructive' : ''}`, option.label)
     button.type = 'button'
@@ -440,7 +489,9 @@ function renderMessagesList() {
       quote.append(make('strong', '', message.replyToSenderName || 'Message'), make('span', '', message.replyToBody || 'Attachment'))
       bubble.append(quote)
     }
-    if (message.body) bubble.append(make('p', 'message-text', message.body))
+    if (message.body) {
+      bubble.append(make('p', `message-text${message.isDeleted ? ' deleted' : ''}`, message.body))
+    }
     ;(message.attachments || []).forEach(attachment => renderAttachment(attachment, bubble))
     const time = make('span', 'message-time-row')
     if (message.editedAt) time.append(make('span', 'message-edited-label', 'Edited'))
@@ -453,8 +504,8 @@ function renderMessagesList() {
     }
     bubble.append(time)
     body.append(bubble)
-    renderMessageActions(message, body)
-    renderReactions(message, body)
+    renderMessageActions(message, bubble)
+    renderReactions(message, body, bubble)
     row.append(body)
     feed.append(row)
   })
@@ -624,6 +675,18 @@ function toggleReaction(message, emoji) {
   return mutateMessage(message, 'reaction', { emoji })
 }
 
+async function deleteMessage(message, scope) {
+  try {
+    await api.delete(
+      `${apiPath(message.conversationId)}/messages/${encodeURIComponent(message.id)}`,
+      { scope }
+    )
+    await refreshFromServer()
+  } catch (error) {
+    showError(error)
+  }
+}
+
 function startReply(message) {
   replyTargetId = message.id
   editingMessageId = null
@@ -679,45 +742,166 @@ function openForwardModal(message) {
   const form = make('form', 'modal messages-forward-modal')
   form.setAttribute('role', 'dialog')
   form.setAttribute('aria-modal', 'true')
-  const header = make('header', 'messages-forward-header')
-  header.append(make('h2', '', 'Forward message'))
-  const projectSelect = document.createElement('select')
-  projects.forEach(project => {
-    const option = document.createElement('option')
-    option.value = project.projectId
-    option.textContent = project.name
-    projectSelect.append(option)
-  })
-  const recipients = document.createElement('select')
-  recipients.multiple = true
-  recipients.setAttribute('aria-label', 'Recipients')
-  const renderRecipients = () => {
-    recipients.replaceChildren()
-    getContacts(projectSelect.value).forEach(contact => {
-      const option = document.createElement('option')
-      option.value = contact.firebaseUid
-      option.textContent = contact.name
-      recipients.append(option)
-    })
+  form.setAttribute('aria-label', 'Forward message')
+  const closeModal = () => {
+    backdrop.remove()
+    document.removeEventListener('keydown', onKeyDown)
   }
-  projectSelect.addEventListener('change', renderRecipients)
-  renderRecipients()
+  const onKeyDown = event => {
+    if (event.key === 'Escape') closeModal()
+  }
+  const header = make('header', 'messages-forward-header')
   const cancel = make('button', 'messages-forward-cancel', 'Cancel')
   cancel.type = 'button'
-  cancel.addEventListener('click', () => backdrop.remove())
-  const submit = make('button', 'primary-button', 'Forward')
+  cancel.addEventListener('click', closeModal)
+  const title = make('h2', '', 'Send to')
+  const selectionCount = make('span', 'messages-forward-selection-count')
+  header.append(cancel, title, selectionCount)
+
+  const searchWrap = make('label', 'messages-forward-search')
+  const searchIcon = make('span', '', '⌕')
+  searchIcon.setAttribute('aria-hidden', 'true')
+  const search = document.createElement('input')
+  search.type = 'search'
+  search.placeholder = 'Search name or email'
+  search.setAttribute('aria-label', 'Search recipients')
+  searchWrap.append(searchIcon, search)
+
+  const preview = make('div', 'messages-forward-preview')
+  const sender = make('div', 'messages-forward-sender')
+  const senderAvatar = make('span', 'messages-forward-avatar')
+  renderAvatarElement(senderAvatar, currentUser, 'messages-forward-avatar')
+  const senderDetails = make('span', 'messages-forward-sender-details')
+  senderDetails.append(make('strong', '', currentUser.name), make('small', '', currentUser.email))
+  sender.append(senderAvatar, senderDetails)
+  const previewLabel = make('strong', '', 'Forwarded message')
+  const previewText = make('span', '', message.body || (message.attachments?.length
+    ? `${message.attachments.length} attachment${message.attachments.length === 1 ? '' : 's'}`
+    : 'Message'))
+  const previewContent = make('div', 'messages-forward-preview-content')
+  previewContent.append(previewLabel, previewText)
+  preview.append(sender, previewContent)
+
+  const contacts = getContacts().map(contact => {
+    const project = projects.find(item => {
+      const members = getProjectMembers(item)
+      return members.some(member => member.firebaseUid === currentUid()) &&
+        members.some(member => member.firebaseUid === contact.firebaseUid)
+    })
+    return project ? { ...contact, projectId: project.projectId } : null
+  }).filter(Boolean)
+  const contactsByEmail = new Map(contacts.map(contact => [contact.email, contact]))
+  const frequency = new Map(contacts.map(contact => [contact.email, 0]))
+  const recent = []
+  const recentSet = new Set()
+  messageState.conversations
+    .filter(conversation => conversation.type === 'direct')
+    .sort((a, b) => Date.parse(b.latestMessageCreatedAt || b.createdAt) - Date.parse(a.latestMessageCreatedAt || a.createdAt))
+    .forEach(conversation => {
+      const participant = conversation.participants.find(member =>
+        member.firebaseUid !== currentUid() && member.email !== currentEmail())
+      const contact = contactsByEmail.get(participant?.email)
+      if (contact && !recentSet.has(contact.email)) {
+        recentSet.add(contact.email)
+        recent.push(contact.email)
+      }
+      messageState.messages.filter(message => message.conversationId === conversation.id)
+        .forEach(message => {
+          if (message.senderEmail !== currentEmail() && frequency.has(message.senderEmail)) {
+            frequency.set(message.senderEmail, frequency.get(message.senderEmail) + 1)
+          }
+        })
+    })
+  const frequent = contacts
+    .filter(contact => frequency.get(contact.email) > 0)
+    .sort((a, b) => frequency.get(b.email) - frequency.get(a.email) || a.name.localeCompare(b.name))
+    .slice(0, 5)
+    .map(contact => contact.email)
+  const frequentSet = new Set(frequent)
+  const recentOnly = recent.filter(email => !frequentSet.has(email))
+  const represented = new Set([...frequent, ...recentOnly])
+  const sections = [
+    { title: 'Frequently contacted', emails: frequent },
+    { title: 'Recent chats', emails: recentOnly },
+    { title: 'All teammates', emails: contacts.filter(contact => !represented.has(contact.email)).map(contact => contact.email) }
+  ].filter(section => section.emails.length)
+
+  const membersList = make('div', 'messages-forward-list')
+  const modalError = make('p', 'messages-error')
+  modalError.setAttribute('role', 'alert')
+  modalError.hidden = true
+  const footer = make('footer', 'messages-forward-footer')
+  const selectedSummary = make('span', 'messages-forward-selected', 'Select recipients')
+  const submit = make('button', 'primary-button messages-forward-submit', 'Forward')
   submit.type = 'submit'
-  form.append(header, projectSelect, recipients, cancel, submit)
+  submit.disabled = true
+  footer.append(selectedSummary, submit)
+
+  const selectedUids = new Set()
+  const updateSelection = () => {
+    const count = selectedUids.size
+    selectionCount.textContent = count ? `${count} selected` : ''
+    selectedSummary.textContent = count ? `${count} recipient${count === 1 ? '' : 's'} selected` : 'Select recipients'
+    submit.disabled = count === 0
+  }
+  const renderRecipients = () => {
+    const query = search.value.trim().toLowerCase()
+    membersList.replaceChildren()
+    sections.forEach(section => {
+      const matches = section.emails
+        .map(email => contactsByEmail.get(email))
+        .filter(contact => contact && (!query || `${contact.name} ${contact.email}`.toLowerCase().includes(query)))
+      if (!matches.length) return
+      membersList.append(make('h3', 'messages-forward-section-title', section.title))
+      matches.forEach(contact => {
+        const option = make('label', `messages-forward-recipient${selectedUids.has(contact.firebaseUid) ? ' selected' : ''}`)
+        const avatar = make('span', 'messages-forward-avatar')
+        renderAvatarElement(avatar, contact, 'messages-forward-avatar')
+        const details = make('span', 'messages-forward-recipient-details')
+        details.append(make('strong', '', contact.name), make('small', '', contact.email))
+        const checkbox = document.createElement('input')
+        checkbox.type = 'checkbox'
+        checkbox.name = 'forward-members'
+        checkbox.value = contact.firebaseUid
+        checkbox.checked = selectedUids.has(contact.firebaseUid)
+        checkbox.addEventListener('change', () => {
+          if (checkbox.checked) selectedUids.add(contact.firebaseUid)
+          else selectedUids.delete(contact.firebaseUid)
+          option.classList.toggle('selected', checkbox.checked)
+          updateSelection()
+        })
+        option.append(avatar, details, checkbox)
+        membersList.append(option)
+      })
+    })
+    if (!membersList.childElementCount) {
+      membersList.append(make('p', 'messages-forward-empty', query
+        ? 'No matching teammates.'
+        : 'No teammates are available to forward to.'))
+    }
+  }
+  search.addEventListener('input', renderRecipients)
+  renderRecipients()
+  form.append(header, searchWrap, preview, membersList, modalError, footer)
+  backdrop.append(form)
+  document.querySelector('#modal-root').append(backdrop)
+  document.addEventListener('keydown', onKeyDown)
+  search.focus()
+  backdrop.addEventListener('click', event => {
+    if (event.target === backdrop) closeModal()
+  })
   form.addEventListener('submit', async event => {
     event.preventDefault()
-    if (!recipients.selectedOptions.length) return
+    if (!selectedUids.size) return
     submit.disabled = true
     try {
-      for (const option of recipients.selectedOptions) {
+      for (const uid of selectedUids) {
+        const contact = contacts.find(item => item.firebaseUid === uid)
+        if (!contact) continue
         const result = await api.post('/messages/conversations', {
-          projectId: projectSelect.value,
+          projectId: contact.projectId,
           type: 'direct',
-          memberFirebaseUids: [option.value]
+          memberFirebaseUids: [uid]
         })
         const targetConversationId = result?.data?.conversation?.conversation_id
         await api.post(`${apiPath(targetConversationId)}/messages`, {
@@ -726,15 +910,14 @@ function openForwardModal(message) {
           forwardedFrom: { senderName: message.senderName }
         })
       }
-      backdrop.remove()
+      closeModal()
       await refreshFromServer()
     } catch (error) {
-      showError(error)
+      modalError.textContent = error.message
+      modalError.hidden = false
       submit.disabled = false
     }
   })
-  backdrop.append(form)
-  document.querySelector('#modal-root').append(backdrop)
 }
 
 function fileToDataUrl(file) {
@@ -768,6 +951,10 @@ async function sendMessage(event) {
   event.preventDefault()
   const { input } = getElements()
   const body = input.value.trim()
+  let optimisticMessageId = null
+  let optimisticConversation = null
+  let previousLatestMessage = ''
+  let previousLatestMessageCreatedAt = null
   try {
     if (editingMessageId) {
       if (!body) return
@@ -782,7 +969,35 @@ async function sendMessage(event) {
         size: file.size,
         data: await fileToDataUrl(file)
       })))
+      const messageId = crypto.randomUUID()
+      optimisticMessageId = messageId
+      const conversation = messageState.conversations.find(item => item.id === selectedConversationId)
+      optimisticConversation = conversation
+      previousLatestMessage = conversation?.latestMessage || ''
+      previousLatestMessageCreatedAt = conversation?.latestMessageCreatedAt || null
+      const replyTarget = messageState.messages.find(item => item.id === replyTargetId)
+      const optimisticMessage = upsertMessage({
+        message_id: messageId,
+        conversation_id: selectedConversationId,
+        sender_firebase_uid: currentUid(),
+        sender_email: currentEmail(),
+        sender_name: currentUser.name,
+        body,
+        reply_to_message_id: replyTargetId,
+        reply_to_sender_name: replyTarget?.senderName || null,
+        reply_to_body: replyTarget?.body || null,
+        attachments,
+        reactions: [],
+        is_pinned: false,
+        created_at: new Date().toISOString()
+      })
+      if (conversation) {
+        conversation.latestMessage = body
+        conversation.latestMessageCreatedAt = optimisticMessage.createdAt
+      }
+      renderMessages()
       await api.post(`${apiPath(selectedConversationId)}/messages`, {
+        messageId,
         body,
         replyToId: replyTargetId,
         attachments
@@ -795,6 +1010,14 @@ async function sendMessage(event) {
     clearError()
     await refreshFromServer()
   } catch (error) {
+    if (optimisticMessageId) {
+      messageState.messages = messageState.messages.filter(item => item.id !== optimisticMessageId)
+      if (optimisticConversation) {
+        optimisticConversation.latestMessage = previousLatestMessage
+        optimisticConversation.latestMessageCreatedAt = previousLatestMessageCreatedAt
+      }
+      renderMessages()
+    }
     showError(error)
   }
 }
@@ -851,6 +1074,10 @@ export function initMessages() {
   document.addEventListener('click', event => {
     const picker = getElements().emojiPicker
     if (picker && !picker.contains(event.target) && !event.target.closest('#messages-emoji-toggle')) closeEmojiPicker()
+  })
+  document.addEventListener('click', event => {
+    if (event.target.closest('.message-add-reaction-wrap, .messages-emoji-menu')) return
+    document.querySelectorAll('.messages-emoji-menu:not([hidden])').forEach(picker => { picker.hidden = true })
   })
   document.addEventListener('click', event => {
     if (event.target.closest('.message-actions')) return

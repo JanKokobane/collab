@@ -88,9 +88,16 @@ const getConversations = async (req, res) => {
                  WHERE cm.conversation_id = c.conversation_id
              ) members ON TRUE
              LEFT JOIN LATERAL (
-                 SELECT message_id, body, sender_firebase_uid, created_at
+                 SELECT message_id,
+                        CASE WHEN deleted_at IS NOT NULL THEN 'This message was deleted' ELSE body END AS body,
+                        sender_firebase_uid, created_at
                  FROM messages
                  WHERE conversation_id = c.conversation_id
+                   AND NOT EXISTS (
+                       SELECT 1 FROM message_hidden_for hidden
+                       WHERE hidden.message_id = messages.message_id
+                         AND hidden.firebase_uid = $1
+                   )
                  ORDER BY created_at DESC, message_id DESC
                  LIMIT 1
              ) latest ON TRUE
@@ -99,7 +106,13 @@ const getConversations = async (req, res) => {
                  FROM messages m
                  WHERE m.conversation_id = c.conversation_id
                    AND m.sender_firebase_uid <> $1
+                   AND m.deleted_at IS NULL
                    AND m.created_at > COALESCE(mine.last_read_at, '-infinity'::timestamptz)
+                   AND NOT EXISTS (
+                       SELECT 1 FROM message_hidden_for hidden
+                       WHERE hidden.message_id = m.message_id
+                         AND hidden.firebase_uid = $1
+                   )
              ) unread ON TRUE
              ORDER BY COALESCE(latest.created_at, c.created_at) DESC`,
             [req.firebaseUid]
@@ -272,10 +285,22 @@ const getMessages = async (req, res) => {
         const result = await query(
             `SELECT m.message_id, m.conversation_id, m.sender_firebase_uid,
                     sender.email AS sender_email, sender.display_name AS sender_name,
-                    m.body, m.reply_to_message_id, reply.body AS reply_to_body,
+                    CASE WHEN m.deleted_at IS NOT NULL THEN 'This message was deleted' ELSE m.body END AS body,
+                    m.deleted_at IS NOT NULL AS is_deleted,
+                    m.reply_to_message_id,
+                    CASE WHEN reply.deleted_at IS NOT NULL THEN 'This message was deleted'
+                         WHEN EXISTS (
+                             SELECT 1 FROM message_hidden_for hidden
+                             WHERE hidden.message_id = reply.message_id
+                               AND hidden.firebase_uid = $2
+                         ) THEN 'Message unavailable'
+                         ELSE reply.body END AS reply_to_body,
                     reply_sender.display_name AS reply_to_sender_name,
-                    m.attachments, m.forwarded_from, m.is_pinned, m.edited_at, m.created_at,
-                    COALESCE(reactions.items, '[]'::jsonb) AS reactions,
+                    CASE WHEN m.deleted_at IS NOT NULL THEN '[]'::jsonb ELSE m.attachments END AS attachments,
+                    CASE WHEN m.deleted_at IS NOT NULL THEN NULL ELSE m.forwarded_from END AS forwarded_from,
+                    m.is_pinned, m.edited_at, m.created_at,
+                    CASE WHEN m.deleted_at IS NOT NULL THEN '[]'::jsonb
+                         ELSE COALESCE(reactions.items, '[]'::jsonb) END AS reactions,
                     reads.read_at
              FROM messages m
              JOIN message_conversation_members sender
@@ -301,8 +326,13 @@ const getMessages = async (req, res) => {
                  WHERE message_id = m.message_id AND firebase_uid <> m.sender_firebase_uid
              ) reads ON TRUE
              WHERE m.conversation_id = $1
+               AND NOT EXISTS (
+                   SELECT 1 FROM message_hidden_for hidden
+                   WHERE hidden.message_id = m.message_id
+                     AND hidden.firebase_uid = $2
+               )
              ORDER BY m.created_at, m.message_id`,
-            [conversation.conversation_id]
+            [conversation.conversation_id, req.firebaseUid]
         );
         return res.json({ success: true, data: { messages: result.rows } });
     } catch (error) {
@@ -320,6 +350,7 @@ const createMessage = async (req, res) => {
     const attachments = Array.isArray(req.body?.attachments) ? req.body.attachments : [];
     const replyToId = req.body?.replyToId || null;
     const forwardedFrom = req.body?.forwardedFrom || null;
+    const messageId = req.body?.messageId || randomUUID();
     const attachmentBytes = attachments.reduce((total, attachment) => {
         const data = typeof attachment?.data === 'string' ? attachment.data : '';
         const encoded = data.split(',').at(-1) || '';
@@ -334,6 +365,7 @@ const createMessage = async (req, res) => {
             !/^data:[^;,]+;base64,[a-zA-Z0-9+/=]+$/.test(item.data)) ||
         attachmentBytes > maxAttachmentBytes ||
         (!body && attachments.length === 0) ||
+        typeof messageId !== 'string' || !uuidPattern.test(messageId) ||
         (replyToId !== null && (typeof replyToId !== 'string' || !uuidPattern.test(replyToId))) ||
         (forwardedFrom !== null && (
             typeof forwardedFrom !== 'object' ||
@@ -375,11 +407,18 @@ const createMessage = async (req, res) => {
                 });
             }
         }
-        const messageId = randomUUID();
-        await query(
-            `INSERT INTO messages
-             (message_id, conversation_id, sender_firebase_uid, body, reply_to_message_id, attachments, forwarded_from)
-             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)`,
+        const inserted = await query(
+            `WITH created_message AS (
+                 INSERT INTO messages
+                 (message_id, conversation_id, sender_firebase_uid, body, reply_to_message_id, attachments, forwarded_from)
+                 VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
+                 RETURNING created_at
+             )
+             UPDATE message_conversations
+             SET updated_at = NOW()
+             FROM created_message
+             WHERE conversation_id = $2
+             RETURNING created_message.created_at`,
             [
                 messageId,
                 conversation.conversation_id,
@@ -390,11 +429,14 @@ const createMessage = async (req, res) => {
                 forwardedFrom ? JSON.stringify({ senderName: forwardedFrom.senderName }) : null
             ]
         );
-        await query(
-            `UPDATE message_conversations SET updated_at = NOW() WHERE conversation_id = $1`,
-            [conversation.conversation_id]
-        );
-        await publishToMembers(conversation.conversation_id, { type: 'message.changed' });
+        await publishToMembers(conversation.conversation_id, {
+            type: 'message.created',
+            messageId,
+            createdAt: inserted.rows[0]?.created_at || new Date().toISOString(),
+            senderUid: req.firebaseUid,
+            senderEmail: req.firebaseEmail || '',
+            senderName: req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'Project member'
+        });
         return res.status(201).json({ success: true, data: { messageId } });
     } catch (error) {
         console.error('Create message error:', error);
@@ -426,7 +468,7 @@ const mutateMessage = async (req, res) => {
             });
         }
         const found = await query(
-            `SELECT sender_firebase_uid FROM messages WHERE message_id = $1 AND conversation_id = $2`,
+            `SELECT sender_firebase_uid, deleted_at FROM messages WHERE message_id = $1 AND conversation_id = $2`,
             [messageId, conversation.conversation_id]
         );
         if (!found.rowCount) {
@@ -434,6 +476,13 @@ const mutateMessage = async (req, res) => {
                 success: false,
                 code: 'MESSAGE_NOT_FOUND',
                 message: 'Message not found.'
+            });
+        }
+        if (found.rows[0].deleted_at) {
+            return res.status(400).json({
+                success: false,
+                code: 'MESSAGE_ALREADY_DELETED',
+                message: 'A deleted message cannot be changed.'
             });
         }
         if (action === 'edit') {
@@ -503,6 +552,111 @@ const mutateMessage = async (req, res) => {
     }
 };
 
+const deleteMessage = async (req, res) => {
+    const { conversationId, messageId } = req.params;
+    const scope = req.body?.scope;
+    if (!['me', 'everyone'].includes(scope)) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_DELETE_SCOPE',
+            message: 'Choose whether to delete the message for you or for everyone.'
+        });
+    }
+    if (!uuidPattern.test(messageId || '')) {
+        return res.status(404).json({
+            success: false,
+            code: 'MESSAGE_NOT_FOUND',
+            message: 'Message not found.'
+        });
+    }
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const conversationResult = await client.query(
+            `SELECT c.conversation_id
+             FROM message_conversations c
+             JOIN message_conversation_members cm USING (conversation_id)
+             JOIN projects p ON p.project_id = c.project_id
+             WHERE c.conversation_id = $1
+               AND cm.firebase_uid = $2
+               AND (p.creator_firebase_uid = $2 OR EXISTS (
+                   SELECT 1
+                   FROM project_invitations pi
+                   WHERE pi.project_id = p.project_id
+                     AND pi.invited_firebase_uid = $2
+                     AND pi.status = 'accepted'
+               ))
+             FOR SHARE OF c`,
+            [conversationId, req.firebaseUid]
+        );
+        if (!conversationResult.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                success: false,
+                code: 'CONVERSATION_NOT_FOUND',
+                message: 'Conversation not found.'
+            });
+        }
+        const messageResult = await client.query(
+            `SELECT sender_firebase_uid, deleted_at
+             FROM messages
+             WHERE message_id = $1 AND conversation_id = $2
+             FOR UPDATE`,
+            [messageId, conversationId]
+        );
+        if (!messageResult.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                success: false,
+                code: 'MESSAGE_NOT_FOUND',
+                message: 'Message not found.'
+            });
+        }
+        const message = messageResult.rows[0];
+        if (scope === 'everyone' && message.sender_firebase_uid !== req.firebaseUid) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({
+                success: false,
+                code: 'MESSAGE_DELETE_FOR_EVERYONE_FORBIDDEN',
+                message: 'Only the sender can delete this message for everyone.'
+            });
+        }
+        if (scope === 'everyone' && !message.deleted_at) {
+            await client.query(
+                `UPDATE messages
+                 SET body = 'Message deleted',
+                     attachments = '[]'::jsonb,
+                     forwarded_from = NULL,
+                     deleted_at = NOW()
+                 WHERE message_id = $1`,
+                [messageId]
+            );
+            await client.query(`DELETE FROM message_reactions WHERE message_id = $1`, [messageId]);
+            await client.query(`DELETE FROM message_reads WHERE message_id = $1`, [messageId]);
+        } else {
+            await client.query(
+                `INSERT INTO message_hidden_for (message_id, firebase_uid)
+                 VALUES ($1, $2)
+                 ON CONFLICT (message_id, firebase_uid) DO NOTHING`,
+                [messageId, req.firebaseUid]
+            );
+        }
+        await client.query('COMMIT');
+        await publishToMembers(conversationId, { type: 'message.changed' });
+        return res.json({ success: true, data: { scope } });
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Delete message error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'MESSAGE_DELETE_FAILED',
+            message: 'The message could not be deleted.'
+        });
+    } finally {
+        client.release();
+    }
+};
+
 const markConversationRead = async (req, res) => {
     try {
         const conversation = await getConversation(req.params.conversationId, req.firebaseUid);
@@ -516,7 +670,14 @@ const markConversationRead = async (req, res) => {
         await query(
             `WITH read_messages AS (
                  SELECT message_id FROM messages
-                 WHERE conversation_id = $1 AND sender_firebase_uid <> $2
+                 WHERE conversation_id = $1
+                   AND sender_firebase_uid <> $2
+                   AND deleted_at IS NULL
+                   AND NOT EXISTS (
+                       SELECT 1 FROM message_hidden_for hidden
+                       WHERE hidden.message_id = messages.message_id
+                         AND hidden.firebase_uid = $2
+                   )
              )
              INSERT INTO message_reads (message_id, firebase_uid)
              SELECT message_id, $2 FROM read_messages
@@ -546,5 +707,6 @@ module.exports = {
     getMessages,
     createMessage,
     mutateMessage,
+    deleteMessage,
     markConversationRead
 };

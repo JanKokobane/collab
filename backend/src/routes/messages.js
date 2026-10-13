@@ -5,6 +5,7 @@ const {
     getMessages,
     createMessage,
     mutateMessage,
+    deleteMessage,
     markConversationRead
 } = require('../controllers/messageController');
 const { requireFirebaseAuth } = require('../middleware/requireFirebaseAuth');
@@ -16,6 +17,7 @@ router.get('/conversations', getConversations);
 router.post('/conversations', createConversation);
 router.get('/conversations/:conversationId/messages', getMessages);
 router.post('/conversations/:conversationId/messages', createMessage);
+router.delete('/conversations/:conversationId/messages/:messageId', deleteMessage);
 router.post('/conversations/:conversationId/read', markConversationRead);
 router.patch('/conversations/:conversationId/messages/:messageId/:action', mutateMessage);
 

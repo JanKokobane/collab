@@ -163,6 +163,8 @@ to their boards so dashboard notifications can open the correct board.
 Migration `014_persistent_messages.sql` creates persistent conversations,
 members, messages, reactions, and read receipts; it is applied automatically
 during backend startup.
+Migration `015_message_delete_scopes.sql` adds per-user message hiding and
+delete-for-everyone state for persistent messages.
 
 ## Remaining local demo features
 

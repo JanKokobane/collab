@@ -168,9 +168,10 @@ export const api = {
             body
         }),
 
-    delete: path =>
+    delete: (path, body) =>
         request(path, {
-            method: 'DELETE'
+            method: 'DELETE',
+            ...(body === undefined ? {} : { body })
         })
 };
 

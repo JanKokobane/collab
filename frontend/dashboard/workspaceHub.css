@@ -3875,6 +3875,7 @@ body.dark-mode .hub-res-logo {
 .message-row.own {
     align-self: flex-end;
     flex-direction: row-reverse;
+    max-width: min(88%, 900px);
 }
 
 .message-content {
@@ -3899,6 +3900,7 @@ body.dark-mode .hub-res-logo {
 }
 
 .message-bubble {
+    position: relative;
     min-width: 48px;
     max-width: 100%;
     padding: 8px 10px 5px;
@@ -3961,6 +3963,11 @@ body.dark-mode .hub-res-logo {
     line-height: 1.5;
     overflow-wrap: anywhere;
     white-space: pre-wrap;
+}
+
+.message-text.deleted {
+    color: #71717A;
+    font-style: italic;
 }
 
 .message-time-row {
@@ -4241,7 +4248,7 @@ body.dark-mode .hub-res-logo {
     position: absolute;
     z-index: 2;
     top: 5px;
-    right: -30px;
+    right: -34px;
     visibility: hidden;
     opacity: 0;
     transition: opacity .12s ease;
@@ -4249,7 +4256,7 @@ body.dark-mode .hub-res-logo {
 
 .message-row.own .message-add-reaction-wrap {
     right: auto;
-    left: -30px;
+    left: -34px;
 }
 
 .message-row:hover .message-add-reaction-wrap,
@@ -4320,8 +4327,9 @@ body.dark-mode .hub-res-logo {
 .message-actions-menu {
     position: absolute;
     z-index: 1200;
-    top: 32px;
-    right: 0;
+    top: 0;
+    right: auto;
+    left: 28px;
     display: flex;
     width: 160px;
     max-height: min(360px, 65vh);
@@ -4335,8 +4343,8 @@ body.dark-mode .hub-res-logo {
 }
 
 .message-row.own .message-actions-menu {
-    right: auto;
-    left: 0;
+    right: 28px;
+    left: auto;
 }
 
 .message-actions-menu[hidden] {
@@ -4388,6 +4396,12 @@ body.dark-mode .hub-res-logo {
     right: auto;
     bottom: auto;
     left: calc(100% + 5px);
+    max-width: min(232px, calc(100vw - 24px));
+    box-sizing: border-box;
+    border: 1px solid #E4E4E7;
+    border-radius: 10px;
+    background: #FFFFFF;
+    box-shadow: 0 8px 24px rgba(24, 34, 48, .2);
 }
 
 .message-row.own .messages-emoji-menu {
@@ -4424,7 +4438,7 @@ body.dark-mode .hub-res-logo {
 .messages-composer {
     display: flex;
     align-items: flex-end;
-    gap: 9px;
+    gap: 3px;
     padding: 12px 16px;
     border-top: 1px solid var(--line);
 }
@@ -4477,12 +4491,12 @@ body.dark-mode .hub-res-logo {
 
     .messages-emoji-menu,
     .message-row.own .messages-emoji-menu {
-        position: fixed;
-        z-index: 1200;
-        top: 50%;
+        position: absolute;
+        z-index: 5;
+        top: 0;
         right: auto;
         bottom: auto;
-        left: 50%;
+        left: calc(100% + 5px);
         width: min(232px, calc(100vw - 24px));
         box-sizing: border-box;
         grid-template-columns: repeat(5, minmax(32px, 1fr));
@@ -4490,7 +4504,11 @@ body.dark-mode .hub-res-logo {
         padding: 8px;
         border-radius: 12px;
         box-shadow: 0 12px 32px rgba(24, 34, 48, .24);
-        transform: translate(-50%, -50%);
+    }
+
+    .message-row.own .messages-emoji-menu {
+        right: calc(100% + 5px);
+        left: auto;
     }
 
     .messages-emoji-menu .messages-emoji-choice {
@@ -4501,13 +4519,18 @@ body.dark-mode .hub-res-logo {
 
     .message-actions-menu,
     .message-row.own .message-actions-menu {
-        position: fixed;
-        top: auto;
-        right: 12px;
-        bottom: 12px;
-        left: 12px;
-        width: auto;
+        position: absolute;
+        top: 0;
+        right: auto;
+        bottom: auto;
+        left: 28px;
+        width: 160px;
         max-height: min(60vh, 420px);
+    }
+
+    .message-row.own .message-actions-menu {
+        right: 28px;
+        left: auto;
     }
 }
 
@@ -4533,7 +4556,7 @@ body.dark-mode .hub-res-logo {
 .messages-input-row {
     display: flex;
     align-items: flex-end;
-    gap: 6px;
+    gap: 3px;
 }
 
 .messages-compose-field textarea {
