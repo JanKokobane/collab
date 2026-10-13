@@ -7,6 +7,7 @@ const projectRouter = require('./src/routes/project');
 const notificationRouter = require('./src/routes/notification');
 const invitationRouter = require('./src/routes/invitation');
 const userRouter = require('./src/routes/user');
+const messagesRouter = require('./src/routes/messages');
 
 const { pool } = require('./src/config/db');
 
@@ -36,7 +37,7 @@ app.use(
     })
 );
 
-app.use(express.json({ limit: '512kb' }));
+app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use((req, res, next) => {
@@ -119,6 +120,7 @@ app.use('/api/projects', projectRouter);
 app.use('/api/notifications', notificationRouter);
 app.use('/api/invitations', invitationRouter);
 app.use('/api/users', userRouter);
+app.use('/api/messages', messagesRouter);
 
 app.use((req, res) => {
     res.status(404).json({

@@ -6,7 +6,7 @@ Collab is a browser-based team workspace for organizing projects, tasks, calenda
 
 - A public landing page with product information, pricing, FAQs, testimonials, and sign-up links.
 - An authentication page for email-link sign-in and registration, plus Google, GitHub, and Microsoft sign-in.
-- A single-page dashboard with project boards, calendar, workspace administration, notifications, brainstorming tools, settings, and local-demo messaging. Project meetings are persisted by the backend and scoped to accessible projects.
+- A single-page dashboard with project boards, calendar, workspace administration, notifications, brainstorming tools, settings, and persistent realtime messaging. Project meetings and messages are persisted by the backend and scoped to accessible projects and members.
 - Privacy and terms pages.
 
 ## Run locally
@@ -53,7 +53,7 @@ Firebase authentication is separate from the dashboard's demo data storage; sign
 - **Workspace hub:** Workspace summaries, project-scoped pinned resources, scratchpad, and team notifications are managed by `dashboard/js/workspaceHub.js`. Resources load from the backend for projects the user can access; only project creators can add links, and accepted project members can view them.
 - **Brainstorming:** Choose an accessible project, create private brainstorm boards, invite accepted project members, and receive in-dashboard invitation and board-update notifications. Notes, votes, positions, and links are saved to PostgreSQL through the backend; only board members can read or update a board.
 - **Polls:** Polls are created in the workspace-management area. Only included audience members see them; votes are stored per member, and a new poll can appear in a dismissible voting popup.
-- **Messages:** The browser-local messaging demo supports direct conversations, groups, channels, attachments, media previews, reactions, reply/edit/forward/pin/delete actions, simulated read receipts, and unread badges. Its UI and persistence are in `dashboard/js/messages.js`.
+- **Messages:** Direct conversations, groups, and channels are backed by PostgreSQL. Messages support attachments, reactions, replies, edits, forwarding, pins, deletes, persisted read receipts, and unread badges. Firebase-authenticated WebSockets deliver live updates; the UI is in `dashboard/js/messages.js`.
 - **Notifications:** Workspace notifications can be marked read individually or in bulk, or cleared. The notification state and badge updates are in `dashboard/js/state.js`; the table and confirmation flows are in `dashboard/js/workspaceHub.js`.
 - **Settings and appearance:** Profile controls, collaboration settings, theme, and accent handling are implemented in `dashboard/js/theme.js`.
 - **User profile:** Profile details are loaded and saved with `GET|PUT /api/users/profile`; the profile photo uses `GET|PUT /api/users/profile-image`.
@@ -87,7 +87,7 @@ frontend/
 │       ├── dateUtils.js       Local date parsing and formatting
 │       ├── events.js          Dashboard UI event wiring
 │       ├── icons.js           Shared inline SVG icon generator
-│       ├── messages.js        Browser-local messaging demo
+│       ├── messages.js        Persistent messaging and WebSocket client
 │       ├── modalChrome.js     Shared modal chrome enhancement
 │       ├── navigation.js      Dashboard view switching
 │       ├── projects.js        Projects, sprints, collaborator management
@@ -118,11 +118,10 @@ Common storage keys include:
 | Announcements, sticky notes, links, polls, resources | `collab_announcements`, `collab_sticky_notes`, `collab_sticky_links`, `collab_team_polls`, `collab_team_resources` |
 | Scratchpad and workspace preferences | `collab_workspace_scratchpad`, `collab-workspace-settings`, `collab_tool_settings` |
 | Appearance | `collab_theme`, `collab_accent` |
-| Messaging demo | `collab-demo-messaging` |
 
-Messaging attachments are converted to data URLs and stored with the conversation; the current implementation limits the combined attachment size to 512 KB per message to reduce browser storage pressure. Incoming-message read state and outgoing demo read receipts are simulated in local state.
+Message attachments are converted to data URLs and stored with the message; the combined attachment size is limited to 512 KB per message. Conversations, messages, reactions, pins, and read receipts are stored in PostgreSQL and are not persisted in browser storage.
 
-Firebase provides authentication tokens to the backend API. Calendar tasks, meetings, and reminders use the project APIs; polls and demo messaging remain local unless their module is explicitly wired to an API.
+Firebase provides authentication tokens to the backend API and the WebSocket handshake. Calendar tasks, meetings, reminders, and messaging use authenticated project APIs; polls and other documented demo features may still use local state.
 
 The backend provides Firebase-ID-token authenticated project, task, invitation,
 notification, and meeting APIs. Other dashboard features may still use

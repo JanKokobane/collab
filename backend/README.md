@@ -145,13 +145,11 @@ All endpoints below require `Authorization: Bearer <Firebase ID token>`.
   invited email to be signed in; `GET|POST /api/invitations/decline` provides
   a confirmation page before declining. Acceptance/rejection notifications are
   addressed to the project creator only.
-- Workspace invitation, channel, conversation, and message routes are
-  documented in their route implementation in `src/routes/workspaces.js`.
-
-The database migration includes tables for the planned calendar, messaging,
-announcements, resources, polls, brainstorm, notifications, activity, and
-files features. A table existing does not mean its API or frontend feature is
-implemented.
+- `src/routes/messages.js` provides Firebase-authenticated conversation,
+  message, reaction, pin, read-receipt, and attachment endpoints. WebSocket
+  connections at `/api/messages/socket` authenticate with a Firebase ID token
+  in their first frame; PostgreSQL notifications fan out changes across
+  backend instances to conversation members.
 
 Migration `007_project_meetings.sql` adds persistent project-scoped meetings,
 `008_project_reminders.sql` adds persistent project-scoped calendar reminders,
@@ -162,6 +160,9 @@ Migration `012_project_brainstorm_boards.sql` creates private project-scoped
 brainstorm boards and their membership table. Migration
 `013_brainstorm_board_notifications.sql` links invitations and board updates
 to their boards so dashboard notifications can open the correct board.
+Migration `014_persistent_messages.sql` creates persistent conversations,
+members, messages, reactions, and read receipts; it is applied automatically
+during backend startup.
 
 ## Remaining local demo features
 

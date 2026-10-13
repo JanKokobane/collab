@@ -305,8 +305,10 @@
 }
 
 .brainstorm-board .sticky-note-footer {
-    flex-wrap: wrap;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 8px;
+    row-gap: 60px;
     padding-top: 9px;
 }
 
@@ -345,10 +347,12 @@
 
 .sticky-reaction-controls {
     display: flex;
-    flex: 1 1 100%;
+    grid-column: 1 / -1;
+    justify-self: end;
+    max-width: 100%;
     min-width: 0;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: flex-end;
     flex-wrap: wrap;
     gap: 4px;
 }
@@ -357,6 +361,7 @@
     display: flex;
     min-width: 0;
     flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 3px;
 }
 

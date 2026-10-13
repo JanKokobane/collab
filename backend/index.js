@@ -4,6 +4,7 @@ const app = require('./app');
 const { connectDB, closeDB } = require('./src/config/db');
 const { initializeFirebaseAdmin } = require('./src/config/firebaseAdmin');
 const { runMigrations } = require('./src/config/runMigrations');
+const { initializeMessageSocket } = require('./src/services/messageSocket');
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -20,10 +21,16 @@ const startServer = async () => {
             console.log(`Server running on port ${PORT}`);
             console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
         });
+        const messageSocket = await initializeMessageSocket(server);
 
         const shutdown = async (signal) => {
             console.log(`${signal} received. Shutting down...`);
 
+            try {
+                await messageSocket.close();
+            } catch (error) {
+                console.error('WebSocket shutdown error:', error.message);
+            }
             server.close(async () => {
                 try {
                     await closeDB();
