@@ -109,6 +109,7 @@ import {
   initWorkspaceHubEvents
 } from './js/workspaceHub.js'
 import { initMessages, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js'
+import { initProjectStickyNotes } from './js/projectStickyNotes.js'
 import { initProfileOnboarding } from './js/profileOnboarding.js'
 import {
   onAuthStateChanged,
@@ -315,6 +316,7 @@ initModalChrome()
 initEventListeners()
 initWorkspaceHubEvents()
 initMessages()
+initProjectStickyNotes()
 
 // Initial Dashboard Renders
 updateUserUI()

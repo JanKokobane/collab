@@ -149,19 +149,27 @@ function enhanceModal(modal) {
     ? previous
     : null
   const close = [...modal.children].find(child => child.classList.contains('close-modal'))
-  if (eyebrow) header.append(eyebrow)
+  const copy = [...modal.children].find(child => child.classList.contains('modal-copy'))
+  if (eyebrow) {
+    eyebrow.classList.add('messages-create-eyebrow')
+    header.append(eyebrow)
+  }
   header.append(title)
+  if (copy) header.append(copy)
   if (close) header.append(close)
 
   const body = document.createElement('div')
   body.className = 'modal-body'
   for (const child of [...modal.children]) {
-    if (child !== header && child !== title && child !== eyebrow && child !== close) body.append(child)
+    if (child !== header && child !== title && child !== eyebrow && child !== copy && child !== close) body.append(child)
   }
   modal.replaceChildren(header, body)
   modal.dataset.chromeReady = 'true'
 
-  // Enhance all inputs inside modal body with SVG icons
+  if (!modal.hasAttribute('role')) modal.setAttribute('role', 'dialog')
+  modal.setAttribute('aria-modal', 'true')
+  if (close && !close.hasAttribute('aria-label')) close.setAttribute('aria-label', 'Close dialog')
+
   enhanceInputsWithIcons(body)
 
   const dialogLabelId = title.id || `dashboard-modal-title-${crypto.randomUUID()}`

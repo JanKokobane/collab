@@ -133,11 +133,13 @@ function openPollPopup(poll) {
     if (event.target === backdrop) dismiss()
   })
 
-  dialog.append(close, make('span', 'poll-popup-eyebrow', 'Team poll'))
+  const header = make('header', 'poll-popup-header')
+  header.append(close, make('span', 'poll-popup-eyebrow', 'Team poll'))
   const title = make('h2', 'poll-title', poll.title)
   title.id = 'poll-popup-title'
-  dialog.append(title)
-  if (poll.description) dialog.append(make('p', 'poll-desc', poll.description))
+  header.append(title)
+  if (poll.description) header.append(make('p', 'poll-desc', poll.description))
+  dialog.append(header)
 
   const optionsList = make('div', 'poll-options-list')
   const votes = getPollVoteCounts(poll)

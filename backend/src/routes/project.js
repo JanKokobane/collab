@@ -40,6 +40,12 @@ const {
     saveProjectScratchpad
 } = require('../controllers/scratchpadController');
 const {
+    createProjectStickyNote,
+    deleteProjectStickyNote,
+    getProjectStickyNotes,
+    updateProjectStickyNote
+} = require('../controllers/projectStickyNoteController');
+const {
     createProjectBoard,
     getBoard,
     getProjectBoards,
@@ -89,6 +95,10 @@ router.put('/:projectId/resources/:resourceId', updateProjectResource);
 router.delete('/:projectId/resources/:resourceId', deleteProjectResource);
 router.get('/:projectId/scratchpad', getProjectScratchpad);
 router.put('/:projectId/scratchpad', saveProjectScratchpad);
+router.get('/:projectId/sticky-notes', getProjectStickyNotes);
+router.post('/:projectId/sticky-notes', createProjectStickyNote);
+router.put('/:projectId/sticky-notes/:noteId', updateProjectStickyNote);
+router.delete('/:projectId/sticky-notes/:noteId', deleteProjectStickyNote);
 router.get('/:projectId/brainstorm-boards', getProjectBoards);
 router.post('/:projectId/brainstorm-boards', createProjectBoard);
 router.get('/brainstorm-boards/:boardId', getBoard);

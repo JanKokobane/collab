@@ -429,6 +429,7 @@ body.dark-mode .invite-user-search-result span,
     display: flex;
     flex-direction: column;
     min-width: 0;
+    position: relative;
 }
 
 .topbar {
@@ -1342,19 +1343,25 @@ body.dark-mode .invite-user-search-result span,
 }
 
 .modal {
+    box-sizing: border-box;
     background: #FFFFFF;
-    border: 1px solid #E1E7EC;
-    border-radius: 12px;
+    border: 0;
+    border-radius: 16px;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, .965), rgba(255, 255, 255, .965)),
+        url('../images/messages-clear-background.png');
+    background-position: center, center;
+    background-size: auto, 190px 190px;
     box-shadow: 0 28px 72px rgba(15, 15, 20, 0.24), 0 6px 18px rgba(15, 15, 20, .08);
     width: 100%;
-    max-width: 580px;
+    max-width: 440px;
     padding: 0;
     position: relative;
     margin: auto 0;
     display: flex;
     flex-direction: column;
-    max-height: calc(100vh - 48px);
-    overflow-y: auto;
+    max-height: min(780px, calc(100vh - 32px));
+    overflow: hidden;
     overflow-x: hidden;
     scrollbar-width: thin;
     scrollbar-color: #D4D4D8 #F4F4F5;
@@ -1475,31 +1482,29 @@ body.dark-mode .invite-user-search-result span,
 }
 
 form.modal {
-    width: 70%;
-    max-width: 406px;
+    width: min(440px, calc(100vw - 32px));
+    max-width: 440px;
 }
 
 .dashboard-modal-header {
     position: relative;
     display: flex;
-    min-height: 76px;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    gap: 5px;
-    padding: 18px 64px;
-    border-radius: 11px 11px 0 0;
-    background: linear-gradient(115deg, #171717 0%, #242424 100%);
-    border-bottom: 1px solid rgba(245, 184, 0, .42);
+    gap: 6px;
+    padding: 20px 60px 18px 24px;
+    border-radius: 15px 15px 0 0;
+    background: #000000;
 }
 
 .dashboard-modal-header .eyebrow,
 .dashboard-modal-header .notification-confirmation-eyebrow {
     margin: 0;
-    color: #F5B800;
-    font-size: 9px;
+    color: #A7F3D0;
+    font-size: 10px;
     font-weight: 800;
-    letter-spacing: .12em;
+    letter-spacing: .1em;
     line-height: 1.3;
     text-transform: uppercase;
 }
@@ -1507,17 +1512,30 @@ form.modal {
 .modal .dashboard-modal-header h2 {
     max-width: 100%;
     color: #FFFFFF;
-    font: 750 18px/1.3 'Manrope', sans-serif;
+    font: 750 21px/1.25 'Manrope', sans-serif;
     letter-spacing: -.015em;
     overflow-wrap: anywhere;
-    text-align: center;
+    text-align: left;
+}
+
+.dashboard-modal-header .modal-copy {
+    margin: 0;
+    color: #D4D4D8;
+    font-size: 13px;
+    line-height: 1.5;
 }
 
 .dashboard-modal-header .close-modal {
-    top: 50%;
+    top: 18px;
     right: 16px;
-    transform: translateY(-50%);
-    color: #D4D4D8;
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border-radius: 9px;
+    background: #27272A;
+    color: #FFFFFF;
+    font-size: 22px;
 }
 
 .dashboard-modal-header .close-modal:hover {
@@ -1528,9 +1546,10 @@ form.modal {
 .modal-body {
     display: flex;
     min-height: 0;
+    flex: 1 1 auto;
     flex-direction: column;
-    gap: 12px;
-    overflow-y: auto;
+    gap: 14px;
+    overflow: auto;
     padding: 24px;
 }
 
@@ -1569,6 +1588,14 @@ form.modal {
         width: calc(100vw - 32px);
         max-width: calc(100vw - 32px);
     }
+
+    .dashboard-modal-header {
+        padding: 18px 56px 16px 20px;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
 }
 
 .modal::-webkit-scrollbar {
@@ -1605,8 +1632,8 @@ form.modal {
 }
 
 form.modal.brainstorm-invite-board-modal {
-    gap: 14px;
-    padding: 24px;
+    gap: 0;
+    padding: 0;
 }
 
 .brainstorm-create-board-copy,
@@ -1834,14 +1861,21 @@ form.modal .brainstorm-board-member-option input[type="checkbox"] {
     min-height: 42px;
     box-sizing: border-box;
     padding: 10px 12px;
-    border: 1px solid #D5DDE5;
-    border-radius: 6px;
+    border: 1px solid #DCE5E2;
+    border-radius: 9px;
     font: 13px 'DM Sans', sans-serif;
     outline: none;
-    background: #FBFCFD;
-    color: #182230;
+    background: #FFFFFF;
+    color: #202A29;
     box-shadow: none;
     transition: border-color .15s, box-shadow .15s, background-color .15s;
+}
+
+.modal input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="color"]):focus,
+.modal select:focus,
+.modal textarea:focus {
+    border-color: #287B6E;
+    box-shadow: 0 0 0 3px rgba(40, 123, 110, .12);
 }
 
 .modal textarea,
@@ -1860,7 +1894,7 @@ form.modal .brainstorm-board-member-option input[type="checkbox"] {
 .inflow-edit-form textarea::placeholder,
 .comment-input::placeholder,
 .announcement-composer textarea::placeholder {
-    color: #98A2B3;
+    color: #9A9AA2;
 }
 
 .modal input[type="checkbox"],
@@ -1889,9 +1923,9 @@ form.modal .brainstorm-board-member-option input[type="checkbox"] {
     min-height: 42px;
     box-sizing: border-box;
     padding: 8px;
-    border: 1px solid #D5DDE5;
-    border-radius: 6px;
-    background: #FBFCFD;
+    border: 1px solid #DCE5E2;
+    border-radius: 9px;
+    background: #FFFFFF;
     color: #475467;
     font: 12px 'DM Sans', sans-serif;
 }
@@ -1900,9 +1934,15 @@ form.modal .brainstorm-board-member-option input[type="checkbox"] {
     width: 100%;
     height: 42px;
     padding: 4px;
-    border: 1px solid #D5DDE5;
-    border-radius: 6px;
-    background: #FBFCFD;
+    border: 1px solid #DCE5E2;
+    border-radius: 9px;
+    background: #FFFFFF;
+}
+
+.modal-body > .primary-button,
+.modal-body .primary-button.full {
+    min-height: 42px;
+    border-radius: 9px;
 }
 
 .form-row {
@@ -5165,6 +5205,17 @@ body.dark-mode .input-with-icon:focus-within .input-icon-svg,
     margin-left: auto;
 }
 
+.project-heading-actions.admin-tabs-nav {
+    align-items: center;
+}
+
+.project-heading-actions .project-heading-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
 .outline-button-action {
     display: inline-flex;
     align-items: center;
@@ -7156,11 +7207,31 @@ body.dark-mode .cal-agenda-card {
 
 body.dark-mode .modal {
     background: #1B1B22;
-    border: 1px solid #2F2F3D;
+    border: 0;
+    background-image:
+        linear-gradient(rgba(26, 26, 32, .965), rgba(26, 26, 32, .965)),
+        url('../images/messages-clear-background.png');
     color: #FFFFFF;
 }
 
 body.dark-mode .modal h2 {
+    color: #FFFFFF;
+}
+
+body.dark-mode .modal-body .modal-copy {
+    color: #A1A1AA;
+}
+
+body.dark-mode .dashboard-modal-header {
+    background: #000000;
+}
+
+body.dark-mode .dashboard-modal-header .modal-copy {
+    color: #D4D4D8;
+}
+
+body.dark-mode .dashboard-modal-header .close-modal {
+    background: #27272A;
     color: #FFFFFF;
 }
 

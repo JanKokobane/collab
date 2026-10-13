@@ -575,6 +575,9 @@ export function openAddSprintModal(projectOverride = null) {
 
   const backdrop =
     make('div', 'modal-backdrop')
+  backdrop.addEventListener('click', event => {
+    if (event.target === backdrop) closeModal()
+  })
 
   const form =
     make('form', 'modal')
@@ -797,9 +800,14 @@ export function openInviteCollaboratorModal(
 
   const backdrop =
     make('div', 'modal-backdrop')
+  backdrop.addEventListener('click', event => {
+    if (event.target === backdrop) closeModal()
+  })
 
   const form =
-    make('form', 'modal')
+    make('form', 'modal messages-create-modal project-invite-modal')
+  form.setAttribute('role', 'dialog')
+  form.setAttribute('aria-modal', 'true')
 
   const close =
     make(
@@ -809,6 +817,7 @@ export function openInviteCollaboratorModal(
     )
 
   close.type = 'button'
+  close.setAttribute('aria-label', 'Close dialog')
 
   close.addEventListener(
     'click',
@@ -821,6 +830,8 @@ export function openInviteCollaboratorModal(
       '',
       `Invite Member to ${proj ? proj.name : 'Workspace'}`
     )
+  title.id = 'project-invite-modal-title'
+  form.setAttribute('aria-labelledby', title.id)
 
   const copy =
     make(
@@ -828,22 +839,25 @@ export function openInviteCollaboratorModal(
       'modal-copy',
       'Search for an existing Collab user. They will receive an invitation in their dashboard and can accept or decline it there.'
     )
+  const header = make('header', 'messages-create-header project-invite-header')
+  header.append(make('span', 'messages-create-eyebrow', 'PROJECT COLLABORATOR'), title, copy, close)
 
-  const searchLabel = make('label', '', 'Search registered Collab users')
+  const searchLabel = make('label', 'messages-create-label', 'Search registered Collab users')
   const searchInput = make('input')
   searchInput.type = 'search'
   searchInput.placeholder = 'Search by name or email...'
   searchInput.autocomplete = 'off'
   searchInput.minLength = 2
+  searchInput.setAttribute('aria-label', 'Search registered Collab users')
   searchLabel.append(searchInput)
 
-  const searchStatus = make('p', 'modal-copy')
+  const searchStatus = make('p', 'project-invite-search-status')
   searchStatus.setAttribute('role', 'status')
   searchStatus.setAttribute('aria-live', 'polite')
   searchStatus.textContent = 'Enter at least 2 characters to search.'
 
   const searchResults = make('div', 'invite-user-search-results')
-  const selectedUsersLabel = make('p', 'modal-copy', 'Selected users')
+  const selectedUsersLabel = make('p', 'messages-create-label project-invite-section-label', 'Selected users')
   const selectedUsersList = make('div', 'invite-selected-users')
   selectedUsersLabel.hidden = true
   selectedUsersList.hidden = true
@@ -855,7 +869,7 @@ export function openInviteCollaboratorModal(
   const roleLabel =
     make(
       'label',
-      '',
+      'messages-create-label',
       'Role & Permissions'
     )
 
@@ -893,7 +907,7 @@ export function openInviteCollaboratorModal(
   const projectLabel =
     make(
       'label',
-      '',
+      'messages-create-label',
       'Assign to Project'
     )
 
@@ -943,14 +957,7 @@ export function openInviteCollaboratorModal(
   errorNotice.hidden = true
 
   form.append(
-    close,
-    make(
-      'p',
-      'eyebrow',
-      'PROJECT COLLABORATOR'
-    ),
-    title,
-    copy,
+    header,
     searchLabel,
     searchStatus,
     searchResults,
@@ -961,6 +968,7 @@ export function openInviteCollaboratorModal(
     errorNotice,
     submit
   )
+  submit.classList.add('messages-create-submit')
 
   const renderSelectedUsers = () => {
     selectedUsersList.replaceChildren()
@@ -1025,9 +1033,10 @@ export function openInviteCollaboratorModal(
           resultButton.type = 'button'
           resultButton.disabled = selectedUsers.has(firebaseUid)
           resultButton.append(
+            make('span', 'messages-create-avatar', name.split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase()),
             make('strong', '', name),
-            make('span', '', email),
-            make('span', '', resultButton.disabled ? 'Already selected' : 'Add to invitation')
+            make('small', '', email),
+            make('span', 'project-invite-result-action', resultButton.disabled ? 'Already selected' : 'Add')
           )
           resultButton.addEventListener('click', () => {
             if (selectedUsers.has(firebaseUid)) return
@@ -1422,15 +1431,23 @@ export function openManageCollaboratorsModal() {
   }
 
   const backdrop = make('div', 'modal-backdrop')
-  const dialog = make('section', 'modal')
-  dialog.style.maxWidth = '680px'
+  backdrop.addEventListener('click', event => {
+    if (event.target === backdrop) closeModal()
+  })
+  const dialog = make('section', 'modal messages-create-modal project-invitations-modal')
+  dialog.setAttribute('role', 'dialog')
+  dialog.setAttribute('aria-modal', 'true')
   const close = make('button', 'close-modal', '×')
   close.type = 'button'
-  close.setAttribute('aria-label', 'Close')
+  close.setAttribute('aria-label', 'Close dialog')
   close.addEventListener('click', closeModal)
 
   const title = make('h2', '', `${project.name} — Invitations`)
+  title.id = 'project-invitations-modal-title'
+  dialog.setAttribute('aria-labelledby', title.id)
   const copy = make('p', 'modal-copy', 'Review invite status. Removing an accepted collaborator revokes their project access.')
+  const header = make('header', 'messages-create-header project-invitations-header')
+  header.append(make('span', 'messages-create-eyebrow', 'PROJECT TEAM'), title, copy, close)
   const notice = make('p', 'project-form-error')
   notice.setAttribute('role', 'alert')
   notice.hidden = true
@@ -1488,7 +1505,7 @@ export function openManageCollaboratorsModal() {
 
         const actions = make('td')
         if (invitation.status === 'pending' || invitation.status === 'accepted') {
-          const remove = make('button', 'action-btn delete', invitation.status === 'pending' ? 'Revoke' : 'Remove')
+          const remove = make('button', 'action-btn delete invitation-remove-button', invitation.status === 'pending' ? 'Revoke' : 'Remove')
           remove.type = 'button'
           remove.addEventListener('click', async () => {
             const confirmed = await showDashboardConfirmation({
@@ -1527,12 +1544,13 @@ export function openManageCollaboratorsModal() {
   }
 
   const invite = make('button', 'primary-button gold', '+ Invite another member')
+  invite.classList.add('messages-create-submit')
   invite.type = 'button'
   invite.addEventListener('click', () => {
     closeModal()
     openInviteCollaboratorModal(project)
   })
-  dialog.append(close, make('p', 'eyebrow', 'PROJECT TEAM'), title, copy, notice, tableWrap, invite)
+  dialog.append(header, notice, tableWrap, invite)
   backdrop.append(dialog)
   root.replaceChildren(backdrop)
   refresh()

@@ -169,6 +169,10 @@ delete-for-everyone state for persistent messages.
 Migration `016_project_scratchpads.sql` adds a shared notes document for each
 project. Authenticated project creators and accepted members can load and save
 it through `GET` and `PUT /api/projects/:projectId/scratchpad`.
+Migration `017_project_sticky_notes.sql` adds project-scoped floating notes and
+their tagged-recipient visibility. Creators can add, edit, and delete notes;
+tagged members can view and reposition them. Tagged members receive a
+notification when a note is created.
 
 ## Remaining local demo features
 

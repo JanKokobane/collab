@@ -16,6 +16,7 @@ import { loadProjectMeetings } from './meetings.js'
 import { loadProjectCalendarData } from './calendarData.js'
 import { loadProjectResources, loadProjectScratchpad } from './workspaceResources.js'
 import { showDashboardToast } from './modalChrome.js'
+import { renderProjectStickyNotes } from './projectStickyNotes.js'
 
 // ============================================================
 // VIEW SWITCHING (WORKSPACE COLLABORATION HUB)
@@ -132,6 +133,7 @@ export function switchView(viewName) {
     hub.renderTasks?.()
   }
 
+  renderProjectStickyNotes()
   enhanceInputsWithIcons(document)
   if (['Calendar', 'Workspace', 'Admin Console'].includes(viewName)) {
     const dataLoad = viewName === 'Calendar'
