@@ -347,8 +347,8 @@ async function selectConversation(conversationId) {
   try {
     await loadConversationMessages(conversationId)
     const conversation = messageState.conversations.find(item => item.id === conversationId)
-    if (conversation?.unreadCount) {
-      await api.post(`${apiPath(conversationId)}/read`, {})
+    await api.post(`${apiPath(conversationId)}/read`, {})
+    if (conversation) {
       conversation.unreadCount = 0
       updateMessagesNavigationBadge()
     }
@@ -478,9 +478,9 @@ function renderMessagesList() {
   }
   messages.forEach(message => {
     const own = message.senderUid === currentUid()
-    const row = make('article', `message-row${own ? ' own' : ''}`)
-    const body = make('div', 'message-content')
-    const bubble = make('div', 'message-bubble')
+    const row = make('article', `message-row${own ? ' own message-row-sent' : ''}`)
+    const body = make('div', `message-content${own ? ' message-content-sent' : ''}`)
+    const bubble = make('div', `message-bubble${own ? ' message-bubble-sent' : ''}`)
     if (message.pinned) bubble.append(make('div', 'message-pinned-label', '📌 Pinned'))
     if (!own) bubble.append(make('div', 'message-meta', message.senderName))
     if (message.forwardedFrom?.senderName) bubble.append(make('div', 'message-forwarded-label', `↪ Forwarded from ${message.forwardedFrom.senderName}`))
@@ -490,16 +490,16 @@ function renderMessagesList() {
       bubble.append(quote)
     }
     if (message.body) {
-      bubble.append(make('p', `message-text${message.isDeleted ? ' deleted' : ''}`, message.body))
+      bubble.append(make('p', `message-text${own ? ' message-text-sent' : ''}${message.isDeleted ? ' deleted' : ''}`, message.body))
     }
     ;(message.attachments || []).forEach(attachment => renderAttachment(attachment, bubble))
     const time = make('span', 'message-time-row')
     if (message.editedAt) time.append(make('span', 'message-edited-label', 'Edited'))
     time.append(make('time', 'message-time', formatMessageTime(message.createdAt)))
-    const conversation = messageState.conversations.find(item => item.id === selectedConversationId)
-    if (own && conversation?.type === 'direct') {
+    if (own) {
       const receipt = make('span', `message-status${message.readAt ? ' read' : ''}`, message.readAt ? '✓✓' : '✓')
-      receipt.title = message.readAt ? 'Read' : 'Sent'
+      receipt.title = message.readAt ? 'Viewed' : 'Sent'
+      receipt.setAttribute('aria-label', message.readAt ? 'Viewed' : 'Sent')
       time.append(receipt)
     }
     bubble.append(time)
@@ -510,6 +510,19 @@ function renderMessagesList() {
     feed.append(row)
   })
   if (shouldScroll) feed.scrollTop = feed.scrollHeight
+}
+
+async function clearConversationMessages(conversation) {
+  const confirmed = window.confirm(
+    'Clear all messages from this conversation for you? Other members will still see them.'
+  )
+  if (!confirmed) return
+  try {
+    await api.delete(`${apiPath(conversation.id)}/messages`)
+    await refreshFromServer()
+  } catch (error) {
+    showError(error)
+  }
 }
 
 function renderMessagesView() {
@@ -533,6 +546,27 @@ function renderMessagesView() {
   heading.append(make('h2', '', `${prefix}${getConversationTitle(conversation)}`))
   heading.append(make('p', '', conversation.participants.map(member => member.name || member.email).join(', ')))
   header.append(heading)
+  const actions = make('div', 'messages-thread-actions')
+  const trigger = make('button', 'message-actions-trigger messages-thread-actions-trigger', '⋮')
+  trigger.type = 'button'
+  trigger.setAttribute('aria-label', 'Conversation actions')
+  trigger.setAttribute('aria-expanded', 'false')
+  const menu = make('div', 'message-actions-menu messages-thread-actions-menu')
+  menu.hidden = true
+  const clearButton = make('button', 'message-action-option destructive', 'Clear all messages')
+  clearButton.type = 'button'
+  clearButton.addEventListener('click', () => {
+    menu.hidden = true
+    trigger.setAttribute('aria-expanded', 'false')
+    clearConversationMessages(conversation)
+  })
+  menu.append(clearButton)
+  trigger.addEventListener('click', () => {
+    menu.hidden = !menu.hidden
+    trigger.setAttribute('aria-expanded', String(!menu.hidden))
+  })
+  actions.append(trigger, menu)
+  header.append(actions)
   input.disabled = false
   send.disabled = false
   renderMessagesList()
@@ -1080,8 +1114,11 @@ export function initMessages() {
     document.querySelectorAll('.messages-emoji-menu:not([hidden])').forEach(picker => { picker.hidden = true })
   })
   document.addEventListener('click', event => {
-    if (event.target.closest('.message-actions')) return
+    if (event.target.closest('.message-actions, .messages-thread-actions')) return
     document.querySelectorAll('.message-actions-menu:not([hidden])').forEach(menu => { menu.hidden = true })
+    document.querySelectorAll('.message-actions-trigger[aria-expanded="true"]').forEach(trigger => {
+      trigger.setAttribute('aria-expanded', 'false')
+    })
   })
 }
 

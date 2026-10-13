@@ -146,7 +146,8 @@ All endpoints below require `Authorization: Bearer <Firebase ID token>`.
   a confirmation page before declining. Acceptance/rejection notifications are
   addressed to the project creator only.
 - `src/routes/messages.js` provides Firebase-authenticated conversation,
-  message, reaction, pin, read-receipt, and attachment endpoints. WebSocket
+  message, reaction, pin, read-receipt, attachment, and per-user conversation
+  clearing endpoints. Clearing hides messages only for the caller. WebSocket
   connections at `/api/messages/socket` authenticate with a Firebase ID token
   in their first frame; PostgreSQL notifications fan out changes across
   backend instances to conversation members.

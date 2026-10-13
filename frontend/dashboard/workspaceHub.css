@@ -3830,6 +3830,18 @@ body.dark-mode .hub-res-logo {
     justify-content: flex-start;
 }
 
+.messages-thread-actions {
+    position: relative;
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+.messages-thread-actions-menu {
+    top: calc(100% + 4px);
+    right: 0;
+    left: auto;
+}
+
 .messages-error {
     margin: 12px 18px 0;
     padding: 9px 12px;
@@ -3846,10 +3858,12 @@ body.dark-mode .hub-res-logo {
 
 .messages-feed {
     display: flex;
+    min-width: 0;
     min-height: 0;
     flex: 1;
     flex-direction: column;
     gap: 10px;
+    overflow-x: hidden;
     overflow-y: auto;
     padding: 22px;
 }
@@ -3878,6 +3892,11 @@ body.dark-mode .hub-res-logo {
     max-width: min(88%, 900px);
 }
 
+.message-row-sent {
+    width: min(88%, 900px);
+    box-sizing: border-box;
+}
+
 .message-content {
     position: relative;
     display: flex;
@@ -3895,32 +3914,49 @@ body.dark-mode .hub-res-logo {
     margin-right: -36px;
 }
 
+.message-content-sent {
+    width: calc(100% + 36px);
+    max-width: calc(100% + 36px);
+    min-width: 0;
+}
+
 .message-row.own .message-content {
     align-items: flex-end;
 }
 
 .message-bubble {
     position: relative;
+    width: max-content;
     min-width: 48px;
     max-width: 100%;
+    box-sizing: border-box;
     padding: 8px 10px 5px;
-    border: 1px solid #E6E8EB;
+    border: 1px solid #D7E3DE;
     border-radius: 12px 12px 12px 3px;
-    background: #FFFFFF;
+    background: #F3F8F6;
     box-shadow: 0 1px 1px rgba(20, 24, 31, .06);
 }
 
 .message-row.own .message-bubble {
-    border-color: #CDE8D9;
+    border-color: #A9D9BE;
     border-radius: 12px 12px 3px 12px;
-    background: #E4F4EA;
+    background: #CFEBDD;
+}
+
+.message-bubble-sent {
+    width: max-content;
+    max-width: 100%;
 }
 
 .message-meta {
+    max-width: 100%;
+    overflow: hidden;
     margin: 0 0 3px;
     color: #287B6E;
     font-size: 10px;
     font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .message-pinned-label,
@@ -3961,8 +3997,13 @@ body.dark-mode .hub-res-logo {
     color: #27272A;
     font-size: 12px;
     line-height: 1.5;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
+    word-break: normal;
     white-space: pre-wrap;
+}
+
+.message-text-sent {
+    max-width: 100%;
 }
 
 .message-text.deleted {
@@ -5486,13 +5527,13 @@ body.dark-mode .messages-member-option span {
 }
 
 body.dark-mode .message-bubble {
-    background: #25252D;
-    border-color: #3A3A45;
+    background: #2D3433;
+    border-color: #46544F;
 }
 
 body.dark-mode .message-row.own .message-bubble {
-    background: #164C3F;
-    border-color: #286B59;
+    background: #1B5B49;
+    border-color: #39856B;
 }
 
 body.dark-mode .message-meta {
@@ -5662,6 +5703,12 @@ body.dark-mode .messages-composer-context-close {
     }
 
     .message-row {
+        width: 88%;
+        max-width: 88%;
+    }
+
+    .message-row-sent {
+        width: 88%;
         max-width: 88%;
     }
 

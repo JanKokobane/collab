@@ -657,6 +657,35 @@ const deleteMessage = async (req, res) => {
     }
 };
 
+const clearConversationMessages = async (req, res) => {
+    try {
+        const conversation = await getConversation(req.params.conversationId, req.firebaseUid);
+        if (!conversation) {
+            return res.status(404).json({
+                success: false,
+                code: 'CONVERSATION_NOT_FOUND',
+                message: 'Conversation not found.'
+            });
+        }
+        const result = await query(
+            `INSERT INTO message_hidden_for (message_id, firebase_uid)
+             SELECT message_id, $2
+             FROM messages
+             WHERE conversation_id = $1
+             ON CONFLICT (message_id, firebase_uid) DO NOTHING`,
+            [conversation.conversation_id, req.firebaseUid]
+        );
+        return res.json({ success: true, data: { clearedCount: result.rowCount } });
+    } catch (error) {
+        console.error('Clear conversation messages error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'MESSAGE_CLEAR_FAILED',
+            message: 'Messages could not be cleared.'
+        });
+    }
+};
+
 const markConversationRead = async (req, res) => {
     try {
         const conversation = await getConversation(req.params.conversationId, req.firebaseUid);
@@ -681,7 +710,7 @@ const markConversationRead = async (req, res) => {
              )
              INSERT INTO message_reads (message_id, firebase_uid)
              SELECT message_id, $2 FROM read_messages
-             ON CONFLICT (message_id, firebase_uid) DO UPDATE SET read_at = NOW()`,
+             ON CONFLICT (message_id, firebase_uid) DO NOTHING`,
             [conversation.conversation_id, req.firebaseUid]
         );
         await query(
@@ -708,5 +737,6 @@ module.exports = {
     createMessage,
     mutateMessage,
     deleteMessage,
+    clearConversationMessages,
     markConversationRead
 };
