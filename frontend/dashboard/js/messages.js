@@ -14,6 +14,7 @@ let socket = null
 let socketUid = null
 let reconnectTimer = null
 let refreshPromise = null
+const memberPresence = new Map()
 
 const currentEmail = () => currentUser.email?.trim().toLowerCase() || firebaseAuth.currentUser?.email?.trim().toLowerCase() || ''
 const currentUid = () => firebaseAuth.currentUser?.uid || ''
@@ -74,7 +75,11 @@ function normalizeConversation(row) {
     memberUids: members.map(member => typeof member === 'string' ? '' : member.firebaseUid).filter(Boolean),
     participants: members.map(member => typeof member === 'string'
       ? { email: member.toLowerCase(), name: member }
-      : { ...member, email: member.email?.toLowerCase() }),
+      : {
+        ...member,
+        email: member.email?.toLowerCase(),
+        lastSeenAt: member.lastSeenAt || member.last_seen_at || null
+      }),
     unreadCount: Number(row.unread_count ?? row.unreadCount ?? 0),
     latestMessage: row.latest_message_body ?? row.latestMessage ?? '',
     latestMessageCreatedAt: row.latest_message_created_at ?? row.latestMessageCreatedAt
@@ -180,6 +185,51 @@ function receiveCreatedMessage(payload) {
     api.post(`${apiPath(message.conversationId)}/read`, {})
       .catch(showError)
   }
+}
+
+function renderDirectMessagePresence(conversation, element) {
+  const otherMember = (conversation.participants || []).find(member =>
+    member.firebaseUid !== currentUid() && member.email !== currentEmail()
+  )
+  if (!otherMember) {
+    element.textContent = 'Last seen unavailable'
+    element.classList.add('messages-presence-offline')
+    return
+  }
+
+  const presence = otherMember.firebaseUid
+    ? memberPresence.get(otherMember.firebaseUid)
+    : null
+  const online = Boolean(presence?.isOnline)
+  const lastSeenAt = presence?.lastSeenAt || otherMember.lastSeenAt
+  element.replaceChildren()
+  element.classList.toggle('messages-presence-online', online)
+  element.classList.toggle('messages-presence-offline', !online)
+
+  if (online) {
+    const dot = make('span', 'messages-presence-dot')
+    dot.setAttribute('aria-hidden', 'true')
+    element.append(dot, document.createTextNode('Online'))
+    return
+  }
+
+  const parsedLastSeen = lastSeenAt ? new Date(lastSeenAt) : null
+  const lastSeenText = parsedLastSeen && !Number.isNaN(parsedLastSeen.getTime())
+    ? new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    }).format(parsedLastSeen)
+    : 'unavailable'
+  element.textContent = `Last seen ${lastSeenText}`
+}
+
+function receivePresenceUpdate(payload, shouldRender = true) {
+  if (typeof payload.firebaseUid !== 'string') return
+  memberPresence.set(payload.firebaseUid, {
+    isOnline: Boolean(payload.isOnline),
+    lastSeenAt: payload.lastSeenAt || null
+  })
+  if (shouldRender && activeView === 'Messages') renderMessagesView()
 }
 
 function updateMessagesNavigationBadge() {
@@ -323,6 +373,11 @@ function connectMessageSocket() {
     }
     if (payload.type === 'message.created') {
       receiveCreatedMessage(payload)
+    } else if (payload.type === 'presence.updated') {
+      receivePresenceUpdate(payload)
+    } else if (payload.type === 'ready') {
+      ;(payload.presence || []).forEach(item => receivePresenceUpdate(item, false))
+      if (activeView === 'Messages') renderMessagesView()
     } else {
       refreshFromServer()
     }
@@ -650,7 +705,15 @@ function renderMessagesView() {
   const heading = make('div')
   const prefix = conversation.type === 'channel' ? '# ' : conversation.type === 'group' ? '◉ ' : ''
   heading.append(make('h2', '', `${prefix}${getConversationTitle(conversation)}`))
-  heading.append(make('p', '', conversation.participants.map(member => member.name || member.email).join(', ')))
+  const subtitle = make('p')
+  if (conversation.type === 'direct') {
+    subtitle.className = 'messages-presence messages-presence-offline'
+    subtitle.setAttribute('aria-live', 'polite')
+    renderDirectMessagePresence(conversation, subtitle)
+  } else {
+    subtitle.textContent = conversation.participants.map(member => member.name || member.email).join(', ')
+  }
+  heading.append(subtitle)
   header.append(heading)
   const actions = make('div', 'messages-thread-actions')
   const trigger = make('button', 'message-actions-trigger messages-thread-actions-trigger', '⋮')
@@ -1233,6 +1296,7 @@ export async function refreshMessagesForCurrentUser() {
   if (socket && socket.readyState !== WebSocket.CLOSED) socket.close()
   socket = null
   socketUid = null
+  memberPresence.clear()
   if (!firebaseAuth.currentUser) {
     messageState = { conversations: [], messages: [] }
     selectedConversationId = null

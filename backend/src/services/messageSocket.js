@@ -7,6 +7,116 @@ const notificationChannel = 'collab_message_events';
 let notificationClient = null;
 let notificationRetryTimer = null;
 let shuttingDown = false;
+const connectedUsers = new Map();
+
+const getConversationPeerUids = async firebaseUid => {
+    const result = await pool.query(
+        `SELECT DISTINCT peer.firebase_uid
+         FROM message_conversation_members mine
+         JOIN message_conversations c USING (conversation_id)
+         JOIN projects p ON p.project_id = c.project_id
+         JOIN message_conversation_members peer
+           ON peer.conversation_id = mine.conversation_id
+          AND peer.firebase_uid <> mine.firebase_uid
+         WHERE mine.firebase_uid = $1
+           AND (p.creator_firebase_uid = $1 OR EXISTS (
+               SELECT 1
+               FROM project_invitations mine_invitation
+               WHERE mine_invitation.project_id = p.project_id
+                 AND mine_invitation.invited_firebase_uid = $1
+                 AND mine_invitation.status = 'accepted'
+           ))
+           AND (p.creator_firebase_uid = peer.firebase_uid OR EXISTS (
+               SELECT 1
+               FROM project_invitations peer_invitation
+               WHERE peer_invitation.project_id = p.project_id
+                 AND peer_invitation.invited_firebase_uid = peer.firebase_uid
+                 AND peer_invitation.status = 'accepted'
+           ))`,
+        [firebaseUid]
+    );
+    return result.rows.map(row => row.firebase_uid);
+};
+
+const sendPresenceUpdate = async (webSocketServer, firebaseUid, isOnline, lastSeenAt = null) => {
+    try {
+        const peerUids = await getConversationPeerUids(firebaseUid);
+        const payload = JSON.stringify({
+            type: 'presence.updated',
+            firebaseUid,
+            isOnline,
+            lastSeenAt
+        });
+        for (const client of webSocketServer.clients) {
+            if (client.readyState === WebSocket.OPEN && peerUids.includes(client.firebaseUid)) {
+                client.send(payload);
+            }
+        }
+    } catch (error) {
+        console.error('Message presence update failed:', error.message);
+    }
+};
+
+const registerConnectedUser = async (webSocketServer, socket, firebaseUid) => {
+    const sockets = connectedUsers.get(firebaseUid) || new Set();
+    const becameOnline = sockets.size === 0;
+    sockets.add(socket);
+    connectedUsers.set(firebaseUid, sockets);
+
+    const peerUids = await getConversationPeerUids(firebaseUid);
+    const peerProfiles = await pool.query(
+        `SELECT firebase_uid, last_seen_at
+         FROM user_profiles
+         WHERE firebase_uid = ANY($1::text[])`,
+        [peerUids]
+    );
+    const lastSeenByUid = new Map(peerProfiles.rows.map(row => [
+        row.firebase_uid,
+        row.last_seen_at
+    ]));
+    const presence = peerUids.map(peerUid => ({
+        type: 'presence.updated',
+        firebaseUid: peerUid,
+        isOnline: connectedUsers.has(peerUid),
+        lastSeenAt: lastSeenByUid.get(peerUid) || null
+    }));
+    if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'ready', presence }));
+    }
+    if (becameOnline && connectedUsers.has(firebaseUid)) {
+        await sendPresenceUpdate(webSocketServer, firebaseUid, true);
+    }
+};
+
+const unregisterConnectedUser = async (webSocketServer, socket) => {
+    const firebaseUid = socket.firebaseUid;
+    if (!firebaseUid) return;
+    const sockets = connectedUsers.get(firebaseUid);
+    if (!sockets) return;
+    sockets.delete(socket);
+    if (sockets.size) return;
+    connectedUsers.delete(firebaseUid);
+
+    try {
+        const result = await pool.query(
+            `INSERT INTO user_profiles (firebase_uid, profile_image, last_seen_at)
+             VALUES ($1, '', NOW())
+             ON CONFLICT (firebase_uid)
+             DO UPDATE SET last_seen_at = NOW()
+             RETURNING last_seen_at`,
+            [firebaseUid]
+        );
+        await sendPresenceUpdate(
+            webSocketServer,
+            firebaseUid,
+            false,
+            result.rows[0]?.last_seen_at || null
+        );
+    } catch (error) {
+        console.error('Unable to save message presence last-seen time:', error.message);
+        await sendPresenceUpdate(webSocketServer, firebaseUid, false);
+    }
+};
 
 const deliverMessageEvent = async (webSocketServer, notification) => {
     if (notification.channel !== notificationChannel) return;
@@ -63,6 +173,17 @@ const initializeMessageSocket = async server => {
     ].map(origin => origin?.trim()).filter(Boolean);
 
     const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 8192 });
+    const heartbeatTimer = setInterval(() => {
+        for (const client of webSocketServer.clients) {
+            if (client.isAlive === false) {
+                client.terminate();
+                continue;
+            }
+            if (client.readyState !== WebSocket.OPEN) continue;
+            client.isAlive = false;
+            client.ping();
+        }
+    }, 30000);
     const listenForMessageEvents = async () => {
         if (shuttingDown) return;
         let client;
@@ -125,6 +246,10 @@ const initializeMessageSocket = async server => {
 
     webSocketServer.on('connection', socket => {
         let authenticationAttempted = false;
+        socket.isAlive = true;
+        socket.on('pong', () => {
+            socket.isAlive = true;
+        });
         const authenticationTimeout = setTimeout(() => socket.close(4401, 'Authentication required'), 5000);
         socket.on('message', async data => {
             if (authenticationAttempted) {
@@ -140,21 +265,27 @@ const initializeMessageSocket = async server => {
                 }
                 const decoded = await getFirebaseAdmin().auth().verifyIdToken(frame.token);
                 clearTimeout(authenticationTimeout);
+                if (socket.readyState !== WebSocket.OPEN) return;
                 socket.firebaseUid = decoded.uid;
-                if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ready' }));
+                await registerConnectedUser(webSocketServer, socket, decoded.uid);
             } catch (error) {
                 clearTimeout(authenticationTimeout);
-                console.error('Message WebSocket authentication failed:', error.message);
+                console.error('Message WebSocket authentication or presence setup failed:', error.message);
                 socket.close(4401, 'Authentication failed');
             }
         });
-        socket.once('close', () => clearTimeout(authenticationTimeout));
+        socket.once('close', () => {
+            clearTimeout(authenticationTimeout);
+            unregisterConnectedUser(webSocketServer, socket)
+                .catch(error => console.error('Message WebSocket presence cleanup failed:', error.message));
+        });
     });
 
     return {
         close: async () => {
             shuttingDown = true;
             if (notificationRetryTimer) clearTimeout(notificationRetryTimer);
+            clearInterval(heartbeatTimer);
             let listenerError = null;
             if (notificationClient) {
                 const client = notificationClient;

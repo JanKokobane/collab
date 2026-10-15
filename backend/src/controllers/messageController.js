@@ -81,7 +81,8 @@ const getConversations = async (req, res) => {
                      'firebaseUid', cm.firebase_uid,
                      'email', cm.email,
                      'name', cm.display_name,
-                     'profileImage', up.profile_image
+                     'profileImage', up.profile_image,
+                     'lastSeenAt', up.last_seen_at
                  ) ORDER BY cm.joined_at) AS members
                  FROM message_conversation_members cm
                  LEFT JOIN user_profiles up ON up.firebase_uid = cm.firebase_uid

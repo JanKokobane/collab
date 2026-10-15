@@ -150,7 +150,10 @@ All endpoints below require `Authorization: Bearer <Firebase ID token>`.
   clearing endpoints. Clearing hides messages only for the caller. WebSocket
   connections at `/api/messages/socket` authenticate with a Firebase ID token
   in their first frame; PostgreSQL notifications fan out changes across
-  backend instances to conversation members.
+  backend instances to conversation members. The socket also broadcasts
+  online/offline presence only to eligible members of shared conversations.
+  A heartbeat detects disconnected clients, and the last offline time is saved
+  in `user_profiles.last_seen_at`.
 
 Migration `007_project_meetings.sql` adds persistent project-scoped meetings,
 `008_project_reminders.sql` adds persistent project-scoped calendar reminders,
@@ -173,6 +176,8 @@ Migration `017_project_sticky_notes.sql` adds project-scoped floating notes and
 their tagged-recipient visibility. Creators can add, edit, and delete notes;
 tagged members can view and reposition them. Tagged members receive a
 notification when a note is created.
+Migration `018_message_presence.sql` adds the persisted last-seen timestamp
+used by direct-message presence.
 
 ## Remaining local demo features
 

@@ -4191,6 +4191,60 @@ body.dark-mode .hub-res-logo {
     line-height: 1.45;
 }
 
+.messages-thread-header .messages-presence {
+    display: inline-flex;
+    min-height: 12px;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    line-height: 1.2;
+}
+
+.messages-thread-header .messages-presence-offline {
+    color: #8A8F98;
+}
+
+.messages-thread-header .messages-presence-online {
+    color: #16804A;
+}
+
+.messages-presence-dot {
+    position: relative;
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    border-radius: 50%;
+    background: #22C55E;
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, .14);
+}
+
+.messages-presence-dot::after {
+    position: absolute;
+    inset: -3px;
+    border: 1px solid rgba(34, 197, 94, .6);
+    border-radius: 50%;
+    content: "";
+    animation: messages-presence-pulse 1.8s ease-out infinite;
+}
+
+@keyframes messages-presence-pulse {
+    0% {
+        opacity: .8;
+        transform: scale(.55);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(1.7);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .messages-presence-dot::after {
+        animation: none;
+    }
+}
+
 .messages-new-button {
     display: grid;
     width: 32px;
@@ -6253,6 +6307,14 @@ body.dark-mode .messages-conversation.active .messages-unread-count {
 
 body.dark-mode .messages-conversation-preview {
     color: #A1A1AA;
+}
+
+body.dark-mode .messages-thread-header .messages-presence-offline {
+    color: #A1A1AA;
+}
+
+body.dark-mode .messages-thread-header .messages-presence-online {
+    color: #4ADE80;
 }
 
 body.dark-mode .message-text,
