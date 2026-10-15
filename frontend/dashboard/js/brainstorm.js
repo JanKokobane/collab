@@ -1172,7 +1172,12 @@ function openStickyNoteModal({ note = null, initialCategory = 'Ideas' } = {}) {
   catLabel.append(catSelectWrap)
   const colorLabel = make('label', '', 'Card color')
   const colorSelect = document.createElement('select')
-  ;[{ name: 'Warm Yellow', value: 'yellow' }, { name: 'Mint Green', value: 'green' }, { name: 'Rose Coral', value: 'rose' }, { name: 'Sky Blue', value: 'blue' }].forEach(color => {
+  ;[
+    { name: 'Warm Yellow', value: 'yellow' },
+    { name: 'Mint Green', value: 'green' },
+    { name: 'Rose Coral', value: 'rose' },
+    { name: 'Sky Blue', value: 'blue' }
+  ].forEach(color => {
     const option = make('option', '', color.name)
     option.value = color.value
     colorSelect.append(option)

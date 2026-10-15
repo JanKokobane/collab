@@ -9,11 +9,12 @@ let lastViewedProjectId = ''
 let loadVersion = 0
 let refreshTimer = null
 let draggingNote = null
+let hiddenNoteIds = new Set()
 
 function getProjectForView() {
   const project = projects.find(project => project.name === activeView && project.projectId)
   if (project) return project
-  return projects.find(item => item.projectId === lastViewedProjectId) || null
+  return projects.find(item => item.projectId === lastViewedProjectId) || projects[0] || null
 }
 
 function getNoteLayer() {
@@ -29,7 +30,9 @@ function normalizeNote(note) {
     id: note.note_id || note.noteId,
     projectId: note.project_id || note.projectId,
     authorUid: note.created_by_firebase_uid || note.createdByFirebaseUid,
-    authorName: note.author_name || note.authorName || '',
+    authorName: [note.author_name, note.authorName].find(name =>
+      typeof name === 'string' && name.trim() && !['project member', 'a project member'].includes(name.trim().toLowerCase())
+    ) || '',
     authorProfileImage: note.author_profile_image || note.authorProfileImage || '',
     content: note.content || '',
     color: note.color || 'yellow',
@@ -37,6 +40,49 @@ function normalizeNote(note) {
     y: Number(note.position_y ?? note.positionY ?? 0.12),
     recipients: Array.isArray(note.recipients) ? note.recipients : []
   }
+}
+
+function getHiddenNotesStorageKey() {
+  return `collab-hidden-sticky-notes:${currentUser?.uid || 'anonymous'}`
+}
+
+function getLastViewedProjectStorageKey() {
+  return `collab-sticky-notes-project:${currentUser?.uid || 'anonymous'}`
+}
+
+function loadHiddenNotes() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(getHiddenNotesStorageKey()) || '[]')
+    hiddenNoteIds = new Set(Array.isArray(stored) ? stored.filter(id => typeof id === 'string') : [])
+    lastViewedProjectId = localStorage.getItem(getLastViewedProjectStorageKey()) || ''
+  } catch (error) {
+    console.error('Unable to load hidden sticky note preferences:', error)
+    hiddenNoteIds = new Set()
+  }
+}
+
+function saveHiddenNotes() {
+  localStorage.setItem(getHiddenNotesStorageKey(), JSON.stringify([...hiddenNoteIds]))
+}
+
+function getNoteAuthorName(note) {
+  if (note.authorName && !note.authorName.includes('@')) return note.authorName
+  if (note.authorUid === currentUser?.uid && currentUser?.name) return currentUser.name
+  const project = projects.find(item => item.projectId === note.projectId)
+  const members = project
+    ? [
+      {
+        firebaseUid: project.creatorFirebaseUid,
+        name: project.creatorName,
+        email: project.creatorEmail
+      },
+      ...(Array.isArray(project.acceptedMembers) ? project.acceptedMembers : [])
+    ]
+    : []
+  const author = members.find(member =>
+    (member.firebaseUid || member.firebase_uid) === note.authorUid
+  )
+  return author?.name || author?.email || note.authorName || 'Project member'
 }
 
 function getProjectMembers(project) {
@@ -97,9 +143,7 @@ function saveNotePosition(note, card, layer) {
 function createNoteCard(note, layer) {
   const card = make('article', `project-sticky-note ${note.color}`)
   card.dataset.noteId = note.id
-  const authorName = note.authorName ||
-    (note.authorUid === currentUser?.uid ? currentUser?.name : '') ||
-    'Project member'
+  const authorName = getNoteAuthorName(note)
   card.setAttribute('aria-label', `Sticky note by ${authorName}`)
 
   const handle = make('div', 'project-sticky-note-handle')
@@ -112,6 +156,17 @@ function createNoteCard(note, layer) {
   dragIcon.innerHTML = getSvg('dots', '', 15, 15)
   handle.append(authorAvatar, dragIcon, make('span', '', authorName))
 
+  const deleteButton = make('button', 'project-sticky-note-delete', '×')
+  deleteButton.type = 'button'
+  deleteButton.setAttribute('aria-label', 'Delete sticky note from your view')
+  deleteButton.title = 'Delete this note from your view only'
+  deleteButton.addEventListener('click', () => {
+    hiddenNoteIds.add(note.id)
+    saveHiddenNotes()
+    card.remove()
+  })
+  handle.append(deleteButton)
+
   if (note.authorUid === currentUser?.uid) {
     const editButton = make('button', 'project-sticky-note-edit', 'Edit')
     editButton.type = 'button'
@@ -119,22 +174,7 @@ function createNoteCard(note, layer) {
       const project = projects.find(item => item.projectId === note.projectId)
       openStickyNoteModal(project, note)
     })
-    const deleteButton = make('button', 'project-sticky-note-delete', '×')
-    deleteButton.type = 'button'
-    deleteButton.setAttribute('aria-label', 'Delete sticky note')
-    deleteButton.addEventListener('click', async () => {
-      deleteButton.disabled = true
-      try {
-        await api.delete(`${getNotePath(note.projectId)}/${encodeURIComponent(note.id)}`)
-        notes = notes.filter(item => item.id !== note.id)
-        card.remove()
-        showDashboardToast('Sticky note deleted.', 'success')
-      } catch (error) {
-        deleteButton.disabled = false
-        showDashboardToast(error.message || 'The sticky note could not be deleted.', 'error')
-      }
-    })
-    handle.append(editButton, deleteButton)
+    handle.insertBefore(editButton, deleteButton)
   }
 
   const text = make('p', 'project-sticky-note-content', note.content)
@@ -180,7 +220,7 @@ function renderNotes() {
   const layer = getNoteLayer()
   if (!layer) return
   layer.replaceChildren()
-  notes.forEach(note => createNoteCard(note, layer))
+  notes.filter(note => !hiddenNoteIds.has(note.id)).forEach(note => createNoteCard(note, layer))
 }
 
 export async function renderProjectStickyNotes() {
@@ -195,6 +235,7 @@ export async function renderProjectStickyNotes() {
     return
   }
   lastViewedProjectId = project.projectId
+  localStorage.setItem(getLastViewedProjectStorageKey(), lastViewedProjectId)
   if (project.projectId === activeProjectId) return
 
   activeProjectId = project.projectId
@@ -388,6 +429,7 @@ export function initProjectStickyNotes() {
   if (!layer || !addButton || addButton.dataset.initialized) return
   addButton.dataset.initialized = 'true'
   addButton.addEventListener('click', openCreateStickyNoteModal)
+  loadHiddenNotes()
   if (!refreshTimer) {
     refreshTimer = window.setInterval(async () => {
       const project = getProjectForView()

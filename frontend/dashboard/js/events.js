@@ -1,6 +1,9 @@
 import {
+  projects,
   tasks,
   currentUser,
+  getAccessibleMembers,
+  getAccessibleTasks,
   saveTasks,
   addAuditLog,
   pushNotification,
@@ -409,14 +412,127 @@ export function initEventListeners() {
     })
   })
 
-  // Topbar search filter
-  document.querySelector('#search')?.addEventListener('input', event => {
-    const query = event.target.value.toLowerCase()
-    document.querySelectorAll('.task-card').forEach(card => {
-      card.hidden = !card.textContent.toLowerCase().includes(query)
+  const searchInput = document.querySelector('#search')
+  const searchContainer = searchInput?.closest('.topbar-center')
+  if (searchInput && searchContainer && !searchContainer.querySelector('#dashboard-search-results')) {
+    const results = document.createElement('div')
+    results.id = 'dashboard-search-results'
+    results.className = 'dashboard-search-results'
+    results.hidden = true
+    results.setAttribute('role', 'listbox')
+    results.setAttribute('aria-label', 'Dashboard search results')
+    searchContainer.append(results)
+    searchInput.setAttribute('aria-controls', results.id)
+    searchInput.setAttribute('aria-autocomplete', 'list')
+
+    const closeResults = () => {
+      results.hidden = true
+      searchInput.setAttribute('aria-expanded', 'false')
+    }
+
+    const selectResult = result => {
+      closeResults()
+      searchInput.value = ''
+      if (result.type === 'task') {
+        const project = projects.find(item =>
+          (result.item.projectId && item.projectId === result.item.projectId) ||
+          item.name === result.item.project
+        )
+        switchView(project?.name || 'My Tasks')
+        window.setTimeout(() => {
+          const card = [...document.querySelectorAll('.task-card')]
+            .find(item => item.dataset.id === String(result.item.id))
+          if (!card) return
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          card.classList.add('search-result-highlight')
+          window.setTimeout(() => card.classList.remove('search-result-highlight'), 1800)
+        }, 0)
+      } else if (result.type === 'project') {
+        switchView(result.item.name)
+      } else {
+        switchView('Admin Console')
+      }
+    }
+
+    const renderResults = () => {
+      const query = searchInput.value.trim().toLocaleLowerCase()
+      results.replaceChildren()
+      if (!query) {
+        closeResults()
+        return
+      }
+
+      const groups = [
+        {
+          type: 'task',
+          label: 'Tasks',
+          items: getAccessibleTasks()
+            .filter(task => `${task.title} ${task.project} ${task.description || ''}`.toLocaleLowerCase().includes(query))
+            .slice(0, 5)
+        },
+        {
+          type: 'project',
+          label: 'Projects',
+          items: projects
+            .filter(project => `${project.name} ${project.description || ''}`.toLocaleLowerCase().includes(query))
+            .slice(0, 5)
+        },
+        {
+          type: 'member',
+          label: 'Team members',
+          items: getAccessibleMembers()
+            .filter(member => `${member.name} ${member.email}`.toLocaleLowerCase().includes(query))
+            .slice(0, 5)
+        }
+      ]
+
+      let resultCount = 0
+      groups.forEach(group => {
+        if (!group.items.length) return
+        const heading = document.createElement('p')
+        heading.className = 'dashboard-search-group-title'
+        heading.textContent = group.label
+        results.append(heading)
+        group.items.forEach(item => {
+          resultCount += 1
+          const button = document.createElement('button')
+          button.type = 'button'
+          button.className = 'dashboard-search-result'
+          button.setAttribute('role', 'option')
+          const title = document.createElement('strong')
+          const detail = document.createElement('span')
+          title.textContent = group.type === 'task'
+            ? item.title
+            : group.type === 'project'
+              ? item.name
+              : item.name
+          detail.textContent = group.type === 'task'
+            ? item.project || 'Task'
+            : group.type === 'project'
+              ? item.description || 'Project'
+              : item.email
+          button.append(title, detail)
+          button.addEventListener('click', () => selectResult({ type: group.type, item }))
+          results.append(button)
+        })
+      })
+
+      if (!resultCount) {
+        const empty = document.createElement('p')
+        empty.className = 'dashboard-search-empty'
+        empty.textContent = 'No matching tasks, projects, or team members.'
+        results.append(empty)
+      }
+      results.hidden = false
+      searchInput.setAttribute('aria-expanded', 'true')
+    }
+
+    searchInput.addEventListener('input', renderResults)
+    searchInput.addEventListener('keydown', event => {
+      if (event.key === 'Escape') closeResults()
     })
-    document.querySelectorAll('#list-tasks-tbody tr').forEach(row => {
-      row.hidden = !row.textContent.toLowerCase().includes(query)
+    document.addEventListener('click', event => {
+      if (!searchContainer.contains(event.target)) closeResults()
     })
-  })
+  }
 }

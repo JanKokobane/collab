@@ -712,7 +712,10 @@ export function getAccessibleMembers() {
         ...member,
         email,
         name,
-        initials: member.initials || name.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase(),
+        profileImage: member.profileImage || member.profile_image || member.photoURL || '',
+        initials: member.initials && member.initials !== '•'
+          ? member.initials
+          : getUserInitials(name),
         tone: member.tone || 'teal'
       })
     }
@@ -724,7 +727,8 @@ export function getAccessibleMembers() {
       email: project.creatorEmail,
       name: project.creatorName,
       initials: project.creatorInitials,
-      tone: project.creatorTone
+      tone: project.creatorTone,
+      profileImage: project.creatorProfileImage
     })
     project.acceptedMembers?.forEach(addMember)
   })
@@ -734,7 +738,8 @@ export function getAccessibleMembers() {
       email: currentUser.email,
       name: currentUser.name,
       initials: currentUser.initials,
-      tone: currentUser.tone
+      tone: currentUser.tone,
+      profileImage: currentUser.profileImage || currentUser.photoURL
     })
   }
 

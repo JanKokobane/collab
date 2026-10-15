@@ -500,6 +500,7 @@ body.dark-mode .invite-user-search-result span,
     justify-content: center;
     max-width: 520px;
     margin: 0 auto;
+    position: relative;
 }
 
 .search {
@@ -528,6 +529,79 @@ body.dark-mode .invite-user-search-result span,
     width: 100%;
     color: #1C1C1F;
     font-family: inherit;
+}
+
+.dashboard-search-results {
+    position: absolute;
+    z-index: 1200;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    max-height: min(70vh, 480px);
+    overflow-y: auto;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #FFFFFF;
+    box-shadow: 0 16px 40px rgba(15, 15, 20, .18);
+}
+
+.dashboard-search-results[hidden] {
+    display: none;
+}
+
+.dashboard-search-group-title {
+    margin: 8px 9px 4px;
+    color: #71717A;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.dashboard-search-result {
+    display: grid;
+    width: 100%;
+    gap: 3px;
+    padding: 9px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #1C1C1F;
+    text-align: left;
+    cursor: pointer;
+}
+
+.dashboard-search-result:hover,
+.dashboard-search-result:focus-visible {
+    outline: none;
+    background: #F4F4F5;
+}
+
+.dashboard-search-result strong {
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dashboard-search-result span,
+.dashboard-search-empty {
+    overflow: hidden;
+    margin: 0;
+    color: #71717A;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dashboard-search-empty {
+    padding: 10px;
+}
+
+.task-card.search-result-highlight {
+    outline: 3px solid #F5B800;
+    outline-offset: 3px;
 }
 
 .top-actions {
@@ -3028,8 +3102,8 @@ form.modal .brainstorm-board-member-option input[type="checkbox"] {
 
 body.dark-mode .admin-project-action-menu,
 [data-theme="dark"] .admin-project-action-menu {
-    border-color: #3F3F46;
-    background: #18181B;
+    border-color: #383844;
+    background: #202028;
 }
 
 body.dark-mode .admin-project-action-option,
@@ -6794,6 +6868,26 @@ body.dark-mode .search input {
 
 body.dark-mode .search input::placeholder {
     color: #71717A;
+}
+
+body.dark-mode .dashboard-search-results {
+    border-color: #383844;
+    background: #1A1A20;
+}
+
+body.dark-mode .dashboard-search-group-title,
+body.dark-mode .dashboard-search-result span,
+body.dark-mode .dashboard-search-empty {
+    color: #A1A1AA;
+}
+
+body.dark-mode .dashboard-search-result {
+    color: #F4F4F6;
+}
+
+body.dark-mode .dashboard-search-result:hover,
+body.dark-mode .dashboard-search-result:focus-visible {
+    background: #272733;
 }
 
 body.dark-mode .notification-btn,
