@@ -12,8 +12,14 @@ let editingMessageId = null
 let messagesInitialized = false
 let socket = null
 let socketUid = null
+let socketReady = false
 let reconnectTimer = null
+let reconnectAttempts = 0
 let refreshPromise = null
+let fallbackRefreshTimer = null
+let heartbeatInterval = null
+let heartbeatTimeout = null
+let heartbeatTimestamp = null
 const memberPresence = new Map()
 
 const currentEmail = () => currentUser.email?.trim().toLowerCase() || firebaseAuth.currentUser?.email?.trim().toLowerCase() || ''
@@ -91,6 +97,7 @@ function normalizeMessage(row) {
     ...row,
     id: row.message_id || row.id,
     conversationId: row.conversation_id || row.conversationId,
+    clientMessageId: row.clientMessageId || row.client_message_id || null,
     senderUid: row.sender_firebase_uid || row.senderUid,
     senderEmail: (row.sender_email || row.senderEmail || '').toLowerCase(),
     senderName: row.sender_name || row.senderName || 'Project member',
@@ -155,15 +162,19 @@ function getConversationMessages(conversationId) {
 
 function upsertMessage(message) {
   const normalized = normalizeMessage(message)
-  const currentIndex = messageState.messages.findIndex(item => item.id === normalized.id)
-  if (currentIndex < 0) {
-    messageState.messages.push(normalized)
-  } else {
-    messageState.messages[currentIndex] = normalized
+  let currentIndex = messageState.messages.findIndex(item => item.id === normalized.id)
+  if (currentIndex < 0 && normalized.clientMessageId) {
+    currentIndex = messageState.messages.findIndex(
+      item => item.clientMessageId === normalized.clientMessageId
+    )
   }
+  const changed = currentIndex < 0 ||
+    JSON.stringify(messageState.messages[currentIndex]) !== JSON.stringify(normalized)
+  if (currentIndex < 0) messageState.messages.push(normalized)
+  else messageState.messages[currentIndex] = normalized
   messageState.messages.sort((a, b) =>
     Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id))
-  return normalized
+  return { message: normalized, changed }
 }
 
 function receiveCreatedMessage(payload) {
@@ -171,8 +182,12 @@ function receiveCreatedMessage(payload) {
     refreshFromServer()
     return
   }
-  const message = upsertMessage(payload.message)
+  const { message, changed } = upsertMessage({
+    ...payload.message,
+    clientMessageId: payload.clientMessageId || payload.message.clientMessageId
+  })
   const conversation = messageState.conversations.find(item => item.id === message.conversationId)
+  if (!conversation || !changed) return
   conversation.latestMessage = message.body
   conversation.latestMessageCreatedAt = message.createdAt
   if (message.senderUid !== currentUid() &&
@@ -327,6 +342,13 @@ async function loadConversationMessages(conversationId) {
 
 async function reloadMessages() {
   const selectedId = selectedConversationId
+  const previousConversationState = JSON.stringify(messageState.conversations.map(conversation => [
+    conversation.id,
+    conversation.unreadCount,
+    conversation.latestMessage,
+    conversation.latestMessageCreatedAt
+  ]))
+  const previousMessageState = JSON.stringify(messageState.messages)
   const result = await api.get('/messages/conversations')
   messageState.conversations = (result?.data?.conversations || []).map(normalizeConversation)
   if (selectedId && messageState.conversations.some(item => item.id === selectedId)) {
@@ -335,8 +357,19 @@ async function reloadMessages() {
     selectedConversationId = messageState.conversations[0]?.id || null
   }
   await loadConversationMessages(selectedConversationId)
+  const conversationState = JSON.stringify(messageState.conversations.map(conversation => [
+    conversation.id,
+    conversation.unreadCount,
+    conversation.latestMessage,
+    conversation.latestMessageCreatedAt
+  ]))
+  const messageDataChanged = JSON.stringify(messageState.messages) !== previousMessageState
   updateMessagesNavigationBadge()
-  renderMessages()
+  if (
+    conversationState !== previousConversationState ||
+    messageDataChanged ||
+    selectedId !== selectedConversationId
+  ) renderMessages()
 }
 
 async function refreshFromServer() {
@@ -347,13 +380,69 @@ async function refreshFromServer() {
   return refreshPromise
 }
 
+function clearSocketHeartbeat(connection) {
+  if (socket !== connection) return
+  if (heartbeatInterval) window.clearInterval(heartbeatInterval)
+  if (heartbeatTimeout) window.clearTimeout(heartbeatTimeout)
+  heartbeatInterval = null
+  heartbeatTimeout = null
+  heartbeatTimestamp = null
+}
+
+function startSocketHeartbeat(connection) {
+  clearSocketHeartbeat(connection)
+  heartbeatInterval = window.setInterval(() => {
+    if (connection.readyState !== WebSocket.OPEN) {
+      connection.close()
+      return
+    }
+    if (heartbeatTimeout) {
+      connection.close(4000, 'Heartbeat timed out')
+      return
+    }
+
+    heartbeatTimestamp = Date.now()
+    try {
+      connection.send(JSON.stringify({ type: 'ping', timestamp: heartbeatTimestamp }))
+      heartbeatTimeout = window.setTimeout(() => {
+        connection.close(4000, 'Heartbeat timed out')
+      }, 10_000)
+    } catch (error) {
+      showError(error)
+      connection.close()
+    }
+  }, 18_000)
+}
+
+function scheduleSocketReconnect(userUid) {
+  if (reconnectTimer || firebaseAuth.currentUser?.uid !== userUid) return
+  const baseDelay = Math.min(1000 * (2 ** reconnectAttempts), 30_000)
+  const delay = Math.round(baseDelay * (0.75 + Math.random() * 0.5))
+  reconnectAttempts += 1
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = null
+    if (firebaseAuth.currentUser?.uid !== userUid) return
+    socketUid = null
+    connectMessageSocket()
+  }, delay)
+}
+
 function connectMessageSocket() {
   const user = firebaseAuth.currentUser
   if (!user || socketUid === user.uid) return
   socketUid = user.uid
+  socketReady = false
   const protocol = apiBaseUrl.startsWith('https:') ? 'wss:' : 'ws:'
   const url = `${protocol}//${new URL(apiBaseUrl).host}/api/messages/socket`
-  const connection = new WebSocket(url)
+  let connection
+  try {
+    connection = new WebSocket(url)
+  } catch (error) {
+    socketUid = null
+    showError(error)
+    scheduleSocketReconnect(user.uid)
+    return
+  }
   socket = connection
   connection.addEventListener('open', async () => {
     try {
@@ -375,8 +464,18 @@ function connectMessageSocket() {
       receiveCreatedMessage(payload)
     } else if (payload.type === 'presence.updated') {
       receivePresenceUpdate(payload)
+    } else if (payload.type === 'pong') {
+      if (payload.timestamp === heartbeatTimestamp) {
+        if (heartbeatTimeout) window.clearTimeout(heartbeatTimeout)
+        heartbeatTimeout = null
+        heartbeatTimestamp = null
+      }
     } else if (payload.type === 'ready') {
+      socketReady = true
+      reconnectAttempts = 0
+      startSocketHeartbeat(connection)
       ;(payload.presence || []).forEach(item => receivePresenceUpdate(item, false))
+      refreshFromServer()
       if (activeView === 'Messages') renderMessagesView()
     } else {
       refreshFromServer()
@@ -385,11 +484,10 @@ function connectMessageSocket() {
   connection.addEventListener('close', () => {
     if (socket !== connection) return
     socket = null
+    socketReady = false
+    clearSocketHeartbeat(null)
     if (firebaseAuth.currentUser?.uid !== socketUid) return
-    reconnectTimer = window.setTimeout(() => {
-      socketUid = null
-      connectMessageSocket()
-    }, 3000)
+    scheduleSocketReconnect(socketUid)
   })
   connection.addEventListener('error', () => {
     if (connection.readyState !== WebSocket.CLOSED) showError(new Error('Live updates are disconnected. Reconnecting…'))
@@ -1172,15 +1270,16 @@ async function sendMessage(event) {
         size: file.size,
         data: await fileToDataUrl(file)
       })))
-      const messageId = crypto.randomUUID()
-      optimisticMessageId = messageId
+      const clientMessageId = crypto.randomUUID()
+      optimisticMessageId = `temp:${clientMessageId}`
       const conversation = messageState.conversations.find(item => item.id === selectedConversationId)
       optimisticConversation = conversation
       previousLatestMessage = conversation?.latestMessage || ''
       previousLatestMessageCreatedAt = conversation?.latestMessageCreatedAt || null
       const replyTarget = messageState.messages.find(item => item.id === replyTargetId)
       const optimisticMessage = upsertMessage({
-        message_id: messageId,
+        id: optimisticMessageId,
+        clientMessageId,
         conversation_id: selectedConversationId,
         sender_firebase_uid: currentUid(),
         sender_email: currentEmail(),
@@ -1199,27 +1298,51 @@ async function sendMessage(event) {
         conversation.latestMessageCreatedAt = optimisticMessage.createdAt
       }
       renderMessages()
-      await api.post(`${apiPath(selectedConversationId)}/messages`, {
-        messageId,
+      const response = await api.post(`${apiPath(selectedConversationId)}/messages`, {
+        clientMessageId,
         body,
         replyToId: replyTargetId,
         attachments
       })
+      const savedMessage = response?.data?.message || (response?.data?.messageId
+        ? {
+          ...optimisticMessage.message,
+          id: response.data.messageId,
+          message_id: response.data.messageId
+        }
+        : null)
+      if (!savedMessage) {
+        throw new Error('The server did not return the saved message.')
+      }
+      const saved = upsertMessage({
+        ...savedMessage,
+        clientMessageId: savedMessage.clientMessageId || clientMessageId
+      })
+      if (conversation) {
+        conversation.latestMessage = saved.message.body
+        conversation.latestMessageCreatedAt = saved.message.createdAt
+      }
+      if (saved.changed) renderMessages()
     }
     input.value = ''
     pendingFiles = []
     renderPendingFiles()
     cancelComposerContext()
     clearError()
-    await refreshFromServer()
   } catch (error) {
     if (optimisticMessageId) {
-      messageState.messages = messageState.messages.filter(item => item.id !== optimisticMessageId)
-      if (optimisticConversation) {
+      const pendingMessageExists = messageState.messages.some(item => item.id === optimisticMessageId)
+      if (pendingMessageExists) {
+        messageState.messages = messageState.messages.filter(item => item.id !== optimisticMessageId)
+      }
+      const savedMessageExists = messageState.messages.some(
+        item => item.clientMessageId === optimisticMessageId.slice('temp:'.length)
+      )
+      if (pendingMessageExists && !savedMessageExists && optimisticConversation) {
         optimisticConversation.latestMessage = previousLatestMessage
         optimisticConversation.latestMessageCreatedAt = previousLatestMessageCreatedAt
       }
-      renderMessages()
+      if (pendingMessageExists) renderMessages()
     }
     showError(error)
   }
@@ -1241,6 +1364,15 @@ function closeEmojiPicker() {
 export function initMessages() {
   if (messagesInitialized) return
   messagesInitialized = true
+  fallbackRefreshTimer = window.setInterval(() => {
+    if (
+      !firebaseAuth.currentUser ||
+      activeView !== 'Messages' ||
+      document.hidden ||
+      socketReady
+    ) return
+    refreshFromServer()
+  }, 2000)
   document.querySelector('#messages-new-channel')?.addEventListener('click', () => openConversationModal('channel'))
   document.querySelector('#messages-new-group')?.addEventListener('click', () => openConversationModal('group'))
   document.querySelector('#messages-new-direct')?.addEventListener('click', () => openConversationModal('direct'))
@@ -1293,9 +1425,15 @@ export function initMessages() {
 
 export async function refreshMessagesForCurrentUser() {
   if (reconnectTimer) window.clearTimeout(reconnectTimer)
-  if (socket && socket.readyState !== WebSocket.CLOSED) socket.close()
+  if (reconnectTimer) reconnectTimer = null
+  if (socket) {
+    clearSocketHeartbeat(socket)
+    if (socket.readyState !== WebSocket.CLOSED) socket.close()
+  }
   socket = null
   socketUid = null
+  socketReady = false
+  reconnectAttempts = 0
   memberPresence.clear()
   if (!firebaseAuth.currentUser) {
     messageState = { conversations: [], messages: [] }
@@ -1306,6 +1444,6 @@ export async function refreshMessagesForCurrentUser() {
   pendingFiles = []
   replyTargetId = null
   editingMessageId = null
-  await refreshFromServer()
   connectMessageSocket()
+  await refreshFromServer()
 }

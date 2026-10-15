@@ -351,7 +351,10 @@ const createMessage = async (req, res) => {
     const attachments = Array.isArray(req.body?.attachments) ? req.body.attachments : [];
     const replyToId = req.body?.replyToId || null;
     const forwardedFrom = req.body?.forwardedFrom || null;
-    const messageId = req.body?.messageId || randomUUID();
+    const clientMessageId = req.body?.clientMessageId ?? null;
+    const messageId = clientMessageId
+        ? randomUUID()
+        : req.body?.messageId || randomUUID();
     const attachmentBytes = attachments.reduce((total, attachment) => {
         const data = typeof attachment?.data === 'string' ? attachment.data : '';
         const encoded = data.split(',').at(-1) || '';
@@ -367,6 +370,8 @@ const createMessage = async (req, res) => {
         attachmentBytes > maxAttachmentBytes ||
         (!body && attachments.length === 0) ||
         typeof messageId !== 'string' || !uuidPattern.test(messageId) ||
+        (clientMessageId !== null &&
+            (typeof clientMessageId !== 'string' || !uuidPattern.test(clientMessageId))) ||
         (replyToId !== null && (typeof replyToId !== 'string' || !uuidPattern.test(replyToId))) ||
         (forwardedFrom !== null && (
             typeof forwardedFrom !== 'object' ||
@@ -413,13 +418,40 @@ const createMessage = async (req, res) => {
                  INSERT INTO messages
                  (message_id, conversation_id, sender_firebase_uid, body, reply_to_message_id, attachments, forwarded_from)
                  VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
-                 RETURNING created_at
+                 RETURNING message_id, conversation_id, sender_firebase_uid, body,
+                           reply_to_message_id, attachments, forwarded_from,
+                           is_pinned, edited_at, created_at
+             ),
+             updated_conversation AS (
+                 UPDATE message_conversations
+                 SET updated_at = NOW()
+                 FROM created_message
+                 WHERE message_conversations.conversation_id = created_message.conversation_id
+                 RETURNING message_conversations.conversation_id
              )
-             UPDATE message_conversations
-             SET updated_at = NOW()
-             FROM created_message
-             WHERE conversation_id = $2
-             RETURNING created_message.created_at`,
+             SELECT message.message_id, message.conversation_id, message.sender_firebase_uid,
+                    sender.email AS sender_email, sender.display_name AS sender_name,
+                    message.body, message.reply_to_message_id,
+                    CASE WHEN reply.deleted_at IS NOT NULL THEN 'This message was deleted'
+                         WHEN EXISTS (
+                             SELECT 1 FROM message_hidden_for hidden
+                             WHERE hidden.message_id = reply.message_id
+                               AND hidden.firebase_uid = $8
+                         ) THEN 'Message unavailable'
+                         ELSE reply.body END AS reply_to_body,
+                    reply_sender.display_name AS reply_to_sender_name,
+                    message.attachments, message.forwarded_from,
+                    message.is_pinned, message.edited_at, message.created_at,
+                    '[]'::jsonb AS reactions, NULL::timestamptz AS read_at,
+                    FALSE AS is_deleted
+             FROM created_message message
+             JOIN message_conversation_members sender
+               ON sender.conversation_id = message.conversation_id
+              AND sender.firebase_uid = message.sender_firebase_uid
+             LEFT JOIN messages reply ON reply.message_id = message.reply_to_message_id
+             LEFT JOIN message_conversation_members reply_sender
+               ON reply_sender.conversation_id = message.conversation_id
+              AND reply_sender.firebase_uid = reply.sender_firebase_uid`,
             [
                 messageId,
                 conversation.conversation_id,
@@ -427,18 +459,33 @@ const createMessage = async (req, res) => {
                 body,
                 replyToId,
                 JSON.stringify(safeAttachments),
-                forwardedFrom ? JSON.stringify({ senderName: forwardedFrom.senderName }) : null
+                forwardedFrom ? JSON.stringify({ senderName: forwardedFrom.senderName }) : null,
+                req.firebaseUid
             ]
         );
-        await publishToMembers(conversation.conversation_id, {
+        const message = {
+            ...inserted.rows[0],
+            client_message_id: clientMessageId
+        };
+        res.status(201).json({
+            success: true,
+            data: {
+                messageId,
+                message
+            }
+        });
+        publishToMembers(conversation.conversation_id, {
             type: 'message.created',
             messageId,
-            createdAt: inserted.rows[0]?.created_at || new Date().toISOString(),
+            clientMessageId,
+            createdAt: message.created_at,
             senderUid: req.firebaseUid,
             senderEmail: req.firebaseEmail || '',
             senderName: req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'Project member'
+        }).catch(error => {
+            console.error('Unable to publish the saved message to WebSocket recipients:', error);
         });
-        return res.status(201).json({ success: true, data: { messageId } });
+        return;
     } catch (error) {
         console.error('Create message error:', error);
         return res.status(500).json({

@@ -6,6 +6,7 @@ const socketPath = '/api/messages/socket';
 const notificationChannel = 'collab_message_events';
 let notificationClient = null;
 let notificationRetryTimer = null;
+let notificationRetryAttempts = 0;
 let shuttingDown = false;
 const connectedUsers = new Map();
 
@@ -173,6 +174,7 @@ const initializeMessageSocket = async server => {
     ].map(origin => origin?.trim()).filter(Boolean);
 
     const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 8192 });
+    let listenerInterrupted = false;
     const heartbeatTimer = setInterval(() => {
         for (const client of webSocketServer.clients) {
             if (client.isAlive === false) {
@@ -184,6 +186,23 @@ const initializeMessageSocket = async server => {
             client.ping();
         }
     }, 30000);
+    const scheduleListenerRetry = () => {
+        if (shuttingDown || notificationRetryTimer) return;
+        const delay = Math.min(1000 * (2 ** notificationRetryAttempts), 30000);
+        notificationRetryAttempts += 1;
+        notificationRetryTimer = setTimeout(() => {
+            notificationRetryTimer = null;
+            listenForMessageEvents();
+        }, delay);
+    };
+    const handleListenerFailure = (client, error) => {
+        if (notificationClient !== client) return;
+        notificationClient = null;
+        listenerInterrupted = true;
+        console.error('Message WebSocket database listener failed:', error.message);
+        client.release(error);
+        scheduleListenerRetry();
+    };
     const listenForMessageEvents = async () => {
         if (shuttingDown) return;
         let client;
@@ -196,30 +215,36 @@ const initializeMessageSocket = async server => {
                 return;
             }
             notificationClient = client;
+            notificationRetryAttempts = 0;
+            if (listenerInterrupted) {
+                listenerInterrupted = false;
+                const payload = JSON.stringify({ type: 'message.sync' });
+                for (const socket of webSocketServer.clients) {
+                    if (socket.readyState === WebSocket.OPEN && socket.firebaseUid) {
+                        socket.send(payload);
+                    }
+                }
+            }
             client.on('notification', notification => {
                 deliverMessageEvent(webSocketServer, notification)
                     .catch(error => console.error('Message WebSocket delivery failed:', error.message));
             });
-            client.once('error', error => {
-                if (notificationClient !== client) return;
-                console.error('Message WebSocket database listener failed:', error.message);
-                notificationClient = null;
-                client.release(error);
-                notificationRetryTimer = setTimeout(listenForMessageEvents, 5000);
-            });
+            client.once('error', error => handleListenerFailure(client, error));
+            client.once('end', () => handleListenerFailure(
+                client,
+                new Error('PostgreSQL message event listener connection ended.')
+            ));
         } catch (error) {
             if (client) client.release(error);
             if (!shuttingDown) {
+                listenerInterrupted = true;
                 console.error('Unable to subscribe to message events:', error.message);
-                notificationRetryTimer = setTimeout(listenForMessageEvents, 5000);
+                scheduleListenerRetry();
             }
         }
     };
 
     await listenForMessageEvents();
-    if (!notificationClient) {
-        throw new Error('Unable to establish the PostgreSQL message event listener.');
-    }
 
     server.on('upgrade', (request, socket, head) => {
         let requestUrl;
@@ -245,6 +270,7 @@ const initializeMessageSocket = async server => {
     });
 
     webSocketServer.on('connection', socket => {
+        let authenticated = false;
         let authenticationAttempted = false;
         socket.isAlive = true;
         socket.on('pong', () => {
@@ -253,7 +279,26 @@ const initializeMessageSocket = async server => {
         const authenticationTimeout = setTimeout(() => socket.close(4401, 'Authentication required'), 5000);
         socket.on('message', async data => {
             if (authenticationAttempted) {
-                socket.close(4400, 'Client messages are not supported');
+                if (!authenticated) {
+                    socket.close(4400, 'Client messages are not supported');
+                    return;
+                }
+                let frame;
+                try {
+                    frame = JSON.parse(data.toString());
+                } catch {
+                    socket.close(4400, 'Invalid client frame');
+                    return;
+                }
+                if (frame?.type !== 'ping' ||
+                    !Number.isSafeInteger(frame.timestamp) ||
+                    frame.timestamp < 0) {
+                    socket.close(4400, 'Unsupported client frame');
+                    return;
+                }
+                if (socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ type: 'pong', timestamp: frame.timestamp }));
+                }
                 return;
             }
             authenticationAttempted = true;
@@ -267,6 +312,7 @@ const initializeMessageSocket = async server => {
                 clearTimeout(authenticationTimeout);
                 if (socket.readyState !== WebSocket.OPEN) return;
                 socket.firebaseUid = decoded.uid;
+                authenticated = true;
                 await registerConnectedUser(webSocketServer, socket, decoded.uid);
             } catch (error) {
                 clearTimeout(authenticationTimeout);
