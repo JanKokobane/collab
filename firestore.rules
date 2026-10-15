@@ -1,0 +1,126 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isConversationMember(conversationId) {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)/messageConversations/$(conversationId));
+    }
+
+    function isValidLatestMessageUpdate(conversationId) {
+      let messageId = request.resource.data.latest_message_id;
+      let messagePath =
+        /databases/$(database)/documents/messageConversations/$(conversationId)/messages/$(messageId);
+      let message = getAfter(messagePath).data;
+      return isConversationMember(conversationId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'latest_message_id', 'latest_message_body', 'latest_sender_firebase_uid',
+          'latest_message_created_at', 'updated_at'
+        ]) &&
+        messageId is string &&
+        !exists(messagePath) &&
+        existsAfter(messagePath) &&
+        message.sender_firebase_uid == request.auth.uid &&
+        request.resource.data.latest_sender_firebase_uid == request.auth.uid &&
+        request.resource.data.latest_message_body == message.body &&
+        request.resource.data.latest_message_created_at == message.created_at &&
+        request.resource.data.updated_at == request.time;
+    }
+
+    function isValidMessageCreate(conversationId) {
+      let message = request.resource.data;
+      let memberPath =
+        /databases/$(database)/documents/messageConversations/$(conversationId)/members/$(request.auth.uid);
+      let conversationPath =
+        /databases/$(database)/documents/messageConversations/$(conversationId);
+      return isConversationMember(conversationId) &&
+        exists(memberPath) &&
+        message.keys().hasAll([
+          'sender_firebase_uid', 'sender_email', 'sender_name', 'body',
+          'reply_to_message_id', 'reply_to_body', 'reply_to_sender_name',
+          'attachments', 'forwarded_from', 'is_pinned', 'edited_at',
+          'created_at', 'deleted_at', 'hidden_for', 'visible_to',
+          'reaction_entries', 'read_receipts', 'client_message_id'
+        ]) &&
+        message.keys().hasOnly([
+          'sender_firebase_uid', 'sender_email', 'sender_name', 'body',
+          'reply_to_message_id', 'reply_to_body', 'reply_to_sender_name',
+          'attachments', 'forwarded_from', 'is_pinned', 'edited_at',
+          'created_at', 'deleted_at', 'hidden_for', 'visible_to',
+          'reaction_entries', 'read_receipts', 'client_message_id'
+        ]) &&
+        message.sender_firebase_uid == request.auth.uid &&
+        message.sender_email == get(memberPath).data.email &&
+        message.sender_name == get(memberPath).data.display_name &&
+        message.body is string &&
+        message.body.size() <= 5000 &&
+        message.attachments is list &&
+        message.attachments.size() <= 10 &&
+        (message.body.size() > 0 || message.attachments.size() > 0) &&
+        (message.forwarded_from == null ||
+          (message.forwarded_from is map &&
+            message.forwarded_from.senderName is string &&
+            message.forwarded_from.senderName.size() <= 160)) &&
+        message.is_pinned == false &&
+        message.created_at == request.time &&
+        message.edited_at == null &&
+        message.deleted_at == null &&
+        message.hidden_for.size() == 0 &&
+        message.reaction_entries.size() == 0 &&
+        message.read_receipts.size() == 0 &&
+        message.visible_to is list &&
+        message.visible_to.size() == get(conversationPath).data.member_uids.size() &&
+        message.visible_to.hasAll(get(conversationPath).data.member_uids) &&
+        message.client_message_id is string &&
+        message.client_message_id.size() <= 64 &&
+        (message.reply_to_message_id == null ||
+          (exists(/databases/$(database)/documents/messageConversations/$(conversationId)/messages/$(message.reply_to_message_id)) &&
+            get(/databases/$(database)/documents/messageConversations/$(conversationId)/messages/$(message.reply_to_message_id)).data.visible_to.hasAny([request.auth.uid])));
+    }
+
+    match /users/{userId}/messageConversations/{conversationId} {
+      allow get, list: if signedIn() && request.auth.uid == userId;
+      allow create, update, delete: if false;
+    }
+
+    match /messageConversations/{conversationId} {
+      allow get: if isConversationMember(conversationId);
+      allow update: if isValidLatestMessageUpdate(conversationId);
+      allow list, create, delete: if false;
+
+      match /members/{memberUid} {
+        allow get, list: if isConversationMember(conversationId);
+        allow create, update, delete: if false;
+      }
+
+      match /messages/{messageId} {
+        allow get, list: if isConversationMember(conversationId) &&
+          resource.data.visible_to.hasAny([request.auth.uid]);
+        allow create: if isValidMessageCreate(conversationId);
+        allow update, delete: if false;
+      }
+    }
+
+    match /messagePresence/{firebaseUid} {
+      allow get: if signedIn() &&
+        (request.auth.uid == firebaseUid ||
+          resource.data.visible_to.hasAny([request.auth.uid]));
+      allow update: if signedIn() &&
+        request.auth.uid == firebaseUid &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['is_online', 'last_seen_at']) &&
+        request.resource.data.is_online is bool &&
+        (request.resource.data.is_online ||
+          request.resource.data.last_seen_at == request.time);
+      allow list, create, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

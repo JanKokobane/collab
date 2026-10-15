@@ -9,6 +9,7 @@ const {
     query
 } = require('../config/db');
 const { getFirebaseAdmin } = require('../config/firebaseAdmin');
+const { syncProjectConversationAccess } = require('../services/firestoreMessageAccess');
 
 const allowedRoles = new Set([
     'Workspace Admin',
@@ -1312,7 +1313,9 @@ const revokeInvitation = async (
                       AND i.status IN ('pending', 'accepted')
                     RETURNING
                         i.invitation_id,
-                        i.status
+                        i.status,
+                        i.project_id,
+                        i.invited_firebase_uid
                 `,
                 [
                     req.params.invitationId,
@@ -1328,6 +1331,14 @@ const revokeInvitation = async (
                 message:
                     'Pending invitation not found.'
             });
+        }
+
+        if (result.rows[0].invited_firebase_uid) {
+            await syncProjectConversationAccess(
+                result.rows[0].project_id,
+                result.rows[0].invited_firebase_uid,
+                false
+            );
         }
 
         return res.status(200).json({
@@ -1404,6 +1415,11 @@ const acceptInvitation = async (
                 );
                 if (alreadyAccepted.rowCount) {
                     await client.query('COMMIT');
+                    await syncProjectConversationAccess(
+                        alreadyAccepted.rows[0].project_id,
+                        req.firebaseUid,
+                        true
+                    );
                     return res.status(200).json({
                         success: true,
                         message: 'Invitation was already accepted.',
@@ -1448,6 +1464,11 @@ const acceptInvitation = async (
                 ]
             );
             await client.query('COMMIT');
+            await syncProjectConversationAccess(
+                invitation.project_id,
+                req.firebaseUid,
+                true
+            );
             return res.status(200).json({
                 success: true,
                 message: 'Invitation accepted.',
@@ -1562,6 +1583,11 @@ const acceptInvitation = async (
                 await client.query(
                     'COMMIT'
                 );
+                await syncProjectConversationAccess(
+                    previousAcceptance.rows[0].project_id,
+                    req.firebaseUid,
+                    true
+                );
 
                 return res.status(200).json({
                     success: true,
@@ -1640,6 +1666,11 @@ const acceptInvitation = async (
 
         await client.query(
             'COMMIT'
+        );
+        await syncProjectConversationAccess(
+            invitation.project_id,
+            req.firebaseUid,
+            true
         );
 
         return res.status(200).json({

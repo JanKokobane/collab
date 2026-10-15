@@ -1,4 +1,5 @@
 const { pool, query } = require('../config/db');
+const { deleteProjectMessageData } = require('../services/firestoreMessageAccess');
 
 /**
  * Create a project
@@ -468,6 +469,8 @@ const getProject = async (req, res) => {
                 message: 'Project not found.'
             });
         }
+
+        await deleteProjectMessageData(projectId);
 
         return res.status(200).json({
             success: true,

@@ -1,6 +1,19 @@
 import { activeView, currentUser, getAccessibleMembers, getAvatarSource, make, projects, renderAvatarElement } from './state.js'
-import { firebaseAuth } from '../../firebase.js'
-import { api, apiBaseUrl } from './api.js'
+import { firebaseAuth, firestoreDb } from '../../firebase.js'
+import { api } from './api.js'
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  serverTimestamp,
+  Timestamp,
+  updateDoc,
+  where,
+  writeBatch
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'
 
 const maxAttachmentBytes = 512 * 1024
 const reactionChoices = ['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']
@@ -10,17 +23,13 @@ let pendingFiles = []
 let replyTargetId = null
 let editingMessageId = null
 let messagesInitialized = false
-let socket = null
-let socketUid = null
-let socketReady = false
-let reconnectTimer = null
-let reconnectAttempts = 0
 let refreshPromise = null
-let fallbackRefreshTimer = null
-let heartbeatInterval = null
-let heartbeatTimeout = null
-let heartbeatTimestamp = null
+let conversationUnsubscribe = null
+let subscriptionsUid = null
+const conversationMessageSubscriptions = new Map()
+const presenceSubscriptions = new Map()
 const memberPresence = new Map()
+let presenceWriteUid = null
 
 const currentEmail = () => currentUser.email?.trim().toLowerCase() || firebaseAuth.currentUser?.email?.trim().toLowerCase() || ''
 const currentUid = () => firebaseAuth.currentUser?.uid || ''
@@ -41,7 +50,13 @@ function getElements() {
   }
 }
 
-function showError(error) {
+function showError(error, operation = 'message operation') {
+  console.error(`[messages] ${operation} failed`, {
+    name: error?.name || 'Error',
+    code: error?.code || null,
+    status: error?.status || null,
+    message: error?.message || String(error)
+  })
   const element = getElements().error
   if (!element) return
   element.textContent = error instanceof Error ? error.message : 'The message could not be completed.'
@@ -78,7 +93,8 @@ function normalizeConversation(row) {
     createdAt: row.created_at || row.createdAt,
     updatedAt: row.updated_at || row.updatedAt,
     members: members.map(member => typeof member === 'string' ? member.toLowerCase() : member.email?.toLowerCase()).filter(Boolean),
-    memberUids: members.map(member => typeof member === 'string' ? '' : member.firebaseUid).filter(Boolean),
+    memberUids: members.map(member => typeof member === 'string' ? '' : member.firebaseUid)
+      .filter(Boolean).sort(),
     participants: members.map(member => typeof member === 'string'
       ? { email: member.toLowerCase(), name: member }
       : {
@@ -177,31 +193,6 @@ function upsertMessage(message) {
   return { message: normalized, changed }
 }
 
-function receiveCreatedMessage(payload) {
-  if (!payload.message || !messageState.conversations.some(item => item.id === payload.conversationId)) {
-    refreshFromServer()
-    return
-  }
-  const { message, changed } = upsertMessage({
-    ...payload.message,
-    clientMessageId: payload.clientMessageId || payload.message.clientMessageId
-  })
-  const conversation = messageState.conversations.find(item => item.id === message.conversationId)
-  if (!conversation || !changed) return
-  conversation.latestMessage = message.body
-  conversation.latestMessageCreatedAt = message.createdAt
-  if (message.senderUid !== currentUid() &&
-      !(activeView === 'Messages' && selectedConversationId === message.conversationId)) {
-    conversation.unreadCount += 1
-  }
-  renderMessages()
-  if (activeView === 'Messages' && selectedConversationId === message.conversationId) {
-    conversation.unreadCount = 0
-    api.post(`${apiPath(message.conversationId)}/read`, {})
-      .catch(showError)
-  }
-}
-
 function renderDirectMessagePresence(conversation, element) {
   const otherMember = (conversation.participants || []).find(member =>
     member.firebaseUid !== currentUid() && member.email !== currentEmail()
@@ -236,15 +227,6 @@ function renderDirectMessagePresence(conversation, element) {
     }).format(parsedLastSeen)
     : 'unavailable'
   element.textContent = `Last seen ${lastSeenText}`
-}
-
-function receivePresenceUpdate(payload, shouldRender = true) {
-  if (typeof payload.firebaseUid !== 'string') return
-  memberPresence.set(payload.firebaseUid, {
-    isOnline: Boolean(payload.isOnline),
-    lastSeenAt: payload.lastSeenAt || null
-  })
-  if (shouldRender && activeView === 'Messages') renderMessagesView()
 }
 
 function updateMessagesNavigationBadge() {
@@ -329,169 +311,283 @@ function renderConversationList() {
   })
 }
 
+function timestampToIso(value) {
+  if (!value) return null
+  if (typeof value.toDate === 'function') return value.toDate().toISOString()
+  if (value instanceof Date) return value.toISOString()
+  return value
+}
+
+function toFirestoreMessage(snapshot, conversationId) {
+  const row = snapshot.data()
+  const reactionUsers = new Map()
+  for (const reaction of row.reaction_entries || []) {
+    const users = reactionUsers.get(reaction.emoji) || []
+    if (reaction.email && !users.includes(reaction.email.toLowerCase())) users.push(reaction.email.toLowerCase())
+    reactionUsers.set(reaction.emoji, users)
+  }
+  const readAt = (row.read_receipts || [])
+    .filter(receipt => receipt.firebaseUid !== row.sender_firebase_uid && receipt.readAt)
+    .map(receipt => timestampToIso(receipt.readAt))
+    .sort((left, right) => Date.parse(left) - Date.parse(right))[0] || null
+  return normalizeMessage({
+    ...row,
+    message_id: snapshot.id,
+    conversation_id: conversationId,
+    body: row.deleted_at ? 'This message was deleted' : row.body,
+    attachments: row.deleted_at ? [] : row.attachments || [],
+    forwarded_from: row.deleted_at ? null : row.forwarded_from || null,
+    is_deleted: Boolean(row.deleted_at),
+    created_at: timestampToIso(row.created_at),
+    edited_at: timestampToIso(row.edited_at),
+    reactions: [...reactionUsers].map(([emoji, users]) => ({ emoji, users })),
+    read_at: readAt
+  })
+}
+
+function unsubscribeConversation(conversationId) {
+  conversationMessageSubscriptions.get(conversationId)?.()
+  conversationMessageSubscriptions.delete(conversationId)
+  presenceSubscriptions.get(conversationId)?.forEach(unsubscribe => unsubscribe())
+  presenceSubscriptions.delete(conversationId)
+}
+
+async function hydrateConversation(snapshot) {
+  const data = snapshot.data()
+  const conversationId = snapshot.id
+  const membersSnapshot = await getDocs(collection(
+    firestoreDb, 'messageConversations', conversationId, 'members'
+  ))
+  const members = membersSnapshot.docs.map(memberSnapshot => {
+    const member = memberSnapshot.data()
+    return {
+      ...member,
+      name: member.display_name || member.name || member.email || 'Project member',
+      email: (member.email || '').toLowerCase(),
+      profileImage: member.profile_image || '',
+      lastSeenAt: null
+    }
+  })
+  const conversation = normalizeConversation({
+    ...data,
+    conversation_id: conversationId,
+    created_at: timestampToIso(data.created_at),
+    updated_at: timestampToIso(data.updated_at),
+    latest_message_created_at: timestampToIso(data.latest_message_created_at),
+    members
+  })
+  const presenceUnsubscribers = []
+  members.forEach(member => {
+    if (!member.firebaseUid || presenceSubscriptions.get(conversationId)?.has(member.firebaseUid)) return
+    const presenceRef = doc(firestoreDb, 'messagePresence', member.firebaseUid)
+    const unsubscribe = onSnapshot(presenceRef, presenceSnapshot => {
+      const presence = presenceSnapshot.data() || {}
+      memberPresence.set(member.firebaseUid, {
+        isOnline: Boolean(presence.is_online),
+        lastSeenAt: timestampToIso(presence.last_seen_at) || member.lastSeenAt
+      })
+      if (activeView === 'Messages' && selectedConversationId === conversationId) renderMessagesView()
+    }, error => showError(error, `Firestore presence listener (${conversationId})`))
+    presenceUnsubscribers.push([member.firebaseUid, unsubscribe])
+  })
+  const activePresence = presenceSubscriptions.get(conversationId) || new Map()
+  presenceUnsubscribers.forEach(([uid, unsubscribe]) => activePresence.set(uid, unsubscribe))
+  presenceSubscriptions.set(conversationId, activePresence)
+  return conversation
+}
+
+function subscribeToConversationMessages(conversation) {
+  if (conversationMessageSubscriptions.has(conversation.id)) return
+  const messagesQuery = query(
+    collection(firestoreDb, 'messageConversations', conversation.id, 'messages'),
+    where('visible_to', 'array-contains', currentUid())
+  )
+  const unsubscribe = onSnapshot(messagesQuery, snapshot => {
+    const uid = currentUid()
+    const visibleDocs = snapshot.docs.filter(item =>
+      !(item.data().hidden_for || []).includes(uid)
+    )
+    const orderedDocs = [...visibleDocs].sort((left, right) => {
+      const leftTime = left.data().created_at?.toMillis?.() || 0
+      const rightTime = right.data().created_at?.toMillis?.() || 0
+      return leftTime - rightTime || left.id.localeCompare(right.id)
+    })
+    const messages = orderedDocs.map(item => toFirestoreMessage(item, conversation.id))
+    const latestDoc = orderedDocs.at(-1)
+    const latestData = latestDoc?.data()
+    conversation.latestMessage = latestData
+      ? latestData.deleted_at ? 'This message was deleted' : latestData.body || ''
+      : ''
+    conversation.latestMessageCreatedAt = timestampToIso(latestData?.created_at)
+    conversation.latestMessageId = latestDoc?.id || null
+    const member = conversation.participants.find(item => item.firebaseUid === uid)
+    const lastReadAt = member?.last_read_at || null
+    conversation.unreadCount = visibleDocs.filter(item => {
+      const message = item.data()
+      return message.sender_firebase_uid !== uid &&
+        !message.deleted_at &&
+        (!lastReadAt || message.created_at?.toMillis?.() > lastReadAt.toMillis()) &&
+        !(message.read_receipts || []).some(receipt => receipt.firebaseUid === uid)
+    }).length
+    if (selectedConversationId === conversation.id) {
+      messageState.messages = messages
+      if (activeView === 'Messages') renderMessages()
+      const hasIncomingMessage = snapshot.docChanges().some(change =>
+        change.type === 'added' &&
+        change.doc.data().sender_firebase_uid !== uid
+      )
+      if (hasIncomingMessage) {
+        api.post(`${apiPath(conversation.id)}/read`, {})
+          .catch(error => showError(error, `mark conversation ${conversation.id} as read`))
+      }
+    } else if (activeView === 'Messages') {
+      renderMessages()
+    }
+    updateMessagesNavigationBadge()
+  }, error => showError(error, `Firestore message listener (${conversation.id})`))
+  conversationMessageSubscriptions.set(conversation.id, unsubscribe)
+}
+
+async function saveMessageToFirestore({
+  conversationId,
+  body,
+  attachments = [],
+  replyToId = null,
+  forwardedFrom = null,
+  clientMessageId = crypto.randomUUID()
+}) {
+  const conversation = messageState.conversations.find(item => item.id === conversationId)
+  if (!conversation || !conversation.memberUids.includes(currentUid())) {
+    throw new Error('You no longer have access to this conversation.')
+  }
+  const sender = conversation.participants.find(item => item.firebaseUid === currentUid())
+  const reply = replyToId
+    ? messageState.messages.find(item => item.id === replyToId)
+    : null
+  if (replyToId && !reply) throw new Error('The message being replied to is unavailable.')
+  const messageId = crypto.randomUUID()
+  const createdAt = Timestamp.now()
+  const message = {
+    sender_firebase_uid: currentUid(),
+    sender_email: sender?.email || currentEmail(),
+    sender_name: sender?.name || currentUser.name || currentEmail() || 'Project member',
+    body,
+    reply_to_message_id: replyToId,
+    reply_to_body: reply?.body || null,
+    reply_to_sender_name: reply?.senderName || null,
+    attachments,
+    forwarded_from: forwardedFrom,
+    is_pinned: false,
+    edited_at: null,
+    created_at: serverTimestamp(),
+    deleted_at: null,
+    hidden_for: [],
+    visible_to: conversation.memberUids,
+    reaction_entries: [],
+    read_receipts: [],
+    client_message_id: clientMessageId
+  }
+  const batch = writeBatch(firestoreDb)
+  batch.set(doc(
+    firestoreDb, 'messageConversations', conversationId, 'messages', messageId
+  ), message)
+  batch.update(doc(firestoreDb, 'messageConversations', conversationId), {
+    latest_message_id: messageId,
+    latest_message_body: body,
+    latest_sender_firebase_uid: currentUid(),
+    latest_message_created_at: serverTimestamp(),
+    updated_at: serverTimestamp()
+  })
+  await batch.commit()
+  return normalizeMessage({
+    ...message,
+    message_id: messageId,
+    conversation_id: conversationId,
+    created_at: createdAt.toDate().toISOString()
+  })
+}
+
 async function loadConversationMessages(conversationId) {
   if (!conversationId) {
     messageState.messages = []
     return
   }
-  const result = await api.get(`${apiPath(conversationId)}/messages`)
+  const snapshot = await getDocs(query(
+    collection(firestoreDb, 'messageConversations', conversationId, 'messages'),
+    where('visible_to', 'array-contains', currentUid())
+  ))
   if (selectedConversationId === conversationId) {
-    messageState.messages = (result?.data?.messages || []).map(normalizeMessage)
+    messageState.messages = snapshot.docs
+      .filter(item => !(item.data().hidden_for || []).includes(currentUid()))
+      .map(item => toFirestoreMessage(item, conversationId))
+      .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
   }
 }
 
 async function reloadMessages() {
-  const selectedId = selectedConversationId
-  const previousConversationState = JSON.stringify(messageState.conversations.map(conversation => [
-    conversation.id,
-    conversation.unreadCount,
-    conversation.latestMessage,
-    conversation.latestMessageCreatedAt
-  ]))
-  const previousMessageState = JSON.stringify(messageState.messages)
-  const result = await api.get('/messages/conversations')
-  messageState.conversations = (result?.data?.conversations || []).map(normalizeConversation)
-  if (selectedId && messageState.conversations.some(item => item.id === selectedId)) {
-    selectedConversationId = selectedId
-  } else {
-    selectedConversationId = messageState.conversations[0]?.id || null
+  const user = firebaseAuth.currentUser
+  if (!user) return
+  presenceWriteUid = user.uid
+  setOwnPresence(true)
+  if (subscriptionsUid !== user.uid) {
+    conversationUnsubscribe?.()
+    conversationMessageSubscriptions.forEach(unsubscribe => unsubscribe())
+    conversationMessageSubscriptions.clear()
+    presenceSubscriptions.forEach(subscriptions => subscriptions.forEach(unsubscribe => unsubscribe()))
+    presenceSubscriptions.clear()
+    subscriptionsUid = user.uid
+    const conversationsQuery = collection(
+      firestoreDb, 'users', user.uid, 'messageConversations'
+    )
+    conversationUnsubscribe = onSnapshot(conversationsQuery, snapshot => {
+      Promise.all(snapshot.docs.map(item => getDoc(doc(
+        firestoreDb, 'messageConversations', item.id
+      ))))
+        .then(conversationSnapshots => Promise.all(
+          conversationSnapshots.filter(item => item.exists()).map(hydrateConversation)
+        ))
+        .then(conversations => {
+          const visibleIds = new Set(conversations.map(conversation => conversation.id))
+          for (const oldConversation of messageState.conversations) {
+            if (!visibleIds.has(oldConversation.id)) unsubscribeConversation(oldConversation.id)
+          }
+          messageState.conversations = conversations
+          conversations.forEach(subscribeToConversationMessages)
+          if (!selectedConversationId || !visibleIds.has(selectedConversationId)) {
+            selectedConversationId = conversations[0]?.id || null
+          }
+          if (!selectedConversationId) messageState.messages = []
+          updateMessagesNavigationBadge()
+          if (activeView === 'Messages') renderMessages()
+        })
+        .catch(error => showError(error, 'load conversations and members from Firestore'))
+    }, error => showError(error, 'listen to Firestore conversation access index'))
+  }
+  const snapshot = await getDocs(collection(
+    firestoreDb, 'users', user.uid, 'messageConversations'
+  ))
+  const conversationSnapshots = await Promise.all(snapshot.docs.map(item => getDoc(doc(
+    firestoreDb, 'messageConversations', item.id
+  ))))
+  const conversations = await Promise.all(
+    conversationSnapshots.filter(item => item.exists()).map(hydrateConversation)
+  )
+  messageState.conversations = conversations
+  conversations.forEach(subscribeToConversationMessages)
+  if (!selectedConversationId || !conversations.some(item => item.id === selectedConversationId)) {
+    selectedConversationId = conversations[0]?.id || null
   }
   await loadConversationMessages(selectedConversationId)
-  const conversationState = JSON.stringify(messageState.conversations.map(conversation => [
-    conversation.id,
-    conversation.unreadCount,
-    conversation.latestMessage,
-    conversation.latestMessageCreatedAt
-  ]))
-  const messageDataChanged = JSON.stringify(messageState.messages) !== previousMessageState
   updateMessagesNavigationBadge()
-  if (
-    conversationState !== previousConversationState ||
-    messageDataChanged ||
-    selectedId !== selectedConversationId
-  ) renderMessages()
+  if (activeView === 'Messages') renderMessages()
 }
 
 async function refreshFromServer() {
   if (refreshPromise) return refreshPromise
   refreshPromise = reloadMessages()
-    .catch(showError)
+    .catch(error => showError(error, 'refresh messages from Firestore'))
     .finally(() => { refreshPromise = null })
   return refreshPromise
-}
-
-function clearSocketHeartbeat(connection) {
-  if (socket !== connection) return
-  if (heartbeatInterval) window.clearInterval(heartbeatInterval)
-  if (heartbeatTimeout) window.clearTimeout(heartbeatTimeout)
-  heartbeatInterval = null
-  heartbeatTimeout = null
-  heartbeatTimestamp = null
-}
-
-function startSocketHeartbeat(connection) {
-  clearSocketHeartbeat(connection)
-  heartbeatInterval = window.setInterval(() => {
-    if (connection.readyState !== WebSocket.OPEN) {
-      connection.close()
-      return
-    }
-    if (heartbeatTimeout) {
-      connection.close(4000, 'Heartbeat timed out')
-      return
-    }
-
-    heartbeatTimestamp = Date.now()
-    try {
-      connection.send(JSON.stringify({ type: 'ping', timestamp: heartbeatTimestamp }))
-      heartbeatTimeout = window.setTimeout(() => {
-        connection.close(4000, 'Heartbeat timed out')
-      }, 10_000)
-    } catch (error) {
-      showError(error)
-      connection.close()
-    }
-  }, 18_000)
-}
-
-function scheduleSocketReconnect(userUid) {
-  if (reconnectTimer || firebaseAuth.currentUser?.uid !== userUid) return
-  const baseDelay = Math.min(1000 * (2 ** reconnectAttempts), 30_000)
-  const delay = Math.round(baseDelay * (0.75 + Math.random() * 0.5))
-  reconnectAttempts += 1
-  reconnectTimer = window.setTimeout(() => {
-    reconnectTimer = null
-    if (firebaseAuth.currentUser?.uid !== userUid) return
-    socketUid = null
-    connectMessageSocket()
-  }, delay)
-}
-
-function connectMessageSocket() {
-  const user = firebaseAuth.currentUser
-  if (!user || socketUid === user.uid) return
-  socketUid = user.uid
-  socketReady = false
-  const protocol = apiBaseUrl.startsWith('https:') ? 'wss:' : 'ws:'
-  const url = `${protocol}//${new URL(apiBaseUrl).host}/api/messages/socket`
-  let connection
-  try {
-    connection = new WebSocket(url)
-  } catch (error) {
-    socketUid = null
-    showError(error)
-    scheduleSocketReconnect(user.uid)
-    return
-  }
-  socket = connection
-  connection.addEventListener('open', async () => {
-    try {
-      connection.send(JSON.stringify({ type: 'authenticate', token: await user.getIdToken(false) }))
-    } catch (error) {
-      showError(error)
-      connection.close()
-    }
-  })
-  connection.addEventListener('message', event => {
-    let payload
-    try {
-      payload = JSON.parse(event.data)
-    } catch {
-      showError(new Error('The live messages update was invalid.'))
-      return
-    }
-    if (payload.type === 'message.created') {
-      receiveCreatedMessage(payload)
-    } else if (payload.type === 'presence.updated') {
-      receivePresenceUpdate(payload)
-    } else if (payload.type === 'pong') {
-      if (payload.timestamp === heartbeatTimestamp) {
-        if (heartbeatTimeout) window.clearTimeout(heartbeatTimeout)
-        heartbeatTimeout = null
-        heartbeatTimestamp = null
-      }
-    } else if (payload.type === 'ready') {
-      socketReady = true
-      reconnectAttempts = 0
-      startSocketHeartbeat(connection)
-      ;(payload.presence || []).forEach(item => receivePresenceUpdate(item, false))
-      refreshFromServer()
-      if (activeView === 'Messages') renderMessagesView()
-    } else {
-      refreshFromServer()
-    }
-  })
-  connection.addEventListener('close', () => {
-    if (socket !== connection) return
-    socket = null
-    socketReady = false
-    clearSocketHeartbeat(null)
-    if (firebaseAuth.currentUser?.uid !== socketUid) return
-    scheduleSocketReconnect(socketUid)
-  })
-  connection.addEventListener('error', () => {
-    if (connection.readyState !== WebSocket.CLOSED) showError(new Error('Live updates are disconnected. Reconnecting…'))
-  })
 }
 
 async function selectConversation(conversationId) {
@@ -506,7 +602,7 @@ async function selectConversation(conversationId) {
       updateMessagesNavigationBadge()
     }
   } catch (error) {
-    showError(error)
+    showError(error, 'load selected conversation and mark it read')
   }
   closeEmojiPicker()
   renderMessages()
@@ -860,10 +956,14 @@ async function openDirectConversation(contact) {
       memberFirebaseUids: [contact.firebaseUid]
     })
     const conversation = result?.data?.conversation
+    console.info('[messages] conversation API succeeded; refreshing Firestore access', {
+      type: 'direct',
+      conversationId: conversation?.conversation_id || null
+    })
     await refreshFromServer()
     if (conversation?.conversation_id) await selectConversation(conversation.conversation_id)
   } catch (error) {
-    showError(error)
+    showError(error, 'POST /messages/conversations (start direct conversation)')
   }
 }
 
@@ -951,11 +1051,16 @@ function openConversationModal(type) {
         name: nameInput.value.trim(),
         memberFirebaseUids: selected.map(input => input.value)
       })
+      console.info('[messages] conversation API succeeded; refreshing Firestore access', {
+        type,
+        conversationId: result?.data?.conversation?.conversation_id || null
+      })
       backdrop.remove()
       await refreshFromServer()
       const conversationId = result?.data?.conversation?.conversation_id
       if (conversationId) await selectConversation(conversationId)
     } catch (requestError) {
+      showError(requestError, `POST /messages/conversations (create ${type})`)
       error.textContent = requestError.message
       error.hidden = false
       submit.disabled = false
@@ -1205,7 +1310,8 @@ function openForwardModal(message) {
           memberFirebaseUids: [uid]
         })
         const targetConversationId = result?.data?.conversation?.conversation_id
-        await api.post(`${apiPath(targetConversationId)}/messages`, {
+        await saveMessageToFirestore({
+          conversationId: targetConversationId,
           body: message.body,
           attachments: message.attachments,
           forwardedFrom: { senderName: message.senderName }
@@ -1214,6 +1320,7 @@ function openForwardModal(message) {
       closeModal()
       await refreshFromServer()
     } catch (error) {
+      showError(error, 'create conversation and send forwarded message')
       modalError.textContent = error.message
       modalError.hidden = false
       submit.disabled = false
@@ -1295,25 +1402,16 @@ async function sendMessage(event) {
       })
       if (conversation) {
         conversation.latestMessage = body
-        conversation.latestMessageCreatedAt = optimisticMessage.createdAt
+        conversation.latestMessageCreatedAt = optimisticMessage.message.createdAt
       }
       renderMessages()
-      const response = await api.post(`${apiPath(selectedConversationId)}/messages`, {
+      const savedMessage = await saveMessageToFirestore({
+        conversationId: selectedConversationId,
         clientMessageId,
         body,
         replyToId: replyTargetId,
         attachments
       })
-      const savedMessage = response?.data?.message || (response?.data?.messageId
-        ? {
-          ...optimisticMessage.message,
-          id: response.data.messageId,
-          message_id: response.data.messageId
-        }
-        : null)
-      if (!savedMessage) {
-        throw new Error('The server did not return the saved message.')
-      }
       const saved = upsertMessage({
         ...savedMessage,
         clientMessageId: savedMessage.clientMessageId || clientMessageId
@@ -1330,6 +1428,7 @@ async function sendMessage(event) {
     cancelComposerContext()
     clearError()
   } catch (error) {
+    showError(error, `send message to conversation ${selectedConversationId || 'unknown'}`)
     if (optimisticMessageId) {
       const pendingMessageExists = messageState.messages.some(item => item.id === optimisticMessageId)
       if (pendingMessageExists) {
@@ -1364,15 +1463,6 @@ function closeEmojiPicker() {
 export function initMessages() {
   if (messagesInitialized) return
   messagesInitialized = true
-  fallbackRefreshTimer = window.setInterval(() => {
-    if (
-      !firebaseAuth.currentUser ||
-      activeView !== 'Messages' ||
-      document.hidden ||
-      socketReady
-    ) return
-    refreshFromServer()
-  }, 2000)
   document.querySelector('#messages-new-channel')?.addEventListener('click', () => openConversationModal('channel'))
   document.querySelector('#messages-new-group')?.addEventListener('click', () => openConversationModal('group'))
   document.querySelector('#messages-new-direct')?.addEventListener('click', () => openConversationModal('direct'))
@@ -1424,18 +1514,16 @@ export function initMessages() {
 }
 
 export async function refreshMessagesForCurrentUser() {
-  if (reconnectTimer) window.clearTimeout(reconnectTimer)
-  if (reconnectTimer) reconnectTimer = null
-  if (socket) {
-    clearSocketHeartbeat(socket)
-    if (socket.readyState !== WebSocket.CLOSED) socket.close()
-  }
-  socket = null
-  socketUid = null
-  socketReady = false
-  reconnectAttempts = 0
+  conversationUnsubscribe?.()
+  conversationUnsubscribe = null
+  subscriptionsUid = null
+  conversationMessageSubscriptions.forEach(unsubscribe => unsubscribe())
+  conversationMessageSubscriptions.clear()
+  presenceSubscriptions.forEach(subscriptions => subscriptions.forEach(unsubscribe => unsubscribe()))
+  presenceSubscriptions.clear()
   memberPresence.clear()
   if (!firebaseAuth.currentUser) {
+    presenceWriteUid = null
     messageState = { conversations: [], messages: [] }
     selectedConversationId = null
     renderMessages()
@@ -1444,6 +1532,26 @@ export async function refreshMessagesForCurrentUser() {
   pendingFiles = []
   replyTargetId = null
   editingMessageId = null
-  connectMessageSocket()
+  presenceWriteUid = firebaseAuth.currentUser.uid
+  setOwnPresence(true)
   await refreshFromServer()
 }
+
+function setOwnPresence(isOnline) {
+  const uid = firebaseAuth.currentUser?.uid
+  if (!uid) return
+  const presenceRef = doc(firestoreDb, 'messagePresence', uid)
+  const updates = isOnline
+    ? { is_online: true }
+    : { is_online: false, last_seen_at: serverTimestamp() }
+  getDoc(presenceRef)
+    .then(snapshot => snapshot.exists() ? updateDoc(presenceRef, updates) : null)
+    .catch(error => showError(error, 'update own presence in Firestore'))
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (presenceWriteUid) setOwnPresence(!document.hidden)
+})
+window.addEventListener('pagehide', () => {
+  if (presenceWriteUid) setOwnPresence(false)
+})

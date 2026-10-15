@@ -1,126 +1,281 @@
-const { randomUUID } = require('node:crypto');
-const { pool, query } = require('../config/db');
-const { publishMessageEvent } = require('../services/messageSocket');
+const { createHash, randomUUID } = require('node:crypto');
+const { query } = require('../config/db');
+const { getFirebaseAdmin } = require('../config/firebaseAdmin');
 
 const allowedReactions = new Set(['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']);
 const maxAttachments = 10;
 const maxAttachmentBytes = 512 * 1024;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const conversationsCollection = 'messageConversations';
+
+const firestore = () => getFirebaseAdmin().firestore();
+const timestamp = value => {
+    if (!value) return null;
+    if (typeof value.toDate === 'function') return value.toDate().toISOString();
+    if (value instanceof Date) return value.toISOString();
+    return value;
+};
+
+const conversationRef = conversationId => firestore()
+    .collection(conversationsCollection).doc(conversationId);
+const messagesRef = conversationId => conversationRef(conversationId).collection('messages');
+const memberRef = (conversationId, uid) =>
+    conversationRef(conversationId).collection('members').doc(uid);
+
+const projectIsAccessible = async (projectId, firebaseUid) => {
+    const result = await query(
+        `SELECT 1
+         FROM projects p
+         WHERE p.project_id = $1
+           AND (p.creator_firebase_uid = $2 OR EXISTS (
+               SELECT 1 FROM project_invitations pi
+               WHERE pi.project_id = p.project_id
+                 AND pi.invited_firebase_uid = $2
+                 AND pi.status = 'accepted'
+           ))`,
+        [projectId, firebaseUid]
+    );
+    return result.rowCount > 0;
+};
+
+const getAccessibleProjectIds = async (projectIds, firebaseUid) => {
+    if (!projectIds.length) return new Set();
+    const result = await query(
+        `SELECT p.project_id
+         FROM projects p
+         WHERE p.project_id = ANY($1::text[])
+           AND (p.creator_firebase_uid = $2 OR EXISTS (
+               SELECT 1 FROM project_invitations pi
+               WHERE pi.project_id = p.project_id
+                 AND pi.invited_firebase_uid = $2
+                 AND pi.status = 'accepted'
+           ))`,
+        [projectIds, firebaseUid]
+    );
+    return new Set(result.rows.map(row => row.project_id));
+};
 
 const getConversation = async (conversationId, firebaseUid) => {
     if (!uuidPattern.test(conversationId || '')) return null;
-    const result = await query(
-        `SELECT c.conversation_id, c.project_id, c.conversation_type, c.name
-         FROM message_conversations c
-         JOIN message_conversation_members cm USING (conversation_id)
-         WHERE c.conversation_id = $1
-           AND cm.firebase_uid = $2
-           AND EXISTS (
-               SELECT 1
-               FROM projects p
-               WHERE p.project_id = c.project_id
-                 AND (p.creator_firebase_uid = $2 OR EXISTS (
-                     SELECT 1
-                     FROM project_invitations pi
-                     WHERE pi.project_id = p.project_id
-                       AND pi.invited_firebase_uid = $2
-                       AND pi.status = 'accepted'
-                 ))
-           )`,
-        [conversationId, firebaseUid]
-    );
-    return result.rows[0] || null;
+    const snapshot = await conversationRef(conversationId).get();
+    if (!snapshot.exists) return null;
+    const conversation = { conversation_id: snapshot.id, ...snapshot.data() };
+    if (!conversation.member_uids?.includes(firebaseUid) ||
+        !await projectIsAccessible(conversation.project_id, firebaseUid)) return null;
+    return conversation;
 };
 
-const publishToMembers = async (conversationId, event) => {
-    const result = await query(
-        `SELECT DISTINCT cm.firebase_uid
-         FROM message_conversation_members cm
-         JOIN message_conversations c USING (conversation_id)
-         JOIN projects p ON p.project_id = c.project_id
-         WHERE cm.conversation_id = $1
-           AND (p.creator_firebase_uid = cm.firebase_uid OR EXISTS (
-               SELECT 1
-               FROM project_invitations pi
+const asMillis = value => {
+    if (!value) return 0;
+    if (typeof value.toMillis === 'function') return value.toMillis();
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const makeMessage = (snapshot, conversationId) => {
+    const data = snapshot.data();
+    const reactionsByEmoji = new Map();
+    for (const reaction of data.reaction_entries || []) {
+        const users = reactionsByEmoji.get(reaction.emoji) || [];
+        if (reaction.email && !users.includes(reaction.email.toLowerCase())) {
+            users.push(reaction.email.toLowerCase());
+        }
+        reactionsByEmoji.set(reaction.emoji, users);
+    }
+    const readReceipts = (data.read_receipts || [])
+        .filter(receipt => receipt.firebaseUid !== data.sender_firebase_uid)
+        .map(receipt => receipt.readAt)
+        .filter(Boolean)
+        .sort((a, b) => asMillis(a) - asMillis(b));
+    return {
+        message_id: snapshot.id,
+        conversation_id: conversationId,
+        sender_firebase_uid: data.sender_firebase_uid,
+        sender_email: data.sender_email || '',
+        sender_name: data.sender_name || 'Project member',
+        body: data.deleted_at ? 'This message was deleted' : data.body,
+        is_deleted: Boolean(data.deleted_at),
+        reply_to_message_id: data.reply_to_message_id || null,
+        reply_to_body: data.reply_to_body || null,
+        reply_to_sender_name: data.reply_to_sender_name || null,
+        attachments: data.deleted_at ? [] : data.attachments || [],
+        forwarded_from: data.deleted_at ? null : data.forwarded_from || null,
+        is_pinned: Boolean(data.is_pinned),
+        edited_at: timestamp(data.edited_at),
+        created_at: timestamp(data.created_at),
+        reactions: data.deleted_at ? [] : [...reactionsByEmoji].map(([emoji, users]) => ({ emoji, users })),
+        read_at: readReceipts.length ? timestamp(readReceipts[0]) : null,
+        client_message_id: data.client_message_id || null
+    };
+};
+
+const getSenderAndReplyData = async (conversation, firebaseUid, replyToId) => {
+    const senderSnapshot = await memberRef(conversation.conversation_id, firebaseUid).get();
+    const sender = senderSnapshot.exists ? senderSnapshot.data() : {};
+    let replyData = {};
+    if (replyToId) {
+        const replySnapshot = await messagesRef(conversation.conversation_id).doc(replyToId).get();
+        if (!replySnapshot.exists) return null;
+        const reply = replySnapshot.data();
+        replyData = {
+            reply_to_body: (reply.hidden_for || []).includes(firebaseUid)
+                ? 'Message unavailable'
+                : reply.deleted_at ? 'This message was deleted' : reply.body,
+            reply_to_sender_name: reply.sender_name || 'Project member'
+        };
+    }
+    return {
+        sender_email: sender.email || '',
+        sender_name: sender.display_name || sender.name || sender.email || 'Project member',
+        ...replyData
+    };
+};
+
+const listProjectMembers = async (projectId, firebaseUid, requestedUids) => {
+    const projectResult = await query(
+        `SELECT project_id, creator_firebase_uid, creator_email, creator_name
+         FROM projects p
+         WHERE p.project_id = $1
+           AND (p.creator_firebase_uid = $2 OR EXISTS (
+               SELECT 1 FROM project_invitations pi
                WHERE pi.project_id = p.project_id
-                 AND pi.invited_firebase_uid = cm.firebase_uid
-                 AND pi.status = 'accepted'
+                 AND pi.invited_firebase_uid = $2 AND pi.status = 'accepted'
            ))`,
-        [conversationId]
+        [projectId, firebaseUid]
     );
-    await publishMessageEvent(result.rows.map(row => row.firebase_uid), {
-        ...event,
-        conversationId
-    });
+    const project = projectResult.rows[0];
+    if (!project) return null;
+    const invitations = await query(
+        `SELECT invited_firebase_uid AS firebase_uid, invited_email AS email, invited_name AS name
+         FROM project_invitations
+         WHERE project_id = $1 AND status = 'accepted'
+           AND invited_firebase_uid = ANY($2::text[])`,
+        [projectId, requestedUids]
+    );
+    const profiles = requestedUids.length ? await query(
+        `SELECT firebase_uid, profile_image FROM user_profiles WHERE firebase_uid = ANY($1::text[])`,
+        [requestedUids]
+    ) : { rows: [] };
+    const profileByUid = new Map(profiles.rows.map(row => [row.firebase_uid, row.profile_image]));
+    const members = new Map(invitations.rows.map(member => [member.firebase_uid, {
+        firebaseUid: member.firebase_uid,
+        email: (member.email || '').toLowerCase(),
+        name: member.name || member.email || 'Project member',
+        profileImage: profileByUid.get(member.firebase_uid) || ''
+    }]));
+    if (requestedUids.includes(project.creator_firebase_uid)) {
+        members.set(project.creator_firebase_uid, {
+            firebaseUid: project.creator_firebase_uid,
+            email: project.creator_email || '',
+            name: project.creator_name || project.creator_email || 'Project member',
+            profileImage: profileByUid.get(project.creator_firebase_uid) || ''
+        });
+    }
+    return {
+        project,
+        members,
+        creator: {
+            firebaseUid: project.creator_firebase_uid,
+            email: project.creator_email || '',
+            name: project.creator_name || project.creator_email || 'Project member',
+            profileImage: profileByUid.get(project.creator_firebase_uid) || ''
+        }
+    };
+};
+
+const uuidFromParts = (...parts) => {
+    const bytes = createHash('sha1').update(JSON.stringify(parts)).digest().subarray(0, 16);
+    bytes[6] = (bytes[6] & 0x0f) | 0x50;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = bytes.toString('hex');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
 const getConversations = async (req, res) => {
     try {
-        const result = await query(
-            `SELECT c.conversation_id, c.project_id, c.conversation_type, c.name,
-                    c.created_at, c.updated_at,
-                    COALESCE(members.members, '[]'::jsonb) AS members,
-                    latest.message_id AS latest_message_id,
-                    latest.body AS latest_message_body,
-                    latest.sender_firebase_uid AS latest_sender_firebase_uid,
-                    latest.created_at AS latest_message_created_at,
-                    COALESCE(unread.unread_count, 0)::int AS unread_count
-             FROM message_conversations c
-             JOIN message_conversation_members mine
-               ON mine.conversation_id = c.conversation_id
-              AND mine.firebase_uid = $1
-             JOIN projects p ON p.project_id = c.project_id
-              AND (p.creator_firebase_uid = $1 OR EXISTS (
-                  SELECT 1 FROM project_invitations pi
-                  WHERE pi.project_id = p.project_id
-                    AND pi.invited_firebase_uid = $1
-                    AND pi.status = 'accepted'
-              ))
-             LEFT JOIN LATERAL (
-                 SELECT jsonb_agg(jsonb_build_object(
-                     'firebaseUid', cm.firebase_uid,
-                     'email', cm.email,
-                     'name', cm.display_name,
-                     'profileImage', up.profile_image,
-                     'lastSeenAt', up.last_seen_at
-                 ) ORDER BY cm.joined_at) AS members
-                 FROM message_conversation_members cm
-                 LEFT JOIN user_profiles up ON up.firebase_uid = cm.firebase_uid
-                 WHERE cm.conversation_id = c.conversation_id
-             ) members ON TRUE
-             LEFT JOIN LATERAL (
-                 SELECT message_id,
-                        CASE WHEN deleted_at IS NOT NULL THEN 'This message was deleted' ELSE body END AS body,
-                        sender_firebase_uid, created_at
-                 FROM messages
-                 WHERE conversation_id = c.conversation_id
-                   AND NOT EXISTS (
-                       SELECT 1 FROM message_hidden_for hidden
-                       WHERE hidden.message_id = messages.message_id
-                         AND hidden.firebase_uid = $1
-                   )
-                 ORDER BY created_at DESC, message_id DESC
-                 LIMIT 1
-             ) latest ON TRUE
-             LEFT JOIN LATERAL (
-                 SELECT COUNT(*) AS unread_count
-                 FROM messages m
-                 WHERE m.conversation_id = c.conversation_id
-                   AND m.sender_firebase_uid <> $1
-                   AND m.deleted_at IS NULL
-                   AND m.created_at > COALESCE(mine.last_read_at, '-infinity'::timestamptz)
-                   AND NOT EXISTS (
-                       SELECT 1 FROM message_hidden_for hidden
-                       WHERE hidden.message_id = m.message_id
-                         AND hidden.firebase_uid = $1
-                   )
-             ) unread ON TRUE
-             ORDER BY COALESCE(latest.created_at, c.created_at) DESC`,
-            [req.firebaseUid]
+        const snapshots = await firestore().collection(conversationsCollection)
+            .where('member_uids', 'array-contains', req.firebaseUid)
+            .get();
+        const candidates = snapshots.docs.map(snapshot => ({
+            conversation_id: snapshot.id,
+            ...snapshot.data()
+        }));
+        const accessibleProjectIds = await getAccessibleProjectIds(
+            [...new Set(candidates.map(item => item.project_id))],
+            req.firebaseUid
         );
-        return res.json({ success: true, data: { conversations: result.rows } });
+        const conversations = await Promise.all(candidates
+            .filter(conversation => accessibleProjectIds.has(conversation.project_id))
+            .map(async conversation => {
+            const [membersSnapshot, memberState] = await Promise.all([
+                conversationRef(conversation.conversation_id).collection('members').get(),
+                memberRef(conversation.conversation_id, req.firebaseUid).get()
+            ]);
+            const members = membersSnapshot.docs.map(memberSnapshot => {
+                const member = memberSnapshot.data();
+                return {
+                    ...member,
+                    name: member.display_name || member.name || member.email || 'Project member',
+                    profileImage: member.profile_image || '',
+                    lastSeenAt: null
+                };
+            });
+            const presences = members.length
+                ? await firestore().getAll(...members.map(member => firestore()
+                    .collection('messagePresence').doc(member.firebaseUid)))
+                : [];
+            const presenceByUid = new Map(presences.filter(item => item.exists)
+                .map(item => [item.id, item.data()]));
+            for (const member of members) {
+                member.lastSeenAt = timestamp(presenceByUid.get(member.firebaseUid)?.last_seen_at);
+            }
+            const lastReadAt = memberState.data()?.last_read_at;
+            const unreadSnapshot = lastReadAt
+                ? await messagesRef(conversation.conversation_id).where('created_at', '>', lastReadAt).get()
+                : await messagesRef(conversation.conversation_id).get();
+            let latestSnapshot = await messagesRef(conversation.conversation_id)
+                .orderBy('created_at', 'desc').limit(50).get();
+            let visibleLatest = latestSnapshot.docs.find(item =>
+                !(item.data().hidden_for || []).includes(req.firebaseUid)
+            );
+            while (!visibleLatest && latestSnapshot.docs.length === 50) {
+                latestSnapshot = await messagesRef(conversation.conversation_id)
+                    .orderBy('created_at', 'desc')
+                    .startAfter(latestSnapshot.docs[latestSnapshot.docs.length - 1])
+                    .limit(50).get();
+                visibleLatest = latestSnapshot.docs.find(item =>
+                    !(item.data().hidden_for || []).includes(req.firebaseUid)
+                );
+            }
+            const unreadCount = unreadSnapshot.docs.filter(item => {
+                const message = item.data();
+                return message.sender_firebase_uid !== req.firebaseUid &&
+                    !message.deleted_at &&
+                    !(message.hidden_for || []).includes(req.firebaseUid);
+            }).length;
+            return {
+                conversation_id: conversation.conversation_id,
+                project_id: conversation.project_id,
+                conversation_type: conversation.conversation_type,
+                name: conversation.name || '',
+                created_at: timestamp(conversation.created_at),
+                updated_at: timestamp(conversation.updated_at),
+                members,
+                latest_message_id: visibleLatest?.id || null,
+                latest_message_body: visibleLatest
+                    ? visibleLatest.data().deleted_at ? 'This message was deleted' : visibleLatest.data().body
+                    : '',
+                latest_sender_firebase_uid: visibleLatest?.data().sender_firebase_uid || null,
+                latest_message_created_at: visibleLatest ? timestamp(visibleLatest.data().created_at) : null,
+                unread_count: unreadCount
+            };
+            }));
+        conversations.sort((a, b) =>
+            asMillis(b.latest_message_created_at || b.created_at) -
+            asMillis(a.latest_message_created_at || a.created_at));
+        return res.json({ success: true, data: { conversations } });
     } catch (error) {
-        console.error('Get message conversations error:', error);
+        console.error('Get Firestore message conversations error:', error);
         return res.status(500).json({
             success: false,
             code: 'MESSAGE_CONVERSATIONS_FETCH_FAILED',
@@ -133,13 +288,13 @@ const createConversation = async (req, res) => {
     const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId.trim() : '';
     const type = req.body?.type;
     const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
-    const memberUids = Array.isArray(req.body?.memberFirebaseUids)
-        ? [...new Set(req.body.memberFirebaseUids.filter(uid => typeof uid === 'string' && uid.trim()).map(uid => uid.trim()))]
+    const rawUids = req.body?.memberFirebaseUids;
+    const memberUids = Array.isArray(rawUids)
+        ? [...new Set(rawUids.filter(uid => typeof uid === 'string' && uid.trim()).map(uid => uid.trim()))]
         : [];
-    const allowedTypes = new Set(['direct', 'group', 'channel']);
-    if (!projectId || !allowedTypes.has(type) || name.length > 60 ||
+    if (!projectId || !['direct', 'group', 'channel'].includes(type) || name.length > 60 ||
         (type !== 'direct' && !name) || memberUids.length > 99 ||
-        memberUids.length !== (req.body?.memberFirebaseUids || []).length ||
+        memberUids.length !== (rawUids || []).length ||
         (type === 'direct' && memberUids.length !== 1) ||
         (type === 'group' && memberUids.length < 2) ||
         (type === 'channel' && memberUids.length < 1) ||
@@ -150,126 +305,155 @@ const createConversation = async (req, res) => {
             message: 'Choose a valid conversation type, name, and project members.'
         });
     }
-
-    const client = await pool.connect();
     try {
-        await client.query('BEGIN');
-        const projectResult = await client.query(
-            `SELECT project_id, creator_firebase_uid, creator_email, creator_name
-             FROM projects p
-             WHERE p.project_id = $1
-               AND (p.creator_firebase_uid = $2 OR EXISTS (
-                   SELECT 1 FROM project_invitations pi
-                   WHERE pi.project_id = p.project_id
-                     AND pi.invited_firebase_uid = $2 AND pi.status = 'accepted'
-               ))
-             FOR SHARE`,
-            [projectId, req.firebaseUid]
+        const projectMembers = await listProjectMembers(
+            projectId, req.firebaseUid, [...memberUids, req.firebaseUid]
         );
-        const project = projectResult.rows[0];
-        if (!project) {
-            await client.query('ROLLBACK');
+        if (!projectMembers) {
             return res.status(404).json({
                 success: false,
                 code: 'PROJECT_NOT_FOUND',
                 message: 'Project not found.'
             });
         }
-
-        const memberResult = await client.query(
-            `SELECT invited_firebase_uid AS firebase_uid, invited_email AS email, invited_name AS name
-             FROM project_invitations
-             WHERE project_id = $1 AND status = 'accepted'
-               AND invited_firebase_uid = ANY($2::text[])
-             UNION ALL
-             SELECT creator_firebase_uid, creator_email, creator_name
-             FROM projects WHERE project_id = $1 AND creator_firebase_uid = ANY($2::text[])`,
-            [projectId, memberUids]
-        );
-        const membersByUid = new Map(memberResult.rows.map(member => [member.firebase_uid, member]));
-        if (memberUids.some(uid => !membersByUid.has(uid))) {
-            await client.query('ROLLBACK');
+        if (memberUids.some(uid => !projectMembers.members.has(uid))) {
             return res.status(400).json({
                 success: false,
                 code: 'INVALID_CONVERSATION_MEMBERS',
                 message: 'All conversation members must be accepted members of the selected project.'
             });
         }
-
-        const allMembers = [
-            {
-                firebase_uid: req.firebaseUid,
-                email: req.firebaseEmail || '',
-                name: req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'Project member'
-            },
-            ...memberUids.map(uid => membersByUid.get(uid))
-        ].map(member => ({
-            ...member,
-            email: member.email || '',
-            name: member.name || member.email || 'Project member'
-        }));
-
+        const caller = {
+            firebaseUid: req.firebaseUid,
+            email: req.firebaseEmail || '',
+            name: req.firebaseUser?.name || req.firebaseUser?.displayName ||
+                req.firebaseEmail || 'Project member',
+            profileImage: projectMembers.members.get(req.firebaseUid)?.profileImage || ''
+        };
+        const members = [caller, ...memberUids.map(uid => projectMembers.members.get(uid))];
+        const memberUidsForConversation = members.map(member => member.firebaseUid).sort();
+        let conversationId = randomUUID();
         if (type === 'direct') {
-            const directLockKey = [projectId, ...[req.firebaseUid, memberUids[0]].sort()].join(':');
-            await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [directLockKey]);
-            const existing = await client.query(
-                `SELECT c.conversation_id
-                 FROM message_conversations c
-                 JOIN message_conversation_members mine
-                   ON mine.conversation_id = c.conversation_id AND mine.firebase_uid = $1
-                 JOIN message_conversation_members other
-                   ON other.conversation_id = c.conversation_id AND other.firebase_uid = $2
-                 WHERE c.project_id = $3 AND c.conversation_type = 'direct'
-                   AND (SELECT COUNT(*) FROM message_conversation_members cm
-                        WHERE cm.conversation_id = c.conversation_id) = 2
-                 LIMIT 1`,
-                [req.firebaseUid, memberUids[0], projectId]
-            );
-            if (existing.rows[0]) {
-                await client.query('COMMIT');
-                const conversation = await getConversation(existing.rows[0].conversation_id, req.firebaseUid);
-                return res.status(200).json({ success: true, data: { conversation } });
-            }
-        }
-
-        const conversationId = randomUUID();
-        await client.query(
-            `INSERT INTO message_conversations
-             (conversation_id, project_id, conversation_type, name, created_by_firebase_uid)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [conversationId, projectId, type, type === 'direct' ? '' : name, req.firebaseUid]
-        );
-        for (const member of allMembers) {
-            await client.query(
-                `INSERT INTO message_conversation_members
-                 (conversation_id, firebase_uid, email, display_name)
-                 VALUES ($1, $2, $3, $4)`,
-                [conversationId, member.firebase_uid, member.email, member.name]
-            );
-        }
-        await client.query('COMMIT');
-        await publishToMembers(conversationId, { type: 'conversation.changed' });
-        return res.status(201).json({
-            success: true,
-            data: {
-                conversation: {
-                    conversation_id: conversationId,
-                    project_id: projectId,
-                    conversation_type: type,
-                    name: type === 'direct' ? '' : name
+            const existing = await firestore().collection(conversationsCollection)
+                .where('member_uids', 'array-contains', req.firebaseUid).get();
+            const exactMatch = existing.docs.find(snapshot => {
+                const data = snapshot.data();
+                return data.project_id === projectId &&
+                    data.conversation_type === 'direct' &&
+                    data.member_uids.length === 2 &&
+                    data.member_uids.every(uid => memberUidsForConversation.includes(uid));
+            });
+            if (exactMatch) {
+                const batch = firestore().batch();
+                const now = getFirebaseAdmin().firestore.Timestamp.now();
+                for (const member of members) {
+                    batch.set(memberRef(exactMatch.id, member.firebaseUid), {
+                        firebaseUid: member.firebaseUid,
+                        email: (member.email || '').toLowerCase(),
+                        display_name: member.name || member.email || 'Project member',
+                        profile_image: member.profileImage || '',
+                        joined_at: now
+                    }, { merge: true });
+                    batch.set(
+                        firestore().collection('users').doc(member.firebaseUid)
+                            .collection('messageConversations').doc(exactMatch.id),
+                        {
+                            conversation_id: exactMatch.id,
+                            project_id: projectId
+                        },
+                        { merge: true }
+                    );
+                    batch.set(
+                        firestore().collection('messagePresence').doc(member.firebaseUid),
+                        {
+                            visible_to: getFirebaseAdmin().firestore.FieldValue.arrayUnion(
+                                ...memberUidsForConversation
+                            )
+                        },
+                        { merge: true }
+                    );
                 }
+                await batch.commit();
+                console.info('Repaired Firestore access indexes for existing message conversation.', {
+                    conversationId: exactMatch.id
+                });
+                return res.status(200).json({
+                    success: true,
+                    data: { conversation: { conversation_id: exactMatch.id, ...exactMatch.data() } }
+                });
+            }
+            conversationId = uuidFromParts(projectId, ...memberUidsForConversation);
+        }
+        const ref = conversationRef(conversationId);
+        let created = false;
+        await firestore().runTransaction(async transaction => {
+            const existing = await transaction.get(ref);
+            if (existing.exists) return;
+            created = true;
+            const now = getFirebaseAdmin().firestore.Timestamp.now();
+            transaction.create(ref, {
+                project_id: projectId,
+                conversation_type: type,
+                name: type === 'direct' ? '' : name,
+                created_by_firebase_uid: req.firebaseUid,
+                member_uids: memberUidsForConversation,
+                created_at: now,
+                updated_at: now,
+                latest_message_id: null,
+                latest_message_body: '',
+                latest_sender_firebase_uid: null,
+                latest_message_created_at: null
+            });
+            for (const member of members) {
+                transaction.create(memberRef(conversationId, member.firebaseUid), {
+                    firebaseUid: member.firebaseUid,
+                    email: (member.email || '').toLowerCase(),
+                    display_name: member.name || member.email || 'Project member',
+                    profile_image: member.profileImage || '',
+                    joined_at: now,
+                    last_read_at: null
+                });
+                transaction.create(
+                    firestore().collection('users').doc(member.firebaseUid)
+                        .collection('messageConversations').doc(conversationId),
+                    {
+                        conversation_id: conversationId,
+                        project_id: projectId
+                    }
+                );
             }
         });
+        const saved = await ref.get();
+        if (!saved.exists) throw new Error('Firestore did not persist the conversation.');
+        const presenceWrites = members.map(member => firestore()
+            .collection('messagePresence').doc(member.firebaseUid)
+            .set({
+                visible_to: getFirebaseAdmin().firestore.FieldValue.arrayUnion(
+                    ...memberUidsForConversation
+                )
+            }, { merge: true }));
+        await Promise.all(presenceWrites);
+        console.info('Created Firestore message conversation and access indexes.', {
+            conversationId,
+            type
+        });
+        const responseConversation = {
+            conversation_id: conversationId,
+            project_id: projectId,
+            conversation_type: type,
+            name: type === 'direct' ? '' : name
+        };
+        return res.status(created ? 201 : 200).json({
+            success: true,
+            data: { conversation: responseConversation }
+        });
     } catch (error) {
-        await client.query('ROLLBACK').catch(() => {});
-        console.error('Create message conversation error:', error);
+        console.error('Create Firestore message conversation error:', error);
         return res.status(500).json({
             success: false,
             code: 'MESSAGE_CONVERSATION_CREATE_FAILED',
             message: 'The conversation could not be created.'
         });
-    } finally {
-        client.release();
     }
 };
 
@@ -283,61 +467,40 @@ const getMessages = async (req, res) => {
                 message: 'Conversation not found.'
             });
         }
-        const result = await query(
-            `SELECT m.message_id, m.conversation_id, m.sender_firebase_uid,
-                    sender.email AS sender_email, sender.display_name AS sender_name,
-                    CASE WHEN m.deleted_at IS NOT NULL THEN 'This message was deleted' ELSE m.body END AS body,
-                    m.deleted_at IS NOT NULL AS is_deleted,
-                    m.reply_to_message_id,
-                    CASE WHEN reply.deleted_at IS NOT NULL THEN 'This message was deleted'
-                         WHEN EXISTS (
-                             SELECT 1 FROM message_hidden_for hidden
-                             WHERE hidden.message_id = reply.message_id
-                               AND hidden.firebase_uid = $2
-                         ) THEN 'Message unavailable'
-                         ELSE reply.body END AS reply_to_body,
-                    reply_sender.display_name AS reply_to_sender_name,
-                    CASE WHEN m.deleted_at IS NOT NULL THEN '[]'::jsonb ELSE m.attachments END AS attachments,
-                    CASE WHEN m.deleted_at IS NOT NULL THEN NULL ELSE m.forwarded_from END AS forwarded_from,
-                    m.is_pinned, m.edited_at, m.created_at,
-                    CASE WHEN m.deleted_at IS NOT NULL THEN '[]'::jsonb
-                         ELSE COALESCE(reactions.items, '[]'::jsonb) END AS reactions,
-                    reads.read_at
-             FROM messages m
-             JOIN message_conversation_members sender
-               ON sender.conversation_id = m.conversation_id
-              AND sender.firebase_uid = m.sender_firebase_uid
-             LEFT JOIN messages reply ON reply.message_id = m.reply_to_message_id
-             LEFT JOIN message_conversation_members reply_sender
-               ON reply_sender.conversation_id = m.conversation_id
-              AND reply_sender.firebase_uid = reply.sender_firebase_uid
-             LEFT JOIN LATERAL (
-                 SELECT jsonb_agg(jsonb_build_object('emoji', grouped.emoji, 'users', grouped.users)) AS items
-                 FROM (
-                             SELECT mr.emoji, jsonb_agg(LOWER(cm.email) ORDER BY cm.display_name) AS users
-                     FROM message_reactions mr
-                     JOIN message_conversation_members cm
-                       ON cm.conversation_id = m.conversation_id AND cm.firebase_uid = mr.firebase_uid
-                     WHERE mr.message_id = m.message_id
-                     GROUP BY mr.emoji
-                 ) grouped
-             ) reactions ON TRUE
-             LEFT JOIN LATERAL (
-                 SELECT MIN(read_at) AS read_at FROM message_reads
-                 WHERE message_id = m.message_id AND firebase_uid <> m.sender_firebase_uid
-             ) reads ON TRUE
-             WHERE m.conversation_id = $1
-               AND NOT EXISTS (
-                   SELECT 1 FROM message_hidden_for hidden
-                   WHERE hidden.message_id = m.message_id
-                     AND hidden.firebase_uid = $2
-               )
-             ORDER BY m.created_at, m.message_id`,
-            [conversation.conversation_id, req.firebaseUid]
+        const snapshot = await messagesRef(conversation.conversation_id).orderBy('created_at').get();
+        const visibleDocs = snapshot.docs.filter(item =>
+            !(item.data().hidden_for || []).includes(req.firebaseUid)
         );
-        return res.json({ success: true, data: { messages: result.rows } });
+        const replyIds = [...new Set(visibleDocs.map(item =>
+            item.data().reply_to_message_id
+        ).filter(Boolean))];
+        const replySnapshots = [];
+        for (let offset = 0; offset < replyIds.length; offset += 300) {
+            const refs = replyIds.slice(offset, offset + 300).map(id =>
+                messagesRef(conversation.conversation_id).doc(id)
+            );
+            replySnapshots.push(...await firestore().getAll(...refs));
+        }
+        const repliesById = new Map(replySnapshots.map(reply => [reply.id, reply]));
+        const messages = visibleDocs.map(item => {
+            const message = makeMessage(item, conversation.conversation_id);
+            if (!message.reply_to_message_id) return message;
+            const replySnapshot = repliesById.get(message.reply_to_message_id);
+            if (!replySnapshot?.exists) {
+                message.reply_to_body = null;
+                message.reply_to_sender_name = null;
+                return message;
+            }
+            const reply = replySnapshot.data();
+            message.reply_to_body = (reply.hidden_for || []).includes(req.firebaseUid)
+                ? 'Message unavailable'
+                : reply.deleted_at ? 'This message was deleted' : reply.body;
+            message.reply_to_sender_name = reply.sender_name || 'Project member';
+            return message;
+        });
+        return res.json({ success: true, data: { messages } });
     } catch (error) {
-        console.error('Get conversation messages error:', error);
+        console.error('Get Firestore conversation messages error:', error);
         return res.status(500).json({
             success: false,
             code: 'MESSAGES_FETCH_FAILED',
@@ -352,9 +515,7 @@ const createMessage = async (req, res) => {
     const replyToId = req.body?.replyToId || null;
     const forwardedFrom = req.body?.forwardedFrom || null;
     const clientMessageId = req.body?.clientMessageId ?? null;
-    const messageId = clientMessageId
-        ? randomUUID()
-        : req.body?.messageId || randomUUID();
+    const messageId = clientMessageId ? randomUUID() : req.body?.messageId || randomUUID();
     const attachmentBytes = attachments.reduce((total, attachment) => {
         const data = typeof attachment?.data === 'string' ? attachment.data : '';
         const encoded = data.split(',').at(-1) || '';
@@ -367,17 +528,13 @@ const createMessage = async (req, res) => {
             item.mediaType.length > 128 || typeof item.data !== 'string' ||
             !Number.isSafeInteger(item.size) || item.size < 0 ||
             !/^data:[^;,]+;base64,[a-zA-Z0-9+/=]+$/.test(item.data)) ||
-        attachmentBytes > maxAttachmentBytes ||
-        (!body && attachments.length === 0) ||
-        typeof messageId !== 'string' || !uuidPattern.test(messageId) ||
-        (clientMessageId !== null &&
-            (typeof clientMessageId !== 'string' || !uuidPattern.test(clientMessageId))) ||
-        (replyToId !== null && (typeof replyToId !== 'string' || !uuidPattern.test(replyToId))) ||
+        attachmentBytes > maxAttachmentBytes || (!body && attachments.length === 0) ||
+        !uuidPattern.test(messageId) ||
+        (clientMessageId !== null && !uuidPattern.test(clientMessageId)) ||
+        (replyToId !== null && !uuidPattern.test(replyToId)) ||
         (forwardedFrom !== null && (
-            typeof forwardedFrom !== 'object' ||
-            Array.isArray(forwardedFrom) ||
-            typeof forwardedFrom.senderName !== 'string' ||
-            forwardedFrom.senderName.length > 160
+            typeof forwardedFrom !== 'object' || Array.isArray(forwardedFrom) ||
+            typeof forwardedFrom.senderName !== 'string' || forwardedFrom.senderName.length > 160
         ))) {
         return res.status(400).json({
             success: false,
@@ -385,12 +542,6 @@ const createMessage = async (req, res) => {
             message: 'Provide a message or valid attachments within the 512 KB total attachment limit.'
         });
     }
-    const safeAttachments = attachments.map(({ fileName, mediaType, size, data }) => ({
-        fileName,
-        mediaType,
-        size,
-        data
-    }));
     try {
         const conversation = await getConversation(req.params.conversationId, req.firebaseUid);
         if (!conversation) {
@@ -400,94 +551,59 @@ const createMessage = async (req, res) => {
                 message: 'Conversation not found.'
             });
         }
-        if (replyToId) {
-            const reply = await query(
-                `SELECT 1 FROM messages WHERE message_id = $1 AND conversation_id = $2`,
-                [replyToId, conversation.conversation_id]
-            );
-            if (!reply.rowCount) {
-                return res.status(400).json({
-                    success: false,
-                    code: 'INVALID_REPLY',
-                    message: 'The message being replied to does not exist in this conversation.'
-                });
-            }
+        const sender = await getSenderAndReplyData(conversation, req.firebaseUid, replyToId);
+        if (!sender) {
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_REPLY',
+                message: 'The message being replied to does not exist in this conversation.'
+            });
         }
-        const inserted = await query(
-            `WITH created_message AS (
-                 INSERT INTO messages
-                 (message_id, conversation_id, sender_firebase_uid, body, reply_to_message_id, attachments, forwarded_from)
-                 VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
-                 RETURNING message_id, conversation_id, sender_firebase_uid, body,
-                           reply_to_message_id, attachments, forwarded_from,
-                           is_pinned, edited_at, created_at
-             ),
-             updated_conversation AS (
-                 UPDATE message_conversations
-                 SET updated_at = NOW()
-                 FROM created_message
-                 WHERE message_conversations.conversation_id = created_message.conversation_id
-                 RETURNING message_conversations.conversation_id
-             )
-             SELECT message.message_id, message.conversation_id, message.sender_firebase_uid,
-                    sender.email AS sender_email, sender.display_name AS sender_name,
-                    message.body, message.reply_to_message_id,
-                    CASE WHEN reply.deleted_at IS NOT NULL THEN 'This message was deleted'
-                         WHEN EXISTS (
-                             SELECT 1 FROM message_hidden_for hidden
-                             WHERE hidden.message_id = reply.message_id
-                               AND hidden.firebase_uid = $8
-                         ) THEN 'Message unavailable'
-                         ELSE reply.body END AS reply_to_body,
-                    reply_sender.display_name AS reply_to_sender_name,
-                    message.attachments, message.forwarded_from,
-                    message.is_pinned, message.edited_at, message.created_at,
-                    '[]'::jsonb AS reactions, NULL::timestamptz AS read_at,
-                    FALSE AS is_deleted
-             FROM created_message message
-             JOIN message_conversation_members sender
-               ON sender.conversation_id = message.conversation_id
-              AND sender.firebase_uid = message.sender_firebase_uid
-             LEFT JOIN messages reply ON reply.message_id = message.reply_to_message_id
-             LEFT JOIN message_conversation_members reply_sender
-               ON reply_sender.conversation_id = message.conversation_id
-              AND reply_sender.firebase_uid = reply.sender_firebase_uid`,
-            [
-                messageId,
-                conversation.conversation_id,
-                req.firebaseUid,
-                body,
-                replyToId,
-                JSON.stringify(safeAttachments),
-                forwardedFrom ? JSON.stringify({ senderName: forwardedFrom.senderName }) : null,
-                req.firebaseUid
-            ]
-        );
-        const message = {
-            ...inserted.rows[0],
+        const now = getFirebaseAdmin().firestore.Timestamp.now();
+        const safeAttachments = attachments.map(({ fileName, mediaType, size, data }) => ({
+            fileName, mediaType, size, data
+        }));
+        const data = {
+            sender_firebase_uid: req.firebaseUid,
+            sender_email: sender.sender_email,
+            sender_name: sender.sender_name,
+            body,
+            reply_to_message_id: replyToId,
+            reply_to_body: sender.reply_to_body || null,
+            reply_to_sender_name: sender.reply_to_sender_name || null,
+            attachments: safeAttachments,
+            forwarded_from: forwardedFrom ? { senderName: forwardedFrom.senderName } : null,
+            is_pinned: false,
+            edited_at: null,
+            created_at: now,
+            deleted_at: null,
+            hidden_for: [],
+            reaction_entries: [],
+            read_receipts: [],
+            visible_to: conversation.member_uids,
             client_message_id: clientMessageId
         };
-        res.status(201).json({
-            success: true,
-            data: {
-                messageId,
-                message
-            }
+        await firestore().runTransaction(async transaction => {
+            const messageRef = messagesRef(conversation.conversation_id).doc(messageId);
+            const existing = await transaction.get(messageRef);
+            if (existing.exists) throw new Error('Generated message ID already exists.');
+            transaction.create(messageRef, data);
+            transaction.update(conversationRef(conversation.conversation_id), {
+                latest_message_id: messageId,
+                latest_message_body: body,
+                latest_sender_firebase_uid: req.firebaseUid,
+                latest_message_created_at: now,
+                updated_at: now
+            });
         });
-        publishToMembers(conversation.conversation_id, {
-            type: 'message.created',
-            messageId,
-            clientMessageId,
-            createdAt: message.created_at,
-            senderUid: req.firebaseUid,
-            senderEmail: req.firebaseEmail || '',
-            senderName: req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'Project member'
-        }).catch(error => {
-            console.error('Unable to publish the saved message to WebSocket recipients:', error);
-        });
+        const message = makeMessage(
+            { id: messageId, data: () => data },
+            conversation.conversation_id
+        );
+        res.status(201).json({ success: true, data: { messageId, message } });
         return;
     } catch (error) {
-        console.error('Create message error:', error);
+        console.error('Create Firestore message error:', error);
         return res.status(500).json({
             success: false,
             code: 'MESSAGE_CREATE_FAILED',
@@ -502,96 +618,94 @@ const mutateMessage = async (req, res) => {
     try {
         if (!uuidPattern.test(messageId || '')) {
             return res.status(404).json({
-                success: false,
-                code: 'MESSAGE_NOT_FOUND',
-                message: 'Message not found.'
+                success: false, code: 'MESSAGE_NOT_FOUND', message: 'Message not found.'
             });
         }
         const conversation = await getConversation(conversationId, req.firebaseUid);
         if (!conversation) {
             return res.status(404).json({
-                success: false,
-                code: 'CONVERSATION_NOT_FOUND',
-                message: 'Conversation not found.'
+                success: false, code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found.'
             });
         }
-        const found = await query(
-            `SELECT sender_firebase_uid, deleted_at FROM messages WHERE message_id = $1 AND conversation_id = $2`,
-            [messageId, conversation.conversation_id]
-        );
-        if (!found.rowCount) {
-            return res.status(404).json({
-                success: false,
-                code: 'MESSAGE_NOT_FOUND',
-                message: 'Message not found.'
-            });
-        }
-        if (found.rows[0].deleted_at) {
-            return res.status(400).json({
-                success: false,
-                code: 'MESSAGE_ALREADY_DELETED',
-                message: 'A deleted message cannot be changed.'
-            });
-        }
-        if (action === 'edit') {
-            const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
-            if (found.rows[0].sender_firebase_uid !== req.firebaseUid) {
-                return res.status(403).json({ success: false, code: 'MESSAGE_EDIT_FORBIDDEN', message: 'Only the sender can edit this message.' });
+        const ref = messagesRef(conversationId).doc(messageId);
+        let failure = null;
+        let messageDeleted = false;
+        await firestore().runTransaction(async transaction => {
+            const snapshot = await transaction.get(ref);
+            if (!snapshot.exists) {
+                failure = { status: 404, code: 'MESSAGE_NOT_FOUND', message: 'Message not found.' };
+                return;
             }
-            if (!body || body.length > 5000) {
-                return res.status(400).json({ success: false, code: 'INVALID_MESSAGE', message: 'Message text must be between 1 and 5000 characters.' });
+            const message = snapshot.data();
+            if (message.deleted_at) {
+                failure = { status: 400, code: 'MESSAGE_ALREADY_DELETED', message: 'A deleted message cannot be changed.' };
+                return;
             }
-            await query(
-                `UPDATE messages SET body = $1, edited_at = NOW() WHERE message_id = $2`,
-                [body, messageId]
-            );
-        } else if (action === 'delete') {
-            if (found.rows[0].sender_firebase_uid !== req.firebaseUid) {
-                return res.status(403).json({ success: false, code: 'MESSAGE_DELETE_FORBIDDEN', message: 'Only the sender can delete this message.' });
-            }
-            await query(`DELETE FROM messages WHERE message_id = $1`, [messageId]);
-        } else if (action === 'pin') {
-            await query(`UPDATE messages SET is_pinned = NOT is_pinned WHERE message_id = $1`, [messageId]);
-        } else if (action === 'reaction') {
-            const emoji = req.body?.emoji;
-            if (!allowedReactions.has(emoji)) {
-                return res.status(400).json({ success: false, code: 'INVALID_REACTION', message: 'Choose a supported reaction.' });
-            }
-            const client = await pool.connect();
-            try {
-                await client.query('BEGIN');
-                await client.query(
-                    `SELECT message_id FROM messages WHERE message_id = $1 FOR UPDATE`,
-                    [messageId]
-                );
-                await client.query(
-                    `DELETE FROM message_reactions WHERE message_id = $1 AND firebase_uid = $2 AND emoji <> $3`,
-                    [messageId, req.firebaseUid, emoji]
-                );
-                const deleted = await client.query(
-                    `DELETE FROM message_reactions WHERE message_id = $1 AND firebase_uid = $2 AND emoji = $3`,
-                    [messageId, req.firebaseUid, emoji]
-                );
-                if (!deleted.rowCount) {
-                    await client.query(
-                        `INSERT INTO message_reactions (message_id, firebase_uid, emoji) VALUES ($1, $2, $3)`,
-                        [messageId, req.firebaseUid, emoji]
-                    );
+            const now = getFirebaseAdmin().firestore.Timestamp.now();
+            if (action === 'edit') {
+                const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+                if (message.sender_firebase_uid !== req.firebaseUid) {
+                    failure = { status: 403, code: 'MESSAGE_EDIT_FORBIDDEN', message: 'Only the sender can edit this message.' };
+                } else if (!body || body.length > 5000) {
+                    failure = { status: 400, code: 'INVALID_MESSAGE', message: 'Message text must be between 1 and 5000 characters.' };
+                } else {
+                    transaction.update(ref, { body, edited_at: now });
+                    transaction.update(conversationRef(conversationId), {
+                        latest_message_body: body,
+                        updated_at: now
+                    });
                 }
-                await client.query('COMMIT');
-            } catch (error) {
-                await client.query('ROLLBACK').catch(() => {});
-                throw error;
-            } finally {
-                client.release();
+            } else if (action === 'delete') {
+                if (message.sender_firebase_uid !== req.firebaseUid) {
+                    failure = { status: 403, code: 'MESSAGE_DELETE_FORBIDDEN', message: 'Only the sender can delete this message.' };
+                } else {
+                    transaction.delete(ref);
+                    messageDeleted = true;
+                }
+            } else if (action === 'pin') {
+                transaction.update(ref, { is_pinned: !message.is_pinned });
+            } else if (action === 'reaction') {
+                const emoji = req.body?.emoji;
+                if (!allowedReactions.has(emoji)) {
+                    failure = { status: 400, code: 'INVALID_REACTION', message: 'Choose a supported reaction.' };
+                } else {
+                    const entries = message.reaction_entries || [];
+                    const hadReaction = entries.some(entry =>
+                        entry.firebaseUid === req.firebaseUid && entry.emoji === emoji
+                    );
+                    const memberSnapshot = await transaction.get(memberRef(conversationId, req.firebaseUid));
+                    const email = memberSnapshot.data()?.email || '';
+                    const next = entries.filter(entry => entry.firebaseUid !== req.firebaseUid);
+                    if (!hadReaction) next.push({ firebaseUid: req.firebaseUid, email, emoji });
+                    transaction.update(ref, { reaction_entries: next });
+                }
+            } else {
+                failure = { status: 404, code: 'UNKNOWN_MESSAGE_ACTION', message: 'Unsupported message action.' };
             }
-        } else {
-            return res.status(404).json({ success: false, code: 'UNKNOWN_MESSAGE_ACTION', message: 'Unsupported message action.' });
+        });
+        if (failure) {
+            return res.status(failure.status).json({
+                success: false, code: failure.code, message: failure.message
+            });
         }
-        await publishToMembers(conversation.conversation_id, { type: 'message.changed' });
+        if (messageDeleted) {
+            const replies = await messagesRef(conversationId)
+                .where('reply_to_message_id', '==', messageId).get();
+            for (let offset = 0; offset < replies.docs.length; offset += 450) {
+                const batch = firestore().batch();
+                replies.docs.slice(offset, offset + 450).forEach(reply => {
+                    batch.update(reply.ref, {
+                        reply_to_message_id: null,
+                        reply_to_body: null,
+                        reply_to_sender_name: null
+                    });
+                });
+                await batch.commit();
+            }
+        }
         return res.json({ success: true });
     } catch (error) {
-        console.error(`Message ${action} error:`, error);
+        console.error(`Firestore message ${action} error:`, error);
         return res.status(500).json({
             success: false,
             code: 'MESSAGE_UPDATE_FAILED',
@@ -605,103 +719,64 @@ const deleteMessage = async (req, res) => {
     const scope = req.body?.scope;
     if (!['me', 'everyone'].includes(scope)) {
         return res.status(400).json({
-            success: false,
-            code: 'INVALID_DELETE_SCOPE',
+            success: false, code: 'INVALID_DELETE_SCOPE',
             message: 'Choose whether to delete the message for you or for everyone.'
         });
     }
     if (!uuidPattern.test(messageId || '')) {
         return res.status(404).json({
-            success: false,
-            code: 'MESSAGE_NOT_FOUND',
-            message: 'Message not found.'
+            success: false, code: 'MESSAGE_NOT_FOUND', message: 'Message not found.'
         });
     }
-    const client = await pool.connect();
     try {
-        await client.query('BEGIN');
-        const conversationResult = await client.query(
-            `SELECT c.conversation_id
-             FROM message_conversations c
-             JOIN message_conversation_members cm USING (conversation_id)
-             JOIN projects p ON p.project_id = c.project_id
-             WHERE c.conversation_id = $1
-               AND cm.firebase_uid = $2
-               AND (p.creator_firebase_uid = $2 OR EXISTS (
-                   SELECT 1
-                   FROM project_invitations pi
-                   WHERE pi.project_id = p.project_id
-                     AND pi.invited_firebase_uid = $2
-                     AND pi.status = 'accepted'
-               ))
-             FOR SHARE OF c`,
-            [conversationId, req.firebaseUid]
-        );
-        if (!conversationResult.rowCount) {
-            await client.query('ROLLBACK');
+        const conversation = await getConversation(conversationId, req.firebaseUid);
+        if (!conversation) {
             return res.status(404).json({
-                success: false,
-                code: 'CONVERSATION_NOT_FOUND',
-                message: 'Conversation not found.'
+                success: false, code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found.'
             });
         }
-        const messageResult = await client.query(
-            `SELECT sender_firebase_uid, deleted_at
-             FROM messages
-             WHERE message_id = $1 AND conversation_id = $2
-             FOR UPDATE`,
-            [messageId, conversationId]
-        );
-        if (!messageResult.rowCount) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({
-                success: false,
-                code: 'MESSAGE_NOT_FOUND',
-                message: 'Message not found.'
+        const ref = messagesRef(conversationId).doc(messageId);
+        let failure = null;
+        await firestore().runTransaction(async transaction => {
+            const snapshot = await transaction.get(ref);
+            if (!snapshot.exists) {
+                failure = { status: 404, code: 'MESSAGE_NOT_FOUND', message: 'Message not found.' };
+                return;
+            }
+            const message = snapshot.data();
+            if (scope === 'everyone' && message.sender_firebase_uid !== req.firebaseUid) {
+                failure = {
+                    status: 403,
+                    code: 'MESSAGE_DELETE_FOR_EVERYONE_FORBIDDEN',
+                    message: 'Only the sender can delete this message for everyone.'
+                };
+            } else if (scope === 'everyone' && !message.deleted_at) {
+                transaction.update(ref, {
+                    body: 'Message deleted',
+                    attachments: [],
+                    forwarded_from: null,
+                    deleted_at: getFirebaseAdmin().firestore.Timestamp.now(),
+                    reaction_entries: [],
+                    read_receipts: []
+                });
+            } else {
+                transaction.update(ref, {
+                    hidden_for: getFirebaseAdmin().firestore.FieldValue.arrayUnion(req.firebaseUid),
+                    visible_to: getFirebaseAdmin().firestore.FieldValue.arrayRemove(req.firebaseUid)
+                });
+            }
+        });
+        if (failure) {
+            return res.status(failure.status).json({
+                success: false, code: failure.code, message: failure.message
             });
         }
-        const message = messageResult.rows[0];
-        if (scope === 'everyone' && message.sender_firebase_uid !== req.firebaseUid) {
-            await client.query('ROLLBACK');
-            return res.status(403).json({
-                success: false,
-                code: 'MESSAGE_DELETE_FOR_EVERYONE_FORBIDDEN',
-                message: 'Only the sender can delete this message for everyone.'
-            });
-        }
-        if (scope === 'everyone' && !message.deleted_at) {
-            await client.query(
-                `UPDATE messages
-                 SET body = 'Message deleted',
-                     attachments = '[]'::jsonb,
-                     forwarded_from = NULL,
-                     deleted_at = NOW()
-                 WHERE message_id = $1`,
-                [messageId]
-            );
-            await client.query(`DELETE FROM message_reactions WHERE message_id = $1`, [messageId]);
-            await client.query(`DELETE FROM message_reads WHERE message_id = $1`, [messageId]);
-        } else {
-            await client.query(
-                `INSERT INTO message_hidden_for (message_id, firebase_uid)
-                 VALUES ($1, $2)
-                 ON CONFLICT (message_id, firebase_uid) DO NOTHING`,
-                [messageId, req.firebaseUid]
-            );
-        }
-        await client.query('COMMIT');
-        await publishToMembers(conversationId, { type: 'message.changed' });
         return res.json({ success: true, data: { scope } });
     } catch (error) {
-        await client.query('ROLLBACK').catch(() => {});
-        console.error('Delete message error:', error);
+        console.error('Delete Firestore message error:', error);
         return res.status(500).json({
-            success: false,
-            code: 'MESSAGE_DELETE_FAILED',
-            message: 'The message could not be deleted.'
+            success: false, code: 'MESSAGE_DELETE_FAILED', message: 'The message could not be deleted.'
         });
-    } finally {
-        client.release();
     }
 };
 
@@ -710,26 +785,28 @@ const clearConversationMessages = async (req, res) => {
         const conversation = await getConversation(req.params.conversationId, req.firebaseUid);
         if (!conversation) {
             return res.status(404).json({
-                success: false,
-                code: 'CONVERSATION_NOT_FOUND',
-                message: 'Conversation not found.'
+                success: false, code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found.'
             });
         }
-        const result = await query(
-            `INSERT INTO message_hidden_for (message_id, firebase_uid)
-             SELECT message_id, $2
-             FROM messages
-             WHERE conversation_id = $1
-             ON CONFLICT (message_id, firebase_uid) DO NOTHING`,
-            [conversation.conversation_id, req.firebaseUid]
+        const snapshot = await messagesRef(conversation.conversation_id).get();
+        const visible = snapshot.docs.filter(item =>
+            !(item.data().hidden_for || []).includes(req.firebaseUid)
         );
-        return res.json({ success: true, data: { clearedCount: result.rowCount } });
+        for (let offset = 0; offset < visible.length; offset += 450) {
+            const batch = firestore().batch();
+            visible.slice(offset, offset + 450).forEach(item => {
+                batch.update(item.ref, {
+                    hidden_for: getFirebaseAdmin().firestore.FieldValue.arrayUnion(req.firebaseUid),
+                    visible_to: getFirebaseAdmin().firestore.FieldValue.arrayRemove(req.firebaseUid)
+                });
+            });
+            await batch.commit();
+        }
+        return res.json({ success: true, data: { clearedCount: visible.length } });
     } catch (error) {
-        console.error('Clear conversation messages error:', error);
+        console.error('Clear Firestore conversation messages error:', error);
         return res.status(500).json({
-            success: false,
-            code: 'MESSAGE_CLEAR_FAILED',
-            message: 'Messages could not be cleared.'
+            success: false, code: 'MESSAGE_CLEAR_FAILED', message: 'Messages could not be cleared.'
         });
     }
 };
@@ -739,40 +816,33 @@ const markConversationRead = async (req, res) => {
         const conversation = await getConversation(req.params.conversationId, req.firebaseUid);
         if (!conversation) {
             return res.status(404).json({
-                success: false,
-                code: 'CONVERSATION_NOT_FOUND',
-                message: 'Conversation not found.'
+                success: false, code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found.'
             });
         }
-        await query(
-            `WITH read_messages AS (
-                 SELECT message_id FROM messages
-                 WHERE conversation_id = $1
-                   AND sender_firebase_uid <> $2
-                   AND deleted_at IS NULL
-                   AND NOT EXISTS (
-                       SELECT 1 FROM message_hidden_for hidden
-                       WHERE hidden.message_id = messages.message_id
-                         AND hidden.firebase_uid = $2
-                   )
-             )
-             INSERT INTO message_reads (message_id, firebase_uid)
-             SELECT message_id, $2 FROM read_messages
-             ON CONFLICT (message_id, firebase_uid) DO NOTHING`,
-            [conversation.conversation_id, req.firebaseUid]
-        );
-        await query(
-            `UPDATE message_conversation_members SET last_read_at = NOW()
-             WHERE conversation_id = $1 AND firebase_uid = $2`,
-            [conversation.conversation_id, req.firebaseUid]
-        );
-        await publishToMembers(conversation.conversation_id, { type: 'message.read' });
+        const now = getFirebaseAdmin().firestore.Timestamp.now();
+        const snapshot = await messagesRef(conversation.conversation_id).get();
+        const unread = snapshot.docs.filter(item => {
+            const message = item.data();
+            return message.sender_firebase_uid !== req.firebaseUid &&
+                !message.deleted_at &&
+                !(message.hidden_for || []).includes(req.firebaseUid) &&
+                !(message.read_receipts || []).some(receipt => receipt.firebaseUid === req.firebaseUid);
+        });
+        for (let offset = 0; offset < unread.length; offset += 450) {
+            const batch = firestore().batch();
+            unread.slice(offset, offset + 450).forEach(item => {
+                const receipts = item.data().read_receipts || [];
+                receipts.push({ firebaseUid: req.firebaseUid, readAt: now });
+                batch.update(item.ref, { read_receipts: receipts });
+            });
+            await batch.commit();
+        }
+        await memberRef(conversation.conversation_id, req.firebaseUid).update({ last_read_at: now });
         return res.json({ success: true });
     } catch (error) {
-        console.error('Mark conversation read error:', error);
+        console.error('Mark Firestore conversation read error:', error);
         return res.status(500).json({
-            success: false,
-            code: 'MESSAGE_READ_UPDATE_FAILED',
+            success: false, code: 'MESSAGE_READ_UPDATE_FAILED',
             message: 'Read status could not be updated.'
         });
     }

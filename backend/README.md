@@ -28,6 +28,35 @@ Startup also applies pending migrations before the HTTP server listens.
 Migrations run transactionally and use a PostgreSQL advisory lock so multiple
 server instances do not apply the same migration simultaneously.
 
+## Messaging (Firestore)
+
+Message conversations, members, message history, reactions, read receipts,
+per-user message hiding, and presence are stored in Cloud Firestore. The
+dashboard subscribes directly to Firestore snapshots for conversations,
+messages, and presence, and sends new messages directly to Firestore. The
+authenticated HTTP API still creates conversations and handles existing
+message actions that require server-side authorization. PostgreSQL remains the
+authority for project membership and stores the rest of the application data;
+the backend synchronizes Firestore access indexes when membership changes.
+Live message delivery does not pass through the backend.
+
+Before switching a deployment with existing PostgreSQL messages, create the
+Cloud Firestore database in the Firebase project used by the backend, then run
+`npm run migrate:messages:firestore` from `backend/` with both the PostgreSQL
+and Firebase Admin credentials configured. The backfill only creates
+Firestore documents that do not already exist, so it can be safely rerun.
+Pause message writes during the backfill/cutover so messages sent by the old
+backend after the copy are not missed. Deploy the Firestore-backed backend
+after the migration completes.
+
+Deploy the root `firestore.rules` to allow signed-in users to read only
+conversation and message documents indexed for them by the backend. Rules
+allow members to create their own messages and update only the conversation's
+latest-message summary in the same atomic write. Other message changes remain
+server-side and use the authenticated API, which checks current SQL project
+membership. This preserves project access and per-user hidden-message behavior
+while Firestore snapshots deliver updates directly to the dashboard.
+
 Authenticated users can retrieve and update their profile through
 `GET|PUT /api/users/profile`. Profile fields are stored in PostgreSQL's
 `user_profiles` table. Profile photos remain stored in the same table and are
@@ -147,13 +176,12 @@ All endpoints below require `Authorization: Bearer <Firebase ID token>`.
   addressed to the project creator only.
 - `src/routes/messages.js` provides Firebase-authenticated conversation,
   message, reaction, pin, read-receipt, attachment, and per-user conversation
-  clearing endpoints. Clearing hides messages only for the caller. WebSocket
-  connections at `/api/messages/socket` authenticate with a Firebase ID token
-  in their first frame; PostgreSQL notifications fan out changes across
-  backend instances to conversation members. The socket also broadcasts
-  online/offline presence only to eligible members of shared conversations.
-  A heartbeat detects disconnected clients, and the last offline time is saved
-  in `user_profiles.last_seen_at`.
+  clearing operations. Clearing hides messages only for the caller. The
+  dashboard reads and subscribes to Firestore directly; message sends are
+  written directly to Firestore, and snapshots update the UI without backend
+  polling or a backend WebSocket. Conversation creation, read receipts, and
+  operations that need the existing SQL authorization checks continue through
+  the authenticated API.
 
 Migration `007_project_meetings.sql` adds persistent project-scoped meetings,
 `008_project_reminders.sql` adds persistent project-scoped calendar reminders,
