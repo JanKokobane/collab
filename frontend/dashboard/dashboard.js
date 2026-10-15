@@ -115,7 +115,7 @@ import {
   onAuthStateChanged,
   signOut
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
-import { firebaseAuth } from '../firebase.js'
+import { firebaseAuth, markCurrentUserOffline } from '../firebase.js'
 import { loadProjectMeetings } from './js/meetings.js'
 import { initModalChrome, showDashboardToast } from './js/modalChrome.js'
 
@@ -185,6 +185,11 @@ async function logoutForInactivity() {
   const expiredUid = inactivityUserUid
   localStorage.removeItem('collab-logged-in')
   try {
+    try {
+      await markCurrentUserOffline()
+    } catch (error) {
+      console.error('Unable to mark presence offline before inactivity sign-out:', error)
+    }
     await signOut(firebaseAuth)
     if (expiredUid) localStorage.removeItem(inactivityStorageKey(expiredUid))
     window.location.replace('../auth/auth.html?mode=signin&reason=inactivity')

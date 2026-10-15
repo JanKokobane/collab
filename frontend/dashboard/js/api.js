@@ -1,4 +1,4 @@
-import { firebaseAuth } from '../../firebase.js';
+import { firebaseAuth, markCurrentUserOffline } from '../../firebase.js';
 
 import {
     signOut
@@ -117,6 +117,11 @@ async function request(
          * and return the user to the sign-in page.
          */
         if (response.status === 401) {
+            try {
+                await markCurrentUserOffline();
+            } catch (error) {
+                console.error('Unable to mark presence offline before expired-session sign-out:', error);
+            }
             await signOut(firebaseAuth);
 
             window.location.replace(

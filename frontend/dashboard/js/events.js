@@ -42,7 +42,7 @@ import {
 } from './theme.js'
 import { switchView } from './navigation.js'
 import { signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
-import { firebaseAuth } from '../../firebase.js'
+import { firebaseAuth, markCurrentUserOffline } from '../../firebase.js'
 import { loadProjectMeetings } from './meetings.js'
 import { showDashboardToast } from './modalChrome.js'
 
@@ -128,12 +128,28 @@ export function initEventListeners() {
     switchView('Settings')
   })
 
-  document.querySelector('#dropdown-switch-user-btn')?.addEventListener('click', () => {
-    window.location.href = '../auth/auth.html'
+  document.querySelector('#dropdown-switch-user-btn')?.addEventListener('click', async () => {
+    try {
+      await markCurrentUserOffline()
+    } catch (error) {
+      console.error('Unable to mark presence offline before switching users:', error)
+    }
+    try {
+      await signOut(firebaseAuth)
+      window.location.href = '../auth/auth.html'
+    } catch (error) {
+      console.error('Unable to sign out before switching users:', error)
+      window.alert('Unable to switch users. Please try again.')
+    }
   })
 
   document.querySelector('#dropdown-logout-btn')?.addEventListener('click', async () => {
     localStorage.removeItem('collab-logged-in')
+    try {
+      await markCurrentUserOffline()
+    } catch (error) {
+      console.error('Unable to mark presence offline before signing out:', error)
+    }
     try {
       await signOut(firebaseAuth)
       window.location.href = '../auth/auth.html?mode=signin'

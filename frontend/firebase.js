@@ -4,7 +4,12 @@ import {
   browserSessionPersistence,
   initializeAuth
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
-import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'
+import {
+  doc,
+  getFirestore,
+  serverTimestamp,
+  updateDoc
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'
 
 const firebaseConfig = {
   apiKey: 'AIzaSyAjQOsgPTgrc3VyNxx58UppAbm7JvP1Vuo',
@@ -21,6 +26,15 @@ export const firebaseAuth = initializeAuth(firebaseApp, {
   popupRedirectResolver: browserPopupRedirectResolver
 })
 export const firestoreDb = getFirestore(firebaseApp)
+
+export async function markCurrentUserOffline() {
+  const uid = firebaseAuth.currentUser?.uid
+  if (!uid) return
+  await updateDoc(doc(firestoreDb, 'messagePresence', uid), {
+    is_online: false,
+    last_seen_at: serverTimestamp()
+  })
+}
 
 
 

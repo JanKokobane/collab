@@ -16,6 +16,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'
 
 const maxAttachmentBytes = 512 * 1024
+const presenceHeartbeatMs = 25000
 const reactionChoices = ['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']
 let messageState = { conversations: [], messages: [] }
 let selectedConversationId = null
@@ -30,6 +31,7 @@ const conversationMessageSubscriptions = new Map()
 const presenceSubscriptions = new Map()
 const memberPresence = new Map()
 let presenceWriteUid = null
+let presenceHeartbeatTimer = null
 
 const currentEmail = () => currentUser.email?.trim().toLowerCase() || firebaseAuth.currentUser?.email?.trim().toLowerCase() || ''
 const currentUid = () => firebaseAuth.currentUser?.uid || ''
@@ -176,6 +178,16 @@ function getConversationMessages(conversationId) {
   return messageState.messages.filter(message => message.conversationId === conversationId)
 }
 
+function replaceConversations(conversations) {
+  const existingById = new Map(messageState.conversations.map(item => [item.id, item]))
+  messageState.conversations = conversations.map(conversation => {
+    const existing = existingById.get(conversation.id)
+    if (!existing) return conversation
+    Object.assign(existing, conversation)
+    return existing
+  })
+}
+
 function upsertMessage(message) {
   const normalized = normalizeMessage(message)
   let currentIndex = messageState.messages.findIndex(item => item.id === normalized.id)
@@ -206,8 +218,8 @@ function renderDirectMessagePresence(conversation, element) {
   const presence = otherMember.firebaseUid
     ? memberPresence.get(otherMember.firebaseUid)
     : null
-  const online = Boolean(presence?.isOnline)
   const lastSeenAt = presence?.lastSeenAt || otherMember.lastSeenAt
+  const online = Boolean(presence?.isOnline)
   element.replaceChildren()
   element.classList.toggle('messages-presence-online', online)
   element.classList.toggle('messages-presence-offline', !online)
@@ -415,14 +427,15 @@ function subscribeToConversationMessages(conversation) {
     const messages = orderedDocs.map(item => toFirestoreMessage(item, conversation.id))
     const latestDoc = orderedDocs.at(-1)
     const latestData = latestDoc?.data()
-    conversation.latestMessage = latestData
+    const activeConversation = messageState.conversations.find(item => item.id === conversation.id) || conversation
+    activeConversation.latestMessage = latestData
       ? latestData.deleted_at ? 'This message was deleted' : latestData.body || ''
       : ''
-    conversation.latestMessageCreatedAt = timestampToIso(latestData?.created_at)
-    conversation.latestMessageId = latestDoc?.id || null
-    const member = conversation.participants.find(item => item.firebaseUid === uid)
+    activeConversation.latestMessageCreatedAt = timestampToIso(latestData?.created_at)
+    activeConversation.latestMessageId = latestDoc?.id || null
+    const member = activeConversation.participants.find(item => item.firebaseUid === uid)
     const lastReadAt = member?.last_read_at || null
-    conversation.unreadCount = visibleDocs.filter(item => {
+    activeConversation.unreadCount = visibleDocs.filter(item => {
       const message = item.data()
       return message.sender_firebase_uid !== uid &&
         !message.deleted_at &&
@@ -551,8 +564,8 @@ async function reloadMessages() {
           for (const oldConversation of messageState.conversations) {
             if (!visibleIds.has(oldConversation.id)) unsubscribeConversation(oldConversation.id)
           }
-          messageState.conversations = conversations
-          conversations.forEach(subscribeToConversationMessages)
+          replaceConversations(conversations)
+          messageState.conversations.forEach(subscribeToConversationMessages)
           if (!selectedConversationId || !visibleIds.has(selectedConversationId)) {
             selectedConversationId = conversations[0]?.id || null
           }
@@ -572,8 +585,8 @@ async function reloadMessages() {
   const conversations = await Promise.all(
     conversationSnapshots.filter(item => item.exists()).map(hydrateConversation)
   )
-  messageState.conversations = conversations
-  conversations.forEach(subscribeToConversationMessages)
+  replaceConversations(conversations)
+  messageState.conversations.forEach(subscribeToConversationMessages)
   if (!selectedConversationId || !conversations.some(item => item.id === selectedConversationId)) {
     selectedConversationId = conversations[0]?.id || null
   }
@@ -1522,6 +1535,8 @@ export async function refreshMessagesForCurrentUser() {
   presenceSubscriptions.forEach(subscriptions => subscriptions.forEach(unsubscribe => unsubscribe()))
   presenceSubscriptions.clear()
   memberPresence.clear()
+  clearInterval(presenceHeartbeatTimer)
+  presenceHeartbeatTimer = null
   if (!firebaseAuth.currentUser) {
     presenceWriteUid = null
     messageState = { conversations: [], messages: [] }
@@ -1534,6 +1549,10 @@ export async function refreshMessagesForCurrentUser() {
   editingMessageId = null
   presenceWriteUid = firebaseAuth.currentUser.uid
   setOwnPresence(true)
+  presenceHeartbeatTimer = setInterval(() => {
+    if (!presenceWriteUid) return
+    setOwnPresence(true)
+  }, presenceHeartbeatMs)
   await refreshFromServer()
 }
 
@@ -1542,7 +1561,7 @@ function setOwnPresence(isOnline) {
   if (!uid) return
   const presenceRef = doc(firestoreDb, 'messagePresence', uid)
   const updates = isOnline
-    ? { is_online: true }
+    ? { is_online: true, last_seen_at: serverTimestamp() }
     : { is_online: false, last_seen_at: serverTimestamp() }
   getDoc(presenceRef)
     .then(snapshot => snapshot.exists() ? updateDoc(presenceRef, updates) : null)
@@ -1550,8 +1569,11 @@ function setOwnPresence(isOnline) {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (presenceWriteUid) setOwnPresence(!document.hidden)
+  if (presenceWriteUid && !document.hidden) setOwnPresence(true)
 })
 window.addEventListener('pagehide', () => {
   if (presenceWriteUid) setOwnPresence(false)
+})
+window.addEventListener('pageshow', () => {
+  if (presenceWriteUid) setOwnPresence(true)
 })
