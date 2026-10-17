@@ -177,26 +177,40 @@ export function renderOverviewPanel() {
     const pct = projTasks.length > 0 ? Math.round((completed / projTasks.length) * 100) : 0
 
     const card = make('div', 'overview-project-card')
-    card.innerHTML = `
-      <div class="project-card-top">
-        <h3><i class="dot ${p.color}"></i> ${p.name}</h3>
-        <span class="project-task-count">${completed} of ${projTasks.length} tasks</span>
-      </div>
-      <p class="project-card-desc">${p.description}</p>
-      <div class="project-progress-wrap">
-        <div class="progress-header">
-          <span>Progress</span>
-          <span>${pct}%</span>
-        </div>
-        <div class="progress" style="max-width: 100%;">
-          <span style="width: ${pct}%;"></span>
-        </div>
-      </div>
-      <div class="project-card-footer" style="margin-top: 14px; font-size: 11px; color: #71717A; display: flex; justify-content: space-between;">
-        <span>👑 Lead: <strong>${p.creatorName}</strong></span>
-        <span>⚡ Sprints: <strong>${(p.sprints || []).length}</strong></span>
-      </div>
-    `
+    const cardTop = make('div', 'project-card-top')
+    const heading = make('h3')
+    const dot = make('i', 'dot')
+    const allowedColors = ['yellow', 'green', 'blue', 'purple', 'coral', 'orange', 'rose']
+    dot.classList.add(allowedColors.includes(p.color) ? p.color : 'yellow')
+    heading.append(dot, document.createTextNode(p.name || ''))
+    cardTop.append(heading, make(
+      'span',
+      'project-task-count',
+      `${completed} of ${projTasks.length} tasks`
+    ))
+
+    const description = make('p', 'project-card-desc', p.description || '')
+    const progressWrap = make('div', 'project-progress-wrap')
+    const progressHeader = make('div', 'progress-header')
+    progressHeader.append(make('span', '', 'Progress'), make('span', '', `${pct}%`))
+    const progress = make('div', 'progress')
+    progress.style.maxWidth = '100%'
+    const progressBar = make('span')
+    progressBar.style.width = `${pct}%`
+    progress.append(progressBar)
+    progressWrap.append(progressHeader, progress)
+
+    const footer = make('div', 'project-card-footer')
+    footer.style.cssText = 'margin-top: 14px; font-size: 11px; color: #71717A; display: flex; justify-content: space-between;'
+    const lead = make('span')
+    lead.append(document.createTextNode('👑 Lead: '), make('strong', '', p.creatorName || ''))
+    const sprints = make('span')
+    sprints.append(
+      document.createTextNode('⚡ Sprints: '),
+      make('strong', '', String((p.sprints || []).length))
+    )
+    footer.append(lead, sprints)
+    card.append(cardTop, description, progressWrap, footer)
     card.addEventListener('click', () => switchView(p.name))
     container.append(card)
   })
@@ -205,16 +219,17 @@ export function renderOverviewPanel() {
     activityContainer.replaceChildren()
     auditLogs.slice(0, 4).forEach(log => {
       const item = make('div', 'audit-item')
-      const iconKey = log.iconType || 'sync'
-      item.innerHTML = `
-        <span class="activity-icon-badge ${iconKey}">
-          ${getSvg(iconKey, 'activity-svg', 16, 16)}
-        </span>
-        <div class="audit-content">
-          <strong>${log.action}</strong>
-          <p>${log.detail} • ${log.time}</p>
-        </div>
-      `
+      const requestedIcon = log.iconType || 'sync'
+      const iconKey = /^[a-zA-Z][\w-]*$/.test(requestedIcon) ? requestedIcon : 'sync'
+      const iconBadge = make('span', 'activity-icon-badge')
+      iconBadge.classList.add(iconKey)
+      iconBadge.innerHTML = getSvg(iconKey, 'activity-svg', 16, 16)
+      const content = make('div', 'audit-content')
+      content.append(
+        make('strong', '', log.action || ''),
+        make('p', '', `${log.detail || ''} • ${log.time || ''}`)
+      )
+      item.append(iconBadge, content)
       activityContainer.append(item)
     })
   }
@@ -224,16 +239,16 @@ export function renderOverviewPanel() {
     members.forEach(m => {
       const count = tasks.filter(t => t.assignee === m.initials && t.status !== 'Done').length
       const item = make('div', 'workload-item')
-      item.innerHTML = `
-        <div class="workload-left">
-          <div class="avatar ${m.tone}-bg">${m.initials}</div>
-          <div>
-            <strong>${m.name}</strong>
-            <small>${m.role}</small>
-          </div>
-        </div>
-        <span class="workload-count">${count} active ${count === 1 ? 'task' : 'tasks'}</span>
-      `
+      const workloadLeft = make('div', 'workload-left')
+      const avatarTone = /^[a-zA-Z][\w-]*$/.test(m.tone || '') ? m.tone : 'coral'
+      const avatar = make('div', `avatar ${avatarTone}-bg`, m.initials || '')
+      const memberDetails = make('div')
+      memberDetails.append(make('strong', '', m.name || ''), make('small', '', m.role || ''))
+      workloadLeft.append(avatar, memberDetails)
+      item.append(
+        workloadLeft,
+        make('span', 'workload-count', `${count} active ${count === 1 ? 'task' : 'tasks'}`)
+      )
       workloadContainer.append(item)
     })
   }

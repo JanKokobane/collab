@@ -1005,10 +1005,6 @@ async function openDirectConversation(contact) {
       memberFirebaseUids: [contact.firebaseUid]
     })
     const conversation = result?.data?.conversation
-    console.info('[messages] conversation API succeeded; refreshing Firestore access', {
-      type: 'direct',
-      conversationId: conversation?.conversation_id || null
-    })
     await refreshFromServer()
     if (conversation?.conversation_id) await selectConversation(conversation.conversation_id)
   } catch (error) {
@@ -1099,10 +1095,6 @@ function openConversationModal(type) {
         type,
         name: nameInput.value.trim(),
         memberFirebaseUids: selected.map(input => input.value)
-      })
-      console.info('[messages] conversation API succeeded; refreshing Firestore access', {
-        type,
-        conversationId: result?.data?.conversation?.conversation_id || null
       })
       backdrop.remove()
       await refreshFromServer()

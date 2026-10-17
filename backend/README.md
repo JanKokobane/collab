@@ -23,6 +23,10 @@ the Render backend URL in the frontend API client for non-local hosts; set
 
 ## Database
 
+PostgreSQL connections require TLS with server-certificate and hostname
+verification. Use a database provider whose certificate chain is trusted by
+Node.js; unverified TLS is not supported.
+
 Run `npm run migrate` to apply the numbered SQL files in `db/migrations/`.
 Startup also applies pending migrations before the HTTP server listens.
 Migrations run transactionally and use a PostgreSQL advisory lock so multiple

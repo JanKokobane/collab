@@ -6,7 +6,7 @@ const databaseUrl =
     process.env.DB_NAME &&
     process.env.DB_USER &&
     process.env.DB_PASSWORD
-        ? `postgresql://${encodeURIComponent(process.env.DB_USER)}:${encodeURIComponent(process.env.DB_PASSWORD)}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}?sslmode=require`
+        ? `postgresql://${encodeURIComponent(process.env.DB_USER)}:${encodeURIComponent(process.env.DB_PASSWORD)}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}?sslmode=verify-full`
         : null;
 
 if (!databaseUrl) {
@@ -19,8 +19,7 @@ const pool = new Pool({
     connectionString: databaseUrl,
 
     ssl: {
-        rejectUnauthorized:
-            process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true'
+        rejectUnauthorized: true
     },
 
     max: 10,

@@ -35,25 +35,3 @@ export async function markCurrentUserOffline() {
     last_seen_at: serverTimestamp()
   })
 }
-
-
-
-
-
-
-// TEMPORARY: Get Firebase ID token for Postman testing
-window.getCollabFirebaseToken = async () => {
-  const user = firebaseAuth.currentUser
-
-  if (!user) {
-    console.error('No Firebase user is currently signed in.')
-    return null
-  }
-
-  const token = await user.getIdToken(true)
-
-  console.log('Firebase ID Token:')
-  console.log(token)
-
-  return token
-}
