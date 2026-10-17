@@ -687,7 +687,6 @@ async function finishActiveCall(notifyPeer) {
   if (!call) return
   clearTimeout(call.ringingTimer)
   activeCall = null
-  callRootReplace()
   if (call.dailyFrame) {
     try {
       await call.dailyFrame.leave()
@@ -700,6 +699,7 @@ async function finishActiveCall(notifyPeer) {
       console.error('[messages] Unable to close Daily call frame:', error.message)
     }
   }
+  callRootReplace()
   if (notifyPeer) {
     try {
       await api.post(`${apiPath(call.conversationId)}/calls/${call.callId}/end`, {})
@@ -718,6 +718,15 @@ function callRootReplace() {
 
 async function startCall(conversation, callType) {
   if (mediaRecorder) cancelVoiceRecording()
+  if (activeCall?.status === 'ringing' && activeCall.ringExpiresAt <= Date.now()) {
+    await finishActiveCall(true)
+  }
+  if (incomingCall?.ring_expires_at?.toMillis?.() <= Date.now()) {
+    incomingCall = null
+    clearTimeout(incomingCallTimer)
+    incomingCallTimer = null
+    renderCallOverlay()
+  }
   if (activeCall || incomingCall || callStartInFlight) {
     showError(new Error('Finish the current call invitation before starting another call.'))
     return
@@ -736,7 +745,8 @@ async function startCall(conversation, callType) {
       callType: responseCall.call_type,
       peerName: responseCall.peer_name,
       roomUrl: responseCall.room_url,
-      status: responseCall.status
+      status: responseCall.status,
+      ringExpiresAt: Date.parse(responseCall.ring_expires_at)
     }
     const ringExpiresAt = Date.parse(responseCall.ring_expires_at)
     activeCall.ringingTimer = setTimeout(() => {
@@ -747,6 +757,16 @@ async function startCall(conversation, callType) {
     renderCallOverlay()
     await mountDailyCall(activeCall, responseCall.token)
   } catch (error) {
+    console.error('[messages] Call setup failed', {
+      method: 'POST',
+      path: `${apiPath(conversation.id)}/calls`,
+      callType,
+      conversationId: conversation.id,
+      status: error?.status || null,
+      code: error?.code || error?.payload?.code || null,
+      message: error?.message || String(error),
+      serverMessage: error?.payload?.message || null
+    })
     if (activeCall) await finishActiveCall(true)
     showError(error, `start ${callType} call`)
   } finally {

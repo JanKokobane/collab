@@ -8,15 +8,18 @@ const callsRef = conversationId =>
 const callIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 class DailyApiError extends Error {
-    constructor(status) {
+    constructor(status, path, details = null) {
         super('Daily API request failed.');
         this.status = status;
+        this.path = path;
+        this.details = details;
     }
 }
 
 const dailyRequest = async (path, body) => {
     const apiKey = process.env.DAILY_API_KEY;
     if (!apiKey) {
+        console.error('Daily call setup is missing DAILY_API_KEY.');
         const error = new Error('Calling is not configured on the backend.');
         error.status = 503;
         throw error;
@@ -33,16 +36,36 @@ const dailyRequest = async (path, body) => {
             body: JSON.stringify(body)
         });
     } catch (error) {
-        console.error('Daily API request could not connect:', error.message);
-        const requestError = new DailyApiError(502);
+        console.error('Daily API request could not connect.', {
+            path,
+            errorName: error.name,
+            message: error.message
+        });
+        const requestError = new DailyApiError(502, path);
         throw requestError;
     }
 
     if (!response.ok) {
+        const responseBody = await response.json().catch(() => null);
+        const details = responseBody && typeof responseBody === 'object'
+            ? {
+                error: typeof responseBody.error === 'string'
+                    ? responseBody.error.slice(0, 300)
+                    : null,
+                info: typeof responseBody.info === 'string'
+                    ? responseBody.info.slice(0, 300)
+                    : null,
+                message: typeof responseBody.message === 'string'
+                    ? responseBody.message.slice(0, 300)
+                    : null
+            }
+            : null;
         console.error('Daily API returned an unsuccessful response.', {
-            status: response.status
+            path,
+            status: response.status,
+            details
         });
-        throw new DailyApiError(response.status);
+        throw new DailyApiError(response.status, path, details);
     }
     return response.json();
 };
@@ -86,7 +109,14 @@ const responseError = (res, error, operation) => {
             message: error.message
         });
     }
-    console.error(`${operation} failed:`, error);
+    console.error(`${operation} failed.`, {
+        errorName: error.name,
+        message: error.message,
+        status: error.status || null,
+        dailyPath: error.path || null,
+        dailyDetails: error.details || null,
+        stack: error.stack
+    });
     return res.status(error.status === 429 ? 429 : error instanceof DailyApiError ? 502 : 500).json({
         success: false,
         code: 'CALL_OPERATION_FAILED',
