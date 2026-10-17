@@ -1069,7 +1069,15 @@ const deleteMessage = async (req, res) => {
         }
         return res.json({ success: true, data: { scope } });
     } catch (error) {
-        console.error('Delete Firestore message error:', error);
+        console.error('Delete Firestore message error:', {
+            conversationId,
+            messageId,
+            scope,
+            errorName: error.name,
+            errorCode: error.code || null,
+            errorMessage: error.message,
+            stack: error.stack
+        });
         return res.status(500).json({
             success: false, code: 'MESSAGE_DELETE_FAILED', message: 'The message could not be deleted.'
         });

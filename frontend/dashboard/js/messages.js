@@ -43,9 +43,14 @@ let mediaStream = null
 let voiceRecordingChunks = []
 let voiceRecordingTimer = null
 let voiceRecordingStartedAt = 0
+let voiceRecordingElapsedMs = 0
 let voiceRecordingConversationId = null
 let cancelVoiceRecordingOnStop = false
+let voiceRecordingShouldSend = false
 let voiceRecordingStarting = false
+let activeVoiceNoteAudio = null
+let voiceNoteAudioContext = null
+const voiceNoteGainNodes = new WeakMap()
 
 const currentEmail = () => currentUser.email?.trim().toLowerCase() || firebaseAuth.currentUser?.email?.trim().toLowerCase() || ''
 const currentUid = () => firebaseAuth.currentUser?.uid || ''
@@ -66,7 +71,12 @@ function getElements() {
     callRoot: document.querySelector('#messages-call-root'),
     voiceRecord: document.querySelector('#messages-voice-record'),
     voiceStatus: document.querySelector('#messages-voice-recording-status'),
-    voiceCancel: document.querySelector('#messages-voice-cancel')
+    voiceCancel: document.querySelector('#messages-voice-cancel'),
+    voicePause: document.querySelector('#messages-voice-pause'),
+    voiceSend: document.querySelector('#messages-voice-send'),
+    recordingPanel: document.querySelector('#messages-recording-panel'),
+    recordingWaveform: document.querySelector('#messages-recording-waveform'),
+    composer: document.querySelector('#messages-composer')
   }
 }
 
@@ -1052,15 +1062,165 @@ function createFileIcon(attachment) {
   return icon
 }
 
+function createVoiceWaveform(className, seed = '') {
+  const waveform = make('div', className)
+  let value = [...seed].reduce((sum, character) => sum + character.charCodeAt(0), 17) || 17
+  for (let index = 0; index < 40; index += 1) {
+    value = (value * 9301 + 49297) % 233280
+    const height = 18 + Math.round((value / 233280) * 82)
+    const bar = make('span', 'messages-waveform-bar')
+    bar.style.setProperty('--bar-height', `${height}%`)
+    bar.style.setProperty('--bar-delay', `${index * 18}ms`)
+    waveform.append(bar)
+  }
+  return waveform
+}
+
+function updateVoicePlayerProgress(audio, waveform, timeLabel, playButton, storedDuration = 0) {
+  const duration = Number.isFinite(audio.duration) && audio.duration > 0
+    ? audio.duration
+    : storedDuration
+  const currentTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0
+  const progress = duration ? Math.min(1, currentTime / duration) : 0
+  const bars = waveform.querySelectorAll('.messages-waveform-bar')
+  bars.forEach((bar, index) => bar.classList.toggle(
+    'is-played',
+    index < Math.round(progress * bars.length)
+  ))
+  waveform.setAttribute('aria-valuenow', String(Math.round(progress * 100)))
+  waveform.setAttribute('aria-valuetext', `${formatVoiceDuration(Math.floor(currentTime))} of ${formatVoiceDuration(Math.floor(duration))}`)
+  timeLabel.textContent = duration ? formatVoiceDuration(Math.ceil(duration)) : 'Unavailable'
+  const isPlaying = !audio.paused && !audio.ended
+  playButton.setAttribute('aria-label', isPlaying ? 'Pause voice note' : 'Play voice note')
+  playButton.title = isPlaying ? 'Pause voice note' : 'Play voice note'
+  playButton.replaceChildren(createVoicePlayerIcon(isPlaying))
+}
+
+async function prepareVoiceNotePlayback(audio) {
+  if (activeVoiceNoteAudio && activeVoiceNoteAudio !== audio) {
+    activeVoiceNoteAudio.pause()
+    activeVoiceNoteAudio.currentTime = 0
+  }
+  activeVoiceNoteAudio = audio
+
+  const AudioContextConstructor = window.AudioContext || window.webkitAudioContext
+  if (!AudioContextConstructor) return
+  try {
+    if (!voiceNoteAudioContext) voiceNoteAudioContext = new AudioContextConstructor()
+    if (!voiceNoteGainNodes.has(audio)) {
+      const source = voiceNoteAudioContext.createMediaElementSource(audio)
+      const gain = voiceNoteAudioContext.createGain()
+      const compressor = voiceNoteAudioContext.createDynamicsCompressor()
+      gain.gain.value = 2
+      compressor.threshold.value = -18
+      compressor.knee.value = 10
+      compressor.ratio.value = 4
+      compressor.attack.value = 0.003
+      compressor.release.value = 0.25
+      source.connect(gain)
+      gain.connect(compressor)
+      compressor.connect(voiceNoteAudioContext.destination)
+      voiceNoteGainNodes.set(audio, compressor)
+    }
+    if (voiceNoteAudioContext.state === 'suspended') await voiceNoteAudioContext.resume()
+  } catch (error) {
+    console.warn('[messages] Voice note volume boost unavailable; using normal playback volume.', error)
+  }
+}
+
+function createVoicePlayerIcon(isPlaying) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('aria-hidden', 'true')
+  const path = document.createElementNS(svg.namespaceURI, 'path')
+  path.setAttribute('d', isPlaying ? 'M8 5h3v14H8zM15 5h3v14h-3z' : 'm8 5 11 7-11 7z')
+  svg.append(path)
+  return svg
+}
+
 function renderAttachment(attachment, container) {
   if (attachment.is_voice_note || attachment.mediaType?.startsWith('audio/')) {
     const player = document.createElement('audio')
-    player.className = 'messages-voice-note-player'
-    player.controls = true
+    player.className = 'messages-voice-note-audio'
     player.preload = 'metadata'
     player.src = attachment.data
     player.setAttribute('aria-label', attachment.fileName || 'Voice note')
-    container.append(player)
+    const playerUi = make('div', 'messages-voice-note-player')
+    const playButton = make('button', 'messages-voice-play')
+    playButton.type = 'button'
+    playButton.setAttribute('aria-label', 'Play voice note')
+    playButton.append(createVoicePlayerIcon(false))
+    const waveform = createVoiceWaveform(
+      'messages-voice-waveform',
+      `${attachment.fileName || ''}${attachment.size || ''}`
+    )
+    waveform.setAttribute('role', 'slider')
+    waveform.setAttribute('aria-label', 'Voice note playback position')
+    waveform.setAttribute('aria-valuemin', '0')
+    waveform.setAttribute('aria-valuemax', '100')
+    waveform.setAttribute('aria-valuenow', '0')
+    waveform.tabIndex = 0
+    const savedDuration = attachment.fileName?.match(/^voice-note-(\d+)s-/i)?.[1]
+    const storedDuration = Number.isFinite(attachment.duration_seconds)
+      ? attachment.duration_seconds
+      : Number(savedDuration) || 0
+    const timeLabel = make(
+      'span',
+      'messages-voice-time',
+      storedDuration ? formatVoiceDuration(storedDuration) : 'Unavailable'
+    )
+    const togglePlayback = async () => {
+      if (player.paused) {
+        try {
+          await prepareVoiceNotePlayback(player)
+          await player.play()
+        } catch (error) {
+          if (activeVoiceNoteAudio === player) activeVoiceNoteAudio = null
+          showError(error, 'play voice note')
+        }
+      } else {
+        player.pause()
+      }
+    }
+    playButton.addEventListener('click', togglePlayback)
+    waveform.addEventListener('click', event => {
+      const bounds = waveform.getBoundingClientRect()
+      const progress = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width))
+      if (Number.isFinite(player.duration)) player.currentTime = progress * player.duration
+    })
+    waveform.addEventListener('keydown', event => {
+      if (!Number.isFinite(player.duration)) return
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault()
+        player.currentTime = Math.max(0, Math.min(
+          player.duration,
+          player.currentTime + (event.key === 'ArrowRight' ? 5 : -5)
+        ))
+      } else if (event.key === 'Home') {
+        player.currentTime = 0
+      } else if (event.key === 'End') {
+        player.currentTime = player.duration
+      }
+    })
+    ;['loadedmetadata', 'timeupdate', 'play', 'pause', 'ended'].forEach(eventName => {
+      player.addEventListener(eventName, () =>
+        updateVoicePlayerProgress(player, waveform, timeLabel, playButton, storedDuration)
+      )
+    })
+    player.addEventListener('ended', () => {
+      if (activeVoiceNoteAudio === player) activeVoiceNoteAudio = null
+    })
+    player.addEventListener('error', () => {
+      console.error('[messages] Voice note audio failed to load.', {
+        fileName: attachment.fileName,
+        mediaErrorCode: player.error?.code || null,
+        mediaErrorMessage: player.error?.message || null
+      })
+      showError(new Error('This voice note could not be played. Please try downloading or resending it.'), 'load voice note')
+    })
+    playerUi.append(playButton, waveform, timeLabel)
+    container.append(player, playerUi)
+    updateVoicePlayerProgress(player, waveform, timeLabel, playButton, storedDuration)
     return
   }
   if (attachment.mediaType?.startsWith('image/')) {
@@ -1520,9 +1680,27 @@ async function deleteMessage(message, scope) {
       `${apiPath(message.conversationId)}/messages/${encodeURIComponent(message.id)}`,
       { scope }
     )
-    await refreshFromServer()
+    if (scope === 'me') {
+      messageState.messages = messageState.messages.filter(item => item.id !== message.id)
+    } else {
+      messageState.messages = messageState.messages.map(item =>
+        item.id === message.id
+          ? { ...item, body: 'This message was deleted', attachments: [], isDeleted: true }
+          : item
+      )
+    }
+    renderMessages()
   } catch (error) {
-    showError(error)
+    console.error('[messages] Message deletion API request failed.', {
+      conversationId: message.conversationId,
+      messageId: message.id,
+      scope,
+      status: error?.status || null,
+      code: error?.code || error?.payload?.code || null,
+      message: error?.message || String(error),
+      serverMessage: error?.payload?.message || null
+    })
+    showError(error, `delete message ${message.id} (${scope})`)
   }
 }
 
@@ -1779,16 +1957,19 @@ function formatVoiceDuration(seconds) {
 function updateVoiceRecordingStatus() {
   const { voiceStatus } = getElements()
   if (voiceStatus) {
-    voiceStatus.textContent = formatVoiceDuration(
-      Math.floor((Date.now() - voiceRecordingStartedAt) / 1000)
-    )
+    const elapsed = voiceRecordingElapsedMs +
+      (mediaRecorder?.state === 'recording' ? Date.now() - voiceRecordingStartedAt : 0)
+    voiceStatus.textContent = formatVoiceDuration(Math.floor(elapsed / 1000))
   }
 }
 
 function resetVoiceRecordingUi() {
-  const { voiceRecord, voiceStatus, voiceCancel } = getElements()
+  const { voiceRecord, voiceStatus, voiceCancel, voicePause, recordingPanel, composer } = getElements()
   clearInterval(voiceRecordingTimer)
   voiceRecordingTimer = null
+  voiceRecordingElapsedMs = 0
+  voiceRecordingStartedAt = 0
+  voiceRecordingShouldSend = false
   if (voiceRecord) {
     voiceRecord.replaceChildren(createVoiceRecordIcon())
     voiceRecord.classList.remove('is-recording')
@@ -1796,13 +1977,62 @@ function resetVoiceRecordingUi() {
     voiceRecord.title = 'Record a voice note'
     voiceRecord.disabled = !selectedConversationId
   }
-  if (voiceStatus) voiceStatus.hidden = true
+  if (voiceStatus) voiceStatus.textContent = '00:00'
   if (voiceCancel) voiceCancel.hidden = true
+  if (voicePause) {
+    voicePause.disabled = false
+    voicePause.replaceChildren(createVoicePlayerIcon(true), make('span', '', 'Pause'))
+  }
+  if (recordingPanel) {
+    recordingPanel.hidden = true
+    recordingPanel.classList.remove('is-paused')
+    recordingPanel.querySelector('#messages-recording-waveform')?.replaceChildren()
+  }
+  composer?.classList.remove('is-recording')
+}
+
+function toggleVoiceRecordingPause() {
+  if (!mediaRecorder) return
+  const { recordingPanel, voicePause } = getElements()
+  if (mediaRecorder.state === 'recording') {
+    voiceRecordingElapsedMs += Date.now() - voiceRecordingStartedAt
+    voiceRecordingStartedAt = 0
+    mediaRecorder.pause()
+    recordingPanel?.classList.add('is-paused')
+    if (voicePause) {
+      voicePause.replaceChildren(createVoicePlayerIcon(false), make('span', '', 'Resume'))
+      voicePause.setAttribute('aria-label', 'Resume voice recording')
+    }
+  } else if (mediaRecorder.state === 'paused') {
+    voiceRecordingStartedAt = Date.now()
+    mediaRecorder.resume()
+    recordingPanel?.classList.remove('is-paused')
+    if (voicePause) {
+      voicePause.replaceChildren(createVoicePlayerIcon(true), make('span', '', 'Pause'))
+      voicePause.setAttribute('aria-label', 'Pause voice recording')
+    }
+  }
+  updateVoiceRecordingStatus()
+}
+
+function stopVoiceRecording() {
+  if (!mediaRecorder || !['recording', 'paused'].includes(mediaRecorder.state)) return
+  if (mediaRecorder.state === 'recording') {
+    voiceRecordingElapsedMs += Date.now() - voiceRecordingStartedAt
+  }
+  voiceRecordingStartedAt = 0
+  mediaRecorder.stop()
+}
+
+function sendVoiceRecording() {
+  if (!mediaRecorder || !['recording', 'paused'].includes(mediaRecorder.state)) return
+  voiceRecordingShouldSend = true
+  stopVoiceRecording()
 }
 
 async function startVoiceRecording() {
   if (mediaRecorder) {
-    if (mediaRecorder.state === 'recording') mediaRecorder.stop()
+    stopVoiceRecording()
     return
   }
   if (voiceRecordingStarting) return
@@ -1820,7 +2050,15 @@ async function startVoiceRecording() {
   voiceRecordingStarting = true
   const targetConversationId = selectedConversationId
   try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: { ideal: 1 },
+        sampleRate: { ideal: 48_000 },
+        echoCancellation: { ideal: true },
+        noiseSuppression: { ideal: true },
+        autoGainControl: { ideal: false }
+      }
+    })
     if (!firebaseAuth.currentUser || targetConversationId !== selectedConversationId) {
       mediaStream.getTracks().forEach(track => track.stop())
       mediaStream = null
@@ -1831,29 +2069,43 @@ async function startVoiceRecording() {
       'audio/mp4;codecs=mp4a.40.2',
       'audio/ogg;codecs=opus'
     ].find(type => MediaRecorder.isTypeSupported(type)) : ''
-    mediaRecorder = mimeType
-      ? new MediaRecorder(mediaStream, { mimeType })
-      : new MediaRecorder(mediaStream)
+    const recorderOptions = {
+      audioBitsPerSecond: 24_000,
+      ...(mimeType ? { mimeType } : {})
+    }
+    mediaRecorder = new MediaRecorder(mediaStream, recorderOptions)
     voiceRecordingChunks = []
     voiceRecordingConversationId = targetConversationId
     cancelVoiceRecordingOnStop = false
+    voiceRecordingShouldSend = false
+    voiceRecordingElapsedMs = 0
     voiceRecordingStartedAt = Date.now()
-    const { voiceRecord, voiceStatus, voiceCancel } = getElements()
+    const { voiceRecord, voiceStatus, voiceCancel, voicePause, recordingPanel, recordingWaveform, composer } = getElements()
     voiceRecord?.replaceChildren(createVoiceRecordIcon(true))
     voiceRecord?.classList.add('is-recording')
     voiceRecord?.setAttribute('aria-label', 'Stop recording voice note')
     if (voiceRecord) voiceRecord.title = 'Stop recording'
-    if (voiceStatus) voiceStatus.hidden = false
+    if (voiceStatus) voiceStatus.textContent = '00:00'
     if (voiceCancel) voiceCancel.hidden = false
+    if (voicePause) voicePause.setAttribute('aria-label', 'Pause voice recording')
+    if (recordingPanel) {
+      recordingPanel.hidden = false
+      recordingPanel.classList.remove('is-paused')
+    }
+    if (recordingWaveform) {
+      const bars = createVoiceWaveform('messages-recording-bars')
+      recordingWaveform.replaceChildren(...Array.from(bars.children))
+    }
+    composer?.classList.add('is-recording')
     updateVoiceRecordingStatus()
     voiceRecordingTimer = setInterval(updateVoiceRecordingStatus, 1000)
     mediaRecorder.addEventListener('dataavailable', event => {
       if (event.data.size) voiceRecordingChunks.push(event.data)
       const totalSize = voiceRecordingChunks.reduce((size, chunk) => size + chunk.size, 0)
-      if (totalSize > remainingBytes && mediaRecorder?.state === 'recording') {
-        cancelVoiceRecordingOnStop = true
-        mediaRecorder.stop()
-        showError(new Error('The voice note is too large for a message. Record a shorter note.'))
+      const safetyMargin = Math.min(24 * 1024, Math.ceil(remainingBytes * 0.06))
+      const stopThreshold = remainingBytes - safetyMargin
+      if (totalSize >= stopThreshold && mediaRecorder?.state === 'recording') {
+        stopVoiceRecording()
       }
     })
     mediaRecorder.addEventListener('stop', async () => {
@@ -1868,24 +2120,33 @@ async function startVoiceRecording() {
       voiceRecordingConversationId = null
       const cancelled = cancelVoiceRecordingOnStop
       cancelVoiceRecordingOnStop = false
+      const shouldSend = voiceRecordingShouldSend
+      const durationSeconds = Math.max(1, Math.ceil(voiceRecordingElapsedMs / 1000))
       resetVoiceRecordingUi()
       if (cancelled || conversationId !== selectedConversationId || !chunks.length) return
-      const blob = new Blob(chunks, { type: recordingType })
       const currentAttachmentBytes = pendingFiles.reduce((size, file) => size + file.size, 0)
-      if (blob.size > maxAttachmentBytes - currentAttachmentBytes) {
-        showError(new Error('The voice note is too large for a message. Record a shorter note.'))
+      const voiceNoteByteLimit = maxAttachmentBytes - currentAttachmentBytes
+      let blob = new Blob(chunks, { type: recordingType })
+      while (blob.size > voiceNoteByteLimit && chunks.length > 1) {
+        chunks.pop()
+        blob = new Blob(chunks, { type: recordingType })
+      }
+      if (blob.size > voiceNoteByteLimit) {
+        showError(new Error(
+          'The voice note reached the message size limit and could not be added. Remove another attachment or record a shorter note.'
+        ))
         return
       }
       const extension = recordingType.includes('mp4') ? 'm4a' :
         recordingType.includes('ogg') ? 'ogg' : 'webm'
-      const voiceFile = new File([blob], `voice-note-${Date.now()}.${extension}`, {
+      const voiceFile = new File([blob], `voice-note-${durationSeconds}s-${Date.now()}.${extension}`, {
         type: recordingType.split(';')[0]
       })
       voiceFile.isVoiceNote = true
       pendingFiles.push(voiceFile)
-      renderPendingFiles()
       clearError()
-      document.querySelector('#messages-composer')?.requestSubmit()
+      if (shouldSend) getElements().composer?.requestSubmit()
+      else renderPendingFiles()
     })
     mediaRecorder.addEventListener('error', event => {
       cancelVoiceRecordingOnStop = true
@@ -1896,7 +2157,7 @@ async function startVoiceRecording() {
       resetVoiceRecordingUi()
       showError(event.error || new Error('Voice recording failed.'))
     })
-    mediaRecorder.start(1000)
+    mediaRecorder.start(250)
     voiceRecordingStarting = false
   } catch (error) {
     mediaStream?.getTracks().forEach(track => track.stop())
@@ -2060,13 +2321,15 @@ export function initMessages() {
   document.querySelector('#messages-new-channel')?.addEventListener('click', () => openConversationModal('channel'))
   document.querySelector('#messages-new-group')?.addEventListener('click', () => openConversationModal('group'))
   document.querySelector('#messages-new-direct')?.addEventListener('click', () => openConversationModal('direct'))
-  const { voiceRecord, voiceCancel } = getElements()
+  const { voiceRecord, voiceCancel, voicePause, voiceSend } = getElements()
   voiceRecord?.replaceChildren(createVoiceRecordIcon())
   if (voiceRecord) {
     voiceRecord.disabled = !selectedConversationId
     voiceRecord.addEventListener('click', startVoiceRecording)
   }
   voiceCancel?.addEventListener('click', cancelVoiceRecording)
+  voicePause?.addEventListener('click', toggleVoiceRecordingPause)
+  voiceSend?.addEventListener('click', sendVoiceRecording)
   document.querySelector('#messages-composer')?.addEventListener('submit', sendMessage)
   document.querySelector('#messages-file-input')?.addEventListener('change', event => {
     const incomingFiles = [...event.currentTarget.files]

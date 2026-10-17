@@ -407,6 +407,38 @@
                             <p class="messages-placeholder">Choose a channel or start a direct message.</p>
                         </div>
                         <form id="messages-composer" class="messages-composer">
+                            <div id="messages-recording-panel" class="messages-recording-panel" hidden
+                                role="group" aria-label="Voice note recording controls">
+                                <div class="messages-recording-heading">
+                                    <span class="messages-recording-indicator" aria-hidden="true"></span>
+                                    <span>Recording voice note</span>
+                                    <time id="messages-voice-recording-status" class="messages-voice-recording-status"
+                                        role="timer">00:00</time>
+                                </div>
+                                <div id="messages-recording-waveform" class="messages-recording-waveform"
+                                    aria-hidden="true"></div>
+                                <div class="messages-recording-actions">
+                                    <button type="button" id="messages-voice-cancel" class="messages-recording-discard"
+                                        aria-label="Discard voice note" title="Discard voice note">
+                                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                                            <path d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"></path>
+                                        </svg>
+                                    </button>
+                                    <button type="button" id="messages-voice-pause" class="messages-recording-pause">
+                                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                                            <path d="M9 5v14M15 5v14"></path>
+                                        </svg>
+                                        <span>Pause</span>
+                                    </button>
+                                    <button type="button" id="messages-voice-send" class="messages-recording-send"
+                                        aria-label="Send voice note" title="Send voice note">
+                                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                                            <path d="m5 12 14-7-4 14-3-6-7-1Z"></path>
+                                            <path d="m12 13 7-8"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
                             <label class="messages-attachment-button" for="messages-file-input" title="Attach files"
                                 aria-label="Attach files">＋</label>
                             <input id="messages-file-input" type="file" multiple hidden />
@@ -414,10 +446,6 @@
                                 aria-label="Record a voice note" title="Record a voice note" disabled>
                                 <span class="messages-voice-record-icon" aria-hidden="true"></span>
                             </button>
-                            <span id="messages-voice-recording-status" class="messages-voice-recording-status"
-                                role="status" hidden>00:00</span>
-                            <button type="button" id="messages-voice-cancel" class="messages-voice-cancel"
-                                aria-label="Cancel voice recording" hidden>Cancel</button>
                             <div class="messages-compose-field">
                                 <div id="messages-emoji-picker" class="messages-emoji-picker" hidden></div>
                                 <div id="messages-attachment-list" class="messages-attachment-list"></div>
