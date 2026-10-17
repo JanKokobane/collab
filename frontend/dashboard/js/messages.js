@@ -28,10 +28,24 @@ let refreshPromise = null
 let conversationUnsubscribe = null
 let subscriptionsUid = null
 const conversationMessageSubscriptions = new Map()
+const conversationCallSubscriptions = new Map()
 const presenceSubscriptions = new Map()
 const memberPresence = new Map()
 let presenceWriteUid = null
 let presenceHeartbeatTimer = null
+let incomingCall = null
+let activeCall = null
+let dailySdkPromise = null
+let incomingCallTimer = null
+let callStartInFlight = false
+let mediaRecorder = null
+let mediaStream = null
+let voiceRecordingChunks = []
+let voiceRecordingTimer = null
+let voiceRecordingStartedAt = 0
+let voiceRecordingConversationId = null
+let cancelVoiceRecordingOnStop = false
+let voiceRecordingStarting = false
 
 const currentEmail = () => currentUser.email?.trim().toLowerCase() || firebaseAuth.currentUser?.email?.trim().toLowerCase() || ''
 const currentUid = () => firebaseAuth.currentUser?.uid || ''
@@ -48,8 +62,61 @@ function getElements() {
     send: document.querySelector('.messages-send-button'),
     attachmentList: document.querySelector('#messages-attachment-list'),
     emojiPicker: document.querySelector('#messages-emoji-picker'),
-    composeField: document.querySelector('.messages-compose-field')
+    composeField: document.querySelector('.messages-compose-field'),
+    callRoot: document.querySelector('#messages-call-root'),
+    voiceRecord: document.querySelector('#messages-voice-record'),
+    voiceStatus: document.querySelector('#messages-voice-recording-status'),
+    voiceCancel: document.querySelector('#messages-voice-cancel')
   }
+}
+
+function createCallIcon(type) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('width', '19')
+  svg.setAttribute('height', '19')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '1.8')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  svg.setAttribute('aria-hidden', 'true')
+  const pathData = type === 'audio'
+    ? 'M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.2 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.96.36 1.9.7 2.8a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.84.58 2.8.7a2 2 0 0 1 1.73 2.03Z'
+    : 'M15 10l5-3v10l-5-3M3 7h12v10H3z'
+  const path = document.createElementNS(svg.namespaceURI, 'path')
+  path.setAttribute('d', pathData)
+  svg.append(path)
+  return svg
+}
+
+function createVoiceRecordIcon(isRecording = false) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('width', '19')
+  svg.setAttribute('height', '19')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '1.8')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  svg.setAttribute('aria-hidden', 'true')
+  const paths = isRecording
+    ? ['M8 8h8v8H8z']
+    : ['M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z', 'M19 10v1a7 7 0 0 1-14 0v-1', 'M12 18v4', 'M8 22h8']
+  paths.forEach(pathData => {
+    const path = document.createElementNS(svg.namespaceURI, 'path')
+    path.setAttribute('d', pathData)
+    svg.append(path)
+  })
+  return svg
+}
+
+function getLatestMessagePreview(body, attachments = []) {
+  if (body) return body
+  return attachments.some(attachment => attachment.is_voice_note || attachment.isVoiceNote)
+    ? 'Voice message'
+    : ''
 }
 
 function showError(error, operation = 'message operation') {
@@ -360,6 +427,8 @@ function toFirestoreMessage(snapshot, conversationId) {
 function unsubscribeConversation(conversationId) {
   conversationMessageSubscriptions.get(conversationId)?.()
   conversationMessageSubscriptions.delete(conversationId)
+  conversationCallSubscriptions.get(conversationId)?.()
+  conversationCallSubscriptions.delete(conversationId)
   presenceSubscriptions.get(conversationId)?.forEach(unsubscribe => unsubscribe())
   presenceSubscriptions.delete(conversationId)
 }
@@ -429,7 +498,9 @@ function subscribeToConversationMessages(conversation) {
     const latestData = latestDoc?.data()
     const activeConversation = messageState.conversations.find(item => item.id === conversation.id) || conversation
     activeConversation.latestMessage = latestData
-      ? latestData.deleted_at ? 'This message was deleted' : latestData.body || ''
+      ? latestData.deleted_at
+        ? 'This message was deleted'
+        : getLatestMessagePreview(latestData.body || '', latestData.attachments || [])
       : ''
     activeConversation.latestMessageCreatedAt = timestampToIso(latestData?.created_at)
     activeConversation.latestMessageId = latestDoc?.id || null
@@ -459,6 +530,274 @@ function subscribeToConversationMessages(conversation) {
     updateMessagesNavigationBadge()
   }, error => showError(error, `Firestore message listener (${conversation.id})`))
   conversationMessageSubscriptions.set(conversation.id, unsubscribe)
+}
+
+function renderCallOverlay() {
+  const { callRoot } = getElements()
+  if (!callRoot) return
+  if (activeCall?.overlay?.isConnected) return
+  callRoot.replaceChildren()
+  if (activeCall) {
+    const backdrop = make('div', 'messages-call-backdrop')
+    const panel = make('section', 'messages-call-panel')
+    panel.setAttribute('role', 'dialog')
+    panel.setAttribute('aria-modal', 'true')
+    panel.setAttribute('aria-label', `${activeCall.callType} call`)
+    const header = make('header', 'messages-call-header')
+    const details = make('div')
+    details.append(
+      make('strong', '', activeCall.peerName || 'Teammate'),
+      make('span', '', activeCall.callType === 'video' ? 'Video call' : 'Voice call')
+    )
+    const hangUp = make('button', 'messages-call-hangup', 'End call')
+    hangUp.type = 'button'
+    hangUp.addEventListener('click', () => finishActiveCall(true))
+    header.append(details, hangUp)
+    const frame = make('div', 'messages-call-frame')
+    panel.append(header, frame)
+    backdrop.append(panel)
+    callRoot.append(backdrop)
+    callRoot.hidden = false
+    activeCall.overlay = backdrop
+    activeCall.frameContainer = frame
+    return
+  }
+  if (!incomingCall) {
+    callRoot.hidden = true
+    return
+  }
+  const backdrop = make('div', 'messages-call-backdrop')
+  const panel = make('section', 'messages-incoming-call')
+  panel.setAttribute('role', 'dialog')
+  panel.setAttribute('aria-modal', 'true')
+  panel.setAttribute('aria-label', 'Incoming call')
+  const title = make('h2', '', `Incoming ${incomingCall.call_type === 'video' ? 'video' : 'voice'} call`)
+  const caller = make('p', '', incomingCall.caller_name || 'Teammate')
+  const actions = make('div', 'messages-incoming-actions')
+  const decline = make('button', 'messages-call-decline', 'Decline')
+  decline.type = 'button'
+  decline.addEventListener('click', () => declineIncomingCall())
+  const accept = make('button', 'messages-call-accept', 'Accept')
+  accept.type = 'button'
+  accept.addEventListener('click', () => acceptIncomingCall())
+  actions.append(decline, accept)
+  panel.append(title, caller, actions)
+  backdrop.append(panel)
+  callRoot.append(backdrop)
+  callRoot.hidden = false
+  incomingCall.overlay = backdrop
+}
+
+function subscribeToConversationCalls(conversation) {
+  if (conversation.type !== 'direct') return
+  if (conversationCallSubscriptions.has(conversation.id)) return
+  const callsCollection = collection(
+    firestoreDb, 'messageConversations', conversation.id, 'calls'
+  )
+  const unsubscribe = onSnapshot(callsCollection, snapshot => {
+    const uid = currentUid()
+    const calls = snapshot.docs.map(item => ({ ...item.data(), call_id: item.id }))
+      .filter(call => call.caller_uid === uid || call.callee_uid === uid)
+    const ringingCall = calls
+      .filter(call => call.callee_uid === uid && call.status === 'ringing' &&
+        call.ring_expires_at?.toMillis?.() > Date.now())
+      .sort((left, right) =>
+        (right.created_at?.toMillis?.() || 0) - (left.created_at?.toMillis?.() || 0)
+      )[0]
+    if (!activeCall && ringingCall) {
+      if (mediaRecorder) cancelVoiceRecording()
+      incomingCall = ringingCall
+      clearTimeout(incomingCallTimer)
+      incomingCallTimer = setTimeout(() => {
+        if (incomingCall?.call_id === ringingCall.call_id) {
+          incomingCall = null
+          renderCallOverlay()
+        }
+      }, Math.max(0, ringingCall.ring_expires_at.toMillis() - Date.now()))
+      renderCallOverlay()
+    } else if (incomingCall?.conversation_id === conversation.id &&
+      (!ringingCall || ringingCall.call_id !== incomingCall.call_id)) {
+      incomingCall = null
+      clearTimeout(incomingCallTimer)
+      incomingCallTimer = null
+      renderCallOverlay()
+    }
+    if (activeCall?.conversationId === conversation.id) {
+      const current = calls.find(call => call.call_id === activeCall.callId)
+      if (current?.status === 'accepted') {
+        activeCall.status = 'accepted'
+        clearTimeout(activeCall.ringingTimer)
+      }
+      if (current && ['declined', 'missed', 'ended'].includes(current.status)) {
+        finishActiveCall(false)
+      }
+    }
+  }, error => showError(error, `Firestore call listener (${conversation.id})`))
+  conversationCallSubscriptions.set(conversation.id, unsubscribe)
+}
+
+function loadDailySdk() {
+  const loadedSdk = window.DailyIframe || window.Daily
+  if (loadedSdk?.createFrame) return Promise.resolve(loadedSdk)
+  if (dailySdkPromise) return dailySdkPromise
+  dailySdkPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = 'https://unpkg.com/@daily-co/daily-js@0.94.0/dist/daily.js'
+    script.async = true
+    script.onload = () => {
+      const sdk = window.DailyIframe || window.Daily
+      if (!sdk?.createFrame) {
+        dailySdkPromise = null
+        reject(new Error('The calling service could not be loaded.'))
+        return
+      }
+      resolve(sdk)
+    }
+    script.onerror = () => {
+      dailySdkPromise = null
+      reject(new Error('The calling service could not be loaded. Check your connection and try again.'))
+    }
+    document.head.append(script)
+  })
+  return dailySdkPromise
+}
+
+async function mountDailyCall(call, token) {
+  const sdk = await loadDailySdk()
+  if (activeCall?.callId !== call.callId) return
+  const callFrame = sdk.createFrame(call.frameContainer, {
+    iframeStyle: { width: '100%', height: '100%', border: '0' }
+  })
+  call.dailyFrame = callFrame
+  callFrame.on('error', event => {
+    console.error('[messages] Daily call error', {
+      message: event?.errorMsg || event?.message || 'Calling service error'
+    })
+    showError(new Error('The call encountered a connection problem.'), 'Daily call')
+    finishActiveCall(true)
+  })
+  callFrame.on('left-meeting', () => {
+    if (activeCall?.callId === call.callId) finishActiveCall(true)
+  })
+  await callFrame.join({ url: call.roomUrl, token })
+}
+
+async function finishActiveCall(notifyPeer) {
+  const call = activeCall
+  if (!call) return
+  clearTimeout(call.ringingTimer)
+  activeCall = null
+  callRootReplace()
+  if (call.dailyFrame) {
+    try {
+      await call.dailyFrame.leave()
+    } catch (error) {
+      console.error('[messages] Unable to leave Daily call cleanly:', error.message)
+    }
+    try {
+      await call.dailyFrame.destroy()
+    } catch (error) {
+      console.error('[messages] Unable to close Daily call frame:', error.message)
+    }
+  }
+  if (notifyPeer) {
+    try {
+      await api.post(`${apiPath(call.conversationId)}/calls/${call.callId}/end`, {})
+    } catch (error) {
+      showError(error, `end call ${call.callId}`)
+    }
+  }
+}
+
+function callRootReplace() {
+  const { callRoot } = getElements()
+  if (!callRoot) return
+  callRoot.replaceChildren()
+  callRoot.hidden = true
+}
+
+async function startCall(conversation, callType) {
+  if (mediaRecorder) cancelVoiceRecording()
+  if (activeCall || incomingCall || callStartInFlight) {
+    showError(new Error('Finish the current call invitation before starting another call.'))
+    return
+  }
+  callStartInFlight = true
+  try {
+    const result = await api.post(`${apiPath(conversation.id)}/calls`, { callType })
+    const responseCall = result?.data?.call
+    if (!responseCall?.call_id || !responseCall.room_url || !responseCall.token ||
+      !Number.isFinite(Date.parse(responseCall.ring_expires_at))) {
+      throw new Error('The calling service returned an incomplete call setup.')
+    }
+    activeCall = {
+      callId: responseCall.call_id,
+      conversationId: conversation.id,
+      callType: responseCall.call_type,
+      peerName: responseCall.peer_name,
+      roomUrl: responseCall.room_url,
+      status: responseCall.status
+    }
+    const ringExpiresAt = Date.parse(responseCall.ring_expires_at)
+    activeCall.ringingTimer = setTimeout(() => {
+      if (activeCall?.callId === responseCall.call_id && activeCall.status === 'ringing') {
+        finishActiveCall(true)
+      }
+    }, Math.max(0, ringExpiresAt - Date.now()))
+    renderCallOverlay()
+    await mountDailyCall(activeCall, responseCall.token)
+  } catch (error) {
+    if (activeCall) await finishActiveCall(true)
+    showError(error, `start ${callType} call`)
+  } finally {
+    callStartInFlight = false
+  }
+}
+
+async function acceptIncomingCall() {
+  const call = incomingCall
+  if (!call || activeCall) return
+  clearTimeout(incomingCallTimer)
+  incomingCallTimer = null
+  try {
+    const result = await api.post(
+      `${apiPath(call.conversation_id)}/calls/${call.call_id}/accept`, {}
+    )
+    const responseCall = result?.data?.call
+    if (!responseCall?.room_url || !responseCall.token) {
+      throw new Error('The calling service returned an incomplete call setup.')
+    }
+    incomingCall = null
+    activeCall = {
+      callId: call.call_id,
+      conversationId: call.conversation_id,
+      callType: call.call_type,
+      peerName: call.caller_name,
+      roomUrl: responseCall.room_url,
+      status: 'accepted'
+    }
+    renderCallOverlay()
+    await mountDailyCall(activeCall, responseCall.token)
+  } catch (error) {
+    incomingCall = null
+    if (activeCall?.callId === call.call_id) await finishActiveCall(true)
+    else callRootReplace()
+    showError(error, `accept call ${call.call_id}`)
+  }
+}
+
+async function declineIncomingCall() {
+  const call = incomingCall
+  if (!call) return
+  incomingCall = null
+  clearTimeout(incomingCallTimer)
+  incomingCallTimer = null
+  renderCallOverlay()
+  try {
+    await api.post(`${apiPath(call.conversation_id)}/calls/${call.call_id}/decline`, {})
+  } catch (error) {
+    showError(error, `decline call ${call.call_id}`)
+  }
 }
 
 async function saveMessageToFirestore({
@@ -506,7 +845,7 @@ async function saveMessageToFirestore({
   ), message)
   batch.update(doc(firestoreDb, 'messageConversations', conversationId), {
     latest_message_id: messageId,
-    latest_message_body: body,
+    latest_message_body: getLatestMessagePreview(body, attachments),
     latest_sender_firebase_uid: currentUid(),
     latest_message_created_at: serverTimestamp(),
     updated_at: serverTimestamp()
@@ -546,6 +885,8 @@ async function reloadMessages() {
     conversationUnsubscribe?.()
     conversationMessageSubscriptions.forEach(unsubscribe => unsubscribe())
     conversationMessageSubscriptions.clear()
+    conversationCallSubscriptions.forEach(unsubscribe => unsubscribe())
+    conversationCallSubscriptions.clear()
     presenceSubscriptions.forEach(subscriptions => subscriptions.forEach(unsubscribe => unsubscribe()))
     presenceSubscriptions.clear()
     subscriptionsUid = user.uid
@@ -566,6 +907,7 @@ async function reloadMessages() {
           }
           replaceConversations(conversations)
           messageState.conversations.forEach(subscribeToConversationMessages)
+          messageState.conversations.forEach(subscribeToConversationCalls)
           if (!selectedConversationId || !visibleIds.has(selectedConversationId)) {
             selectedConversationId = conversations[0]?.id || null
           }
@@ -587,6 +929,7 @@ async function reloadMessages() {
   )
   replaceConversations(conversations)
   messageState.conversations.forEach(subscribeToConversationMessages)
+  messageState.conversations.forEach(subscribeToConversationCalls)
   if (!selectedConversationId || !conversations.some(item => item.id === selectedConversationId)) {
     selectedConversationId = conversations[0]?.id || null
   }
@@ -604,6 +947,7 @@ async function refreshFromServer() {
 }
 
 async function selectConversation(conversationId) {
+  if (mediaRecorder && voiceRecordingConversationId !== conversationId) cancelVoiceRecording()
   selectedConversationId = conversationId
   clearError()
   try {
@@ -689,6 +1033,16 @@ function createFileIcon(attachment) {
 }
 
 function renderAttachment(attachment, container) {
+  if (attachment.is_voice_note || attachment.mediaType?.startsWith('audio/')) {
+    const player = document.createElement('audio')
+    player.className = 'messages-voice-note-player'
+    player.controls = true
+    player.preload = 'metadata'
+    player.src = attachment.data
+    player.setAttribute('aria-label', attachment.fileName || 'Voice note')
+    container.append(player)
+    return
+  }
   if (attachment.mediaType?.startsWith('image/')) {
     const preview = document.createElement('a')
     preview.className = 'message-attachment-preview image'
@@ -925,6 +1279,7 @@ function deleteConversationForMe(conversation) {
 function renderMessagesView() {
   const { header, input, send } = getElements()
   if (!header || !input || !send) return
+  const { voiceRecord } = getElements()
   const conversation = messageState.conversations.find(item => item.id === selectedConversationId)
   renderConversationList()
   if (!conversation) {
@@ -934,6 +1289,7 @@ function renderMessagesView() {
     header.append(heading)
     input.disabled = true
     send.disabled = true
+    if (voiceRecord) voiceRecord.disabled = true
     renderMessagesList()
     return
   }
@@ -978,9 +1334,25 @@ function renderMessagesView() {
     trigger.setAttribute('aria-expanded', String(!menu.hidden))
   })
   actions.append(trigger, menu)
+  if (conversation.type === 'direct') {
+    const voiceCall = make('button', 'messages-call-button')
+    voiceCall.type = 'button'
+    voiceCall.setAttribute('aria-label', 'Start voice call')
+    voiceCall.title = 'Start voice call'
+    voiceCall.replaceChildren(createCallIcon('audio'))
+    voiceCall.addEventListener('click', () => startCall(conversation, 'audio'))
+    const videoCall = make('button', 'messages-call-button')
+    videoCall.type = 'button'
+    videoCall.setAttribute('aria-label', 'Start video call')
+    videoCall.title = 'Start video call'
+    videoCall.replaceChildren(createCallIcon('video'))
+    videoCall.addEventListener('click', () => startCall(conversation, 'video'))
+    actions.prepend(voiceCall, videoCall)
+  }
   header.append(actions)
   input.disabled = false
   send.disabled = false
+  if (voiceRecord) voiceRecord.disabled = false
   renderMessagesList()
 }
 
@@ -1378,12 +1750,169 @@ function fileToDataUrl(file) {
   })
 }
 
+function formatVoiceDuration(seconds) {
+  const minutes = Math.floor(seconds / 60).toString().padStart(2, '0')
+  const remainingSeconds = (seconds % 60).toString().padStart(2, '0')
+  return `${minutes}:${remainingSeconds}`
+}
+
+function updateVoiceRecordingStatus() {
+  const { voiceStatus } = getElements()
+  if (voiceStatus) {
+    voiceStatus.textContent = formatVoiceDuration(
+      Math.floor((Date.now() - voiceRecordingStartedAt) / 1000)
+    )
+  }
+}
+
+function resetVoiceRecordingUi() {
+  const { voiceRecord, voiceStatus, voiceCancel } = getElements()
+  clearInterval(voiceRecordingTimer)
+  voiceRecordingTimer = null
+  if (voiceRecord) {
+    voiceRecord.replaceChildren(createVoiceRecordIcon())
+    voiceRecord.classList.remove('is-recording')
+    voiceRecord.setAttribute('aria-label', 'Record a voice note')
+    voiceRecord.title = 'Record a voice note'
+    voiceRecord.disabled = !selectedConversationId
+  }
+  if (voiceStatus) voiceStatus.hidden = true
+  if (voiceCancel) voiceCancel.hidden = true
+}
+
+async function startVoiceRecording() {
+  if (mediaRecorder) {
+    if (mediaRecorder.state === 'recording') mediaRecorder.stop()
+    return
+  }
+  if (voiceRecordingStarting) return
+  if (!selectedConversationId || !navigator.mediaDevices?.getUserMedia ||
+    typeof MediaRecorder === 'undefined') {
+    showError(new Error('Voice recording is not available in this browser or secure connection.'))
+    return
+  }
+  const remainingBytes = maxAttachmentBytes -
+    pendingFiles.reduce((total, file) => total + file.size, 0)
+  if (remainingBytes <= 0) {
+    showError(new Error('Remove an attachment before recording a voice note.'))
+    return
+  }
+  voiceRecordingStarting = true
+  const targetConversationId = selectedConversationId
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    if (!firebaseAuth.currentUser || targetConversationId !== selectedConversationId) {
+      mediaStream.getTracks().forEach(track => track.stop())
+      mediaStream = null
+      return
+    }
+    const mimeType = typeof MediaRecorder.isTypeSupported === 'function' ? [
+      'audio/webm;codecs=opus',
+      'audio/mp4;codecs=mp4a.40.2',
+      'audio/ogg;codecs=opus'
+    ].find(type => MediaRecorder.isTypeSupported(type)) : ''
+    mediaRecorder = mimeType
+      ? new MediaRecorder(mediaStream, { mimeType })
+      : new MediaRecorder(mediaStream)
+    voiceRecordingChunks = []
+    voiceRecordingConversationId = targetConversationId
+    cancelVoiceRecordingOnStop = false
+    voiceRecordingStartedAt = Date.now()
+    const { voiceRecord, voiceStatus, voiceCancel } = getElements()
+    voiceRecord?.replaceChildren(createVoiceRecordIcon(true))
+    voiceRecord?.classList.add('is-recording')
+    voiceRecord?.setAttribute('aria-label', 'Stop recording voice note')
+    if (voiceRecord) voiceRecord.title = 'Stop recording'
+    if (voiceStatus) voiceStatus.hidden = false
+    if (voiceCancel) voiceCancel.hidden = false
+    updateVoiceRecordingStatus()
+    voiceRecordingTimer = setInterval(updateVoiceRecordingStatus, 1000)
+    mediaRecorder.addEventListener('dataavailable', event => {
+      if (event.data.size) voiceRecordingChunks.push(event.data)
+      const totalSize = voiceRecordingChunks.reduce((size, chunk) => size + chunk.size, 0)
+      if (totalSize > remainingBytes && mediaRecorder?.state === 'recording') {
+        cancelVoiceRecordingOnStop = true
+        mediaRecorder.stop()
+        showError(new Error('The voice note is too large for a message. Record a shorter note.'))
+      }
+    })
+    mediaRecorder.addEventListener('stop', async () => {
+      const recorder = mediaRecorder
+      const chunks = voiceRecordingChunks
+      const recordingType = recorder?.mimeType || chunks[0]?.type || 'audio/webm'
+      mediaRecorder = null
+      mediaStream?.getTracks().forEach(track => track.stop())
+      mediaStream = null
+      voiceRecordingChunks = []
+      const conversationId = voiceRecordingConversationId
+      voiceRecordingConversationId = null
+      const cancelled = cancelVoiceRecordingOnStop
+      cancelVoiceRecordingOnStop = false
+      resetVoiceRecordingUi()
+      if (cancelled || conversationId !== selectedConversationId || !chunks.length) return
+      const blob = new Blob(chunks, { type: recordingType })
+      const currentAttachmentBytes = pendingFiles.reduce((size, file) => size + file.size, 0)
+      if (blob.size > maxAttachmentBytes - currentAttachmentBytes) {
+        showError(new Error('The voice note is too large for a message. Record a shorter note.'))
+        return
+      }
+      const extension = recordingType.includes('mp4') ? 'm4a' :
+        recordingType.includes('ogg') ? 'ogg' : 'webm'
+      const voiceFile = new File([blob], `voice-note-${Date.now()}.${extension}`, {
+        type: recordingType.split(';')[0]
+      })
+      voiceFile.isVoiceNote = true
+      pendingFiles.push(voiceFile)
+      renderPendingFiles()
+      clearError()
+      document.querySelector('#messages-composer')?.requestSubmit()
+    })
+    mediaRecorder.addEventListener('error', event => {
+      cancelVoiceRecordingOnStop = true
+      mediaRecorder = null
+      mediaStream?.getTracks().forEach(track => track.stop())
+      mediaStream = null
+      voiceRecordingChunks = []
+      resetVoiceRecordingUi()
+      showError(event.error || new Error('Voice recording failed.'))
+    })
+    mediaRecorder.start(1000)
+    voiceRecordingStarting = false
+  } catch (error) {
+    mediaStream?.getTracks().forEach(track => track.stop())
+    mediaStream = null
+    mediaRecorder = null
+    voiceRecordingChunks = []
+    resetVoiceRecordingUi()
+    showError(error, 'start voice recording')
+  } finally {
+    voiceRecordingStarting = false
+  }
+}
+
+function cancelVoiceRecording() {
+  if (!mediaRecorder) return
+  cancelVoiceRecordingOnStop = true
+  if (mediaRecorder.state === 'recording') mediaRecorder.stop()
+  else {
+    mediaStream?.getTracks().forEach(track => track.stop())
+    mediaStream = null
+    mediaRecorder = null
+    voiceRecordingChunks = []
+    resetVoiceRecordingUi()
+  }
+}
+
 function renderPendingFiles() {
   const { attachmentList } = getElements()
   if (!attachmentList) return
   attachmentList.replaceChildren()
   pendingFiles.forEach((file, index) => {
-    const tag = make('span', 'messages-attachment-tag', file.name)
+    const tag = make(
+      'span',
+      `messages-attachment-tag${file.isVoiceNote ? ' messages-voice-note-tag' : ''}`,
+      file.isVoiceNote ? `Voice note · ${formatFileSize(file.size)}` : file.name
+    )
     const remove = make('button', '', '×')
     remove.type = 'button'
     remove.setAttribute('aria-label', `Remove ${file.name}`)
@@ -1416,6 +1945,7 @@ async function sendMessage(event) {
         fileName: file.name,
         mediaType: file.type || 'application/octet-stream',
         size: file.size,
+        is_voice_note: Boolean(file.isVoiceNote),
         data: await fileToDataUrl(file)
       })))
       const clientMessageId = crypto.randomUUID()
@@ -1442,7 +1972,7 @@ async function sendMessage(event) {
         created_at: new Date().toISOString()
       })
       if (conversation) {
-        conversation.latestMessage = body
+        conversation.latestMessage = getLatestMessagePreview(body, attachments)
         conversation.latestMessageCreatedAt = optimisticMessage.message.createdAt
       }
       renderMessages()
@@ -1458,7 +1988,10 @@ async function sendMessage(event) {
         clientMessageId: savedMessage.clientMessageId || clientMessageId
       })
       if (conversation) {
-        conversation.latestMessage = saved.message.body
+        conversation.latestMessage = getLatestMessagePreview(
+          saved.message.body,
+          saved.message.attachments
+        )
         conversation.latestMessageCreatedAt = saved.message.createdAt
       }
       if (saved.changed) renderMessages()
@@ -1507,6 +2040,13 @@ export function initMessages() {
   document.querySelector('#messages-new-channel')?.addEventListener('click', () => openConversationModal('channel'))
   document.querySelector('#messages-new-group')?.addEventListener('click', () => openConversationModal('group'))
   document.querySelector('#messages-new-direct')?.addEventListener('click', () => openConversationModal('direct'))
+  const { voiceRecord, voiceCancel } = getElements()
+  voiceRecord?.replaceChildren(createVoiceRecordIcon())
+  if (voiceRecord) {
+    voiceRecord.disabled = !selectedConversationId
+    voiceRecord.addEventListener('click', startVoiceRecording)
+  }
+  voiceCancel?.addEventListener('click', cancelVoiceRecording)
   document.querySelector('#messages-composer')?.addEventListener('submit', sendMessage)
   document.querySelector('#messages-file-input')?.addEventListener('change', event => {
     const incomingFiles = [...event.currentTarget.files]
@@ -1555,13 +2095,25 @@ export function initMessages() {
 }
 
 export async function refreshMessagesForCurrentUser() {
+  if (!firebaseAuth.currentUser) {
+    if (mediaRecorder) cancelVoiceRecording()
+    selectedConversationId = null
+    voiceRecordingStarting = false
+  }
   conversationUnsubscribe?.()
   conversationUnsubscribe = null
   subscriptionsUid = null
   conversationMessageSubscriptions.forEach(unsubscribe => unsubscribe())
   conversationMessageSubscriptions.clear()
+  conversationCallSubscriptions.forEach(unsubscribe => unsubscribe())
+  conversationCallSubscriptions.clear()
   presenceSubscriptions.forEach(subscriptions => subscriptions.forEach(unsubscribe => unsubscribe()))
   presenceSubscriptions.clear()
+  clearTimeout(incomingCallTimer)
+  incomingCallTimer = null
+  incomingCall = null
+  if (activeCall) await finishActiveCall(false)
+  callRootReplace()
   memberPresence.clear()
   clearInterval(presenceHeartbeatTimer)
   presenceHeartbeatTimer = null
@@ -1600,6 +2152,7 @@ document.addEventListener('visibilitychange', () => {
   if (presenceWriteUid && !document.hidden) setOwnPresence(true)
 })
 window.addEventListener('pagehide', () => {
+  if (mediaRecorder) cancelVoiceRecording()
   if (presenceWriteUid) setOwnPresence(false)
 })
 window.addEventListener('pageshow', () => {

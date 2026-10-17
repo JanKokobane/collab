@@ -1,4 +1,5 @@
 const express = require('express');
+const { rateLimit } = require('express-rate-limit');
 const {
     getConversations,
     createConversation,
@@ -10,9 +11,21 @@ const {
     clearConversationMessages,
     markConversationRead
 } = require('../controllers/messageController');
+const { startCall, updateCall } = require('../controllers/messageCallController');
 const { requireFirebaseAuth } = require('../middleware/requireFirebaseAuth');
 
 const router = express.Router();
+const callStartRateLimit = rateLimit({
+    windowMs: 5 * 60 * 1000,
+    limit: 10,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    handler: (_req, res) => res.status(429).json({
+        success: false,
+        code: 'CALL_RATE_LIMITED',
+        message: 'Too many calls were started. Please wait a few minutes and try again.'
+    })
+});
 router.use(requireFirebaseAuth);
 
 router.get('/conversations', getConversations);
@@ -24,5 +37,7 @@ router.delete('/conversations/:conversationId/messages/:messageId', deleteMessag
 router.delete('/conversations/:conversationId/messages', clearConversationMessages);
 router.post('/conversations/:conversationId/read', markConversationRead);
 router.patch('/conversations/:conversationId/messages/:messageId/:action', mutateMessage);
+router.post('/conversations/:conversationId/calls', callStartRateLimit, startCall);
+router.post('/conversations/:conversationId/calls/:callId/:action', updateCall);
 
 module.exports = router;

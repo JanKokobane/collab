@@ -410,6 +410,14 @@
                             <label class="messages-attachment-button" for="messages-file-input" title="Attach files"
                                 aria-label="Attach files">＋</label>
                             <input id="messages-file-input" type="file" multiple hidden />
+                            <button type="button" id="messages-voice-record" class="messages-voice-record"
+                                aria-label="Record a voice note" title="Record a voice note" disabled>
+                                <span class="messages-voice-record-icon" aria-hidden="true"></span>
+                            </button>
+                            <span id="messages-voice-recording-status" class="messages-voice-recording-status"
+                                role="status" hidden>00:00</span>
+                            <button type="button" id="messages-voice-cancel" class="messages-voice-cancel"
+                                aria-label="Cancel voice recording" hidden>Cancel</button>
                             <div class="messages-compose-field">
                                 <div id="messages-emoji-picker" class="messages-emoji-picker" hidden></div>
                                 <div id="messages-attachment-list" class="messages-attachment-list"></div>
@@ -1619,6 +1627,7 @@
         </main>
 
         <div id="modal-root"></div>
+        <div id="messages-call-root" hidden aria-live="polite"></div>
     </div>
 
     <script type="module" src="./dashboard.js"></script>

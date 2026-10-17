@@ -38,6 +38,224 @@ const projectIsAccessible = async (projectId, firebaseUid) => {
     return result.rowCount > 0;
 };
 
+const directMembersShareAccessibleProject = async memberUids => {
+    if (!Array.isArray(memberUids) || memberUids.length !== 2) return null;
+    const result = await query(
+        `SELECT p.project_id
+         FROM projects p
+         WHERE
+           (p.creator_firebase_uid = $1 OR EXISTS (
+               SELECT 1 FROM project_invitations pi
+               WHERE pi.project_id = p.project_id
+                 AND pi.invited_firebase_uid = $1
+                 AND pi.status = 'accepted'
+           ))
+           AND
+           (p.creator_firebase_uid = $2 OR EXISTS (
+               SELECT 1 FROM project_invitations pi
+               WHERE pi.project_id = p.project_id
+                 AND pi.invited_firebase_uid = $2
+                 AND pi.status = 'accepted'
+           ))
+         ORDER BY p.project_id
+         LIMIT 1`,
+        memberUids
+    );
+    return result.rows[0]?.project_id || null;
+};
+
+const getLatestTimestampMillis = value => {
+    if (!value) return 0;
+    if (typeof value.toMillis === 'function') return value.toMillis();
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const mergeDirectSubcollection = async (sourceRef, targetRef, collectionName) => {
+    let cursor = null;
+    while (true) {
+        let page = sourceRef.collection(collectionName)
+            .orderBy('__name__').limit(200);
+        if (cursor) page = page.startAfter(cursor);
+        const snapshot = await page.get();
+        if (snapshot.empty) return;
+        const targets = snapshot.docs.map(item => targetRef.collection(collectionName).doc(item.id));
+        const existingTargets = await firestore().getAll(...targets);
+        const batch = firestore().batch();
+        snapshot.docs.forEach((item, index) => {
+            if (!existingTargets[index].exists) {
+                const data = item.data();
+                batch.create(targets[index], collectionName === 'calls'
+                    ? { ...data, conversation_id: targetRef.id }
+                    : data);
+            }
+            batch.delete(item.ref);
+        });
+        await batch.commit();
+        cursor = snapshot.docs[snapshot.docs.length - 1];
+    }
+};
+
+const ensureDirectConversation = async ({
+    projectId,
+    callerUid,
+    members,
+    memberUids
+}) => {
+    const sqlConversations = await query(
+        `SELECT mc.conversation_id::text AS conversation_id, mc.project_id, mc.created_at
+         FROM message_conversations mc
+         JOIN message_conversation_members cm
+           ON cm.conversation_id = mc.conversation_id
+         WHERE mc.conversation_type = 'direct'
+         GROUP BY mc.conversation_id, mc.project_id, mc.created_at
+         HAVING array_agg(cm.firebase_uid ORDER BY cm.firebase_uid) = $1::text[]
+         ORDER BY mc.created_at`,
+        [memberUids]
+    );
+    const sqlIds = sqlConversations.rows.map(row => row.conversation_id);
+    const sqlReadState = sqlIds.length
+        ? await query(
+            `SELECT firebase_uid, MIN(last_read_at) AS last_read_at
+             FROM message_conversation_members
+             WHERE conversation_id = ANY($1::uuid[])
+             GROUP BY firebase_uid`,
+            [sqlIds]
+        )
+        : { rows: [] };
+    const sqlLastReadByUid = new Map(sqlReadState.rows.map(row => [
+        row.firebase_uid,
+        row.last_read_at
+    ]));
+    const snapshots = await firestore().collection(conversationsCollection)
+        .where('member_uids', 'array-contains', callerUid).get();
+    const existingDirect = snapshots.docs
+        .filter(snapshot => {
+            const data = snapshot.data();
+            return data.conversation_type === 'direct' &&
+                !data.merged_into &&
+                Array.isArray(data.member_uids) &&
+                data.member_uids.length === 2 &&
+                data.member_uids.every(uid => memberUids.includes(uid));
+        })
+        .sort((left, right) =>
+            getLatestTimestampMillis(left.data().created_at) -
+            getLatestTimestampMillis(right.data().created_at));
+    const canonicalId = sqlIds[0] || existingDirect[0]?.id ||
+        uuidFromParts('direct', ...memberUids);
+    const targetRef = conversationRef(canonicalId);
+    const now = getFirebaseAdmin().firestore.Timestamp.now();
+    const snapshotsById = new Map(existingDirect.map(snapshot => [snapshot.id, snapshot]));
+    const canonicalData = snapshotsById.get(canonicalId)?.data() ||
+        existingDirect[0]?.data() || {};
+    const latestConversation = existingDirect.reduce((latest, snapshot) => {
+        if (!latest || getLatestTimestampMillis(snapshot.data().latest_message_created_at) >
+            getLatestTimestampMillis(latest.data().latest_message_created_at)) return snapshot;
+        return latest;
+    }, null);
+    await targetRef.set({
+        ...canonicalData,
+        project_id: canonicalData.project_id || projectId,
+        conversation_type: 'direct',
+        name: '',
+        created_by_firebase_uid: canonicalData.created_by_firebase_uid || callerUid,
+        member_uids: memberUids,
+        created_at: canonicalData.created_at || now,
+        updated_at: latestConversation?.data().updated_at || canonicalData.updated_at || now,
+        latest_message_id: latestConversation?.data().latest_message_id ??
+            canonicalData.latest_message_id ?? null,
+        latest_message_body: latestConversation?.data().latest_message_body ??
+            canonicalData.latest_message_body ?? '',
+        latest_sender_firebase_uid: latestConversation?.data().latest_sender_firebase_uid ??
+            canonicalData.latest_sender_firebase_uid ?? null,
+        latest_message_created_at: latestConversation?.data().latest_message_created_at ??
+            canonicalData.latest_message_created_at ?? null
+    }, { merge: true });
+
+    const existingMembers = await Promise.all(members.map(async member => {
+        const states = await Promise.all(existingDirect.map(snapshot =>
+            memberRef(snapshot.id, member.firebaseUid).get()
+        ));
+        const data = states.filter(snapshot => snapshot.exists).map(snapshot => snapshot.data());
+        const readTimes = [
+            ...data.map(item => item.last_read_at),
+            sqlLastReadByUid.get(member.firebaseUid)
+                ? getFirebaseAdmin().firestore.Timestamp.fromDate(
+                    new Date(sqlLastReadByUid.get(member.firebaseUid))
+                )
+                : null
+        ].filter(Boolean);
+        const lastReadAt = readTimes.sort((left, right) =>
+            getLatestTimestampMillis(left) - getLatestTimestampMillis(right))[0] || null;
+        return {
+            member,
+            joinedAt: data.map(item => item.joined_at)
+                .filter(Boolean)
+                .sort((left, right) =>
+                    getLatestTimestampMillis(left) - getLatestTimestampMillis(right))[0] || now,
+            lastReadAt
+        };
+    }));
+
+    const accessBatch = firestore().batch();
+    for (const { member, joinedAt, lastReadAt } of existingMembers) {
+        accessBatch.set(memberRef(canonicalId, member.firebaseUid), {
+            firebaseUid: member.firebaseUid,
+            email: (member.email || '').toLowerCase(),
+            display_name: member.name || member.email || 'Project member',
+            profile_image: member.profileImage || '',
+            joined_at: joinedAt,
+            last_read_at: lastReadAt
+        }, { merge: true });
+        accessBatch.set(
+            firestore().collection('users').doc(member.firebaseUid)
+                .collection('messageConversations').doc(canonicalId),
+            { conversation_id: canonicalId, project_id: canonicalData.project_id || projectId },
+            { merge: true }
+        );
+        accessBatch.set(
+            firestore().collection('messagePresence').doc(member.firebaseUid),
+            {
+                visible_to: getFirebaseAdmin().firestore.FieldValue.arrayUnion(...memberUids)
+            },
+            { merge: true }
+        );
+    }
+    await accessBatch.commit();
+
+    for (const source of existingDirect) {
+        if (source.id === canonicalId) continue;
+        await mergeDirectSubcollection(
+            conversationRef(source.id), targetRef, 'messages'
+        );
+        await mergeDirectSubcollection(
+            conversationRef(source.id), targetRef, 'calls'
+        );
+        await firestore().recursiveDelete(conversationRef(source.id));
+        const cleanupBatch = firestore().batch();
+        for (const uid of memberUids) {
+            cleanupBatch.delete(
+                firestore().collection('users').doc(uid)
+                    .collection('messageConversations').doc(source.id)
+            );
+        }
+        await cleanupBatch.commit();
+    }
+
+    const saved = await targetRef.get();
+    console.info('Ensured one shared Firestore direct conversation across projects.', {
+        conversationId: canonicalId,
+        mergedConversationCount: Math.max(0, existingDirect.length - 1)
+    });
+    return {
+        created: !sqlIds.length && !existingDirect.length,
+        conversation: {
+            conversation_id: canonicalId,
+            ...(saved.data() || {})
+        }
+    };
+};
+
 const getAccessibleProjectIds = async (projectIds, firebaseUid) => {
     if (!projectIds.length) return new Set();
     const result = await query(
@@ -60,10 +278,14 @@ const getConversation = async (conversationId, firebaseUid) => {
     const snapshot = await conversationRef(conversationId).get();
     if (!snapshot.exists) return null;
     const conversation = { conversation_id: snapshot.id, ...snapshot.data() };
-    if (!conversation.member_uids?.includes(firebaseUid) ||
-        !await projectIsAccessible(conversation.project_id, firebaseUid)) return null;
+    if (!conversation.member_uids?.includes(firebaseUid)) return null;
+    const accessible = conversation.conversation_type === 'direct'
+        ? Boolean(await directMembersShareAccessibleProject(conversation.member_uids))
+        : await projectIsAccessible(conversation.project_id, firebaseUid);
+    if (!accessible) return null;
     return conversation;
 };
+
 
 const asMillis = value => {
     if (!value) return 0;
@@ -200,12 +422,50 @@ const getConversations = async (req, res) => {
             conversation_id: snapshot.id,
             ...snapshot.data()
         }));
+        const directCandidates = candidates.filter(item =>
+            item.conversation_type === 'direct' && !item.merged_into
+        );
+        const directProjectById = new Map((await Promise.all(directCandidates.map(async item => [
+            item.conversation_id,
+            await directMembersShareAccessibleProject(item.member_uids)
+        ]))).filter(([, projectId]) => projectId));
+        const directGroups = new Map();
+        for (const item of directCandidates) {
+            if (!directProjectById.has(item.conversation_id)) continue;
+            const pairKey = JSON.stringify([...item.member_uids].sort());
+            const group = directGroups.get(pairKey) || [];
+            group.push(item);
+            directGroups.set(pairKey, group);
+        }
+        for (const group of directGroups.values()) {
+            if (group.length < 2) continue;
+            const memberUids = [...group[0].member_uids].sort();
+            const projectId = directProjectById.get(group[0].conversation_id);
+            const projectMembers = await listProjectMembers(
+                projectId, req.firebaseUid, memberUids
+            );
+            if (!projectMembers || memberUids.some(uid => !projectMembers.members.has(uid))) {
+                throw new Error('Shared direct conversation members could not be resolved.');
+            }
+            const members = memberUids.map(uid => projectMembers.members.get(uid));
+            await ensureDirectConversation({
+                projectId,
+                callerUid: req.firebaseUid,
+                members,
+                memberUids
+            });
+            return getConversations(req, res);
+        }
+        const directAccessibleIds = new Set(directProjectById.keys());
         const accessibleProjectIds = await getAccessibleProjectIds(
             [...new Set(candidates.map(item => item.project_id))],
             req.firebaseUid
         );
         const conversations = await Promise.all(candidates
-            .filter(conversation => accessibleProjectIds.has(conversation.project_id))
+            .filter(conversation => !conversation.merged_into &&
+                (conversation.conversation_type === 'direct'
+                    ? directAccessibleIds.has(conversation.conversation_id)
+                    : accessibleProjectIds.has(conversation.project_id)))
             .map(async conversation => {
             const [membersSnapshot, memberState] = await Promise.all([
                 conversationRef(conversation.conversation_id).collection('members').get(),
@@ -247,6 +507,17 @@ const getConversations = async (req, res) => {
                     !(item.data().hidden_for || []).includes(req.firebaseUid)
                 );
             }
+            const latestMessage = visibleLatest?.data();
+            const latestAttachments = latestMessage?.attachments || [];
+            const latestMessageBody = !latestMessage
+                ? ''
+                : latestMessage.deleted_at
+                    ? 'This message was deleted'
+                    : latestMessage.body || (
+                        latestAttachments.some(attachment =>
+                            attachment.is_voice_note || attachment.mediaType?.startsWith('audio/')
+                        ) ? 'Voice message' : ''
+                    );
             const unreadCount = unreadSnapshot.docs.filter(item => {
                 const message = item.data();
                 return message.sender_firebase_uid !== req.firebaseUid &&
@@ -262,9 +533,7 @@ const getConversations = async (req, res) => {
                 updated_at: timestamp(conversation.updated_at),
                 members,
                 latest_message_id: visibleLatest?.id || null,
-                latest_message_body: visibleLatest
-                    ? visibleLatest.data().deleted_at ? 'This message was deleted' : visibleLatest.data().body
-                    : '',
+                latest_message_body: latestMessageBody,
                 latest_sender_firebase_uid: visibleLatest?.data().sender_firebase_uid || null,
                 latest_message_created_at: visibleLatest ? timestamp(visibleLatest.data().created_at) : null,
                 unread_count: unreadCount
@@ -332,105 +601,20 @@ const createConversation = async (req, res) => {
         };
         const members = [caller, ...memberUids.map(uid => projectMembers.members.get(uid))];
         const memberUidsForConversation = members.map(member => member.firebaseUid).sort();
-        let conversationId = randomUUID();
-        let sqlLastReadByUid = new Map();
         if (type === 'direct') {
-            const sqlDirectConversation = await query(
-                `SELECT mc.conversation_id::text AS conversation_id
-                 FROM message_conversations mc
-                 JOIN message_conversation_members cm
-                   ON cm.conversation_id = mc.conversation_id
-                 WHERE mc.project_id = $1
-                   AND mc.conversation_type = 'direct'
-                 GROUP BY mc.conversation_id, mc.created_at
-                 HAVING array_agg(cm.firebase_uid ORDER BY cm.firebase_uid) = $2::text[]
-                 ORDER BY mc.created_at
-                 LIMIT 1`,
-                [projectId, memberUidsForConversation]
-            );
-            const sqlConversationId = sqlDirectConversation.rows[0]?.conversation_id;
-            if (sqlConversationId) {
-                const sqlMemberState = await query(
-                    `SELECT firebase_uid, last_read_at
-                     FROM message_conversation_members
-                     WHERE conversation_id = $1`,
-                    [sqlConversationId]
-                );
-                sqlLastReadByUid = new Map(sqlMemberState.rows.map(row => [
-                    row.firebase_uid,
-                    row.last_read_at
-                ]));
-            }
-            const existing = await firestore().collection(conversationsCollection)
-                .where('member_uids', 'array-contains', req.firebaseUid).get();
-            const exactMatch = existing.docs.find(snapshot => {
-                const data = snapshot.data();
-                return data.project_id === projectId &&
-                    data.conversation_type === 'direct' &&
-                    data.member_uids.length === 2 &&
-                    data.member_uids.every(uid => memberUidsForConversation.includes(uid));
+            const result = await ensureDirectConversation({
+                projectId,
+                callerUid: req.firebaseUid,
+                members,
+                memberUids: memberUidsForConversation
             });
-            if (exactMatch) {
-                const batch = firestore().batch();
-                const now = getFirebaseAdmin().firestore.Timestamp.now();
-                const existingMembers = await firestore().getAll(...members.map(member =>
-                    memberRef(exactMatch.id, member.firebaseUid)
-                ));
-                for (const [index, member] of members.entries()) {
-                    const existingMember = existingMembers[index];
-                    const existingData = existingMember.data() || {};
-                    const hasStoredReadTime = Object.prototype.hasOwnProperty.call(
-                        existingData, 'last_read_at'
-                    );
-                    const sqlLastReadAt = sqlLastReadByUid.get(member.firebaseUid);
-                    batch.set(memberRef(exactMatch.id, member.firebaseUid), {
-                        firebaseUid: member.firebaseUid,
-                        email: (member.email || '').toLowerCase(),
-                        display_name: member.name || member.email || 'Project member',
-                        profile_image: member.profileImage || '',
-                        joined_at: existingData.joined_at || now,
-                        last_read_at: hasStoredReadTime
-                            ? existingData.last_read_at
-                            : sqlLastReadAt
-                                ? getFirebaseAdmin().firestore.Timestamp.fromDate(new Date(sqlLastReadAt))
-                                : null
-                    }, { merge: true });
-                    batch.set(
-                        firestore().collection('users').doc(member.firebaseUid)
-                            .collection('messageConversations').doc(exactMatch.id),
-                        {
-                            conversation_id: exactMatch.id,
-                            project_id: projectId
-                        },
-                        { merge: true }
-                    );
-                    batch.set(
-                        firestore().collection('messagePresence').doc(member.firebaseUid),
-                        {
-                            visible_to: getFirebaseAdmin().firestore.FieldValue.arrayUnion(
-                                ...memberUidsForConversation
-                            )
-                        },
-                        { merge: true }
-                    );
-                }
-                await batch.commit();
-                console.info('Repaired Firestore access indexes for existing message conversation.', {
-                    conversationId: exactMatch.id
-                });
-                return res.status(200).json({
-                    success: true,
-                    data: { conversation: { conversation_id: exactMatch.id, ...exactMatch.data() } }
-                });
-            }
-            conversationId = sqlConversationId ||
-                uuidFromParts(projectId, ...memberUidsForConversation);
-            if (sqlConversationId) {
-                console.info('Restoring Firestore direct conversation from SQL history.', {
-                    conversationId
-                });
-            }
+            return res.status(result.created ? 201 : 200).json({
+                success: true,
+                data: { conversation: result.conversation }
+            });
         }
+        const conversationId = randomUUID();
+        const sqlLastReadByUid = new Map();
         const ref = conversationRef(conversationId);
         let created = false;
         await firestore().runTransaction(async transaction => {
@@ -961,6 +1145,7 @@ const markConversationRead = async (req, res) => {
 };
 
 module.exports = {
+    getConversation,
     getConversations,
     createConversation,
     deleteConversationForMe,

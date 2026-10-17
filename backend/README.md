@@ -16,10 +16,33 @@ Copy `.env.example` to `.env` for local development and set:
   (`FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY`).
 - `CORS_ALLOWED_ORIGINS`: comma-separated, exact frontend origins. Include
   the local development origin and the deployed frontend origin.
+- `DAILY_API_KEY`: Daily REST API key used by the backend to create private
+  call rooms and short-lived participant tokens. Keep it in Render's secret
+  environment settings; never expose it to the frontend.
 
 Do not commit `.env` files or service-account credentials. The API defaults to
 the Render backend URL in the frontend API client for non-local hosts; set
 `window.COLLAB_API_BASE_URL` before loading the client to override it.
+
+### Enabling message calls and voice notes
+
+1. Create or sign in to a Daily account at <https://dashboard.daily.co/> and
+ copy an API key from its developer/API settings.
+2. In Render, open the backend service's **Environment** settings and add
+ `DAILY_API_KEY` with that value. Save and redeploy the backend. Do not put
+ this key in GitHub Pages files, Firebase config, or browser code.
+3. In Firebase Console, open **Firestore Database → Rules**, replace the rules
+ with the repository's `firestore.rules`, and publish them.
+4. Deploy the frontend changes. Calls require the browser to be on HTTPS and
+ each participant must grant microphone/camera access.
+
+The calls rules allow signed-in members of a direct conversation to read its
+call invitation/status documents; all client writes are denied because the
+authenticated backend writes them. Voice notes are audio attachments stored
+inside the existing Firestore message documents, not Firebase Storage files.
+The message rules allow only conversation members to read them and validate
+attachment metadata, audio-note types, and encoded payload size. No separate
+Firebase Storage permission or new Firebase API key is needed for voice notes.
 
 ## Database
 
@@ -41,6 +64,11 @@ messages, and presence, and sends new messages directly to Firestore. The
 authenticated HTTP API still creates conversations and handles existing
 message actions that require server-side authorization. Users can remove a
 conversation from their own chat list without deleting it for other members.
+One-to-one conversations are shared by the same two users across projects,
+provided they continue to share at least one project as creator or accepted
+invitees. Existing direct conversations are consolidated into one thread when
+either participant starts or opens that chat. Groups and channels remain
+separate conversations tied to their project.
 PostgreSQL remains the
 authority for project membership and stores the rest of the application data;
 the backend synchronizes Firestore access indexes when membership changes.
@@ -194,6 +222,15 @@ All endpoints below require `Authorization: Bearer <Firebase ID token>`.
   polling or a backend WebSocket. Conversation creation, read receipts, and
   operations that need the existing SQL authorization checks continue through
   the authenticated API.
+- Direct conversations support one-to-one Daily voice/video calls. The backend
+  creates private two-person rooms and short-lived, room-scoped participant
+  tokens; Firestore stores invitation/status metadata and a private room
+  reference, never participant tokens. Add
+  `DAILY_API_KEY` to Render's secrets, deploy the backend and matching
+  `firestore.rules`, and then deploy the frontend. Microphone/camera access
+  requires HTTPS and user permission. Configure Firestore TTL for the `calls`
+  collection group on `expires_at` to clean up expired call metadata. Calls
+  are not recorded by this app.
 
 Migration `007_project_meetings.sql` adds persistent project-scoped meetings,
 `008_project_reminders.sql` adds persistent project-scoped calendar reminders,
