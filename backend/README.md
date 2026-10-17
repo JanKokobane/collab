@@ -35,7 +35,9 @@ per-user message hiding, and presence are stored in Cloud Firestore. The
 dashboard subscribes directly to Firestore snapshots for conversations,
 messages, and presence, and sends new messages directly to Firestore. The
 authenticated HTTP API still creates conversations and handles existing
-message actions that require server-side authorization. PostgreSQL remains the
+message actions that require server-side authorization. Users can remove a
+conversation from their own chat list without deleting it for other members.
+PostgreSQL remains the
 authority for project membership and stores the rest of the application data;
 the backend synchronizes Firestore access indexes when membership changes.
 Live message delivery does not pass through the backend.
@@ -44,7 +46,9 @@ Before switching a deployment with existing PostgreSQL messages, create the
 Cloud Firestore database in the Firebase project used by the backend, then run
 `npm run migrate:messages:firestore` from `backend/` with both the PostgreSQL
 and Firebase Admin credentials configured. The backfill only creates
-Firestore documents that do not already exist, so it can be safely rerun.
+Firestore documents that do not already exist, so it can be safely rerun to
+restore message documents accidentally deleted from Firestore while the SQL
+history is still present.
 Pause message writes during the backfill/cutover so messages sent by the old
 backend after the copy are not missed. Deploy the Firestore-backed backend
 after the migration completes.
@@ -177,6 +181,10 @@ All endpoints below require `Authorization: Bearer <Firebase ID token>`.
 - `src/routes/messages.js` provides Firebase-authenticated conversation,
   message, reaction, pin, read-receipt, attachment, and per-user conversation
   clearing operations. Clearing hides messages only for the caller. The
+  `DELETE /api/messages/conversations/:conversationId` endpoint removes a
+  conversation from only the caller's chat list. Direct conversations missing
+  from Firestore are recreated with their original SQL conversation ID when
+  available, so a rerun of the message backfill can restore their history.
   dashboard reads and subscribes to Firestore directly; message sends are
   written directly to Firestore, and snapshots update the UI without backend
   polling or a backend WebSocket. Conversation creation, read receipts, and

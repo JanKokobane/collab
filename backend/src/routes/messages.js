@@ -2,6 +2,7 @@ const express = require('express');
 const {
     getConversations,
     createConversation,
+    deleteConversationForMe,
     getMessages,
     createMessage,
     mutateMessage,
@@ -16,6 +17,7 @@ router.use(requireFirebaseAuth);
 
 router.get('/conversations', getConversations);
 router.post('/conversations', createConversation);
+router.delete('/conversations/:conversationId', deleteConversationForMe);
 router.get('/conversations/:conversationId/messages', getMessages);
 router.post('/conversations/:conversationId/messages', createMessage);
 router.delete('/conversations/:conversationId/messages/:messageId', deleteMessage);

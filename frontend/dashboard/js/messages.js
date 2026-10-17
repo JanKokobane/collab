@@ -836,13 +836,14 @@ function renderMessagesList() {
   if (shouldScroll) feed.scrollTop = feed.scrollHeight
 }
 
-function clearConversationMessages(conversation) {
+function confirmConversationAction(conversation, action) {
   const backdrop = make('div', 'modal-backdrop')
   const form = make('form', 'modal messages-create-modal messages-clear-modal')
   form.setAttribute('role', 'dialog')
   form.setAttribute('aria-modal', 'true')
-  const title = make('h2', '', 'Clear all messages?')
-  title.id = 'messages-clear-title'
+  const deletingChat = action === 'delete-chat'
+  const title = make('h2', '', deletingChat ? 'Delete chat for you?' : 'Clear all messages?')
+  title.id = deletingChat ? 'messages-delete-chat-title' : 'messages-clear-title'
   form.setAttribute('aria-labelledby', title.id)
 
   const closeModal = () => {
@@ -862,12 +863,18 @@ function clearConversationMessages(conversation) {
   header.append(
     make('span', 'messages-create-eyebrow', 'MESSAGES'),
     title,
-    make('p', 'modal-copy', 'Clear all messages from this conversation for you? Other members will still see them.'),
+    make('p', 'modal-copy', deletingChat
+      ? 'This removes the chat from your list only. Other members will keep the conversation and its messages.'
+      : 'Clear all messages from this conversation for you? Other members will still see them.'),
     close
   )
 
   const actions = make('div', 'messages-clear-actions')
-  const confirm = make('button', 'primary-button messages-create-submit messages-clear-confirm', 'Clear all messages')
+  const confirm = make(
+    'button',
+    `primary-button messages-create-submit messages-clear-confirm${deletingChat ? ' destructive' : ''}`,
+    deletingChat ? 'Delete chat for me' : 'Clear all messages'
+  )
   confirm.type = 'submit'
   actions.append(confirm)
   form.append(header, actions)
@@ -883,14 +890,36 @@ function clearConversationMessages(conversation) {
     event.preventDefault()
     confirm.disabled = true
     try {
-      await api.delete(`${apiPath(conversation.id)}/messages`)
+      if (deletingChat) {
+        await api.delete(apiPath(conversation.id))
+        unsubscribeConversation(conversation.id)
+        messageState.conversations = messageState.conversations
+          .filter(item => item.id !== conversation.id)
+        if (selectedConversationId === conversation.id) {
+          selectedConversationId = messageState.conversations[0]?.id || null
+          messageState.messages = []
+          if (selectedConversationId) await loadConversationMessages(selectedConversationId)
+        }
+      } else {
+        await api.delete(`${apiPath(conversation.id)}/messages`)
+      }
       closeModal()
       await refreshFromServer()
     } catch (error) {
       confirm.disabled = false
-      showError(error)
+      showError(error, deletingChat
+        ? `delete conversation ${conversation.id} for current user`
+        : `clear messages in conversation ${conversation.id}`)
     }
   })
+}
+
+function clearConversationMessages(conversation) {
+  confirmConversationAction(conversation, 'clear-messages')
+}
+
+function deleteConversationForMe(conversation) {
+  confirmConversationAction(conversation, 'delete-chat')
 }
 
 function renderMessagesView() {
@@ -936,7 +965,14 @@ function renderMessagesView() {
     trigger.setAttribute('aria-expanded', 'false')
     clearConversationMessages(conversation)
   })
-  menu.append(clearButton)
+  const deleteChatButton = make('button', 'message-action-option destructive', 'Delete chat for me')
+  deleteChatButton.type = 'button'
+  deleteChatButton.addEventListener('click', () => {
+    menu.hidden = true
+    trigger.setAttribute('aria-expanded', 'false')
+    deleteConversationForMe(conversation)
+  })
+  menu.append(clearButton, deleteChatButton)
   trigger.addEventListener('click', () => {
     menu.hidden = !menu.hidden
     trigger.setAttribute('aria-expanded', String(!menu.hidden))

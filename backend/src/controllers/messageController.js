@@ -333,7 +333,34 @@ const createConversation = async (req, res) => {
         const members = [caller, ...memberUids.map(uid => projectMembers.members.get(uid))];
         const memberUidsForConversation = members.map(member => member.firebaseUid).sort();
         let conversationId = randomUUID();
+        let sqlLastReadByUid = new Map();
         if (type === 'direct') {
+            const sqlDirectConversation = await query(
+                `SELECT mc.conversation_id::text AS conversation_id
+                 FROM message_conversations mc
+                 JOIN message_conversation_members cm
+                   ON cm.conversation_id = mc.conversation_id
+                 WHERE mc.project_id = $1
+                   AND mc.conversation_type = 'direct'
+                 GROUP BY mc.conversation_id, mc.created_at
+                 HAVING array_agg(cm.firebase_uid ORDER BY cm.firebase_uid) = $2::text[]
+                 ORDER BY mc.created_at
+                 LIMIT 1`,
+                [projectId, memberUidsForConversation]
+            );
+            const sqlConversationId = sqlDirectConversation.rows[0]?.conversation_id;
+            if (sqlConversationId) {
+                const sqlMemberState = await query(
+                    `SELECT firebase_uid, last_read_at
+                     FROM message_conversation_members
+                     WHERE conversation_id = $1`,
+                    [sqlConversationId]
+                );
+                sqlLastReadByUid = new Map(sqlMemberState.rows.map(row => [
+                    row.firebase_uid,
+                    row.last_read_at
+                ]));
+            }
             const existing = await firestore().collection(conversationsCollection)
                 .where('member_uids', 'array-contains', req.firebaseUid).get();
             const exactMatch = existing.docs.find(snapshot => {
@@ -346,13 +373,27 @@ const createConversation = async (req, res) => {
             if (exactMatch) {
                 const batch = firestore().batch();
                 const now = getFirebaseAdmin().firestore.Timestamp.now();
-                for (const member of members) {
+                const existingMembers = await firestore().getAll(...members.map(member =>
+                    memberRef(exactMatch.id, member.firebaseUid)
+                ));
+                for (const [index, member] of members.entries()) {
+                    const existingMember = existingMembers[index];
+                    const existingData = existingMember.data() || {};
+                    const hasStoredReadTime = Object.prototype.hasOwnProperty.call(
+                        existingData, 'last_read_at'
+                    );
+                    const sqlLastReadAt = sqlLastReadByUid.get(member.firebaseUid);
                     batch.set(memberRef(exactMatch.id, member.firebaseUid), {
                         firebaseUid: member.firebaseUid,
                         email: (member.email || '').toLowerCase(),
                         display_name: member.name || member.email || 'Project member',
                         profile_image: member.profileImage || '',
-                        joined_at: now
+                        joined_at: existingData.joined_at || now,
+                        last_read_at: hasStoredReadTime
+                            ? existingData.last_read_at
+                            : sqlLastReadAt
+                                ? getFirebaseAdmin().firestore.Timestamp.fromDate(new Date(sqlLastReadAt))
+                                : null
                     }, { merge: true });
                     batch.set(
                         firestore().collection('users').doc(member.firebaseUid)
@@ -382,7 +423,13 @@ const createConversation = async (req, res) => {
                     data: { conversation: { conversation_id: exactMatch.id, ...exactMatch.data() } }
                 });
             }
-            conversationId = uuidFromParts(projectId, ...memberUidsForConversation);
+            conversationId = sqlConversationId ||
+                uuidFromParts(projectId, ...memberUidsForConversation);
+            if (sqlConversationId) {
+                console.info('Restoring Firestore direct conversation from SQL history.', {
+                    conversationId
+                });
+            }
         }
         const ref = conversationRef(conversationId);
         let created = false;
@@ -405,34 +452,76 @@ const createConversation = async (req, res) => {
                 latest_message_created_at: null
             });
             for (const member of members) {
-                transaction.create(memberRef(conversationId, member.firebaseUid), {
+                transaction.set(memberRef(conversationId, member.firebaseUid), {
                     firebaseUid: member.firebaseUid,
                     email: (member.email || '').toLowerCase(),
                     display_name: member.name || member.email || 'Project member',
                     profile_image: member.profileImage || '',
-                    joined_at: now,
-                    last_read_at: null
-                });
-                transaction.create(
+                    joined_at: now
+                }, { merge: true });
+                transaction.set(
                     firestore().collection('users').doc(member.firebaseUid)
                         .collection('messageConversations').doc(conversationId),
                     {
                         conversation_id: conversationId,
                         project_id: projectId
-                    }
+                    },
+                    { merge: true }
                 );
             }
         });
         const saved = await ref.get();
         if (!saved.exists) throw new Error('Firestore did not persist the conversation.');
-        const presenceWrites = members.map(member => firestore()
-            .collection('messagePresence').doc(member.firebaseUid)
-            .set({
-                visible_to: getFirebaseAdmin().firestore.FieldValue.arrayUnion(
-                    ...memberUidsForConversation
-                )
-            }, { merge: true }));
-        await Promise.all(presenceWrites);
+        const repairBatch = firestore().batch();
+        repairBatch.set(ref, {
+            project_id: projectId,
+            conversation_type: type,
+            name: type === 'direct' ? '' : name,
+            created_by_firebase_uid: req.firebaseUid,
+            member_uids: memberUidsForConversation
+        }, { merge: true });
+        const existingMembers = await firestore().getAll(...members.map(member =>
+            memberRef(conversationId, member.firebaseUid)
+        ));
+        for (const [index, member] of members.entries()) {
+            const existingData = existingMembers[index].data() || {};
+            const hasStoredReadTime = Object.prototype.hasOwnProperty.call(
+                existingData, 'last_read_at'
+            );
+            const sqlLastReadAt = sqlLastReadByUid.get(member.firebaseUid);
+            repairBatch.set(memberRef(conversationId, member.firebaseUid), {
+                firebaseUid: member.firebaseUid,
+                email: (member.email || '').toLowerCase(),
+                display_name: member.name || member.email || 'Project member',
+                profile_image: member.profileImage || '',
+                joined_at: existingData.joined_at ||
+                    getFirebaseAdmin().firestore.Timestamp.now(),
+                last_read_at: hasStoredReadTime
+                    ? existingData.last_read_at
+                    : sqlLastReadAt
+                        ? getFirebaseAdmin().firestore.Timestamp.fromDate(new Date(sqlLastReadAt))
+                        : null
+            }, { merge: true });
+            repairBatch.set(
+                firestore().collection('users').doc(member.firebaseUid)
+                    .collection('messageConversations').doc(conversationId),
+                {
+                    conversation_id: conversationId,
+                    project_id: projectId
+                },
+                { merge: true }
+            );
+            repairBatch.set(
+                firestore().collection('messagePresence').doc(member.firebaseUid),
+                {
+                    visible_to: getFirebaseAdmin().firestore.FieldValue.arrayUnion(
+                        ...memberUidsForConversation
+                    )
+                },
+                { merge: true }
+            );
+        }
+        await repairBatch.commit();
         console.info('Created Firestore message conversation and access indexes.', {
             conversationId,
             type
@@ -453,6 +542,29 @@ const createConversation = async (req, res) => {
             success: false,
             code: 'MESSAGE_CONVERSATION_CREATE_FAILED',
             message: 'The conversation could not be created.'
+        });
+    }
+};
+
+const deleteConversationForMe = async (req, res) => {
+    try {
+        const conversation = await getConversation(req.params.conversationId, req.firebaseUid);
+        if (!conversation) {
+            return res.status(404).json({
+                success: false,
+                code: 'CONVERSATION_NOT_FOUND',
+                message: 'Conversation not found.'
+            });
+        }
+        await firestore().collection('users').doc(req.firebaseUid)
+            .collection('messageConversations').doc(conversation.conversation_id).delete();
+        return res.json({ success: true });
+    } catch (error) {
+        console.error('Delete Firestore conversation for current user error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'CONVERSATION_DELETE_FAILED',
+            message: 'The conversation could not be removed from your chat list.'
         });
     }
 };
@@ -851,6 +963,7 @@ const markConversationRead = async (req, res) => {
 module.exports = {
     getConversations,
     createConversation,
+    deleteConversationForMe,
     getMessages,
     createMessage,
     mutateMessage,
