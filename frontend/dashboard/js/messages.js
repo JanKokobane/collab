@@ -3,7 +3,7 @@ import { firebaseAuth } from '../../firebase.js'
 import { api, apiBaseUrl } from './api.js'
 
 const maxAttachmentBytes = 512 * 1024
-const messagesBuildId = '20261018-1205'
+const messagesBuildId = '20261018-1230'
 const presenceHeartbeatMs = 25000
 const reactionChoices = ['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']
 let messageState = { conversations: [], messages: [] }
@@ -1371,9 +1371,7 @@ function updateVoicePlayerProgress(audio, waveform, timeLabel, playButton, store
   ))
   waveform.setAttribute('aria-valuenow', String(Math.round(progress * 100)))
   waveform.setAttribute('aria-valuetext', `${formatVoiceDuration(Math.floor(currentTime))} of ${formatVoiceDuration(Math.floor(duration))}`)
-  timeLabel.textContent = duration
-    ? `${formatVoiceDuration(Math.floor(currentTime))} / ${formatVoiceDuration(Math.ceil(duration))}`
-    : 'Unavailable'
+  timeLabel.textContent = duration ? formatVoiceDuration(Math.ceil(duration)) : 'Unavailable'
   const isPlaying = !audio.paused && !audio.ended
   playButton.setAttribute('aria-label', isPlaying ? 'Pause voice note' : 'Play voice note')
   playButton.title = isPlaying ? 'Pause voice note' : 'Play voice note'
@@ -2344,7 +2342,7 @@ async function startVoiceRecording() {
         sampleRate: { ideal: 48_000 },
         echoCancellation: { ideal: true },
         noiseSuppression: { ideal: true },
-        autoGainControl: { ideal: true }
+        autoGainControl: { ideal: false }
       }
     })
     if (!firebaseAuth.currentUser || targetConversationId !== selectedConversationId) {
@@ -2358,7 +2356,7 @@ async function startVoiceRecording() {
       'audio/ogg;codecs=opus'
     ].find(type => MediaRecorder.isTypeSupported(type)) : ''
     const recorderOptions = {
-      audioBitsPerSecond: 48_000,
+      audioBitsPerSecond: 24_000,
       ...(mimeType ? { mimeType } : {})
     }
     mediaRecorder = new MediaRecorder(mediaStream, recorderOptions)

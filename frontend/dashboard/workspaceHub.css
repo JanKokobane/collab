@@ -1380,12 +1380,8 @@ body.dark-mode .messages-voice-record.is-recording,
     min-width: 230px;
     grid-template-columns: 38px minmax(90px, 1fr) auto;
     align-items: center;
-    gap: 9px;
-    margin: 6px 0 3px;
-    padding: 7px 9px;
-    border: 1px solid rgba(40, 123, 103, .12);
-    border-radius: 16px;
-    background: rgba(40, 123, 103, .055);
+    gap: 10px;
+    margin: 5px 0 2px;
 }
 
 .messages-voice-play {
@@ -1429,7 +1425,7 @@ body.dark-mode .messages-voice-record.is-recording,
 
 .messages-voice-time {
     color: #4B5E56;
-    font: 600 10px/1 'DM Sans', sans-serif;
+    font: 600 11px/1 'DM Sans', sans-serif;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
@@ -1469,12 +1465,6 @@ body.dark-mode .messages-recording-pause,
 body.dark-mode .messages-voice-waveform .messages-waveform-bar,
 [data-theme="dark"] .messages-voice-waveform .messages-waveform-bar {
     background: rgba(220, 232, 225, .4);
-}
-
-body.dark-mode .message-bubble .messages-voice-note-player,
-[data-theme="dark"] .message-bubble .messages-voice-note-player {
-    border-color: rgba(167, 243, 208, .14);
-    background: rgba(167, 243, 208, .06);
 }
 
 body.dark-mode .messages-voice-waveform .messages-waveform-bar.is-played,
