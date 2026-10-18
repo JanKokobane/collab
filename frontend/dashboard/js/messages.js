@@ -10,7 +10,6 @@ import {
   query,
   serverTimestamp,
   Timestamp,
-  updateDoc,
   where,
   writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'
@@ -27,6 +26,7 @@ let messagesInitialized = false
 let refreshPromise = null
 let conversationUnsubscribe = null
 let subscriptionsUid = null
+let accessReconciledUid = null
 const conversationMessageSubscriptions = new Map()
 const conversationCallSubscriptions = new Map()
 const presenceSubscriptions = new Map()
@@ -142,6 +142,18 @@ function showError(error, operation = 'message operation') {
   element.hidden = false
 }
 
+function logFirestoreFailure(operation, error, context = {}) {
+  console.error(`[messages] Firestore ${operation} failed.`, {
+    operation,
+    code: error?.code || null,
+    name: error?.name || 'Error',
+    message: error?.message || String(error),
+    uid: currentUid() || null,
+    firebaseProjectId: firestoreDb.app.options.projectId || null,
+    ...context
+  })
+}
+
 function clearError() {
   const element = getElements().error
   if (!element) return
@@ -164,6 +176,16 @@ function setSendButtonMode(isSaving = Boolean(editingMessageId)) {
 
 function normalizeConversation(row) {
   const members = Array.isArray(row.members) ? row.members : []
+  const memberUids = Array.isArray(row.member_uids || row.memberUids)
+    ? [...new Set((row.member_uids || row.memberUids)
+      .filter(uid => typeof uid === 'string' && uid.trim())
+      .map(uid => uid.trim()))]
+    : [...new Set(members
+      .map(member => typeof member === 'string'
+        ? ''
+        : member.firebaseUid || member.firebase_uid || member.uid || '')
+      .filter(uid => typeof uid === 'string' && uid.trim())
+      .map(uid => uid.trim()))]
   return {
     ...row,
     id: row.conversation_id || row.id,
@@ -172,12 +194,12 @@ function normalizeConversation(row) {
     createdAt: row.created_at || row.createdAt,
     updatedAt: row.updated_at || row.updatedAt,
     members: members.map(member => typeof member === 'string' ? member.toLowerCase() : member.email?.toLowerCase()).filter(Boolean),
-    memberUids: members.map(member => typeof member === 'string' ? '' : member.firebaseUid)
-      .filter(Boolean).sort(),
+    memberUids: memberUids.sort(),
     participants: members.map(member => typeof member === 'string'
       ? { email: member.toLowerCase(), name: member }
       : {
         ...member,
+        firebaseUid: member.firebaseUid || member.firebase_uid || member.uid || null,
         email: member.email?.toLowerCase(),
         lastSeenAt: member.lastSeenAt || member.last_seen_at || null
       }),
@@ -446,13 +468,23 @@ function unsubscribeConversation(conversationId) {
 async function hydrateConversation(snapshot) {
   const data = snapshot.data()
   const conversationId = snapshot.id
-  const membersSnapshot = await getDocs(collection(
-    firestoreDb, 'messageConversations', conversationId, 'members'
-  ))
+  let membersSnapshot
+  try {
+    membersSnapshot = await getDocs(collection(
+      firestoreDb, 'messageConversations', conversationId, 'members'
+    ))
+  } catch (error) {
+    logFirestoreFailure('conversation member fetch', error, {
+      conversationId,
+      collectionPath: `messageConversations/${conversationId}/members`
+    })
+    throw error
+  }
   const members = membersSnapshot.docs.map(memberSnapshot => {
     const member = memberSnapshot.data()
     return {
       ...member,
+      firebaseUid: member.firebaseUid || member.firebase_uid || memberSnapshot.id,
       name: member.display_name || member.name || member.email || 'Project member',
       email: (member.email || '').toLowerCase(),
       profileImage: member.profile_image || '',
@@ -467,9 +499,19 @@ async function hydrateConversation(snapshot) {
     latest_message_created_at: timestampToIso(data.latest_message_created_at),
     members
   })
+  const conversationMemberUids = new Set(
+    Array.isArray(data.member_uids) ? data.member_uids : []
+  )
+  const activePresence = presenceSubscriptions.get(conversationId) || new Map()
+  activePresence.forEach((unsubscribe, uid) => {
+    if (conversationMemberUids.has(uid)) return
+    unsubscribe()
+    activePresence.delete(uid)
+  })
   const presenceUnsubscribers = []
   members.forEach(member => {
-    if (!member.firebaseUid || presenceSubscriptions.get(conversationId)?.has(member.firebaseUid)) return
+    if (!conversationMemberUids.has(member.firebaseUid)) return
+    if (!member.firebaseUid || activePresence.has(member.firebaseUid)) return
     const presenceRef = doc(firestoreDb, 'messagePresence', member.firebaseUid)
     const unsubscribe = onSnapshot(presenceRef, presenceSnapshot => {
       const presence = presenceSnapshot.data() || {}
@@ -478,10 +520,16 @@ async function hydrateConversation(snapshot) {
         lastSeenAt: timestampToIso(presence.last_seen_at) || member.lastSeenAt
       })
       if (activeView === 'Messages' && selectedConversationId === conversationId) renderMessagesView()
-    }, error => showError(error, `Firestore presence listener (${conversationId})`))
+    }, error => {
+      logFirestoreFailure('presence listener', error, {
+        conversationId,
+        memberUid: member.firebaseUid,
+        documentPath: `messagePresence/${member.firebaseUid}`
+      })
+      showError(error, `Firestore presence listener (${conversationId})`)
+    })
     presenceUnsubscribers.push([member.firebaseUid, unsubscribe])
   })
-  const activePresence = presenceSubscriptions.get(conversationId) || new Map()
   presenceUnsubscribers.forEach(([uid, unsubscribe]) => activePresence.set(uid, unsubscribe))
   presenceSubscriptions.set(conversationId, activePresence)
   return conversation
@@ -538,8 +586,31 @@ function subscribeToConversationMessages(conversation) {
       renderMessages()
     }
     updateMessagesNavigationBadge()
-  }, error => showError(error, `Firestore message listener (${conversation.id})`))
+  }, error => {
+    logFirestoreFailure('message listener', error, {
+      conversationId: conversation.id,
+      collectionPath: `messageConversations/${conversation.id}/messages`,
+      query: 'visible_to array-contains current user'
+    })
+    showError(error, `Firestore message listener (${conversation.id})`)
+  })
   conversationMessageSubscriptions.set(conversation.id, unsubscribe)
+}
+
+async function fetchConversationRoot(accessEntry, userUid) {
+  try {
+    return await getDoc(doc(
+      firestoreDb, 'messageConversations', accessEntry.id
+    ))
+  } catch (error) {
+    logFirestoreFailure('conversation root fetch', error, {
+      userUid,
+      conversationId: accessEntry.id,
+      accessIndexPath: `users/${userUid}/messageConversations/${accessEntry.id}`,
+      documentPath: `messageConversations/${accessEntry.id}`
+    })
+    throw error
+  }
 }
 
 function renderCallOverlay() {
@@ -599,7 +670,11 @@ function renderCallOverlay() {
 }
 
 function subscribeToConversationCalls(conversation) {
-  if (conversation.type !== 'direct') return
+  if (conversation.type !== 'direct') {
+    conversationCallSubscriptions.get(conversation.id)?.()
+    conversationCallSubscriptions.delete(conversation.id)
+    return
+  }
   if (conversationCallSubscriptions.has(conversation.id)) return
   const callsCollection = collection(
     firestoreDb, 'messageConversations', conversation.id, 'calls'
@@ -642,7 +717,13 @@ function subscribeToConversationCalls(conversation) {
         finishActiveCall(false)
       }
     }
-  }, error => showError(error, `Firestore call listener (${conversation.id})`))
+  }, error => {
+    logFirestoreFailure('call listener', error, {
+      conversationId: conversation.id,
+      collectionPath: `messageConversations/${conversation.id}/calls`
+    })
+    showError(error, `Firestore call listener (${conversation.id})`)
+  })
   conversationCallSubscriptions.set(conversation.id, unsubscribe)
 }
 
@@ -836,11 +917,28 @@ async function saveMessageToFirestore({
   attachments = [],
   replyToId = null,
   forwardedFrom = null,
+  destinationConversation = null,
+  destinationMemberUid = null,
   clientMessageId = crypto.randomUUID()
 }) {
-  const conversation = messageState.conversations.find(item => item.id === conversationId)
-  if (!conversation || !conversation.memberUids.includes(currentUid())) {
+  const conversation = destinationConversation
+    ? normalizeConversation(destinationConversation)
+    : messageState.conversations.find(item => item.id === conversationId)
+  if (!conversation || conversation.id !== conversationId ||
+    !conversation.memberUids.includes(currentUid())) {
     throw new Error('You no longer have access to this conversation.')
+  }
+  if (destinationConversation &&
+    (conversation.type !== 'direct' || !conversation.memberUids.includes(destinationMemberUid))) {
+    throw new Error('The destination conversation does not include the selected recipient.')
+  }
+  let forwardedMetadata = null
+  if (forwardedFrom !== null) {
+    const senderName = typeof forwardedFrom.senderName === 'string'
+      ? forwardedFrom.senderName.trim()
+      : ''
+    if (!senderName) throw new Error('The original message sender could not be identified.')
+    forwardedMetadata = { senderName: senderName.slice(0, 160) }
   }
   const sender = conversation.participants.find(item => item.firebaseUid === currentUid())
   const reply = replyToId
@@ -858,13 +956,13 @@ async function saveMessageToFirestore({
     reply_to_body: reply?.body || null,
     reply_to_sender_name: reply?.senderName || null,
     attachments,
-    forwarded_from: forwardedFrom,
+    forwarded_from: forwardedMetadata,
     is_pinned: false,
     edited_at: null,
     created_at: serverTimestamp(),
     deleted_at: null,
     hidden_for: [],
-    visible_to: conversation.memberUids,
+    visible_to: [...conversation.memberUids],
     reaction_entries: [],
     read_receipts: [],
     client_message_id: clientMessageId
@@ -894,10 +992,20 @@ async function loadConversationMessages(conversationId) {
     messageState.messages = []
     return
   }
-  const snapshot = await getDocs(query(
-    collection(firestoreDb, 'messageConversations', conversationId, 'messages'),
-    where('visible_to', 'array-contains', currentUid())
-  ))
+  let snapshot
+  try {
+    snapshot = await getDocs(query(
+      collection(firestoreDb, 'messageConversations', conversationId, 'messages'),
+      where('visible_to', 'array-contains', currentUid())
+    ))
+  } catch (error) {
+    logFirestoreFailure('message fetch', error, {
+      conversationId,
+      collectionPath: `messageConversations/${conversationId}/messages`,
+      query: 'visible_to array-contains current user'
+    })
+    throw error
+  }
   if (selectedConversationId === conversationId) {
     messageState.messages = snapshot.docs
       .filter(item => !(item.data().hidden_for || []).includes(currentUid()))
@@ -908,9 +1016,30 @@ async function loadConversationMessages(conversationId) {
 
 async function reloadMessages() {
   const user = firebaseAuth.currentUser
-  if (!user) return
-  presenceWriteUid = user.uid
-  setOwnPresence(true)
+  if (!user) {
+    accessReconciledUid = null
+    return
+  }
+  if (accessReconciledUid !== user.uid) {
+    let reconciled = false
+    try {
+      await api.get('/messages/conversations')
+      reconciled = true
+    } catch (error) {
+      console.error('[messages] Conversation access reconciliation failed.', {
+        uid: user.uid,
+        firebaseProjectId: firestoreDb.app.options.projectId || null,
+        endpoint: 'GET /api/messages/conversations',
+        status: error?.status || null,
+        code: error?.code || null,
+        message: error?.message || String(error)
+      })
+      showError(error, 'reconcile conversation membership with backend')
+    }
+    if (reconciled && firebaseAuth.currentUser?.uid === user.uid) {
+      accessReconciledUid = user.uid
+    }
+  }
   if (subscriptionsUid !== user.uid) {
     conversationUnsubscribe?.()
     conversationMessageSubscriptions.forEach(unsubscribe => unsubscribe())
@@ -924,9 +1053,10 @@ async function reloadMessages() {
       firestoreDb, 'users', user.uid, 'messageConversations'
     )
     conversationUnsubscribe = onSnapshot(conversationsQuery, snapshot => {
-      Promise.all(snapshot.docs.map(item => getDoc(doc(
-        firestoreDb, 'messageConversations', item.id
-      ))))
+      const visibleEntries = snapshot.docs.filter(item =>
+        item.data().hidden_for_user !== true
+      )
+      Promise.all(visibleEntries.map(item => fetchConversationRoot(item, user.uid)))
         .then(conversationSnapshots => Promise.all(
           conversationSnapshots.filter(item => item.exists()).map(hydrateConversation)
         ))
@@ -945,15 +1075,28 @@ async function reloadMessages() {
           updateMessagesNavigationBadge()
           if (activeView === 'Messages') renderMessages()
         })
-        .catch(error => showError(error, 'load conversations and members from Firestore'))
-    }, error => showError(error, 'listen to Firestore conversation access index'))
+        .catch(error => {
+          logFirestoreFailure('conversation hydration', error, {
+            collectionPath: `users/${user.uid}/messageConversations`
+          })
+          showError(error, 'load conversations and members from Firestore')
+        })
+    }, error => {
+      logFirestoreFailure('conversation index listener', error, {
+        collectionPath: `users/${user.uid}/messageConversations`
+      })
+      showError(error, 'listen to Firestore conversation access index')
+    })
   }
-  const snapshot = await getDocs(collection(
+  const accessSnapshot = await getDocs(collection(
     firestoreDb, 'users', user.uid, 'messageConversations'
   ))
-  const conversationSnapshots = await Promise.all(snapshot.docs.map(item => getDoc(doc(
-    firestoreDb, 'messageConversations', item.id
-  ))))
+  const visibleEntries = accessSnapshot.docs.filter(item =>
+    item.data().hidden_for_user !== true
+  )
+  const conversationSnapshots = await Promise.all(visibleEntries.map(item =>
+    fetchConversationRoot(item, user.uid)
+  ))
   const conversations = await Promise.all(
     conversationSnapshots.filter(item => item.exists()).map(hydrateConversation)
   )
@@ -1295,16 +1438,15 @@ function renderMessageActions(message, container) {
   trigger.setAttribute('aria-label', 'Message actions')
   const menu = make('div', 'message-actions-menu')
   menu.hidden = true
-  const own = message.senderUid === currentUid()
   const options = message.isDeleted
     ? [{ label: 'Delete for me', action: () => deleteMessage(message, 'me'), destructive: true }]
     : [
-        { label: 'Reply', action: () => startReply(message) },
-        ...(own ? [{ label: 'Edit', action: () => startEdit(message) }] : []),
-        { label: 'Forward', action: () => openForwardModal(message) },
-        { label: message.pinned ? 'Unpin' : 'Pin', action: () => mutateMessage(message, 'pin') },
-        { label: 'Delete for me', action: () => deleteMessage(message, 'me'), destructive: true },
-        ...(own ? [{ label: 'Delete for everyone', action: () => deleteMessage(message, 'everyone'), destructive: true }] : [])
+       { label: 'Reply', action: () => startReply(message) },
+       { label: 'Edit', action: () => startEdit(message) },
+       { label: 'Forward', action: () => openForwardModal(message) },
+       { label: message.pinned ? 'Unpin' : 'Pin', action: () => mutateMessage(message, 'pin') },
+       { label: 'Delete for me', action: () => deleteMessage(message, 'me'), destructive: true },
+       { label: 'Delete for everyone', action: () => deleteMessage(message, 'everyone'), destructive: true }
       ]
   options.forEach(option => {
     const button = make('button', `message-action-option${option.destructive ? ' destructive' : ''}`, option.label)
@@ -1713,7 +1855,6 @@ function startReply(message) {
 }
 
 function startEdit(message) {
-  if (message.senderUid !== currentUid()) return
   replyTargetId = null
   editingMessageId = message.id
   getElements().input.value = message.body
@@ -1920,12 +2061,18 @@ function openForwardModal(message) {
           type: 'direct',
           memberFirebaseUids: [uid]
         })
-        const targetConversationId = result?.data?.conversation?.conversation_id
+        const destinationConversation = result?.data?.conversation
+        const targetConversationId = destinationConversation?.conversation_id
+        if (!targetConversationId) {
+          throw new Error('The destination conversation could not be identified.')
+        }
         await saveMessageToFirestore({
           conversationId: targetConversationId,
           body: message.body,
           attachments: message.attachments,
-          forwardedFrom: { senderName: message.senderName }
+          forwardedFrom: { senderName: message.senderName },
+          destinationConversation,
+          destinationMemberUid: uid
         })
       }
       closeModal()
@@ -2379,6 +2526,7 @@ export function initMessages() {
 
 export async function refreshMessagesForCurrentUser() {
   if (!firebaseAuth.currentUser) {
+    accessReconciledUid = null
     if (mediaRecorder) cancelVoiceRecording()
     selectedConversationId = null
     voiceRecordingStarting = false
@@ -2421,14 +2569,9 @@ export async function refreshMessagesForCurrentUser() {
 
 function setOwnPresence(isOnline) {
   const uid = firebaseAuth.currentUser?.uid
-  if (!uid) return
-  const presenceRef = doc(firestoreDb, 'messagePresence', uid)
-  const updates = isOnline
-    ? { is_online: true, last_seen_at: serverTimestamp() }
-    : { is_online: false, last_seen_at: serverTimestamp() }
-  getDoc(presenceRef)
-    .then(snapshot => snapshot.exists() ? updateDoc(presenceRef, updates) : null)
-    .catch(error => showError(error, 'update own presence in Firestore'))
+  if (!uid || uid !== presenceWriteUid) return
+  api.post('/messages/presence', { isOnline })
+    .catch(error => showError(error, `update authenticated presence for ${uid}`))
 }
 
 document.addEventListener('visibilitychange', () => {

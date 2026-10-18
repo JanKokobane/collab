@@ -4,6 +4,7 @@ const {
     getConversations,
     createConversation,
     deleteConversationForMe,
+    updateOwnPresence,
     getMessages,
     createMessage,
     mutateMessage,
@@ -30,6 +31,7 @@ router.use(requireFirebaseAuth);
 
 router.get('/conversations', getConversations);
 router.post('/conversations', createConversation);
+router.post('/presence', updateOwnPresence);
 router.delete('/conversations/:conversationId', deleteConversationForMe);
 router.get('/conversations/:conversationId/messages', getMessages);
 router.post('/conversations/:conversationId/messages', createMessage);

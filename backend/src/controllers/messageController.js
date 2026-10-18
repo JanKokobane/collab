@@ -210,7 +210,11 @@ const ensureDirectConversation = async ({
         accessBatch.set(
             firestore().collection('users').doc(member.firebaseUid)
                 .collection('messageConversations').doc(canonicalId),
-            { conversation_id: canonicalId, project_id: canonicalData.project_id || projectId },
+            {
+                conversation_id: canonicalId,
+                project_id: canonicalData.project_id || projectId,
+                ...(member.firebaseUid === callerUid ? { hidden_for_user: false } : {})
+            },
             { merge: true }
         );
         accessBatch.set(
@@ -273,10 +277,114 @@ const getAccessibleProjectIds = async (projectIds, firebaseUid) => {
     return new Set(result.rows.map(row => row.project_id));
 };
 
+const reconcileConversationAccess = async (firebaseUid, conversations) => {
+    const accessCollection = firestore().collection('users').doc(firebaseUid)
+        .collection('messageConversations');
+    const [existingSnapshot, ...targetSnapshots] = await Promise.all([
+        accessCollection.get(),
+        ...conversations.map(conversation =>
+            accessCollection.doc(conversation.conversation_id).get()
+        )
+    ]);
+    const authorizedIds = new Set(conversations.map(item => item.conversation_id));
+    const updates = [];
+    const visiblePeers = new Set();
+    const hiddenIds = new Set();
+    conversations.forEach((conversation, index) => {
+        const snapshot = targetSnapshots[index];
+        const data = snapshot.data() || {};
+        (conversation.members || []).forEach(member => {
+            if (member.firebaseUid && member.firebaseUid !== firebaseUid) {
+                visiblePeers.add(member.firebaseUid);
+            }
+        });
+        if (data.hidden_for_user === true) {
+            hiddenIds.add(conversation.conversation_id);
+            return;
+        }
+        if (!snapshot.exists ||
+            data.conversation_id !== conversation.conversation_id ||
+            data.project_id !== conversation.project_id) {
+            updates.push({
+                ref: accessCollection.doc(conversation.conversation_id),
+                data: {
+                    conversation_id: conversation.conversation_id,
+                    project_id: conversation.project_id,
+                    hidden_for_user: false
+                }
+            });
+        }
+    });
+    existingSnapshot.docs.forEach(snapshot => {
+        if (!authorizedIds.has(snapshot.id)) {
+            updates.push({ ref: snapshot.ref, delete: true });
+        }
+    });
+    for (let offset = 0; offset < updates.length; offset += 400) {
+        const batch = firestore().batch();
+        updates.slice(offset, offset + 400).forEach(update => {
+            if (update.delete) batch.delete(update.ref);
+            else batch.set(update.ref, update.data, { merge: true });
+        });
+        await batch.commit();
+    }
+    const presenceRef = firestore().collection('messagePresence').doc(firebaseUid);
+    const peerUids = [...visiblePeers];
+    const presenceIds = [firebaseUid, ...peerUids];
+    const presenceSnapshots = [];
+    for (let offset = 0; offset < presenceIds.length; offset += 300) {
+        presenceSnapshots.push(...await firestore().getAll(
+            ...presenceIds.slice(offset, offset + 300).map(uid =>
+                firestore().collection('messagePresence').doc(uid))
+        ));
+    }
+    const presenceByUid = new Map(presenceSnapshots.map(snapshot => [snapshot.id, snapshot]));
+    const ownVisibleTo = new Set(
+        Array.isArray(presenceByUid.get(firebaseUid)?.data()?.visible_to)
+            ? presenceByUid.get(firebaseUid).data().visible_to
+            : []
+    );
+    const missingOwnPeers = presenceIds.filter(uid => !ownVisibleTo.has(uid));
+    if (missingOwnPeers.length) {
+        for (let offset = 0; offset < missingOwnPeers.length; offset += 400) {
+            const visibleTo = missingOwnPeers.slice(offset, offset + 400);
+            await presenceRef.set({
+                visible_to: getFirebaseAdmin().firestore.FieldValue.arrayUnion(...visibleTo)
+            }, { merge: true });
+        }
+    }
+    const missingPeerUids = peerUids.filter(uid => {
+        const visibleTo = presenceByUid.get(uid)?.data()?.visible_to;
+        return !Array.isArray(visibleTo) || !visibleTo.includes(firebaseUid);
+    });
+    for (let offset = 0; offset < missingPeerUids.length; offset += 400) {
+        const batch = firestore().batch();
+        missingPeerUids.slice(offset, offset + 400).forEach(uid => {
+            batch.set(firestore().collection('messagePresence').doc(uid), {
+                visible_to: getFirebaseAdmin().firestore.FieldValue.arrayUnion(firebaseUid)
+            }, { merge: true });
+        });
+        await batch.commit();
+    }
+    if (updates.length) {
+        console.info('Reconciled authenticated message conversation access indexes.', {
+            firebaseUid,
+            repairedOrRemovedCount: updates.length
+        });
+    }
+    return hiddenIds;
+};
+
 const getConversation = async (conversationId, firebaseUid) => {
     if (!uuidPattern.test(conversationId || '')) return null;
-    const snapshot = await conversationRef(conversationId).get();
-    if (!snapshot.exists) return null;
+    const accessRef = firestore().collection('users').doc(firebaseUid)
+        .collection('messageConversations').doc(conversationId);
+    const [snapshot, accessSnapshot] = await Promise.all([
+        conversationRef(conversationId).get(),
+        accessRef.get()
+    ]);
+    if (!snapshot.exists || !accessSnapshot.exists ||
+        accessSnapshot.data().hidden_for_user === true) return null;
     const conversation = { conversation_id: snapshot.id, ...snapshot.data() };
     if (!conversation.member_uids?.includes(firebaseUid)) return null;
     const accessible = conversation.conversation_type === 'direct'
@@ -475,6 +583,7 @@ const getConversations = async (req, res) => {
                 const member = memberSnapshot.data();
                 return {
                     ...member,
+                    firebaseUid: member.firebaseUid || memberSnapshot.id,
                     name: member.display_name || member.name || member.email || 'Project member',
                     profileImage: member.profile_image || '',
                     lastSeenAt: null
@@ -539,10 +648,20 @@ const getConversations = async (req, res) => {
                 unread_count: unreadCount
             };
             }));
+        const hiddenConversationIds = await reconcileConversationAccess(
+            req.firebaseUid, conversations
+        );
         conversations.sort((a, b) =>
             asMillis(b.latest_message_created_at || b.created_at) -
             asMillis(a.latest_message_created_at || a.created_at));
-        return res.json({ success: true, data: { conversations } });
+        return res.json({
+            success: true,
+            data: {
+                conversations: conversations.filter(item =>
+                    !hiddenConversationIds.has(item.conversation_id)
+                )
+            }
+        });
     } catch (error) {
         console.error('Get Firestore message conversations error:', error);
         return res.status(500).json({
@@ -610,7 +729,17 @@ const createConversation = async (req, res) => {
             });
             return res.status(result.created ? 201 : 200).json({
                 success: true,
-                data: { conversation: result.conversation }
+                data: {
+                    conversation: {
+                        ...result.conversation,
+                        members: members.map(member => ({
+                            firebaseUid: member.firebaseUid,
+                            email: (member.email || '').toLowerCase(),
+                            name: member.name || member.email || 'Project member',
+                            profileImage: member.profileImage || ''
+                        }))
+                    }
+                }
             });
         }
         const conversationId = randomUUID();
@@ -648,7 +777,8 @@ const createConversation = async (req, res) => {
                         .collection('messageConversations').doc(conversationId),
                     {
                         conversation_id: conversationId,
-                        project_id: projectId
+                        project_id: projectId,
+                        hidden_for_user: false
                     },
                     { merge: true }
                 );
@@ -691,7 +821,8 @@ const createConversation = async (req, res) => {
                     .collection('messageConversations').doc(conversationId),
                 {
                     conversation_id: conversationId,
-                    project_id: projectId
+                    project_id: projectId,
+                    hidden_for_user: false
                 },
                 { merge: true }
             );
@@ -741,7 +872,11 @@ const deleteConversationForMe = async (req, res) => {
             });
         }
         await firestore().collection('users').doc(req.firebaseUid)
-            .collection('messageConversations').doc(conversation.conversation_id).delete();
+            .collection('messageConversations').doc(conversation.conversation_id).set({
+                conversation_id: conversation.conversation_id,
+                project_id: conversation.project_id,
+                hidden_for_user: true
+            }, { merge: true });
         return res.json({ success: true });
     } catch (error) {
         console.error('Delete Firestore conversation for current user error:', error);
@@ -749,6 +884,38 @@ const deleteConversationForMe = async (req, res) => {
             success: false,
             code: 'CONVERSATION_DELETE_FAILED',
             message: 'The conversation could not be removed from your chat list.'
+        });
+    }
+};
+
+const updateOwnPresence = async (req, res) => {
+    const isOnline = req.body?.isOnline;
+    if (typeof isOnline !== 'boolean') {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_PRESENCE_STATUS',
+            message: 'Presence status must be online or offline.'
+        });
+    }
+    try {
+        await firestore().collection('messagePresence').doc(req.firebaseUid).set({
+            is_online: isOnline,
+            last_seen_at: getFirebaseAdmin().firestore.Timestamp.now(),
+            visible_to: getFirebaseAdmin().firestore.FieldValue.arrayUnion(req.firebaseUid)
+        }, { merge: true });
+        return res.json({ success: true });
+    } catch (error) {
+        console.error('Update authenticated message presence error:', {
+            firebaseUid: req.firebaseUid,
+            isOnline,
+            errorCode: error.code || null,
+            errorMessage: error.message,
+            stack: error.stack
+        });
+        return res.status(500).json({
+            success: false,
+            code: 'MESSAGE_PRESENCE_UPDATE_FAILED',
+            message: 'Your presence could not be updated.'
         });
     }
 };
@@ -940,9 +1107,7 @@ const mutateMessage = async (req, res) => {
             const now = getFirebaseAdmin().firestore.Timestamp.now();
             if (action === 'edit') {
                 const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
-                if (message.sender_firebase_uid !== req.firebaseUid) {
-                    failure = { status: 403, code: 'MESSAGE_EDIT_FORBIDDEN', message: 'Only the sender can edit this message.' };
-                } else if (!body || body.length > 5000) {
+                if (!body || body.length > 5000) {
                     failure = { status: 400, code: 'INVALID_MESSAGE', message: 'Message text must be between 1 and 5000 characters.' };
                 } else {
                     transaction.update(ref, { body, edited_at: now });
@@ -952,12 +1117,8 @@ const mutateMessage = async (req, res) => {
                     });
                 }
             } else if (action === 'delete') {
-                if (message.sender_firebase_uid !== req.firebaseUid) {
-                    failure = { status: 403, code: 'MESSAGE_DELETE_FORBIDDEN', message: 'Only the sender can delete this message.' };
-                } else {
-                    transaction.delete(ref);
-                    messageDeleted = true;
-                }
+                transaction.delete(ref);
+                messageDeleted = true;
             } else if (action === 'pin') {
                 transaction.update(ref, { is_pinned: !message.is_pinned });
             } else if (action === 'reaction') {
@@ -1001,7 +1162,16 @@ const mutateMessage = async (req, res) => {
         }
         return res.json({ success: true });
     } catch (error) {
-        console.error(`Firestore message ${action} error:`, error);
+        console.error(`Firestore message ${action} error:`, {
+            conversationId,
+            messageId,
+            firebaseUid: req.firebaseUid,
+            action,
+            errorName: error.name,
+            errorCode: error.code || null,
+            errorMessage: error.message,
+            stack: error.stack
+        });
         return res.status(500).json({
             success: false,
             code: 'MESSAGE_UPDATE_FAILED',
@@ -1040,21 +1210,17 @@ const deleteMessage = async (req, res) => {
                 return;
             }
             const message = snapshot.data();
-            if (scope === 'everyone' && message.sender_firebase_uid !== req.firebaseUid) {
-                failure = {
-                    status: 403,
-                    code: 'MESSAGE_DELETE_FOR_EVERYONE_FORBIDDEN',
-                    message: 'Only the sender can delete this message for everyone.'
-                };
-            } else if (scope === 'everyone' && !message.deleted_at) {
-                transaction.update(ref, {
-                    body: 'Message deleted',
-                    attachments: [],
-                    forwarded_from: null,
-                    deleted_at: getFirebaseAdmin().firestore.Timestamp.now(),
-                    reaction_entries: [],
-                    read_receipts: []
-                });
+            if (scope === 'everyone') {
+                if (!message.deleted_at) {
+                    transaction.update(ref, {
+                        body: 'Message deleted',
+                        attachments: [],
+                        forwarded_from: null,
+                        deleted_at: getFirebaseAdmin().firestore.Timestamp.now(),
+                        reaction_entries: [],
+                        read_receipts: []
+                    });
+                }
             } else {
                 transaction.update(ref, {
                     hidden_for: getFirebaseAdmin().firestore.FieldValue.arrayUnion(req.firebaseUid),
@@ -1072,6 +1238,7 @@ const deleteMessage = async (req, res) => {
         console.error('Delete Firestore message error:', {
             conversationId,
             messageId,
+            firebaseUid: req.firebaseUid,
             scope,
             errorName: error.name,
             errorCode: error.code || null,
@@ -1157,6 +1324,7 @@ module.exports = {
     getConversations,
     createConversation,
     deleteConversationForMe,
+    updateOwnPresence,
     getMessages,
     createMessage,
     mutateMessage,

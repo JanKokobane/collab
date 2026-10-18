@@ -8,7 +8,11 @@ service cloud.firestore {
 
     function isConversationMember(conversationId) {
       return signedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)/messageConversations/$(conversationId));
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)/messageConversations/$(conversationId)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)/messageConversations/$(conversationId)).data.get('hidden_for_user', false) != true &&
+        exists(/databases/$(database)/documents/messageConversations/$(conversationId)) &&
+        get(/databases/$(database)/documents/messageConversations/$(conversationId)).data.member_uids is list &&
+        get(/databases/$(database)/documents/messageConversations/$(conversationId)).data.member_uids.hasAny([request.auth.uid]);
     }
 
     function isValidAttachment(attachment) {
@@ -161,24 +165,34 @@ service cloud.firestore {
         resource.data.visible_to.hasAny([request.auth.uid]);
     }
 
-    function isValidMessageEdit(conversationId) {
+    function isValidMessageUpdate(conversationId) {
       return canAccessMessage(conversationId) &&
-        resource.data.sender_firebase_uid == request.auth.uid &&
-        resource.data.deleted_at == null &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['body', 'edited_at']) &&
+          .hasOnly([
+            'body', 'reply_to_message_id', 'reply_to_body',
+            'reply_to_sender_name', 'attachments', 'forwarded_from',
+            'is_pinned', 'edited_at', 'deleted_at',
+            'reaction_entries', 'read_receipts'
+          ]) &&
         request.resource.data.body is string &&
-        request.resource.data.body.size() > 0 &&
         request.resource.data.body.size() <= 5000 &&
-        request.resource.data.edited_at == request.time;
-    }
-
-    function isValidMessagePin(conversationId) {
-      return canAccessMessage(conversationId) &&
-        resource.data.deleted_at == null &&
-        request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['is_pinned']) &&
-        request.resource.data.is_pinned is bool;
+        request.resource.data.attachments is list &&
+        areValidAttachments(request.resource.data.attachments) &&
+        (request.resource.data.body.size() > 0 ||
+          request.resource.data.attachments.size() > 0 ||
+          request.resource.data.deleted_at != null) &&
+        (request.resource.data.forwarded_from == null ||
+          (request.resource.data.forwarded_from is map &&
+            request.resource.data.forwarded_from.keys().hasOnly(['senderName']) &&
+            request.resource.data.forwarded_from.senderName is string &&
+            request.resource.data.forwarded_from.senderName.size() <= 160)) &&
+        request.resource.data.is_pinned is bool &&
+        (request.resource.data.edited_at == null ||
+          request.resource.data.edited_at == request.time) &&
+        (request.resource.data.deleted_at == null ||
+          request.resource.data.deleted_at == request.time) &&
+        request.resource.data.reaction_entries is list &&
+        request.resource.data.read_receipts is list;
     }
 
     function isValidMessageHide(conversationId) {
@@ -194,30 +208,6 @@ service cloud.firestore {
         !request.resource.data.visible_to.hasAny([request.auth.uid]) &&
         resource.data.visible_to.hasAll(request.resource.data.visible_to) &&
         request.resource.data.visible_to.size() + 1 == resource.data.visible_to.size();
-    }
-
-    function isValidMessageDeleteForEveryone(conversationId) {
-      return canAccessMessage(conversationId) &&
-        resource.data.sender_firebase_uid == request.auth.uid &&
-        resource.data.deleted_at == null &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'body', 'attachments', 'forwarded_from', 'deleted_at',
-          'reaction_entries', 'read_receipts'
-        ]) &&
-        request.resource.data.body == 'Message deleted' &&
-        request.resource.data.attachments is list &&
-        request.resource.data.attachments.size() == 0 &&
-        request.resource.data.forwarded_from == null &&
-        request.resource.data.deleted_at == request.time &&
-        request.resource.data.reaction_entries is list &&
-        request.resource.data.reaction_entries.size() == 0 &&
-        request.resource.data.read_receipts is list &&
-        request.resource.data.read_receipts.size() == 0;
-    }
-
-    function isValidMessageDelete(conversationId) {
-      return canAccessMessage(conversationId) &&
-        resource.data.sender_firebase_uid == request.auth.uid;
     }
 
     match /users/{userId}/messageConversations/{conversationId} {
@@ -244,20 +234,20 @@ service cloud.firestore {
 
       match /messages/{messageId} {
         allow get, list: if isConversationMember(conversationId) &&
+          resource.data.visible_to is list &&
           resource.data.visible_to.hasAny([request.auth.uid]);
         allow create: if isValidMessageCreate(conversationId);
-        allow update: if isValidMessageEdit(conversationId) ||
-          isValidMessagePin(conversationId) ||
-          isValidMessageHide(conversationId) ||
-          isValidMessageDeleteForEveryone(conversationId);
-        allow delete: if isValidMessageDelete(conversationId);
+        allow update: if isValidMessageUpdate(conversationId) ||
+          isValidMessageHide(conversationId);
+        allow delete: if canAccessMessage(conversationId);
       }
     }
 
     match /messagePresence/{firebaseUid} {
       allow get: if signedIn() &&
         (request.auth.uid == firebaseUid ||
-          resource.data.visible_to.hasAny([request.auth.uid]));
+          (resource.data.visible_to is list &&
+            resource.data.visible_to.hasAny([request.auth.uid])));
       allow update: if signedIn() &&
         request.auth.uid == firebaseUid &&
         request.resource.data.diff(resource.data).affectedKeys()

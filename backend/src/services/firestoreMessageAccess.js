@@ -19,7 +19,8 @@ const syncProjectConversationAccess = async (projectId, firebaseUid, isActive) =
             if (isActive) {
                 batch.set(accessRef, {
                     conversation_id: conversation.id,
-                    project_id: projectId
+                    project_id: projectId,
+                    hidden_for_user: false
                 });
             } else {
                 batch.delete(accessRef);
@@ -28,27 +29,53 @@ const syncProjectConversationAccess = async (projectId, firebaseUid, isActive) =
         await batch.commit();
     }
 
-    const participantUids = [...participants];
-    if (participantUids.length < 2) return;
+    const accessSnapshot = await firestore.collection('users').doc(firebaseUid)
+        .collection('messageConversations').get();
+    const remainingIds = accessSnapshot.docs.map(snapshot => snapshot.id);
+    const remainingConversations = [];
+    for (let offset = 0; offset < remainingIds.length; offset += 300) {
+        const refs = remainingIds.slice(offset, offset + 300)
+            .map(conversationId => firestore.collection('messageConversations').doc(conversationId));
+        remainingConversations.push(...await firestore.getAll(...refs));
+    }
+    const visiblePeers = new Set();
+    remainingConversations.forEach(snapshot => {
+        const memberUids = snapshot.exists ? snapshot.data().member_uids : [];
+        if (memberUids?.includes(firebaseUid)) {
+            memberUids.forEach(uid => {
+                if (uid !== firebaseUid) visiblePeers.add(uid);
+            });
+        }
+    });
+    const touchedPeers = new Set(participants);
+    visiblePeers.forEach(uid => touchedPeers.add(uid));
+    const participantUids = [...touchedPeers];
+    const presenceSnapshots = [];
+    for (let offset = 0; offset < participantUids.length; offset += 300) {
+        presenceSnapshots.push(...await firestore.getAll(
+            ...participantUids.slice(offset, offset + 300).map(uid =>
+                firestore.collection('messagePresence').doc(uid))
+        ));
+    }
+    const presenceByUid = new Map(presenceSnapshots.map(snapshot => [snapshot.id, snapshot]));
     for (let offset = 0; offset < participantUids.length; offset += 400) {
         const batch = firestore.batch();
         participantUids.slice(offset, offset + 400).forEach(participantUid => {
             const presenceRef = firestore.collection('messagePresence').doc(participantUid);
+            const snapshot = presenceByUid.get(participantUid);
+            const visibleTo = new Set(Array.isArray(snapshot.data()?.visible_to)
+                ? snapshot.data().visible_to
+                : []);
             if (participantUid === firebaseUid) {
-                const peers = participantUids.filter(uid => uid !== firebaseUid);
-                if (!peers.length) return;
-                batch.set(presenceRef, {
-                    visible_to: isActive
-                        ? getFirebaseAdmin().firestore.FieldValue.arrayUnion(...peers)
-                        : getFirebaseAdmin().firestore.FieldValue.arrayRemove(...peers)
-                }, { merge: true });
+                visibleTo.clear();
+                visibleTo.add(firebaseUid);
+                visiblePeers.forEach(uid => visibleTo.add(uid));
+                batch.set(presenceRef, { visible_to: [...visibleTo] }, { merge: true });
                 return;
             }
-            batch.set(presenceRef, {
-                visible_to: isActive
-                    ? getFirebaseAdmin().firestore.FieldValue.arrayUnion(firebaseUid)
-                    : getFirebaseAdmin().firestore.FieldValue.arrayRemove(firebaseUid)
-            }, { merge: true });
+            if (visiblePeers.has(participantUid)) visibleTo.add(firebaseUid);
+            else visibleTo.delete(firebaseUid);
+            batch.set(presenceRef, { visible_to: [...visibleTo] }, { merge: true });
         });
         await batch.commit();
     }

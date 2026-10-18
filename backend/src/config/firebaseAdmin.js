@@ -42,7 +42,7 @@ const initializeFirebaseAdmin = () => {
 
     initialized = true;
 
-    console.log('Firebase Admin initialized');
+    console.log('Firebase Admin initialized for project', projectId);
 
     return admin.app();
 };

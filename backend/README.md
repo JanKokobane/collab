@@ -87,12 +87,13 @@ after the migration completes.
 
 Deploy the root `firestore.rules` to allow signed-in users to read only
 conversation and message documents indexed for them by the backend. Rules
-allow members to create messages and to make constrained edits, pin changes,
-per-user hides, and sender-only deletes for their own visible messages. Message
-reactions, read receipts, conversation clearing, and related bulk changes
-remain server-side through the authenticated API, which checks current SQL
-project membership. This preserves project access and per-user hidden-message
-behavior while Firestore snapshots deliver updates directly to the dashboard.
+allow conversation members to create, read, edit, pin, hide, and delete visible
+messages in their conversations. The rules keep sender identity, conversation
+audience, message size, and attachment structure protected. Reactions, read
+receipts, conversation clearing, and related bulk changes remain server-side
+through the authenticated API, which checks current SQL project membership.
+This preserves project access and per-user hidden-message behavior while
+Firestore snapshots deliver updates directly to the dashboard.
 
 Authenticated users can retrieve and update their profile through
 `GET|PUT /api/users/profile`. Profile fields are stored in PostgreSQL's
