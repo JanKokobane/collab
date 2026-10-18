@@ -1,10 +1,13 @@
 import { activeView, currentUser, getAccessibleMembers, getAvatarSource, make, projects, renderAvatarElement } from './state.js'
 import { firebaseAuth } from '../../firebase.js'
 import { api, apiBaseUrl } from './api.js'
+import { clearCallInterface, renderCallInterface } from './messageCallUI.js?v=20261018-1420'
 
 const maxAttachmentBytes = 512 * 1024
-const messagesBuildId = '20261018-1230'
+const messagesBuildId = '20261018-1420'
 const presenceHeartbeatMs = 25000
+const callSocketConnectTimeoutMs = 15000
+const callMediaRequestTimeoutMs = 30000
 const reactionChoices = ['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']
 let messageState = { conversations: [], messages: [] }
 let selectedConversationId = null
@@ -19,6 +22,7 @@ let realtimeSocketPromise = null
 let realtimeSocketUid = null
 const conversationMessageSubscriptions = new Map()
 const conversationCallSubscriptions = new Map()
+const conversationCallHistory = new Map()
 const messageCursors = new Map()
 const messageHasMore = new Map()
 const loadingOlderMessages = new Set()
@@ -30,6 +34,9 @@ let incomingCall = null
 let activeCall = null
 let incomingCallTimer = null
 let callStartInFlight = false
+let callStartSequence = 0
+let callStarting = null
+let callError = null
 let acceptingCallId = null
 const pendingCallUpdates = new Map()
 const pendingCallSignals = new Map()
@@ -271,6 +278,40 @@ function getConversationMessages(conversationId) {
   return messageState.messages.filter(message => message.conversationId === conversationId)
 }
 
+function getConversationTimeline(conversationId) {
+  const messages = getConversationMessages(conversationId)
+  const calls = (conversationCallHistory.get(conversationId) || [])
+    .filter(call => ['missed', 'declined', 'ended'].includes(call.status))
+  return [...messages, ...calls].sort((a, b) =>
+    Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id))
+}
+
+function upsertCallHistory(call, shouldRender = true) {
+  if (!call?.call_id || !call.conversation_id) return
+  const current = conversationCallHistory.get(call.conversation_id) || []
+  const normalized = {
+    ...call,
+    id: `call:${call.call_id}`,
+    callId: call.call_id,
+    conversationId: call.conversation_id,
+    createdAt: call.created_at || call.createdAt,
+    callType: call.call_type || call.callType,
+    callerUid: call.caller_uid || call.callerUid,
+    callerName: call.caller_name || call.callerName,
+    calleeUid: call.callee_uid || call.calleeUid,
+    calleeName: call.callee_name || call.calleeName,
+    endedByUid: call.ended_by_uid || call.endedByUid
+  }
+  const index = current.findIndex(item => item.callId === normalized.callId)
+  if (index < 0) current.push(normalized)
+  else current[index] = { ...current[index], ...normalized }
+  current.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+  conversationCallHistory.set(call.conversation_id, current)
+  if (shouldRender && selectedConversationId === call.conversation_id && activeView === 'Messages') {
+    renderMessages()
+  }
+}
+
 function replaceConversations(conversations) {
   const existingById = new Map(messageState.conversations.map(item => [item.id, item]))
   messageState.conversations = conversations.map(conversation => {
@@ -425,11 +466,13 @@ function unsubscribeConversation(conversationId) {
   joinedConversationIds.delete(conversationId)
   messageCursors.delete(conversationId)
   messageHasMore.delete(conversationId)
+  conversationCallHistory.delete(conversationId)
 }
 
 function handleCallUpdate(call) {
   const uid = currentUid()
   if (!call || (call.caller_uid !== uid && call.callee_uid !== uid)) return
+  if (['missed', 'declined', 'ended'].includes(call.status)) upsertCallHistory(call)
   const ringExpiry = Date.parse(call.ring_expires_at)
   if (!activeCall && !incomingCall && call.callee_uid === uid &&
     call.status === 'ringing' && ringExpiry > Date.now()) {
@@ -440,8 +483,11 @@ function handleCallUpdate(call) {
       if (incomingCall?.call_id === call.call_id) {
         incomingCall = null
         renderCallOverlay()
+        refreshCallHistory(call.conversation_id).catch(error =>
+          showError(error, `refresh missed call history for ${call.conversation_id}`)
+        )
       }
-    }, Math.max(0, ringExpiry - Date.now()))
+    }, Math.max(0, ringExpiry - Date.now()) + 500)
     renderCallOverlay()
   } else if (incomingCall?.call_id === call.call_id && call.status !== 'ringing') {
     incomingCall = null
@@ -453,12 +499,10 @@ function handleCallUpdate(call) {
     if (call.status === 'accepted') {
       activeCall.status = 'accepted'
       clearTimeout(activeCall.ringingTimer)
-      const status = activeCall.overlay?.querySelector('.messages-call-status')
-      if (status) status.textContent = `${activeCall.callType === 'video' ? 'Video' : 'Voice'} · Connecting…`
+      setActiveCallStatus(`${activeCall.callType === 'video' ? 'Video' : 'Voice'} · Connecting…`)
       if (activeCall.isCaller) {
         startWebRtcOffer(activeCall).catch(error => {
-          showError(error, 'start WebRTC offer')
-          finishActiveCall(true)
+          failActiveCall(error, 'start WebRTC offer')
         })
       }
     } else if (['declined', 'missed', 'ended'].includes(call.status)) {
@@ -467,6 +511,68 @@ function handleCallUpdate(call) {
   } else if (callStartInFlight && call.caller_uid === uid) {
     pendingCallUpdates.set(call.call_id, call)
   }
+}
+
+function setActiveCallStatus(text) {
+  if (!activeCall) return
+  const status = activeCall.overlay?.querySelector('.collab-call-status')
+  if (status) status.textContent = text
+}
+
+function waitForRealtimeConnection(socket) {
+  if (socket?.connected) return Promise.resolve()
+  if (!socket) return Promise.reject(new Error('Call signaling could not be initialized.'))
+  return new Promise((resolve, reject) => {
+    let lastError = null
+    const cleanup = () => {
+      clearTimeout(timeout)
+      socket.off('connect', onConnect)
+      socket.off('connect_error', onConnectError)
+    }
+    const onConnect = () => {
+      cleanup()
+      resolve()
+    }
+    const onConnectError = error => {
+      lastError = error
+    }
+    const timeout = setTimeout(() => {
+      cleanup()
+      const detail = lastError?.message ? ` (${lastError.message})` : ''
+      reject(new Error(`Call signaling did not connect within 15 seconds${detail}. Check the backend Socket.IO connection and try again.`))
+    }, callSocketConnectTimeoutMs)
+    socket.on('connect', onConnect)
+    socket.on('connect_error', onConnectError)
+    if (socket.connected) onConnect()
+  })
+}
+
+function requestCallMedia(callType) {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const timeout = setTimeout(() => {
+      settled = true
+      reject(new Error('Microphone or camera permission is taking too long. Allow access in your browser, then try again.'))
+    }, callMediaRequestTimeoutMs)
+
+    navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: callType === 'video'
+    }).then(stream => {
+      clearTimeout(timeout)
+      if (settled) {
+        stream.getTracks().forEach(track => track.stop())
+        return
+      }
+      settled = true
+      resolve(stream)
+    }, error => {
+      clearTimeout(timeout)
+      if (settled) return
+      settled = true
+      reject(error)
+    })
+  })
 }
 
 async function ensureRealtimeSocket() {
@@ -495,7 +601,9 @@ async function ensureRealtimeSocket() {
       auth: { token },
       autoConnect: false,
       reconnection: true,
-      reconnectionAttempts: Infinity
+      reconnectionAttempts: Infinity,
+      transports: ['websocket', 'polling'],
+      tryAllTransports: true
     })
     realtimeSocket = socket
     socket.on('connect', () => {
@@ -505,13 +613,27 @@ async function ensureRealtimeSocket() {
         joinConversationRoom(conversation)
       })
       messageState.conversations.forEach(subscribeToConversationCalls)
+      if (activeCall) {
+        setActiveCallStatus(`${activeCall.callType === 'video' ? 'Video' : 'Voice'} · ${
+          activeCall.status === 'accepted' ? 'Connecting…' : 'Calling…'
+        }`)
+      }
     })
-    socket.on('disconnect', () => joinedConversationIds.clear())
+    socket.on('disconnect', () => {
+      joinedConversationIds.clear()
+      if (activeCall) setActiveCallStatus('Signaling disconnected · reconnecting…')
+    })
     let refreshedRealtimeAuth = false
     socket.on('connect_error', async error => {
       console.error('[messages] Authenticated message realtime connection failed.', {
-        message: error?.message || String(error), uid: user.uid
+        message: error?.message || String(error),
+        type: error?.type || null,
+        description: error?.description || null,
+        context: error?.context?.message || null,
+        transport: socket.io?.engine?.transport?.name || null,
+        uid: user.uid
       })
+      if (activeCall) setActiveCallStatus('Signaling unavailable · reconnecting…')
       if (!refreshedRealtimeAuth && /authentication/i.test(error?.message || '') &&
         firebaseAuth.currentUser?.uid === user.uid) {
         try {
@@ -542,8 +664,7 @@ async function ensureRealtimeSocket() {
           message: error?.message || String(error)
         })
         if (activeCall?.callId === packet?.call_id) {
-          showError(error, 'connect the call')
-          finishActiveCall(true)
+          failActiveCall(error, 'connect the call')
         }
       })
     })
@@ -670,111 +791,37 @@ function renderCallOverlay() {
   const { callRoot } = getElements()
   if (!callRoot) return
   if (activeCall?.overlay?.isConnected) return
-  callRoot.replaceChildren()
-  if (activeCall) {
-    const backdrop = make('div', 'messages-call-backdrop')
-    const panel = make('section', 'messages-call-panel')
-    panel.setAttribute('role', 'dialog')
-    panel.setAttribute('aria-modal', 'true')
-    panel.setAttribute('aria-label', `${activeCall.callType} call`)
-    const header = make('header', 'messages-call-header')
-    const details = make('div')
-    details.append(
-      make('strong', '', activeCall.peerName || 'Teammate'),
-      make('span', 'messages-call-status', `${activeCall.callType === 'video' ? 'Video' : 'Voice'} · ${
-        activeCall.status === 'accepted' ? 'Connecting…' : 'Calling…'
-      }`)
-    )
-    const controls = make('div', 'messages-call-controls')
-    const mute = make('button', 'messages-call-control', activeCall.isMuted ? 'Unmute' : 'Mute')
-    mute.type = 'button'
-    mute.setAttribute('aria-label', activeCall.isMuted ? 'Unmute microphone' : 'Mute microphone')
-    mute.addEventListener('click', () => {
-      activeCall.isMuted = !activeCall.isMuted
-      activeCall.localStream?.getAudioTracks().forEach(track => {
-        track.enabled = !activeCall.isMuted
-      })
-      mute.textContent = activeCall.isMuted ? 'Unmute' : 'Mute'
-      mute.setAttribute('aria-label', activeCall.isMuted ? 'Unmute microphone' : 'Mute microphone')
-    })
-    controls.append(mute)
-    if (activeCall.callType === 'video') {
-      const camera = make('button', 'messages-call-control', 'Camera off')
-      camera.type = 'button'
-      camera.setAttribute('aria-label', 'Turn camera off')
-      camera.addEventListener('click', () => {
-        activeCall.isCameraOff = !activeCall.isCameraOff
-        activeCall.localStream?.getVideoTracks().forEach(track => {
-          track.enabled = !activeCall.isCameraOff
-        })
-        camera.textContent = activeCall.isCameraOff ? 'Camera on' : 'Camera off'
-        camera.setAttribute('aria-label', activeCall.isCameraOff ? 'Turn camera on' : 'Turn camera off')
-      })
-      controls.append(camera)
-    }
-    const hangUp = make('button', 'messages-call-hangup', 'End call')
-    hangUp.type = 'button'
-    hangUp.addEventListener('click', () => finishActiveCall(true))
-    controls.append(hangUp)
-    header.append(details, controls)
-    const stage = make('div', `messages-call-frame${activeCall.callType === 'video' ? ' is-video-call' : ' is-audio-call'}`)
-    const remoteVideo = document.createElement('video')
-    remoteVideo.autoplay = true
-    remoteVideo.playsInline = true
-    remoteVideo.setAttribute('aria-label', 'Remote participant')
-    if (activeCall.callType !== 'video') remoteVideo.className = 'messages-call-audio-stream'
-    const localVideo = document.createElement('video')
-    localVideo.autoplay = true
-    localVideo.muted = true
-    localVideo.playsInline = true
-    localVideo.setAttribute('aria-label', 'Your camera preview')
-    localVideo.hidden = activeCall.callType !== 'video'
-    stage.append(remoteVideo)
-    if (activeCall.callType === 'video') {
-      stage.append(localVideo)
-    } else {
-      const avatar = make(
-        'div',
-        'messages-call-audio-avatar',
-        (activeCall.peerName || 'T').trim().charAt(0).toUpperCase()
-      )
-      stage.append(avatar)
-    }
-    panel.append(header, stage)
-    backdrop.append(panel)
-    callRoot.append(backdrop)
-    callRoot.hidden = false
-    activeCall.overlay = backdrop
-    activeCall.remoteVideo = remoteVideo
-    activeCall.localVideo = localVideo
-    if (activeCall.remoteStream) remoteVideo.srcObject = activeCall.remoteStream
-    if (activeCall.localStream) localVideo.srcObject = activeCall.localStream
-    return
+  const view = renderCallInterface(callRoot, {
+    activeCall,
+    incomingCall,
+    startingCall: callStarting,
+    callError
+  }, {
+    onHangUp: () => finishActiveCall(true),
+    onAccept: () => acceptIncomingCall(),
+    onDecline: () => declineIncomingCall(),
+    onCancelSetup: cancelCallSetup,
+    onDismissError: dismissCallError
+  })
+  if (activeCall && view) {
+    activeCall.overlay = view.overlay
+    activeCall.remoteVideo = view.remoteVideo
+    activeCall.localVideo = view.localVideo
+  } else if (incomingCall && view) {
+    incomingCall.overlay = view.overlay
   }
-  if (!incomingCall) {
-    callRoot.hidden = true
-    return
-  }
-  const backdrop = make('div', 'messages-call-backdrop')
-  const panel = make('section', 'messages-incoming-call')
-  panel.setAttribute('role', 'dialog')
-  panel.setAttribute('aria-modal', 'true')
-  panel.setAttribute('aria-label', 'Incoming call')
-  const title = make('h2', '', `Incoming ${incomingCall.call_type === 'video' ? 'video' : 'voice'} call`)
-  const caller = make('p', '', incomingCall.caller_name || 'Teammate')
-  const actions = make('div', 'messages-incoming-actions')
-  const decline = make('button', 'messages-call-decline', 'Decline')
-  decline.type = 'button'
-  decline.addEventListener('click', () => declineIncomingCall())
-  const accept = make('button', 'messages-call-accept', 'Accept')
-  accept.type = 'button'
-  accept.addEventListener('click', () => acceptIncomingCall())
-  actions.append(decline, accept)
-  panel.append(title, caller, actions)
-  backdrop.append(panel)
-  callRoot.append(backdrop)
-  callRoot.hidden = false
-  incomingCall.overlay = backdrop
+}
+
+function cancelCallSetup() {
+  callStartSequence += 1
+  callStarting = null
+  callError = null
+  renderCallOverlay()
+}
+
+function dismissCallError() {
+  callError = null
+  renderCallOverlay()
 }
 
 function subscribeToConversationCalls(conversation) {
@@ -823,14 +870,12 @@ function createCallPeerConnection(call, iceServers) {
   })
   peerConnection.addEventListener('connectionstatechange', () => {
     if (activeCall?.callId !== call.callId) return
-    const status = call.overlay?.querySelector('.messages-call-status')
     if (peerConnection.connectionState === 'connected') {
-      if (status) status.textContent = `${call.callType === 'video' ? 'Video' : 'Voice'} · Connected`
+      setActiveCallStatus(`${call.callType === 'video' ? 'Video' : 'Voice'} · Connected`)
     } else if (peerConnection.connectionState === 'failed') {
-      showError(new Error(
+      failActiveCall(new Error(
         'The call could not connect. This network may require a TURN relay; configure WebRTC TURN settings on the backend.'
       ), 'WebRTC connection')
-      finishActiveCall(true)
     }
   })
   return peerConnection
@@ -941,11 +986,28 @@ async function finishActiveCall(notifyPeer) {
   }
 }
 
-function callRootReplace() {
+async function failActiveCall(error, operation) {
+  showError(error, operation)
+  await finishActiveCall(true)
+  callError = { message: error?.message || 'The call could not be completed. Please try again.' }
+  renderCallOverlay()
+}
+
+async function callRootReplace() {
   const { callRoot } = getElements()
   if (!callRoot) return
-  callRoot.replaceChildren()
-  callRoot.hidden = true
+  callStarting = null
+  callError = null
+  clearCallInterface(callRoot)
+}
+
+async function expireOutgoingCall(call) {
+  try {
+    await api.post(`${apiPath(call.conversationId)}/calls/${call.callId}/missed`, {})
+  } catch (error) {
+    showError(error, `mark call ${call.callId} as missed`)
+  }
+  if (activeCall?.callId === call.callId) await finishActiveCall(false)
 }
 
 async function startCall(conversation, callType) {
@@ -964,19 +1026,50 @@ async function startCall(conversation, callType) {
     return
   }
   callStartInFlight = true
+  const startSequence = ++callStartSequence
+  callError = null
+  callStarting = {
+    callType,
+    peerName: conversation.participants?.find(member => member.firebaseUid !== currentUid())?.name,
+    status: 'Connecting to call service…'
+  }
+  renderCallOverlay()
   let localStream
   let createdCallId = null
+  let setupStage = 'check browser call support'
   try {
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
       throw new Error('WebRTC calling is not available in this browser. Use a supported browser over HTTPS.')
     }
-    localStream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: callType === 'video'
-    })
+    setupStage = 'load realtime call signaling'
+    const socket = await ensureRealtimeSocket()
+    if (startSequence !== callStartSequence) return
+    setupStage = 'connect realtime call signaling'
+    await waitForRealtimeConnection(socket)
+    if (startSequence !== callStartSequence) return
+    setupStage = 'request microphone/camera permission'
+    callStarting.status = 'Requesting microphone and camera access…'
+    renderCallOverlay()
+    localStream = await requestCallMedia(callType)
+    if (startSequence !== callStartSequence) {
+      localStream.getTracks().forEach(track => track.stop())
+      localStream = null
+      return
+    }
+    setupStage = 'create call with backend'
     const result = await api.post(`${apiPath(conversation.id)}/calls`, { callType })
     const responseCall = result?.data?.call
     createdCallId = responseCall?.call_id || null
+    if (startSequence !== callStartSequence) {
+      localStream?.getTracks().forEach(track => track.stop())
+      localStream = null
+      if (createdCallId) {
+        await api.post(`${apiPath(conversation.id)}/calls/${createdCallId}/end`, {})
+          .catch(error => console.error('[messages] Unable to end cancelled call setup.', error.message))
+      }
+      return
+    }
+    setupStage = 'validate call setup response'
     if (!responseCall?.call_id || !responseCall.peer_uid ||
       !Array.isArray(responseCall.ice_servers) ||
       !Number.isFinite(Date.parse(responseCall.ring_expires_at))) {
@@ -994,6 +1087,8 @@ async function startCall(conversation, callType) {
       pendingIceCandidates: [],
       ringExpiresAt: Date.parse(responseCall.ring_expires_at)
     }
+    setupStage = 'initialize WebRTC media connection'
+    callStarting = null
     localStream = null
     renderCallOverlay()
     const peerConnection = createCallPeerConnection(activeCall, responseCall.ice_servers)
@@ -1006,22 +1101,28 @@ async function startCall(conversation, callType) {
     const ringExpiresAt = Date.parse(responseCall.ring_expires_at)
     activeCall.ringingTimer = setTimeout(() => {
       if (activeCall?.callId === responseCall.call_id && activeCall.status === 'ringing') {
-        finishActiveCall(true)
+        expireOutgoingCall(activeCall)
       }
-    }, Math.max(0, ringExpiresAt - Date.now()))
+    }, Math.max(0, ringExpiresAt - Date.now()) + 500)
     if (activeCall?.status === 'accepted') await startWebRtcOffer(activeCall)
     if (!peerConnection) throw new Error('Unable to initialize the WebRTC connection.')
     if (activeCall) await applyPendingCallSignals(activeCall)
   } catch (error) {
+    const wasCancelled = startSequence !== callStartSequence
     console.error('[messages] Call setup failed', {
-      method: 'POST',
-      path: `${apiPath(conversation.id)}/calls`,
+      stage: setupStage,
+      method: setupStage === 'create call with backend' ? 'POST' : null,
+      path: setupStage === 'create call with backend'
+        ? `${apiPath(conversation.id)}/calls`
+        : null,
       callType,
       conversationId: conversation.id,
-      status: error?.status || null,
+      errorName: error?.name || 'Error',
+      status: error?.status ?? null,
       code: error?.code || error?.payload?.code || null,
       message: error?.message || String(error),
-      serverMessage: error?.payload?.message || null
+      serverMessage: error?.payload?.message || null,
+      stack: error?.stack || null
     })
     if (activeCall) await finishActiveCall(Boolean(activeCall.callId))
     else if (createdCallId) {
@@ -1035,6 +1136,10 @@ async function startCall(conversation, callType) {
       if (pendingCall.conversation_id === conversation.id) pendingCallUpdates.delete(callId)
     }
     localStream?.getTracks().forEach(track => track.stop())
+    if (wasCancelled) return
+    callStarting = null
+    callError = { message: error?.message || 'The call could not be completed. Please try again.' }
+    renderCallOverlay()
     showError(error, `start ${callType} call`)
   } finally {
     callStartInFlight = false
@@ -1050,10 +1155,8 @@ async function acceptIncomingCall() {
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
       throw new Error('WebRTC calling is not available in this browser. Use a supported browser over HTTPS.')
     }
-    localStream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: call.call_type === 'video'
-    })
+    await waitForRealtimeConnection(await ensureRealtimeSocket())
+    localStream = await requestCallMedia(call.call_type)
     const result = await api.post(
       `${apiPath(call.conversation_id)}/calls/${call.call_id}/accept`, {}
     )
@@ -1094,8 +1197,9 @@ async function acceptIncomingCall() {
         clearTimeout(incomingCallTimer)
         incomingCallTimer = null
       }
-      callRootReplace()
     }
+    callError = { message: error?.message || 'The call could not be completed. Please try again.' }
+    renderCallOverlay()
     showError(error, `accept call ${call.call_id}`)
   } finally {
     acceptingCallId = null
@@ -1173,11 +1277,24 @@ async function loadConversationMessages(conversationId) {
       messageState.messages = (data.messages || []).map(normalizeMessage)
       messageCursors.set(conversationId, data.nextCursor || null)
       messageHasMore.set(conversationId, Boolean(data.hasMore))
+      await refreshCallHistory(conversationId)
     }
   } catch (error) {
     logMessageApiFailure('message history fetch', error, { conversationId })
     throw error
   }
+}
+
+async function refreshCallHistory(conversationId) {
+  const conversation = messageState.conversations.find(item => item.id === conversationId)
+  if (!conversation || conversation.type !== 'direct') {
+    conversationCallHistory.delete(conversationId)
+    return
+  }
+  const result = await api.get(`${apiPath(conversationId)}/calls?limit=100`)
+  const calls = result?.data?.calls || []
+  conversationCallHistory.set(conversationId, [])
+  calls.forEach(call => upsertCallHistory(call, false))
 }
 
 async function loadOlderMessages(conversationId) {
@@ -1223,6 +1340,7 @@ async function reloadMessages() {
     messageState = { conversations: [], messages: [] }
     selectedConversationId = null
     memberPresence.clear()
+    conversationCallHistory.clear()
     subscriptionsUid = user.uid
   }
   await ensureRealtimeSocket()
@@ -1601,6 +1719,39 @@ function renderMessageActions(message, container) {
   container.append(actions)
 }
 
+function renderCallRecord(call) {
+  const isCaller = call.callerUid === currentUid()
+  const callType = call.callType === 'video' ? 'Video' : 'Voice'
+  let label
+  let icon
+  if (call.status === 'missed') {
+    label = isCaller ? `${callType} call · No answer` : `Missed ${callType.toLowerCase()} call`
+    icon = '↙'
+  } else if (call.status === 'declined') {
+    label = isCaller ? `${callType} call declined` : `Declined ${callType.toLowerCase()} call`
+    icon = '↙'
+  } else {
+    label = `${callType} call ended`
+    icon = '↗'
+  }
+  const row = make('article', `message-row call-log-row${isCaller ? ' own message-row-sent' : ' message-row-received'}`)
+  const content = make('div', `message-content${isCaller ? ' message-content-sent' : ' message-content-received'}`)
+  const card = make('div', `call-log-card${call.status === 'missed' ? ' is-missed' : ''}`)
+  const glyph = make('span', 'call-log-icon', icon)
+  glyph.setAttribute('aria-hidden', 'true')
+  const text = make('div', 'call-log-copy')
+  text.append(
+    make('strong', 'call-log-label', label),
+    make('span', 'call-log-participant', isCaller ? call.calleeName : call.callerName)
+  )
+  const time = make('time', 'call-log-time', formatMessageTime(call.createdAt))
+  time.dateTime = call.createdAt
+  card.append(glyph, text, time)
+  content.append(card)
+  row.append(content)
+  return row
+}
+
 function renderMessagesList() {
   const { feed } = getElements()
   if (!feed) return
@@ -1610,12 +1761,16 @@ function renderMessagesList() {
     feed.append(make('p', 'messages-placeholder', 'Choose a channel or start a direct message.'))
     return
   }
-  const messages = getConversationMessages(selectedConversationId)
+  const messages = getConversationTimeline(selectedConversationId)
   if (!messages.length) {
     feed.append(make('p', 'messages-placeholder', 'No messages yet. Start the conversation.'))
     return
   }
   messages.forEach(message => {
+    if (message.callId) {
+      feed.append(renderCallRecord(message))
+      return
+    }
     const own = message.senderUid === currentUid()
     const row = make('article', `message-row${own ? ' own message-row-sent' : ' message-row-received'}`)
     const body = make('div', `message-content${own ? ' message-content-sent' : ' message-content-received'}`)
@@ -1796,13 +1951,13 @@ function renderMessagesView() {
   })
   actions.append(trigger, menu)
   if (conversation.type === 'direct') {
-    const voiceCall = make('button', 'messages-call-button')
+    const voiceCall = make('button', 'collab-call-launch')
     voiceCall.type = 'button'
     voiceCall.setAttribute('aria-label', 'Start voice call')
     voiceCall.title = 'Start voice call'
     voiceCall.replaceChildren(createCallIcon('audio'))
     voiceCall.addEventListener('click', () => startCall(conversation, 'audio'))
-    const videoCall = make('button', 'messages-call-button')
+    const videoCall = make('button', 'collab-call-launch')
     videoCall.type = 'button'
     videoCall.setAttribute('aria-label', 'Start video call')
     videoCall.title = 'Start video call'
@@ -2672,6 +2827,9 @@ export function initMessages() {
 }
 
 export async function refreshMessagesForCurrentUser() {
+  callStartSequence += 1
+  callStarting = null
+  callError = null
   if (!firebaseAuth.currentUser) {
     if (mediaRecorder) cancelVoiceRecording()
     selectedConversationId = null
@@ -2685,6 +2843,7 @@ export async function refreshMessagesForCurrentUser() {
   conversationMessageSubscriptions.clear()
   conversationCallSubscriptions.forEach(unsubscribe => unsubscribe())
   conversationCallSubscriptions.clear()
+  conversationCallHistory.clear()
   clearTimeout(incomingCallTimer)
   incomingCallTimer = null
   incomingCall = null

@@ -12,7 +12,7 @@ const {
     clearConversationMessages,
     markConversationRead
 } = require('../controllers/messageController');
-const { startCall, updateCall } = require('../controllers/messageCallController');
+const { getCallHistory, startCall, updateCall } = require('../controllers/messageCallController');
 const { requireFirebaseAuth } = require('../middleware/requireFirebaseAuth');
 
 const router = express.Router();
@@ -39,6 +39,7 @@ router.delete('/conversations/:conversationId/messages/:messageId', deleteMessag
 router.delete('/conversations/:conversationId/messages', clearConversationMessages);
 router.post('/conversations/:conversationId/read', markConversationRead);
 router.patch('/conversations/:conversationId/messages/:messageId/:action', mutateMessage);
+router.get('/conversations/:conversationId/calls', getCallHistory);
 router.post('/conversations/:conversationId/calls', callStartRateLimit, startCall);
 router.post('/conversations/:conversationId/calls/:callId/:action', updateCall);
 

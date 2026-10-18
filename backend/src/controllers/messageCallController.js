@@ -29,6 +29,52 @@ const responseError = (res, error, operation) => {
     });
 };
 
+const markExpiredCallsMissed = async conversationId => {
+    const result = await query(
+        `UPDATE message_calls
+         SET status = 'missed', ended_at = COALESCE(ended_at, NOW())
+         WHERE conversation_id = $1::uuid
+           AND status = 'ringing'
+           AND ring_expires_at <= NOW()
+         RETURNING call_id, conversation_id::text AS conversation_id,
+                   caller_uid, caller_name, callee_uid, callee_name,
+                   call_type, status, created_at, ring_expires_at, ended_at`,
+        [conversationId]
+    );
+    for (const call of result.rows) {
+        emitToConversation(conversationId, 'call:updated', { call });
+    }
+};
+
+const getCallHistory = async (req, res) => {
+    const conversationId = req.params.conversationId;
+    const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 100, 1), 200);
+    try {
+        const conversation = await getConversation(conversationId, req.firebaseUid);
+        if (!conversation || conversation.conversation_type !== 'direct') {
+            return res.status(404).json({
+                success: false, code: 'CONVERSATION_NOT_FOUND',
+                message: 'Conversation not found.'
+            });
+        }
+        await markExpiredCallsMissed(conversation.conversation_id);
+        const result = await query(
+            `SELECT call_id, conversation_id::text AS conversation_id,
+                    caller_uid, caller_name, callee_uid, callee_name,
+                    call_type, status, created_at, accepted_at, ended_at,
+                    ended_by_uid, ring_expires_at
+             FROM message_calls
+             WHERE conversation_id = $1::uuid
+             ORDER BY created_at DESC, call_id DESC
+             LIMIT $2`,
+            [conversation.conversation_id, limit]
+        );
+        return res.json({ success: true, data: { calls: result.rows } });
+    } catch (error) {
+        return responseError(res, error, 'Fetch call history');
+    }
+};
+
 const startCall = async (req, res) => {
     const callType = req.body?.callType;
     if (!['audio', 'video'].includes(callType)) {
@@ -142,7 +188,7 @@ const startCall = async (req, res) => {
 
 const updateCall = async (req, res) => {
     const { conversationId, callId, action } = req.params;
-    if (!['accept', 'decline', 'end'].includes(action) || !callIdPattern.test(callId || '')) {
+    if (!['accept', 'decline', 'end', 'missed'].includes(action) || !callIdPattern.test(callId || '')) {
         return res.status(400).json({
             success: false, code: 'INVALID_CALL_ACTION',
             message: 'The requested call action is not valid.'
@@ -181,7 +227,8 @@ const updateCall = async (req, res) => {
             });
         }
         if (['declined', 'missed', 'ended'].includes(call.status)) {
-            if (action === 'end' || (action === 'decline' && isCallee && call.status === 'declined')) {
+            if (action === 'end' || action === 'missed' ||
+                (action === 'decline' && isCallee && call.status === 'declined')) {
                 await client.query('COMMIT');
                 return res.json({ success: true });
             }
@@ -232,6 +279,8 @@ const updateCall = async (req, res) => {
             });
         }
         if ((action === 'decline' && (!isCallee || call.status !== 'ringing')) ||
+            (action === 'missed' && (!isCaller || call.status !== 'ringing' ||
+                new Date(call.ring_expires_at) > new Date())) ||
             (action === 'end' && !['ringing', 'accepted'].includes(call.status))) {
             await client.query('ROLLBACK');
             return res.status(409).json({
@@ -239,7 +288,8 @@ const updateCall = async (req, res) => {
                 message: 'This call is no longer active.'
             });
         }
-        const status = action === 'decline' ? 'declined' : 'ended';
+        const status = action === 'decline' ? 'declined' :
+            action === 'missed' ? 'missed' : 'ended';
         await client.query(
             `UPDATE message_calls SET status = $2, ended_at = NOW(), ended_by_uid = $3
              WHERE call_id = $1::uuid`,
@@ -258,4 +308,4 @@ const updateCall = async (req, res) => {
     }
 };
 
-module.exports = { startCall, updateCall };
+module.exports = { getCallHistory, startCall, updateCall };

@@ -218,19 +218,18 @@ All endpoints below require `Authorization: Bearer <Firebase ID token>`.
   conversation from only the caller's chat list. Direct conversations missing
   from Firestore are recreated with their original SQL conversation ID when
   available, so a rerun of the message backfill can restore their history.
-  dashboard reads and subscribes to Firestore directly; message sends are
-  written directly to Firestore, and snapshots update the UI without backend
-  polling or a backend WebSocket. Conversation creation, read receipts, and
-  operations that need the existing SQL authorization checks continue through
-  the authenticated API.
+  The dashboard reads and writes messages through the authenticated API;
+  Socket.IO provides authorized realtime message and call updates.
 - Direct conversations support one-to-one browser WebRTC voice/video calls.
   The authenticated backend stores invitations and relays validated signaling
   only between the two authorized conversation members. Configure optional
   Coturn relay credentials through `WEBRTC_TURN_URLS` and
   `WEBRTC_TURN_SHARED_SECRET` for networks where STUN alone cannot establish
   the peer connection. Microphone/camera access requires HTTPS and user
-  permission. Call state expires from active use after its stored call expiry.
-  Calls are not recorded by this app.
+  permission. `GET /api/messages/conversations/:conversationId/calls` returns
+  recent call history. Unanswered ringing calls become `missed` and appear as
+  missed-call entries in the conversation; audio and video media are not
+  recorded by this app.
 
 Migration `007_project_meetings.sql` adds persistent project-scoped meetings,
 `008_project_reminders.sql` adds persistent project-scoped calendar reminders,
