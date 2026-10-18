@@ -9,7 +9,7 @@ const {
     query
 } = require('../config/db');
 const { getFirebaseAdmin } = require('../config/firebaseAdmin');
-const { syncProjectConversationAccess } = require('../services/firestoreMessageAccess');
+const { syncProjectConversationAccess } = require('../services/messageConversationAccess');
 
 const allowedRoles = new Set([
     'Workspace Admin',

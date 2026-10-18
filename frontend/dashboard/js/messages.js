@@ -1,21 +1,9 @@
 import { activeView, currentUser, getAccessibleMembers, getAvatarSource, make, projects, renderAvatarElement } from './state.js'
-import { firebaseAuth, firestoreDb } from '../../firebase.js'
-import { api } from './api.js'
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  onSnapshot,
-  query,
-  serverTimestamp,
-  Timestamp,
-  where,
-  writeBatch
-} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'
+import { firebaseAuth } from '../../firebase.js'
+import { api, apiBaseUrl } from './api.js'
 
 const maxAttachmentBytes = 512 * 1024
-const messagesBuildId = '20261018-0925'
+const messagesBuildId = '20261018-0926'
 const presenceHeartbeatMs = 25000
 const reactionChoices = ['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']
 let messageState = { conversations: [], messages: [] }
@@ -25,12 +13,16 @@ let replyTargetId = null
 let editingMessageId = null
 let messagesInitialized = false
 let refreshPromise = null
-let conversationUnsubscribe = null
 let subscriptionsUid = null
-let accessReconciledUid = null
+let realtimeSocket = null
+let realtimeSocketPromise = null
+let realtimeSocketUid = null
 const conversationMessageSubscriptions = new Map()
 const conversationCallSubscriptions = new Map()
-const presenceSubscriptions = new Map()
+const messageCursors = new Map()
+const messageHasMore = new Map()
+const loadingOlderMessages = new Set()
+const joinedConversationIds = new Set()
 const memberPresence = new Map()
 let presenceWriteUid = null
 let presenceHeartbeatTimer = null
@@ -143,14 +135,13 @@ function showError(error, operation = 'message operation') {
   element.hidden = false
 }
 
-function logFirestoreFailure(operation, error, context = {}) {
-  console.error(`[messages] Firestore ${operation} failed.`, {
+function logMessageApiFailure(operation, error, context = {}) {
+  console.error(`[messages] ${operation} failed.`, {
     operation,
     code: error?.code || null,
     name: error?.name || 'Error',
     message: error?.message || String(error),
     uid: currentUid() || null,
-    firebaseProjectId: firestoreDb.app.options.projectId || null,
     ...context
   })
 }
@@ -423,195 +414,232 @@ function renderConversationList() {
   })
 }
 
-function timestampToIso(value) {
-  if (!value) return null
-  if (typeof value.toDate === 'function') return value.toDate().toISOString()
-  if (value instanceof Date) return value.toISOString()
-  return value
-}
-
-function toFirestoreMessage(snapshot, conversationId) {
-  const row = snapshot.data()
-  const reactionUsers = new Map()
-  for (const reaction of row.reaction_entries || []) {
-    const users = reactionUsers.get(reaction.emoji) || []
-    if (reaction.email && !users.includes(reaction.email.toLowerCase())) users.push(reaction.email.toLowerCase())
-    reactionUsers.set(reaction.emoji, users)
-  }
-  const readAt = (row.read_receipts || [])
-    .filter(receipt => receipt.firebaseUid !== row.sender_firebase_uid && receipt.readAt)
-    .map(receipt => timestampToIso(receipt.readAt))
-    .sort((left, right) => Date.parse(left) - Date.parse(right))[0] || null
-  return normalizeMessage({
-    ...row,
-    message_id: snapshot.id,
-    conversation_id: conversationId,
-    body: row.deleted_at ? 'This message was deleted' : row.body,
-    attachments: row.deleted_at ? [] : row.attachments || [],
-    forwarded_from: row.deleted_at ? null : row.forwarded_from || null,
-    is_deleted: Boolean(row.deleted_at),
-    created_at: timestampToIso(row.created_at),
-    edited_at: timestampToIso(row.edited_at),
-    reactions: [...reactionUsers].map(([emoji, users]) => ({ emoji, users })),
-    read_at: readAt
-  })
-}
-
 function unsubscribeConversation(conversationId) {
   conversationMessageSubscriptions.get(conversationId)?.()
   conversationMessageSubscriptions.delete(conversationId)
   conversationCallSubscriptions.get(conversationId)?.()
   conversationCallSubscriptions.delete(conversationId)
-  presenceSubscriptions.get(conversationId)?.forEach(unsubscribe => unsubscribe())
-  presenceSubscriptions.delete(conversationId)
+  realtimeSocket?.emit('conversation:leave', conversationId)
+  joinedConversationIds.delete(conversationId)
+  messageCursors.delete(conversationId)
+  messageHasMore.delete(conversationId)
 }
 
-async function hydrateConversation(snapshot) {
-  const data = snapshot.data()
-  const conversationId = snapshot.id
-  let membersSnapshot
-  try {
-    membersSnapshot = await getDocs(collection(
-      firestoreDb, 'messageConversations', conversationId, 'members'
-    ))
-  } catch (error) {
-    logFirestoreFailure('conversation member fetch', error, {
-      conversationId,
-      collectionPath: `messageConversations/${conversationId}/members`
-    })
-    throw error
+function handleCallUpdate(call) {
+  const uid = currentUid()
+  if (!call || (call.caller_uid !== uid && call.callee_uid !== uid)) return
+  const ringExpiry = Date.parse(call.ring_expires_at)
+  if (!activeCall && !incomingCall && call.callee_uid === uid &&
+    call.status === 'ringing' && ringExpiry > Date.now()) {
+    if (mediaRecorder) cancelVoiceRecording()
+    incomingCall = call
+    clearTimeout(incomingCallTimer)
+    incomingCallTimer = setTimeout(() => {
+      if (incomingCall?.call_id === call.call_id) {
+        incomingCall = null
+        renderCallOverlay()
+      }
+    }, Math.max(0, ringExpiry - Date.now()))
+    renderCallOverlay()
+  } else if (incomingCall?.call_id === call.call_id && call.status !== 'ringing') {
+    incomingCall = null
+    clearTimeout(incomingCallTimer)
+    incomingCallTimer = null
+    renderCallOverlay()
   }
-  const members = membersSnapshot.docs.map(memberSnapshot => {
-    const member = memberSnapshot.data()
-    return {
-      ...member,
-      firebaseUid: member.firebaseUid || member.firebase_uid || memberSnapshot.id,
-      name: member.display_name || member.name || member.email || 'Project member',
-      email: (member.email || '').toLowerCase(),
-      profileImage: member.profile_image || '',
-      lastSeenAt: null
+  if (activeCall?.callId === call.call_id) {
+    if (call.status === 'accepted') {
+      activeCall.status = 'accepted'
+      clearTimeout(activeCall.ringingTimer)
+    } else if (['declined', 'missed', 'ended'].includes(call.status)) {
+      finishActiveCall(false)
     }
-  })
-  const conversation = normalizeConversation({
-    ...data,
-    conversation_id: conversationId,
-    created_at: timestampToIso(data.created_at),
-    updated_at: timestampToIso(data.updated_at),
-    latest_message_created_at: timestampToIso(data.latest_message_created_at),
-    members
-  })
-  const conversationMemberUids = new Set(
-    Array.isArray(data.member_uids) ? data.member_uids : []
-  )
-  const activePresence = presenceSubscriptions.get(conversationId) || new Map()
-  activePresence.forEach((unsubscribe, uid) => {
-    if (conversationMemberUids.has(uid)) return
-    unsubscribe()
-    activePresence.delete(uid)
-  })
-  const presenceUnsubscribers = []
-  members.forEach(member => {
-    if (!conversationMemberUids.has(member.firebaseUid)) return
-    if (!member.firebaseUid || activePresence.has(member.firebaseUid)) return
-    const presenceRef = doc(firestoreDb, 'messagePresence', member.firebaseUid)
-    const unsubscribe = onSnapshot(presenceRef, presenceSnapshot => {
-      const presence = presenceSnapshot.data() || {}
-      memberPresence.set(member.firebaseUid, {
-        isOnline: Boolean(presence.is_online),
-        lastSeenAt: timestampToIso(presence.last_seen_at) || member.lastSeenAt
+  }
+}
+
+async function ensureRealtimeSocket() {
+  const user = firebaseAuth.currentUser
+  if (!user) return null
+  if (realtimeSocket && realtimeSocketUid === user.uid) return realtimeSocket
+  if (realtimeSocketPromise) return realtimeSocketPromise
+  realtimeSocketPromise = (async () => {
+    if (!window.io) {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = `${apiBaseUrl}/socket.io/socket.io.js`
+        script.async = true
+        script.onload = () => window.io
+          ? resolve()
+          : reject(new Error('The realtime messaging client could not be loaded.'))
+        script.onerror = () => reject(new Error('The realtime messaging client could not be loaded.'))
+        document.head.append(script)
       })
-      if (activeView === 'Messages' && selectedConversationId === conversationId) renderMessagesView()
-    }, error => {
-      logFirestoreFailure('presence listener', error, {
-        conversationId,
-        memberUid: member.firebaseUid,
-        documentPath: `messagePresence/${member.firebaseUid}`
-      })
-      showError(error, `Firestore presence listener (${conversationId})`)
+    }
+    const token = await user.getIdToken()
+    if (firebaseAuth.currentUser?.uid !== user.uid) return null
+    realtimeSocket?.disconnect()
+    realtimeSocketUid = user.uid
+    const socket = window.io(apiBaseUrl, {
+      auth: { token },
+      autoConnect: false,
+      reconnection: true,
+      reconnectionAttempts: Infinity
     })
-    presenceUnsubscribers.push([member.firebaseUid, unsubscribe])
+    realtimeSocket = socket
+    socket.on('connect', () => {
+      joinedConversationIds.clear()
+      messageState.conversations.forEach(conversation => {
+        subscribeToConversationMessages(conversation)
+        joinConversationRoom(conversation)
+      })
+      messageState.conversations.forEach(subscribeToConversationCalls)
+    })
+    socket.on('disconnect', () => joinedConversationIds.clear())
+    let refreshedRealtimeAuth = false
+    socket.on('connect_error', async error => {
+      console.error('[messages] Authenticated message realtime connection failed.', {
+        message: error?.message || String(error), uid: user.uid
+      })
+      if (!refreshedRealtimeAuth && /authentication/i.test(error?.message || '') &&
+        firebaseAuth.currentUser?.uid === user.uid) {
+        try {
+          refreshedRealtimeAuth = true
+          socket.auth = { token: await user.getIdToken(true) }
+          socket.connect()
+          return
+        } catch (refreshError) {
+          showError(refreshError, 'refresh realtime authentication')
+          return
+        }
+      }
+      showError(error, 'connect to realtime messaging')
+    })
+    socket.on('connect', () => { refreshedRealtimeAuth = false })
+    socket.on('presence:updated', presence => {
+      if (!presence?.firebase_uid) return
+      memberPresence.set(presence.firebase_uid, {
+        isOnline: Boolean(presence.is_online),
+        lastSeenAt: presence.last_seen_at || null
+      })
+      if (activeView === 'Messages') renderMessagesView()
+    })
+    socket.on('conversation:created', () => refreshFromServer())
+    socket.on('conversations:refresh', () => refreshFromServer())
+    socket.on('conversation:removed', ({ conversation_id: conversationId } = {}) => {
+      if (!conversationId) return
+      unsubscribeConversation(conversationId)
+      messageState.conversations = messageState.conversations.filter(item => item.id !== conversationId)
+      if (selectedConversationId === conversationId) {
+        selectedConversationId = messageState.conversations[0]?.id || null
+        messageState.messages = []
+        if (selectedConversationId) loadConversationMessages(selectedConversationId)
+      }
+      updateMessagesNavigationBadge()
+      renderMessages()
+    })
+    socket.on('conversation:cleared', ({ conversation_id: conversationId } = {}) => {
+      if (conversationId && selectedConversationId === conversationId) {
+        loadConversationMessages(conversationId)
+      }
+    })
+    socket.connect()
+    return socket
+  })().finally(() => {
+    realtimeSocketPromise = null
   })
-  presenceUnsubscribers.forEach(([uid, unsubscribe]) => activePresence.set(uid, unsubscribe))
-  presenceSubscriptions.set(conversationId, activePresence)
-  return conversation
+  return realtimeSocketPromise
 }
 
 function subscribeToConversationMessages(conversation) {
-  if (conversationMessageSubscriptions.has(conversation.id)) return
-  const messagesQuery = query(
-    collection(firestoreDb, 'messageConversations', conversation.id, 'messages'),
-    where('visible_to', 'array-contains', currentUid())
-  )
-  const unsubscribe = onSnapshot(messagesQuery, snapshot => {
-    const uid = currentUid()
-    const visibleDocs = snapshot.docs.filter(item =>
-      !(item.data().hidden_for || []).includes(uid)
-    )
-    const orderedDocs = [...visibleDocs].sort((left, right) => {
-      const leftTime = left.data().created_at?.toMillis?.() || 0
-      const rightTime = right.data().created_at?.toMillis?.() || 0
-      return leftTime - rightTime || left.id.localeCompare(right.id)
-    })
-    const messages = orderedDocs.map(item => toFirestoreMessage(item, conversation.id))
-    const latestDoc = orderedDocs.at(-1)
-    const latestData = latestDoc?.data()
-    const activeConversation = messageState.conversations.find(item => item.id === conversation.id) || conversation
-    activeConversation.latestMessage = latestData
-      ? latestData.deleted_at
-        ? 'This message was deleted'
-        : getLatestMessagePreview(latestData.body || '', latestData.attachments || [])
-      : ''
-    activeConversation.latestMessageCreatedAt = timestampToIso(latestData?.created_at)
-    activeConversation.latestMessageId = latestDoc?.id || null
-    const member = activeConversation.participants.find(item => item.firebaseUid === uid)
-    const lastReadAt = member?.last_read_at || null
-    activeConversation.unreadCount = visibleDocs.filter(item => {
-      const message = item.data()
-      return message.sender_firebase_uid !== uid &&
-        !message.deleted_at &&
-        (!lastReadAt || message.created_at?.toMillis?.() > lastReadAt.toMillis()) &&
-        !(message.read_receipts || []).some(receipt => receipt.firebaseUid === uid)
-    }).length
+  if (!realtimeSocket || conversationMessageSubscriptions.has(conversation.id)) return
+  const uid = currentUid()
+  const onCreated = ({ message } = {}) => {
+    if (message?.conversation_id !== conversation.id) return
+    const saved = upsertMessage(message)
+    const activeConversation = messageState.conversations.find(item => item.id === conversation.id)
+    if (activeConversation) {
+      activeConversation.latestMessage = getLatestMessagePreview(message.body, message.attachments)
+      activeConversation.latestMessageCreatedAt = message.created_at
+      if (message.sender_firebase_uid !== uid && selectedConversationId !== conversation.id) {
+        activeConversation.unreadCount += 1
+      }
+    }
     if (selectedConversationId === conversation.id) {
-      messageState.messages = messages
-      if (activeView === 'Messages') renderMessages()
-      const hasIncomingMessage = snapshot.docChanges().some(change =>
-        change.type === 'added' &&
-        change.doc.data().sender_firebase_uid !== uid
-      )
-      if (hasIncomingMessage) {
+      messageState.messages = messageState.messages.filter(item => item.id !== saved.message.id)
+      if (saved.changed) renderMessages()
+      if (message.sender_firebase_uid !== uid) {
         api.post(`${apiPath(conversation.id)}/read`, {})
           .catch(error => showError(error, `mark conversation ${conversation.id} as read`))
       }
-    } else if (activeView === 'Messages') {
-      renderMessages()
     }
     updateMessagesNavigationBadge()
-  }, error => {
-    logFirestoreFailure('message listener', error, {
-      conversationId: conversation.id,
-      collectionPath: `messageConversations/${conversation.id}/messages`,
-      query: 'visible_to array-contains current user'
-    })
-    showError(error, `Firestore message listener (${conversation.id})`)
+    if (activeView === 'Messages') renderMessages()
+  }
+  const onUpdated = ({ message } = {}) => {
+    if (message?.conversation_id !== conversation.id) return
+    upsertMessage(message)
+    if (selectedConversationId === conversation.id) renderMessages()
+  }
+  const onDeleted = ({ conversation_id: id, message_id: messageId, scope, hidden_for_uid: hiddenUid } = {}) => {
+    if (id !== conversation.id || !messageId) return
+    if (scope === 'me') {
+      if (hiddenUid === uid) {
+        messageState.messages = messageState.messages.filter(message => message.id !== messageId)
+      }
+    } else {
+      messageState.messages = messageState.messages.map(message =>
+        message.id === messageId
+          ? { ...message, body: 'This message was deleted', attachments: [], forwardedFrom: null, isDeleted: true }
+          : message
+      )
+    }
+    if (selectedConversationId === conversation.id) renderMessages()
+  }
+  const onRead = ({ conversation_id: id, firebase_uid: readerUid, read_at: readAt } = {}) => {
+    if (id !== conversation.id || readerUid === uid) return
+    messageState.messages = messageState.messages.map(message =>
+      message.senderUid === uid ? { ...message, readAt: message.readAt || readAt } : message
+    )
+    if (selectedConversationId === conversation.id) renderMessages()
+  }
+  const onDelivered = ({ conversation_id: id, firebase_uid: recipientUid, message_ids: messageIds = [] } = {}) => {
+    if (id !== conversation.id || recipientUid === uid) return
+    const delivered = new Set(messageIds)
+    messageState.messages = messageState.messages.map(message =>
+      delivered.has(message.id) ? { ...message, deliveredAt: message.deliveredAt || new Date().toISOString() } : message
+    )
+    if (selectedConversationId === conversation.id) renderMessages()
+  }
+  realtimeSocket.on('message:created', onCreated)
+  realtimeSocket.on('message:updated', onUpdated)
+  realtimeSocket.on('message:deleted', onDeleted)
+  realtimeSocket.on('message:read', onRead)
+  realtimeSocket.on('message:delivered', onDelivered)
+  conversationMessageSubscriptions.set(conversation.id, () => {
+    realtimeSocket?.off('message:created', onCreated)
+    realtimeSocket?.off('message:updated', onUpdated)
+    realtimeSocket?.off('message:deleted', onDeleted)
+    realtimeSocket?.off('message:read', onRead)
+    realtimeSocket?.off('message:delivered', onDelivered)
   })
-  conversationMessageSubscriptions.set(conversation.id, unsubscribe)
+  if (realtimeSocket.connected) joinConversationRoom(conversation)
 }
 
-async function fetchConversationRoot(accessEntry, userUid) {
-  try {
-    return await getDoc(doc(
-      firestoreDb, 'messageConversations', accessEntry.id
-    ))
-  } catch (error) {
-    logFirestoreFailure('conversation root fetch', error, {
-      userUid,
-      conversationId: accessEntry.id,
-      accessIndexPath: `users/${userUid}/messageConversations/${accessEntry.id}`,
-      documentPath: `messageConversations/${accessEntry.id}`
-    })
-    throw error
-  }
+function joinConversationRoom(conversation) {
+  if (!realtimeSocket || joinedConversationIds.has(conversation.id)) return
+  joinedConversationIds.add(conversation.id)
+  realtimeSocket.emit('conversation:join', conversation.id, result => {
+    if (!result?.success) {
+      joinedConversationIds.delete(conversation.id)
+      const error = new Error(result?.message || 'Conversation access was denied.')
+      logMessageApiFailure('realtime conversation join', error, {
+        conversationId: conversation.id, uid: currentUid()
+      })
+      showError(error, `join conversation ${conversation.id}`)
+      return
+    }
+    result.activeCalls?.forEach(handleCallUpdate)
+  })
 }
 
 function renderCallOverlay() {
@@ -676,56 +704,14 @@ function subscribeToConversationCalls(conversation) {
     conversationCallSubscriptions.delete(conversation.id)
     return
   }
-  if (conversationCallSubscriptions.has(conversation.id)) return
-  const callsCollection = collection(
-    firestoreDb, 'messageConversations', conversation.id, 'calls'
+  if (!realtimeSocket || conversationCallSubscriptions.has(conversation.id)) return
+  const onCallUpdate = ({ call } = {}) => {
+    if (call?.conversation_id === conversation.id) handleCallUpdate(call)
+  }
+  realtimeSocket.on('call:updated', onCallUpdate)
+  conversationCallSubscriptions.set(conversation.id, () =>
+    realtimeSocket?.off('call:updated', onCallUpdate)
   )
-  const unsubscribe = onSnapshot(callsCollection, snapshot => {
-    const uid = currentUid()
-    const calls = snapshot.docs.map(item => ({ ...item.data(), call_id: item.id }))
-      .filter(call => call.caller_uid === uid || call.callee_uid === uid)
-    const ringingCall = calls
-      .filter(call => call.callee_uid === uid && call.status === 'ringing' &&
-        call.ring_expires_at?.toMillis?.() > Date.now())
-      .sort((left, right) =>
-        (right.created_at?.toMillis?.() || 0) - (left.created_at?.toMillis?.() || 0)
-      )[0]
-    if (!activeCall && ringingCall) {
-      if (mediaRecorder) cancelVoiceRecording()
-      incomingCall = ringingCall
-      clearTimeout(incomingCallTimer)
-      incomingCallTimer = setTimeout(() => {
-        if (incomingCall?.call_id === ringingCall.call_id) {
-          incomingCall = null
-          renderCallOverlay()
-        }
-      }, Math.max(0, ringingCall.ring_expires_at.toMillis() - Date.now()))
-      renderCallOverlay()
-    } else if (incomingCall?.conversation_id === conversation.id &&
-      (!ringingCall || ringingCall.call_id !== incomingCall.call_id)) {
-      incomingCall = null
-      clearTimeout(incomingCallTimer)
-      incomingCallTimer = null
-      renderCallOverlay()
-    }
-    if (activeCall?.conversationId === conversation.id) {
-      const current = calls.find(call => call.call_id === activeCall.callId)
-      if (current?.status === 'accepted') {
-        activeCall.status = 'accepted'
-        clearTimeout(activeCall.ringingTimer)
-      }
-      if (current && ['declined', 'missed', 'ended'].includes(current.status)) {
-        finishActiveCall(false)
-      }
-    }
-  }, error => {
-    logFirestoreFailure('call listener', error, {
-      conversationId: conversation.id,
-      collectionPath: `messageConversations/${conversation.id}/calls`
-    })
-    showError(error, `Firestore call listener (${conversation.id})`)
-  })
-  conversationCallSubscriptions.set(conversation.id, unsubscribe)
 }
 
 function loadDailySdk() {
@@ -813,7 +799,7 @@ async function startCall(conversation, callType) {
   if (activeCall?.status === 'ringing' && activeCall.ringExpiresAt <= Date.now()) {
     await finishActiveCall(true)
   }
-  if (incomingCall?.ring_expires_at?.toMillis?.() <= Date.now()) {
+  if (incomingCall && Date.parse(incomingCall.ring_expires_at) <= Date.now()) {
     incomingCall = null
     clearTimeout(incomingCallTimer)
     incomingCallTimer = null
@@ -912,7 +898,7 @@ async function declineIncomingCall() {
   }
 }
 
-async function saveMessageToFirestore({
+async function saveMessage({
   conversationId,
   body,
   attachments = [],
@@ -941,51 +927,17 @@ async function saveMessageToFirestore({
     if (!senderName) throw new Error('The original message sender could not be identified.')
     forwardedMetadata = { senderName: senderName.slice(0, 160) }
   }
-  const sender = conversation.participants.find(item => item.firebaseUid === currentUid())
-  const reply = replyToId
-    ? messageState.messages.find(item => item.id === replyToId)
-    : null
-  if (replyToId && !reply) throw new Error('The message being replied to is unavailable.')
-  const messageId = crypto.randomUUID()
-  const createdAt = Timestamp.now()
-  const message = {
-    sender_firebase_uid: currentUid(),
-    sender_email: sender?.email || currentEmail(),
-    sender_name: sender?.name || currentUser.name || currentEmail() || 'Project member',
-    body,
-    reply_to_message_id: replyToId,
-    reply_to_body: reply?.body || null,
-    reply_to_sender_name: reply?.senderName || null,
-    attachments,
-    forwarded_from: forwardedMetadata,
-    is_pinned: false,
-    edited_at: null,
-    created_at: serverTimestamp(),
-    deleted_at: null,
-    hidden_for: [],
-    visible_to: [...conversation.memberUids],
-    reaction_entries: [],
-    read_receipts: [],
-    client_message_id: clientMessageId
+  if (replyToId && !messageState.messages.some(item => item.id === replyToId)) {
+    throw new Error('The message being replied to is unavailable.')
   }
-  const batch = writeBatch(firestoreDb)
-  batch.set(doc(
-    firestoreDb, 'messageConversations', conversationId, 'messages', messageId
-  ), message)
-  batch.update(doc(firestoreDb, 'messageConversations', conversationId), {
-    latest_message_id: messageId,
-    latest_message_body: getLatestMessagePreview(body, attachments),
-    latest_sender_firebase_uid: currentUid(),
-    latest_message_created_at: serverTimestamp(),
-    updated_at: serverTimestamp()
+  const result = await api.post(`${apiPath(conversationId)}/messages`, {
+    body,
+    attachments,
+    replyToId,
+    forwardedFrom: forwardedMetadata,
+    clientMessageId
   })
-  await batch.commit()
-  return normalizeMessage({
-    ...message,
-    message_id: messageId,
-    conversation_id: conversationId,
-    created_at: createdAt.toDate().toISOString()
-  })
+  return normalizeMessage(result?.data?.message || {})
 }
 
 async function loadConversationMessages(conversationId) {
@@ -993,118 +945,85 @@ async function loadConversationMessages(conversationId) {
     messageState.messages = []
     return
   }
-  let snapshot
   try {
-    snapshot = await getDocs(query(
-      collection(firestoreDb, 'messageConversations', conversationId, 'messages'),
-      where('visible_to', 'array-contains', currentUid())
-    ))
+    const result = await api.get(
+      `${apiPath(conversationId)}/messages?limit=100`
+    )
+    const data = result?.data || {}
+    if (selectedConversationId === conversationId) {
+      messageState.messages = (data.messages || []).map(normalizeMessage)
+      messageCursors.set(conversationId, data.nextCursor || null)
+      messageHasMore.set(conversationId, Boolean(data.hasMore))
+    }
   } catch (error) {
-    logFirestoreFailure('message fetch', error, {
-      conversationId,
-      collectionPath: `messageConversations/${conversationId}/messages`,
-      query: 'visible_to array-contains current user'
-    })
+    logMessageApiFailure('message history fetch', error, { conversationId })
     throw error
   }
-  if (selectedConversationId === conversationId) {
-    messageState.messages = snapshot.docs
-      .filter(item => !(item.data().hidden_for || []).includes(currentUid()))
-      .map(item => toFirestoreMessage(item, conversationId))
-      .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
+}
+
+async function loadOlderMessages(conversationId) {
+  const cursor = messageCursors.get(conversationId)
+  if (!cursor || !messageHasMore.get(conversationId) || loadingOlderMessages.has(conversationId)) return
+  loadingOlderMessages.add(conversationId)
+  try {
+    const feed = getElements().feed
+    const oldHeight = feed?.scrollHeight || 0
+    const result = await api.get(
+      `${apiPath(conversationId)}/messages?limit=100&before=${encodeURIComponent(cursor)}`
+    )
+    const data = result?.data || {}
+    if (selectedConversationId === conversationId) {
+      const older = (data.messages || []).map(normalizeMessage)
+      const existing = new Set(messageState.messages.map(message => message.id))
+      messageState.messages = [...older.filter(message => !existing.has(message.id)), ...messageState.messages]
+      messageCursors.set(conversationId, data.nextCursor || null)
+      messageHasMore.set(conversationId, Boolean(data.hasMore))
+      renderMessages()
+      if (feed) feed.scrollTop = feed.scrollHeight - oldHeight
+    }
+  } catch (error) {
+    showError(error, `load older messages for ${conversationId}`)
+  } finally {
+    loadingOlderMessages.delete(conversationId)
   }
 }
 
 async function reloadMessages() {
   const user = firebaseAuth.currentUser
   if (!user) {
-    accessReconciledUid = null
     return
   }
-  if (accessReconciledUid !== user.uid) {
-    let reconciled = false
-    try {
-      await api.get('/messages/conversations')
-      reconciled = true
-    } catch (error) {
-      console.error('[messages] Conversation access reconciliation failed.', {
-        uid: user.uid,
-        firebaseProjectId: firestoreDb.app.options.projectId || null,
-        endpoint: 'GET /api/messages/conversations',
-        status: error?.status || null,
-        code: error?.code || null,
-        message: error?.message || String(error)
-      })
-      showError(error, 'reconcile conversation membership with backend')
-    }
-    if (reconciled && firebaseAuth.currentUser?.uid === user.uid) {
-      accessReconciledUid = user.uid
-    }
-  }
   if (subscriptionsUid !== user.uid) {
-    conversationUnsubscribe?.()
     conversationMessageSubscriptions.forEach(unsubscribe => unsubscribe())
     conversationMessageSubscriptions.clear()
     conversationCallSubscriptions.forEach(unsubscribe => unsubscribe())
     conversationCallSubscriptions.clear()
-    presenceSubscriptions.forEach(subscriptions => subscriptions.forEach(unsubscribe => unsubscribe()))
-    presenceSubscriptions.clear()
+    realtimeSocket?.disconnect()
+    realtimeSocket = null
+    realtimeSocketUid = null
+    messageState = { conversations: [], messages: [] }
+    selectedConversationId = null
+    memberPresence.clear()
     subscriptionsUid = user.uid
-    const conversationsQuery = collection(
-      firestoreDb, 'users', user.uid, 'messageConversations'
-    )
-    conversationUnsubscribe = onSnapshot(conversationsQuery, snapshot => {
-      const visibleEntries = snapshot.docs.filter(item =>
-        item.data().hidden_for_user !== true
-      )
-      Promise.all(visibleEntries.map(item => fetchConversationRoot(item, user.uid)))
-        .then(conversationSnapshots => Promise.all(
-          conversationSnapshots.filter(item => item.exists()).map(hydrateConversation)
-        ))
-        .then(conversations => {
-          const visibleIds = new Set(conversations.map(conversation => conversation.id))
-          for (const oldConversation of messageState.conversations) {
-            if (!visibleIds.has(oldConversation.id)) unsubscribeConversation(oldConversation.id)
-          }
-          replaceConversations(conversations)
-          messageState.conversations.forEach(subscribeToConversationMessages)
-          messageState.conversations.forEach(subscribeToConversationCalls)
-          if (!selectedConversationId || !visibleIds.has(selectedConversationId)) {
-            selectedConversationId = conversations[0]?.id || null
-          }
-          if (!selectedConversationId) messageState.messages = []
-          updateMessagesNavigationBadge()
-          if (activeView === 'Messages') renderMessages()
-        })
-        .catch(error => {
-          logFirestoreFailure('conversation hydration', error, {
-            collectionPath: `users/${user.uid}/messageConversations`
-          })
-          showError(error, 'load conversations and members from Firestore')
-        })
-    }, error => {
-      logFirestoreFailure('conversation index listener', error, {
-        collectionPath: `users/${user.uid}/messageConversations`
-      })
-      showError(error, 'listen to Firestore conversation access index')
-    })
   }
-  const accessSnapshot = await getDocs(collection(
-    firestoreDb, 'users', user.uid, 'messageConversations'
-  ))
-  const visibleEntries = accessSnapshot.docs.filter(item =>
-    item.data().hidden_for_user !== true
-  )
-  const conversationSnapshots = await Promise.all(visibleEntries.map(item =>
-    fetchConversationRoot(item, user.uid)
-  ))
-  const conversations = await Promise.all(
-    conversationSnapshots.filter(item => item.exists()).map(hydrateConversation)
-  )
+  await ensureRealtimeSocket()
+  const result = await api.get('/messages/conversations')
+  const conversations = (result?.data?.conversations || []).map(normalizeConversation)
+  const visibleIds = new Set(conversations.map(conversation => conversation.id))
+  for (const oldConversation of messageState.conversations) {
+    if (!visibleIds.has(oldConversation.id)) unsubscribeConversation(oldConversation.id)
+  }
   replaceConversations(conversations)
+  conversations.forEach(conversation => conversation.participants.forEach(member => {
+    if (!member.firebaseUid) return
+    memberPresence.set(member.firebaseUid, {
+      isOnline: Boolean(member.is_online),
+      lastSeenAt: member.lastSeenAt || null
+    })
+  }))
   messageState.conversations.forEach(subscribeToConversationMessages)
   messageState.conversations.forEach(subscribeToConversationCalls)
-  if (!selectedConversationId || !conversations.some(item => item.id === selectedConversationId)) {
+  if (!selectedConversationId || !visibleIds.has(selectedConversationId)) {
     selectedConversationId = conversations[0]?.id || null
   }
   await loadConversationMessages(selectedConversationId)
@@ -1115,7 +1034,7 @@ async function reloadMessages() {
 async function refreshFromServer() {
   if (refreshPromise) return refreshPromise
   refreshPromise = reloadMessages()
-    .catch(error => showError(error, 'refresh messages from Firestore'))
+    .catch(error => showError(error, 'refresh messages from the authenticated messaging API'))
     .finally(() => { refreshPromise = null })
   return refreshPromise
 }
@@ -2067,7 +1986,7 @@ function openForwardModal(message) {
         if (!targetConversationId) {
           throw new Error('The destination conversation could not be identified.')
         }
-        await saveMessageToFirestore({
+        await saveMessage({
           conversationId: targetConversationId,
           body: message.body,
           attachments: message.attachments,
@@ -2368,6 +2287,8 @@ async function sendMessage(event) {
       const message = messageState.messages.find(item => item.id === editingMessageId)
       if (!message) return
       await api.patch(`${apiPath(message.conversationId)}/messages/${encodeURIComponent(message.id)}/edit`, { body })
+      await loadConversationMessages(message.conversationId)
+      renderMessages()
     } else {
       if (!selectedConversationId || (!body && pendingFiles.length === 0)) return
       const attachments = await Promise.all(pendingFiles.map(async file => ({
@@ -2405,7 +2326,7 @@ async function sendMessage(event) {
         conversation.latestMessageCreatedAt = optimisticMessage.message.createdAt
       }
       renderMessages()
-      const savedMessage = await saveMessageToFirestore({
+      const savedMessage = await saveMessage({
         conversationId: selectedConversationId,
         clientMessageId,
         body,
@@ -2466,10 +2387,7 @@ function closeEmojiPicker() {
 export function initMessages() {
   if (messagesInitialized) return
   messagesInitialized = true
-  console.info('[messages] Messaging client build loaded.', {
-    buildId: messagesBuildId,
-    firebaseProjectId: firestoreDb.app.options.projectId || null
-  })
+  console.info('[messages] Messaging client build loaded.', { buildId: messagesBuildId })
   document.querySelector('#messages-new-channel')?.addEventListener('click', () => openConversationModal('channel'))
   document.querySelector('#messages-new-group')?.addEventListener('click', () => openConversationModal('group'))
   document.querySelector('#messages-new-direct')?.addEventListener('click', () => openConversationModal('direct'))
@@ -2483,6 +2401,11 @@ export function initMessages() {
   voicePause?.addEventListener('click', toggleVoiceRecordingPause)
   voiceSend?.addEventListener('click', sendVoiceRecording)
   document.querySelector('#messages-composer')?.addEventListener('submit', sendMessage)
+  getElements().feed?.addEventListener('scroll', () => {
+    if (selectedConversationId && getElements().feed.scrollTop < 80) {
+      loadOlderMessages(selectedConversationId)
+    }
+  })
   document.querySelector('#messages-file-input')?.addEventListener('change', event => {
     const incomingFiles = [...event.currentTarget.files]
     const totalSize = [...pendingFiles, ...incomingFiles].reduce((sum, file) => sum + file.size, 0)
@@ -2531,20 +2454,18 @@ export function initMessages() {
 
 export async function refreshMessagesForCurrentUser() {
   if (!firebaseAuth.currentUser) {
-    accessReconciledUid = null
     if (mediaRecorder) cancelVoiceRecording()
     selectedConversationId = null
     voiceRecordingStarting = false
   }
-  conversationUnsubscribe?.()
-  conversationUnsubscribe = null
+  realtimeSocket?.disconnect()
+  realtimeSocket = null
+  realtimeSocketUid = null
   subscriptionsUid = null
   conversationMessageSubscriptions.forEach(unsubscribe => unsubscribe())
   conversationMessageSubscriptions.clear()
   conversationCallSubscriptions.forEach(unsubscribe => unsubscribe())
   conversationCallSubscriptions.clear()
-  presenceSubscriptions.forEach(subscriptions => subscriptions.forEach(unsubscribe => unsubscribe()))
-  presenceSubscriptions.clear()
   clearTimeout(incomingCallTimer)
   incomingCallTimer = null
   incomingCall = null

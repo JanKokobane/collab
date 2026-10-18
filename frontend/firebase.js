@@ -5,10 +5,7 @@ import {
   initializeAuth
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
 import {
-  doc,
-  getFirestore,
-  serverTimestamp,
-  updateDoc
+  getFirestore
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'
 
 const firebaseConfig = {
@@ -28,10 +25,19 @@ export const firebaseAuth = initializeAuth(firebaseApp, {
 export const firestoreDb = getFirestore(firebaseApp)
 
 export async function markCurrentUserOffline() {
-  const uid = firebaseAuth.currentUser?.uid
-  if (!uid) return
-  await updateDoc(doc(firestoreDb, 'messagePresence', uid), {
-    is_online: false,
-    last_seen_at: serverTimestamp()
+  const user = firebaseAuth.currentUser
+  if (!user) return
+  const baseUrl = (window.COLLAB_API_BASE_URL || 'https://collab-y7pb.onrender.com').replace(/\/+$/, '')
+  const response = await fetch(`${baseUrl}/api/messages/presence`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${await user.getIdToken()}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ isOnline: false })
   })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(payload?.message || 'Presence could not be updated.')
+  }
 }

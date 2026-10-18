@@ -24,25 +24,22 @@ Do not commit `.env` files or service-account credentials. The API defaults to
 the Render backend URL in the frontend API client for non-local hosts; set
 `window.COLLAB_API_BASE_URL` before loading the client to override it.
 
-### Enabling message calls and voice notes
+### Enabling calls and voice notes
 
 1. Create or sign in to a Daily account at <https://dashboard.daily.co/> and
  copy an API key from its developer/API settings.
 2. In Render, open the backend service's **Environment** settings and add
  `DAILY_API_KEY` with that value. Save and redeploy the backend. Do not put
  this key in GitHub Pages files, Firebase config, or browser code.
-3. In Firebase Console, open **Firestore Database → Rules**, replace the rules
- with the repository's `firestore.rules`, and publish them.
-4. Deploy the frontend changes. Calls require the browser to be on HTTPS and
+3. Deploy the backend and frontend changes. Calls require the browser to be on HTTPS and
  each participant must grant microphone/camera access.
 
-The calls rules allow signed-in members of a direct conversation to read its
-call invitation/status documents; all client writes are denied because the
-authenticated backend writes them. Voice notes are audio attachments stored
-inside the existing Firestore message documents, not Firebase Storage files.
-The message rules allow only conversation members to read them and validate
-attachment metadata, audio-note types, and encoded payload size. No separate
-Firebase Storage permission or new Firebase API key is needed for voice notes.
+Daily call rooms and tokens are created by the authenticated backend. Call
+state, voice-note attachments, messages, presence, and conversation membership
+are stored in PostgreSQL; Socket.IO delivers authorized real-time updates.
+Messaging no longer reads or writes Firestore, so this migration does not
+require a Firestore rules deployment. Other Firestore-backed application
+features continue to use the existing rules.
 
 ## Database
 
@@ -55,45 +52,40 @@ Startup also applies pending migrations before the HTTP server listens.
 Migrations run transactionally and use a PostgreSQL advisory lock so multiple
 server instances do not apply the same migration simultaneously.
 
-## Messaging (Firestore)
+## Messaging (PostgreSQL + Socket.IO)
 
-Message conversations, members, message history, reactions, read receipts,
-per-user message hiding, and presence are stored in Cloud Firestore. The
-dashboard subscribes directly to Firestore snapshots for conversations,
-messages, and presence, and sends new messages directly to Firestore. The
-authenticated HTTP API still creates conversations and handles existing
-message actions that require server-side authorization. Users can remove a
-conversation from their own chat list without deleting it for other members.
-One-to-one conversations are shared by the same two users across projects,
-provided they continue to share at least one project as creator or accepted
-invitees. Existing direct conversations are consolidated into one thread when
-either participant starts or opens that chat. Groups and channels remain
-separate conversations tied to their project.
-PostgreSQL remains the
-authority for project membership and stores the rest of the application data;
-the backend synchronizes Firestore access indexes when membership changes.
-Live message delivery does not pass through the backend.
+The authenticated backend verifies Firebase ID tokens, authorizes each
+conversation against PostgreSQL project membership, and stores conversations,
+messages, reactions, read receipts, per-user hiding, presence, and Daily call
+state in PostgreSQL. Socket.IO authenticates the same Firebase tokens and
+checks database membership before joining conversation rooms. REST endpoints
+remain the source for history and mutations; socket events deliver new,
+updated, deleted, read, delivery, presence, and call-state changes. Message
+history is fetched in pages of 100, with older pages loaded as the user scrolls.
+Direct conversations are shared by the same two users across projects when
+they are both accepted members of the selected project. Groups and channels
+remain tied to their project. Removing or clearing a conversation only affects
+the requesting user's view.
 
-Before switching a deployment with existing PostgreSQL messages, create the
-Cloud Firestore database in the Firebase project used by the backend, then run
-`npm run migrate:messages:firestore` from `backend/` with both the PostgreSQL
-and Firebase Admin credentials configured. The backfill only creates
-Firestore documents that do not already exist, so it can be safely rerun to
-restore message documents accidentally deleted from Firestore while the SQL
-history is still present.
-Pause message writes during the backfill/cutover so messages sent by the old
-backend after the copy are not missed. Deploy the Firestore-backed backend
-after the migration completes.
+Migration `019_message_realtime.sql` adds the realtime, per-user conversation
+state, delivery, presence, and call tables. Startup applies it automatically.
+To preserve conversations that currently exist only in Firestore:
 
-Deploy the root `firestore.rules` to allow signed-in users to read only
-conversation and message documents indexed for them by the backend. Rules
-allow conversation members to create, read, edit, pin, hide, and delete visible
-messages in their conversations. The rules keep sender identity, conversation
-audience, message size, and attachment structure protected. Reactions, read
-receipts, conversation clearing, and related bulk changes remain server-side
-through the authenticated API, which checks current SQL project membership.
-This preserves project access and per-user hidden-message behavior while
-Firestore snapshots deliver updates directly to the dashboard.
+1. Pause message and call writes during the cutover.
+2. Deploy the backend so the PostgreSQL schema migration is applied.
+3. From `backend/`, run `npm run migrate:messages:postgres` with PostgreSQL and
+   Firebase Admin credentials for the same Firebase project as the current
+   messaging data.
+4. Review the importer summary and any skipped-conversation warnings. It
+   imports only conversations whose project and members still exist in the
+   SQL project-access records, preserves message IDs, reactions, reads,
+   per-user hidden messages, chat hiding, and call state, and can be rerun.
+5. Deploy the frontend and resume writes. Do not run the old
+   `migrate:messages:firestore` script after this cutover; it copies SQL data
+   in the opposite direction.
+
+No messaging Firestore rules change is required. The existing Firestore rules
+remain in place for unrelated Firestore-backed features.
 
 Authenticated users can retrieve and update their profile through
 `GET|PUT /api/users/profile`. Profile fields are stored in PostgreSQL's

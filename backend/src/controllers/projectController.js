@@ -1,5 +1,5 @@
 const { pool, query } = require('../config/db');
-const { deleteProjectMessageData } = require('../services/firestoreMessageAccess');
+const { reconcileUserConversationAccess } = require('../realtime/messageSocket');
 
 /**
  * Create a project
@@ -470,8 +470,6 @@ const getProject = async (req, res) => {
             });
         }
 
-        await deleteProjectMessageData(projectId);
-
         return res.status(200).json({
             success: true,
             message: 'Project retrieved successfully.',
@@ -896,7 +894,9 @@ const updateProject = async (req, res) => {
  * DELETE /api/projects/:projectId
  */
 const deleteProject = async (req, res) => {
+    let client;
     try {
+        client = await pool.connect();
         const firebaseUid = req.firebaseUid;
         const { projectId } = req.params;
 
@@ -908,37 +908,48 @@ const deleteProject = async (req, res) => {
             });
         }
 
-        const sql = `
-            DELETE FROM projects
-            WHERE project_id = $1
-              AND creator_firebase_uid = $2
-            RETURNING
-                id,
-                project_id,
-                name
-        `;
-
-        const result = await query(sql, [
-            projectId,
-            firebaseUid
-        ]);
-
-        if (result.rows.length === 0) {
+        await client.query('BEGIN');
+        const ownedProject = await client.query(
+            `SELECT project_id, name FROM projects
+             WHERE project_id = $1 AND creator_firebase_uid = $2
+             FOR UPDATE`,
+            [projectId, firebaseUid]
+        );
+        if (!ownedProject.rowCount) {
+            await client.query('ROLLBACK');
             return res.status(404).json({
                 success: false,
                 code: 'PROJECT_NOT_FOUND',
                 message: 'Project not found.'
             });
         }
+        const conversations = await client.query(
+            `SELECT mc.conversation_id::text AS conversation_id,
+                    array_agg(member.firebase_uid) AS member_uids
+             FROM message_conversations mc
+             JOIN message_conversation_members member
+               ON member.conversation_id = mc.conversation_id
+             WHERE mc.project_id = $1
+             GROUP BY mc.conversation_id`,
+            [projectId]
+        );
+        await client.query('DELETE FROM projects WHERE project_id = $1', [projectId]);
+        await client.query('COMMIT');
+        const conversationIds = conversations.rows.map(row => row.conversation_id);
+        const members = new Set(conversations.rows.flatMap(row => row.member_uids));
+        await Promise.all([...members].map(uid =>
+            reconcileUserConversationAccess(uid, conversationIds)
+        ));
 
         return res.status(200).json({
             success: true,
             message: 'Project deleted successfully.',
             data: {
-                project: result.rows[0]
+                project: ownedProject.rows[0]
             }
         });
     } catch (error) {
+        await client?.query('ROLLBACK').catch(() => {});
         console.error('Delete project error:', error);
 
         return res.status(500).json({
@@ -946,6 +957,8 @@ const deleteProject = async (req, res) => {
             code: 'PROJECT_DELETE_FAILED',
             message: 'The project could not be deleted.'
         });
+    } finally {
+        client?.release();
     }
 };
 

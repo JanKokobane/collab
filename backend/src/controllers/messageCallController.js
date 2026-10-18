@@ -1,10 +1,8 @@
 const { createHash, randomUUID } = require('node:crypto');
-const { getFirebaseAdmin } = require('../config/firebaseAdmin');
+const { pool, query } = require('../config/db');
+const { emitToConversation } = require('../realtime/messageSocket');
 const { getConversation } = require('./messageController');
 
-const firestore = () => getFirebaseAdmin().firestore();
-const callsRef = conversationId =>
-    firestore().collection('messageConversations').doc(conversationId).collection('calls');
 const callIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 class DailyApiError extends Error {
@@ -24,7 +22,6 @@ const dailyRequest = async (path, body) => {
         error.status = 503;
         throw error;
     }
-
     let response;
     try {
         response = await fetch(`https://api.daily.co/v1${path}`, {
@@ -37,33 +34,21 @@ const dailyRequest = async (path, body) => {
         });
     } catch (error) {
         console.error('Daily API request could not connect.', {
-            path,
-            errorName: error.name,
-            message: error.message
+            path, errorName: error.name, message: error.message
         });
-        const requestError = new DailyApiError(502, path);
-        throw requestError;
+        throw new DailyApiError(502, path);
     }
-
     if (!response.ok) {
         const responseBody = await response.json().catch(() => null);
         const details = responseBody && typeof responseBody === 'object'
             ? {
-                error: typeof responseBody.error === 'string'
-                    ? responseBody.error.slice(0, 300)
-                    : null,
-                info: typeof responseBody.info === 'string'
-                    ? responseBody.info.slice(0, 300)
-                    : null,
-                message: typeof responseBody.message === 'string'
-                    ? responseBody.message.slice(0, 300)
-                    : null
+                error: typeof responseBody.error === 'string' ? responseBody.error.slice(0, 300) : null,
+                info: typeof responseBody.info === 'string' ? responseBody.info.slice(0, 300) : null,
+                message: typeof responseBody.message === 'string' ? responseBody.message.slice(0, 300) : null
             }
             : null;
         console.error('Daily API returned an unsuccessful response.', {
-            path,
-            status: response.status,
-            details
+            path, status: response.status, details
         });
         throw new DailyApiError(response.status, path, details);
     }
@@ -95,18 +80,18 @@ const createMeetingToken = (roomName, user, callType, expiration) =>
     });
 
 const getMember = async (conversationId, firebaseUid) => {
-    const snapshot = await firestore()
-        .collection('messageConversations').doc(conversationId)
-        .collection('members').doc(firebaseUid).get();
-    return snapshot.exists ? snapshot.data() : null;
+    const result = await query(
+        `SELECT email, display_name FROM message_conversation_members
+         WHERE conversation_id = $1::uuid AND firebase_uid = $2`,
+        [conversationId, firebaseUid]
+    );
+    return result.rows[0] || null;
 };
 
 const responseError = (res, error, operation) => {
     if (error.status === 503) {
         return res.status(503).json({
-            success: false,
-            code: 'CALLING_NOT_CONFIGURED',
-            message: error.message
+            success: false, code: 'CALLING_NOT_CONFIGURED', message: error.message
         });
     }
     console.error(`${operation} failed.`, {
@@ -128,183 +113,214 @@ const startCall = async (req, res) => {
     const callType = req.body?.callType;
     if (!['audio', 'video'].includes(callType)) {
         return res.status(400).json({
-            success: false,
-            code: 'INVALID_CALL_TYPE',
+            success: false, code: 'INVALID_CALL_TYPE',
             message: 'Choose an audio or video call.'
         });
     }
+    let client;
+    let conversationId;
     try {
-        const conversation = await getConversation(req.params.conversationId, req.firebaseUid);
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const conversation = await getConversation(req.params.conversationId, req.firebaseUid, client);
         if (!conversation) {
+            await client.query('ROLLBACK');
             return res.status(404).json({
-                success: false,
-                code: 'CONVERSATION_NOT_FOUND',
-                message: 'Conversation not found.'
+                success: false, code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found.'
             });
         }
+        conversationId = conversation.conversation_id;
         const memberUids = conversation.member_uids || [];
         if (conversation.conversation_type !== 'direct' || memberUids.length !== 2) {
+            await client.query('ROLLBACK');
             return res.status(400).json({
-                success: false,
-                code: 'DIRECT_CALLS_ONLY',
+                success: false, code: 'DIRECT_CALLS_ONLY',
                 message: 'Calls are currently available for direct conversations only.'
             });
         }
-        const calleeUid = memberUids.find(uid => uid !== req.firebaseUid);
-        const [caller, callee] = await Promise.all([
-            getMember(conversation.conversation_id, req.firebaseUid),
-            getMember(conversation.conversation_id, calleeUid)
-        ]);
-        if (!caller || !callee) {
+        await client.query(
+            'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+            [`call:${conversationId}`]
+        );
+        const active = await client.query(
+            `SELECT 1 FROM message_calls
+             WHERE conversation_id = $1::uuid AND status IN ('ringing', 'accepted')
+               AND CASE WHEN status = 'ringing' THEN ring_expires_at ELSE expires_at END > NOW()
+             LIMIT 1`,
+            [conversationId]
+        );
+        if (active.rowCount) {
+            await client.query('ROLLBACK');
             return res.status(409).json({
-                success: false,
-                code: 'CONVERSATION_MEMBERS_UNAVAILABLE',
-                message: 'Conversation members could not be verified.'
-            });
-        }
-        const activeCalls = await callsRef(conversation.conversation_id)
-            .where('status', 'in', ['ringing', 'accepted']).limit(10).get();
-        const now = Date.now();
-        if (activeCalls.docs.some(snapshot => {
-            const call = snapshot.data();
-            return call.status === 'accepted'
-                ? call.expires_at?.toMillis?.() > now
-                : call.ring_expires_at?.toMillis?.() > now;
-        })) {
-            return res.status(409).json({
-                success: false,
-                code: 'CALL_ALREADY_ACTIVE',
+                success: false, code: 'CALL_ALREADY_ACTIVE',
                 message: 'There is already an active call in this conversation.'
             });
         }
-
+        const calleeUid = memberUids.find(uid => uid !== req.firebaseUid);
+        const caller = await getMember(conversationId, req.firebaseUid);
+        const callee = await getMember(conversationId, calleeUid);
+        if (!caller || !callee) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false, code: 'CONVERSATION_MEMBERS_UNAVAILABLE',
+                message: 'Conversation members could not be verified.'
+            });
+        }
         const callId = randomUUID();
         const roomName = `collab-${callId}`;
+        const now = Date.now();
         const expiration = Math.floor(now / 1000) + 60 * 60;
         const room = await createRoom(roomName, expiration);
-        if (!room?.name || !room.url) throw new DailyApiError(502);
+        if (!room?.name || !room.url) throw new DailyApiError(502, '/rooms');
         const token = await createMeetingToken(room.name, {
             firebaseUid: req.firebaseUid,
-            name: caller.display_name || caller.name || caller.email
+            name: caller.display_name || caller.email
         }, callType, expiration);
-        if (!token?.token) throw new DailyApiError(502);
-        const createdAt = getFirebaseAdmin().firestore.Timestamp.now();
-        await callsRef(conversation.conversation_id).doc(callId).create({
+        if (!token?.token) throw new DailyApiError(502, '/meeting-tokens');
+        const ringExpiresAt = new Date(now + 45_000);
+        const expiresAt = new Date(expiration * 1000);
+        await client.query(
+            `INSERT INTO message_calls (
+                call_id, conversation_id, caller_uid, caller_name, callee_uid,
+                callee_name, call_type, status, daily_room_name, daily_room_url,
+                expires_at, ring_expires_at
+             ) VALUES (
+                $1::uuid, $2::uuid, $3, $4, $5, $6, $7, 'ringing',
+                $8, $9, $10, $11
+             )`,
+            [
+                callId, conversationId, req.firebaseUid,
+                caller.display_name || caller.email || 'Project member',
+                calleeUid, callee.display_name || callee.email || 'Project member',
+                callType, room.name, room.url, expiresAt, ringExpiresAt
+            ]
+        );
+        await client.query('COMMIT');
+        const call = {
             call_id: callId,
-            conversation_id: conversation.conversation_id,
+            conversation_id: conversationId,
             caller_uid: req.firebaseUid,
-            caller_name: caller.display_name || caller.name || caller.email || 'Project member',
+            caller_name: caller.display_name || caller.email || 'Project member',
             callee_uid: calleeUid,
-            callee_name: callee.display_name || callee.name || callee.email || 'Project member',
+            callee_name: callee.display_name || callee.email || 'Project member',
             call_type: callType,
             status: 'ringing',
-            daily_room_name: room.name,
-            daily_room_url: room.url,
-            created_at: createdAt,
-            expires_at: getFirebaseAdmin().firestore.Timestamp.fromMillis(expiration * 1000),
-            ring_expires_at: getFirebaseAdmin().firestore.Timestamp.fromMillis(now + 45_000)
-        });
+            created_at: new Date(now).toISOString(),
+            ring_expires_at: ringExpiresAt.toISOString()
+        };
+        emitToConversation(conversationId, 'call:updated', { call });
         res.set('Cache-Control', 'no-store');
         return res.status(201).json({
             success: true,
             data: {
                 call: {
-                    call_id: callId,
-                    conversation_id: conversation.conversation_id,
-                    call_type: callType,
-                    status: 'ringing',
-                    ring_expires_at: new Date(now + 45_000).toISOString(),
-                    peer_name: callee.display_name || callee.name || callee.email || 'Project member',
+                    ...call,
+                    peer_name: call.callee_name,
                     room_url: room.url,
                     token: token.token
                 }
             }
         });
     } catch (error) {
+        await client?.query('ROLLBACK').catch(() => {});
         return responseError(res, error, 'Start Daily call');
+    } finally {
+        client?.release();
     }
 };
 
 const updateCall = async (req, res) => {
-    const action = req.params.action;
-    if (!['accept', 'decline', 'end'].includes(action) ||
-        !callIdPattern.test(req.params.callId || '')) {
+    const { conversationId, callId, action } = req.params;
+    if (!['accept', 'decline', 'end'].includes(action) || !callIdPattern.test(callId || '')) {
         return res.status(400).json({
-            success: false,
-            code: 'INVALID_CALL_ACTION',
+            success: false, code: 'INVALID_CALL_ACTION',
             message: 'The requested call action is not valid.'
         });
     }
+    let client;
     try {
-        const conversation = await getConversation(req.params.conversationId, req.firebaseUid);
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const conversation = await getConversation(conversationId, req.firebaseUid, client);
         if (!conversation || conversation.conversation_type !== 'direct') {
+            await client.query('ROLLBACK');
             return res.status(404).json({
-                success: false,
-                code: 'CONVERSATION_NOT_FOUND',
-                message: 'Conversation not found.'
+                success: false, code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found.'
             });
         }
-        const callRef = callsRef(conversation.conversation_id).doc(req.params.callId);
-        const snapshot = await callRef.get();
-        if (!snapshot.exists) {
+        const result = await client.query(
+            `SELECT * FROM message_calls
+             WHERE conversation_id = $1::uuid AND call_id = $2::uuid FOR UPDATE`,
+            [conversationId, callId]
+        );
+        const call = result.rows[0];
+        if (!call) {
+            await client.query('ROLLBACK');
             return res.status(404).json({
-                success: false,
-                code: 'CALL_NOT_FOUND',
-                message: 'This call is no longer available.'
+                success: false, code: 'CALL_NOT_FOUND', message: 'This call is no longer available.'
             });
         }
-        const call = snapshot.data();
         const isCaller = call.caller_uid === req.firebaseUid;
         const isCallee = call.callee_uid === req.firebaseUid;
         if (!isCaller && !isCallee) {
+            await client.query('ROLLBACK');
             return res.status(403).json({
-                success: false,
-                code: 'CALL_ACCESS_DENIED',
+                success: false, code: 'CALL_ACCESS_DENIED',
                 message: 'You are not a participant in this call.'
             });
         }
         if (['declined', 'missed', 'ended'].includes(call.status)) {
-            if (action === 'end' ||
-                (action === 'decline' && isCallee && call.status === 'declined')) {
+            if (action === 'end' || (action === 'decline' && isCallee && call.status === 'declined')) {
+                await client.query('COMMIT');
                 return res.json({ success: true });
             }
+            await client.query('ROLLBACK');
             return res.status(409).json({
-                success: false,
-                code: 'CALL_NOT_ACTIVE',
-                message: 'This call is no longer active.'
+                success: false, code: 'CALL_NOT_ACTIVE', message: 'This call is no longer active.'
             });
         }
         if (action === 'accept') {
             if (!isCallee || !['ringing', 'accepted'].includes(call.status)) {
+                await client.query('ROLLBACK');
                 return res.status(409).json({
-                    success: false,
-                    code: 'CALL_NOT_ACCEPTABLE',
+                    success: false, code: 'CALL_NOT_ACCEPTABLE',
                     message: 'This call can no longer be accepted.'
                 });
             }
-            const callExpired = call.expires_at?.toMillis?.() <= Date.now();
-            const ringExpired = call.status === 'ringing' &&
-                call.ring_expires_at?.toMillis?.() <= Date.now();
-            if (callExpired || ringExpired) {
-                await callRef.update({
-                    status: 'missed',
-                    ended_at: getFirebaseAdmin().firestore.Timestamp.now()
+            const expired = new Date(call.expires_at) <= new Date() ||
+                (call.status === 'ringing' && new Date(call.ring_expires_at) <= new Date());
+            if (expired) {
+                await client.query(
+                    `UPDATE message_calls SET status = 'missed', ended_at = NOW()
+                     WHERE call_id = $1::uuid`,
+                    [callId]
+                );
+                await client.query('COMMIT');
+                emitToConversation(conversationId, 'call:updated', {
+                    call: { ...call, status: 'missed', ended_at: new Date().toISOString() }
                 });
                 return res.status(410).json({
-                    success: false,
-                    code: 'CALL_EXPIRED',
+                    success: false, code: 'CALL_EXPIRED',
                     message: 'This call invitation has expired.'
                 });
             }
-            const member = await getMember(conversation.conversation_id, req.firebaseUid);
-            const token = await createMeetingToken(call.daily_room_name, {
-                firebaseUid: req.firebaseUid,
-                name: member?.display_name || member?.name || member?.email
-            }, call.call_type, Math.floor(call.expires_at.toMillis() / 1000));
-            if (!token?.token) throw new DailyApiError(502);
-            await callRef.update({
-                status: 'accepted',
-                accepted_at: call.accepted_at || getFirebaseAdmin().firestore.Timestamp.now()
+            const member = await getMember(conversationId, req.firebaseUid);
+            const token = await createMeetingToken(
+                call.daily_room_name,
+                { firebaseUid: req.firebaseUid, name: member?.display_name || member?.email },
+                call.call_type,
+                Math.floor(new Date(call.expires_at).getTime() / 1000)
+            );
+            if (!token?.token) throw new DailyApiError(502, '/meeting-tokens');
+            await client.query(
+                `UPDATE message_calls SET status = 'accepted',
+                    accepted_at = COALESCE(accepted_at, NOW())
+                 WHERE call_id = $1::uuid`,
+                [callId]
+            );
+            await client.query('COMMIT');
+            emitToConversation(conversationId, 'call:updated', {
+                call: { ...call, status: 'accepted' }
             });
             res.set('Cache-Control', 'no-store');
             return res.json({
@@ -314,20 +330,28 @@ const updateCall = async (req, res) => {
         }
         if ((action === 'decline' && (!isCallee || call.status !== 'ringing')) ||
             (action === 'end' && !['ringing', 'accepted'].includes(call.status))) {
+            await client.query('ROLLBACK');
             return res.status(409).json({
-                success: false,
-                code: 'CALL_NOT_ACTIVE',
+                success: false, code: 'CALL_NOT_ACTIVE',
                 message: 'This call is no longer active.'
             });
         }
-        await callRef.update({
-            status: action === 'decline' ? 'declined' : 'ended',
-            ended_at: getFirebaseAdmin().firestore.Timestamp.now(),
-            ended_by_uid: req.firebaseUid
+        const status = action === 'decline' ? 'declined' : 'ended';
+        await client.query(
+            `UPDATE message_calls SET status = $2, ended_at = NOW(), ended_by_uid = $3
+             WHERE call_id = $1::uuid`,
+            [callId, status, req.firebaseUid]
+        );
+        await client.query('COMMIT');
+        emitToConversation(conversationId, 'call:updated', {
+            call: { ...call, status, ended_by_uid: req.firebaseUid }
         });
         return res.json({ success: true });
     } catch (error) {
+        await client?.query('ROLLBACK').catch(() => {});
         return responseError(res, error, `${action} Daily call`);
+    } finally {
+        client?.release();
     }
 };
 

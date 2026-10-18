@@ -4,6 +4,8 @@ const app = require('./app');
 const { connectDB, closeDB } = require('./src/config/db');
 const { initializeFirebaseAdmin } = require('./src/config/firebaseAdmin');
 const { runMigrations } = require('./src/config/runMigrations');
+const { createServer } = require('node:http');
+const { attachMessageSocket } = require('./src/realtime/messageSocket');
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -16,14 +18,16 @@ const startServer = async () => {
         await connectDB();
         await runMigrations();
 
-        const server = app.listen(PORT, '0.0.0.0', () => {
+        const server = createServer(app);
+        const io = attachMessageSocket(server);
+        server.listen(PORT, '0.0.0.0', () => {
             console.log(`Server running on port ${PORT}`);
             console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
         });
 
         const shutdown = async (signal) => {
             console.log(`${signal} received. Shutting down...`);
-            server.close(async () => {
+            io.close(async () => {
                 try {
                     await closeDB();
                     console.log('Server shut down cleanly');
