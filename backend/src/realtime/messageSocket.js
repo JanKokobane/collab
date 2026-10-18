@@ -181,10 +181,12 @@ const reconcileUserConversationAccess = async (uid, conversationIds) => {
 const attachMessageSocket = server => {
     io = new Server(server, {
         cors: {
-            origin: true,
+            origin(origin, callback) {
+                if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+                return callback(new Error('Origin is not allowed.'));
+            },
             methods: ['GET', 'POST'],
-            allowedHeaders: ['Authorization', 'Content-Type'],
-            credentials: true
+            allowedHeaders: ['Authorization', 'Content-Type']
         },
         maxHttpBufferSize: 1e6
     });
@@ -220,7 +222,9 @@ const attachMessageSocket = server => {
         try {
             await setPresence(uid, true);
         } catch (error) {
-            console.warn('Unable to set message presence online (mock active):', error.message);
+            console.error('Unable to set message presence online:', error.message);
+            socket.disconnect(true);
+            return;
         }
 
         socket.on('conversation:join', async (conversationId, acknowledge) => {

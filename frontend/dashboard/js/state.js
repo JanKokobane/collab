@@ -82,11 +82,7 @@ export const defaultMembers = [
 // Authentication is handled with a Firebase ID token.
 // ============================================================
 
-const API_BASE_URL = (
-  window.COLLAB_API_BASE_URL !== undefined
-    ? window.COLLAB_API_BASE_URL
-    : (typeof window !== 'undefined' && window.location ? window.location.origin : '')
-).replace(/\/+$/, '')
+const API_BASE_URL = (window.COLLAB_API_BASE_URL || 'https://collab-y7pb.onrender.com').replace(/\/+$/, '')
 
 export let projects = []
 
