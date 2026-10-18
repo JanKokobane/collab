@@ -15,6 +15,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'
 
 const maxAttachmentBytes = 512 * 1024
+const messagesBuildId = '20261018-0925'
 const presenceHeartbeatMs = 25000
 const reactionChoices = ['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']
 let messageState = { conversations: [], messages: [] }
@@ -2465,6 +2466,10 @@ function closeEmojiPicker() {
 export function initMessages() {
   if (messagesInitialized) return
   messagesInitialized = true
+  console.info('[messages] Messaging client build loaded.', {
+    buildId: messagesBuildId,
+    firebaseProjectId: firestoreDb.app.options.projectId || null
+  })
   document.querySelector('#messages-new-channel')?.addEventListener('click', () => openConversationModal('channel'))
   document.querySelector('#messages-new-group')?.addEventListener('click', () => openConversationModal('group'))
   document.querySelector('#messages-new-direct')?.addEventListener('click', () => openConversationModal('direct'))
