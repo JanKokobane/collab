@@ -3,7 +3,7 @@ import { firebaseAuth } from '../../firebase.js'
 import { api, apiBaseUrl } from './api.js'
 
 const maxAttachmentBytes = 512 * 1024
-const messagesBuildId = '20261018-0926'
+const messagesBuildId = '20261018-1205'
 const presenceHeartbeatMs = 25000
 const reactionChoices = ['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']
 let messageState = { conversations: [], messages: [] }
@@ -28,9 +28,11 @@ let presenceWriteUid = null
 let presenceHeartbeatTimer = null
 let incomingCall = null
 let activeCall = null
-let dailySdkPromise = null
 let incomingCallTimer = null
 let callStartInFlight = false
+let acceptingCallId = null
+const pendingCallUpdates = new Map()
+const pendingCallSignals = new Map()
 let mediaRecorder = null
 let mediaStream = null
 let voiceRecordingChunks = []
@@ -451,9 +453,19 @@ function handleCallUpdate(call) {
     if (call.status === 'accepted') {
       activeCall.status = 'accepted'
       clearTimeout(activeCall.ringingTimer)
+      const status = activeCall.overlay?.querySelector('.messages-call-status')
+      if (status) status.textContent = `${activeCall.callType === 'video' ? 'Video' : 'Voice'} · Connecting…`
+      if (activeCall.isCaller) {
+        startWebRtcOffer(activeCall).catch(error => {
+          showError(error, 'start WebRTC offer')
+          finishActiveCall(true)
+        })
+      }
     } else if (['declined', 'missed', 'ended'].includes(call.status)) {
       finishActiveCall(false)
     }
+  } else if (callStartInFlight && call.caller_uid === uid) {
+    pendingCallUpdates.set(call.call_id, call)
   }
 }
 
@@ -522,6 +534,18 @@ async function ensureRealtimeSocket() {
         lastSeenAt: presence.last_seen_at || null
       })
       if (activeView === 'Messages') renderMessagesView()
+    })
+    socket.on('call:signal', packet => {
+      handleCallSignal(packet).catch(error => {
+        console.error('[messages] WebRTC call signaling failed.', {
+          callId: packet?.call_id || null,
+          message: error?.message || String(error)
+        })
+        if (activeCall?.callId === packet?.call_id) {
+          showError(error, 'connect the call')
+          finishActiveCall(true)
+        }
+      })
     })
     socket.on('conversation:created', () => refreshFromServer())
     socket.on('conversations:refresh', () => refreshFromServer())
@@ -657,19 +681,74 @@ function renderCallOverlay() {
     const details = make('div')
     details.append(
       make('strong', '', activeCall.peerName || 'Teammate'),
-      make('span', '', activeCall.callType === 'video' ? 'Video call' : 'Voice call')
+      make('span', 'messages-call-status', `${activeCall.callType === 'video' ? 'Video' : 'Voice'} · ${
+        activeCall.status === 'accepted' ? 'Connecting…' : 'Calling…'
+      }`)
     )
+    const controls = make('div', 'messages-call-controls')
+    const mute = make('button', 'messages-call-control', activeCall.isMuted ? 'Unmute' : 'Mute')
+    mute.type = 'button'
+    mute.setAttribute('aria-label', activeCall.isMuted ? 'Unmute microphone' : 'Mute microphone')
+    mute.addEventListener('click', () => {
+      activeCall.isMuted = !activeCall.isMuted
+      activeCall.localStream?.getAudioTracks().forEach(track => {
+        track.enabled = !activeCall.isMuted
+      })
+      mute.textContent = activeCall.isMuted ? 'Unmute' : 'Mute'
+      mute.setAttribute('aria-label', activeCall.isMuted ? 'Unmute microphone' : 'Mute microphone')
+    })
+    controls.append(mute)
+    if (activeCall.callType === 'video') {
+      const camera = make('button', 'messages-call-control', 'Camera off')
+      camera.type = 'button'
+      camera.setAttribute('aria-label', 'Turn camera off')
+      camera.addEventListener('click', () => {
+        activeCall.isCameraOff = !activeCall.isCameraOff
+        activeCall.localStream?.getVideoTracks().forEach(track => {
+          track.enabled = !activeCall.isCameraOff
+        })
+        camera.textContent = activeCall.isCameraOff ? 'Camera on' : 'Camera off'
+        camera.setAttribute('aria-label', activeCall.isCameraOff ? 'Turn camera on' : 'Turn camera off')
+      })
+      controls.append(camera)
+    }
     const hangUp = make('button', 'messages-call-hangup', 'End call')
     hangUp.type = 'button'
     hangUp.addEventListener('click', () => finishActiveCall(true))
-    header.append(details, hangUp)
-    const frame = make('div', 'messages-call-frame')
-    panel.append(header, frame)
+    controls.append(hangUp)
+    header.append(details, controls)
+    const stage = make('div', `messages-call-frame${activeCall.callType === 'video' ? ' is-video-call' : ' is-audio-call'}`)
+    const remoteVideo = document.createElement('video')
+    remoteVideo.autoplay = true
+    remoteVideo.playsInline = true
+    remoteVideo.setAttribute('aria-label', 'Remote participant')
+    if (activeCall.callType !== 'video') remoteVideo.className = 'messages-call-audio-stream'
+    const localVideo = document.createElement('video')
+    localVideo.autoplay = true
+    localVideo.muted = true
+    localVideo.playsInline = true
+    localVideo.setAttribute('aria-label', 'Your camera preview')
+    localVideo.hidden = activeCall.callType !== 'video'
+    stage.append(remoteVideo)
+    if (activeCall.callType === 'video') {
+      stage.append(localVideo)
+    } else {
+      const avatar = make(
+        'div',
+        'messages-call-audio-avatar',
+        (activeCall.peerName || 'T').trim().charAt(0).toUpperCase()
+      )
+      stage.append(avatar)
+    }
+    panel.append(header, stage)
     backdrop.append(panel)
     callRoot.append(backdrop)
     callRoot.hidden = false
     activeCall.overlay = backdrop
-    activeCall.frameContainer = frame
+    activeCall.remoteVideo = remoteVideo
+    activeCall.localVideo = localVideo
+    if (activeCall.remoteStream) remoteVideo.srcObject = activeCall.remoteStream
+    if (activeCall.localStream) localVideo.srcObject = activeCall.localStream
     return
   }
   if (!incomingCall) {
@@ -714,50 +793,131 @@ function subscribeToConversationCalls(conversation) {
   )
 }
 
-function loadDailySdk() {
-  const loadedSdk = window.DailyIframe || window.Daily
-  if (loadedSdk?.createFrame) return Promise.resolve(loadedSdk)
-  if (dailySdkPromise) return dailySdkPromise
-  dailySdkPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script')
-    script.src = 'https://unpkg.com/@daily-co/daily-js@0.94.0/dist/daily.js'
-    script.async = true
-    script.onload = () => {
-      const sdk = window.DailyIframe || window.Daily
-      if (!sdk?.createFrame) {
-        dailySdkPromise = null
-        reject(new Error('The calling service could not be loaded.'))
-        return
-      }
-      resolve(sdk)
-    }
-    script.onerror = () => {
-      dailySdkPromise = null
-      reject(new Error('The calling service could not be loaded. Check your connection and try again.'))
-    }
-    document.head.append(script)
+function createCallPeerConnection(call, iceServers) {
+  const peerConnection = new RTCPeerConnection({ iceServers })
+  const remoteStream = new MediaStream()
+  call.peerConnection = peerConnection
+  call.remoteStream = remoteStream
+  call.localStream.getTracks().forEach(track => {
+    peerConnection.addTrack(track, call.localStream)
   })
-  return dailySdkPromise
+  peerConnection.addEventListener('track', event => {
+    const stream = event.streams[0]
+    if (stream) {
+      call.remoteStream = stream
+    } else if (!call.remoteStream.getTracks().some(track => track.id === event.track.id)) {
+      call.remoteStream.addTrack(event.track)
+    }
+    if (call.remoteVideo) {
+      call.remoteVideo.srcObject = call.remoteStream
+      call.remoteVideo.play().catch(error => {
+        console.warn('[messages] Remote call audio/video awaits a user gesture.', error.message)
+      })
+    }
+  })
+  peerConnection.addEventListener('icecandidate', event => {
+    if (!event.candidate || activeCall?.callId !== call.callId) return
+    sendCallSignal(call, { candidate: event.candidate.toJSON() }).catch(error => {
+      console.error('[messages] Unable to send WebRTC ICE candidate.', error.message)
+    })
+  })
+  peerConnection.addEventListener('connectionstatechange', () => {
+    if (activeCall?.callId !== call.callId) return
+    const status = call.overlay?.querySelector('.messages-call-status')
+    if (peerConnection.connectionState === 'connected') {
+      if (status) status.textContent = `${call.callType === 'video' ? 'Video' : 'Voice'} · Connected`
+    } else if (peerConnection.connectionState === 'failed') {
+      showError(new Error(
+        'The call could not connect. This network may require a TURN relay; configure WebRTC TURN settings on the backend.'
+      ), 'WebRTC connection')
+      finishActiveCall(true)
+    }
+  })
+  return peerConnection
 }
 
-async function mountDailyCall(call, token) {
-  const sdk = await loadDailySdk()
-  if (activeCall?.callId !== call.callId) return
-  const callFrame = sdk.createFrame(call.frameContainer, {
-    iframeStyle: { width: '100%', height: '100%', border: '0' }
-  })
-  call.dailyFrame = callFrame
-  callFrame.on('error', event => {
-    console.error('[messages] Daily call error', {
-      message: event?.errorMsg || event?.message || 'Calling service error'
+function sendCallSignal(call, signal) {
+  if (!realtimeSocket?.connected) {
+    return Promise.reject(new Error('Realtime signaling is disconnected. Reconnect and try the call again.'))
+  }
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Call signaling timed out.')), 10_000)
+    realtimeSocket.emit('call:signal', {
+      conversationId: call.conversationId,
+      callId: call.callId,
+      targetUid: call.peerUid,
+      signal
+    }, result => {
+      clearTimeout(timeout)
+      if (result?.success) resolve()
+      else reject(new Error(result?.message || 'Call signaling was denied.'))
     })
-    showError(new Error('The call encountered a connection problem.'), 'Daily call')
-    finishActiveCall(true)
   })
-  callFrame.on('left-meeting', () => {
-    if (activeCall?.callId === call.callId) finishActiveCall(true)
+}
+
+async function startWebRtcOffer(call) {
+  if (!call.isCaller || call.offerStarted || activeCall?.callId !== call.callId) return
+  call.offerStarted = true
+  const offer = await call.peerConnection.createOffer()
+  await call.peerConnection.setLocalDescription(offer)
+  await sendCallSignal(call, {
+    type: call.peerConnection.localDescription.type,
+    sdp: call.peerConnection.localDescription.sdp
   })
-  await callFrame.join({ url: call.roomUrl, token })
+}
+
+async function applyCallSignal(packet) {
+  const call = activeCall
+  if (!call || call.callId !== packet.call_id || call.conversationId !== packet.conversation_id ||
+      call.peerUid !== packet.from_uid || !call.peerConnection) return
+  const signal = packet.signal
+  if (signal.type === 'offer') {
+    if (call.isCaller) throw new Error('Unexpected WebRTC offer received.')
+    await call.peerConnection.setRemoteDescription(signal)
+    for (const candidate of call.pendingIceCandidates.splice(0)) {
+      await call.peerConnection.addIceCandidate(candidate)
+    }
+    const answer = await call.peerConnection.createAnswer()
+    await call.peerConnection.setLocalDescription(answer)
+    await sendCallSignal(call, {
+      type: call.peerConnection.localDescription.type,
+      sdp: call.peerConnection.localDescription.sdp
+    })
+    return
+  }
+  if (signal.type === 'answer') {
+    if (!call.isCaller) throw new Error('Unexpected WebRTC answer received.')
+    await call.peerConnection.setRemoteDescription(signal)
+    for (const candidate of call.pendingIceCandidates.splice(0)) {
+      await call.peerConnection.addIceCandidate(candidate)
+    }
+    return
+  }
+  if (signal.candidate) {
+    if (call.peerConnection.remoteDescription) {
+      await call.peerConnection.addIceCandidate(signal.candidate)
+    } else {
+      call.pendingIceCandidates.push(signal.candidate)
+    }
+  }
+}
+
+async function handleCallSignal(packet) {
+  if (!packet?.call_id || !packet?.signal) return
+  if (activeCall?.callId === packet.call_id) {
+    await applyCallSignal(packet)
+    return
+  }
+  if (incomingCall?.call_id !== packet.call_id && acceptingCallId !== packet.call_id) return
+  const signals = pendingCallSignals.get(packet.call_id) || []
+  if (signals.length < 64) signals.push(packet)
+  pendingCallSignals.set(packet.call_id, signals)
+}
+
+async function applyPendingCallSignals(call) {
+  const signals = pendingCallSignals.get(call.callId) || []
+  pendingCallSignals.delete(call.callId)
+  for (const signal of signals) await applyCallSignal(signal)
 }
 
 async function finishActiveCall(notifyPeer) {
@@ -765,20 +925,14 @@ async function finishActiveCall(notifyPeer) {
   if (!call) return
   clearTimeout(call.ringingTimer)
   activeCall = null
-  if (call.dailyFrame) {
-    try {
-      await call.dailyFrame.leave()
-    } catch (error) {
-      console.error('[messages] Unable to leave Daily call cleanly:', error.message)
-    }
-    try {
-      await call.dailyFrame.destroy()
-    } catch (error) {
-      console.error('[messages] Unable to close Daily call frame:', error.message)
-    }
-  }
+  call.peerConnection?.close()
+  call.localStream?.getTracks().forEach(track => track.stop())
+  if (call.remoteVideo) call.remoteVideo.srcObject = null
+  if (call.localVideo) call.localVideo.srcObject = null
+  pendingCallSignals.delete(call.callId)
+  pendingCallUpdates.delete(call.callId)
   callRootReplace()
-  if (notifyPeer) {
+  if (notifyPeer && call.callId) {
     try {
       await api.post(`${apiPath(call.conversationId)}/calls/${call.callId}/end`, {})
     } catch (error) {
@@ -810,30 +964,54 @@ async function startCall(conversation, callType) {
     return
   }
   callStartInFlight = true
+  let localStream
+  let createdCallId = null
   try {
+    if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
+      throw new Error('WebRTC calling is not available in this browser. Use a supported browser over HTTPS.')
+    }
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: callType === 'video'
+    })
     const result = await api.post(`${apiPath(conversation.id)}/calls`, { callType })
     const responseCall = result?.data?.call
-    if (!responseCall?.call_id || !responseCall.room_url || !responseCall.token ||
+    createdCallId = responseCall?.call_id || null
+    if (!responseCall?.call_id || !responseCall.peer_uid ||
+      !Array.isArray(responseCall.ice_servers) ||
       !Number.isFinite(Date.parse(responseCall.ring_expires_at))) {
-      throw new Error('The calling service returned an incomplete call setup.')
+      throw new Error('The call service returned incomplete WebRTC setup information.')
     }
     activeCall = {
       callId: responseCall.call_id,
       conversationId: conversation.id,
-      callType: responseCall.call_type,
+      callType,
       peerName: responseCall.peer_name,
-      roomUrl: responseCall.room_url,
+      peerUid: responseCall.peer_uid,
       status: responseCall.status,
+      isCaller: true,
+      localStream,
+      pendingIceCandidates: [],
       ringExpiresAt: Date.parse(responseCall.ring_expires_at)
     }
+    localStream = null
+    renderCallOverlay()
+    const peerConnection = createCallPeerConnection(activeCall, responseCall.ice_servers)
+    const pendingUpdate = pendingCallUpdates.get(responseCall.call_id)
+    if (pendingUpdate) {
+      pendingCallUpdates.delete(responseCall.call_id)
+      handleCallUpdate(pendingUpdate)
+    }
+    if (activeCall?.callId !== responseCall.call_id) return
     const ringExpiresAt = Date.parse(responseCall.ring_expires_at)
     activeCall.ringingTimer = setTimeout(() => {
       if (activeCall?.callId === responseCall.call_id && activeCall.status === 'ringing') {
         finishActiveCall(true)
       }
     }, Math.max(0, ringExpiresAt - Date.now()))
-    renderCallOverlay()
-    await mountDailyCall(activeCall, responseCall.token)
+    if (activeCall?.status === 'accepted') await startWebRtcOffer(activeCall)
+    if (!peerConnection) throw new Error('Unable to initialize the WebRTC connection.')
+    if (activeCall) await applyPendingCallSignals(activeCall)
   } catch (error) {
     console.error('[messages] Call setup failed', {
       method: 'POST',
@@ -845,7 +1023,18 @@ async function startCall(conversation, callType) {
       message: error?.message || String(error),
       serverMessage: error?.payload?.message || null
     })
-    if (activeCall) await finishActiveCall(true)
+    if (activeCall) await finishActiveCall(Boolean(activeCall.callId))
+    else if (createdCallId) {
+      try {
+        await api.post(`${apiPath(conversation.id)}/calls/${createdCallId}/end`, {})
+      } catch (endError) {
+        console.error('[messages] Unable to clean up failed call setup.', endError.message)
+      }
+    }
+    for (const [callId, pendingCall] of pendingCallUpdates) {
+      if (pendingCall.conversation_id === conversation.id) pendingCallUpdates.delete(callId)
+    }
+    localStream?.getTracks().forEach(track => track.stop())
     showError(error, `start ${callType} call`)
   } finally {
     callStartInFlight = false
@@ -854,33 +1043,62 @@ async function startCall(conversation, callType) {
 
 async function acceptIncomingCall() {
   const call = incomingCall
-  if (!call || activeCall) return
-  clearTimeout(incomingCallTimer)
-  incomingCallTimer = null
+  if (!call || activeCall || acceptingCallId) return
+  acceptingCallId = call.call_id
+  let localStream
   try {
+    if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
+      throw new Error('WebRTC calling is not available in this browser. Use a supported browser over HTTPS.')
+    }
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: call.call_type === 'video'
+    })
     const result = await api.post(
       `${apiPath(call.conversation_id)}/calls/${call.call_id}/accept`, {}
     )
     const responseCall = result?.data?.call
-    if (!responseCall?.room_url || !responseCall.token) {
-      throw new Error('The calling service returned an incomplete call setup.')
+    if (!Array.isArray(responseCall?.ice_servers)) {
+      throw new Error('The call service returned incomplete WebRTC setup information.')
     }
     incomingCall = null
+    clearTimeout(incomingCallTimer)
+    incomingCallTimer = null
     activeCall = {
       callId: call.call_id,
       conversationId: call.conversation_id,
       callType: call.call_type,
       peerName: call.caller_name,
-      roomUrl: responseCall.room_url,
-      status: 'accepted'
+      peerUid: call.caller_uid,
+      status: 'accepted',
+      isCaller: false,
+      localStream,
+      pendingIceCandidates: []
     }
+    localStream = null
     renderCallOverlay()
-    await mountDailyCall(activeCall, responseCall.token)
+    createCallPeerConnection(activeCall, responseCall.ice_servers)
+    await applyPendingCallSignals(activeCall)
   } catch (error) {
-    incomingCall = null
     if (activeCall?.callId === call.call_id) await finishActiveCall(true)
-    else callRootReplace()
+    else {
+      localStream?.getTracks().forEach(track => track.stop())
+      acceptingCallId = null
+      try {
+        await api.post(`${apiPath(call.conversation_id)}/calls/${call.call_id}/end`, {})
+      } catch (endError) {
+        console.error('[messages] Unable to end failed WebRTC call setup.', endError.message)
+      }
+      if (incomingCall?.call_id === call.call_id) {
+        incomingCall = null
+        clearTimeout(incomingCallTimer)
+        incomingCallTimer = null
+      }
+      callRootReplace()
+    }
     showError(error, `accept call ${call.call_id}`)
+  } finally {
+    acceptingCallId = null
   }
 }
 
@@ -888,6 +1106,7 @@ async function declineIncomingCall() {
   const call = incomingCall
   if (!call) return
   incomingCall = null
+  pendingCallSignals.delete(call.call_id)
   clearTimeout(incomingCallTimer)
   incomingCallTimer = null
   renderCallOverlay()
@@ -1152,7 +1371,9 @@ function updateVoicePlayerProgress(audio, waveform, timeLabel, playButton, store
   ))
   waveform.setAttribute('aria-valuenow', String(Math.round(progress * 100)))
   waveform.setAttribute('aria-valuetext', `${formatVoiceDuration(Math.floor(currentTime))} of ${formatVoiceDuration(Math.floor(duration))}`)
-  timeLabel.textContent = duration ? formatVoiceDuration(Math.ceil(duration)) : 'Unavailable'
+  timeLabel.textContent = duration
+    ? `${formatVoiceDuration(Math.floor(currentTime))} / ${formatVoiceDuration(Math.ceil(duration))}`
+    : 'Unavailable'
   const isPlaying = !audio.paused && !audio.ended
   playButton.setAttribute('aria-label', isPlaying ? 'Pause voice note' : 'Play voice note')
   playButton.title = isPlaying ? 'Pause voice note' : 'Play voice note'
@@ -2123,7 +2344,7 @@ async function startVoiceRecording() {
         sampleRate: { ideal: 48_000 },
         echoCancellation: { ideal: true },
         noiseSuppression: { ideal: true },
-        autoGainControl: { ideal: false }
+        autoGainControl: { ideal: true }
       }
     })
     if (!firebaseAuth.currentUser || targetConversationId !== selectedConversationId) {
@@ -2137,7 +2358,7 @@ async function startVoiceRecording() {
       'audio/ogg;codecs=opus'
     ].find(type => MediaRecorder.isTypeSupported(type)) : ''
     const recorderOptions = {
-      audioBitsPerSecond: 24_000,
+      audioBitsPerSecond: 48_000,
       ...(mimeType ? { mimeType } : {})
     }
     mediaRecorder = new MediaRecorder(mediaStream, recorderOptions)

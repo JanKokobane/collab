@@ -1,6 +1,7 @@
 const { Server } = require('socket.io');
 const { query } = require('../config/db');
 const { getFirebaseAdmin } = require('../config/firebaseAdmin');
+const { getMessageCallIceServers } = require('../services/messageCallIceConfig');
 
 let io;
 const socketsByUid = new Map();
@@ -15,6 +16,36 @@ const allowedOrigins = [
 
 const userRoom = uid => `user:${uid}`;
 const conversationRoom = id => `conversation:${id}`;
+
+const normalizeCallSignal = signal => {
+    if (!signal || typeof signal !== 'object' || Array.isArray(signal)) return null;
+    if (signal.type === 'offer' || signal.type === 'answer') {
+        if (typeof signal.sdp !== 'string' || signal.sdp.length > 32768) return null;
+        return { type: signal.type, sdp: signal.sdp };
+    }
+    if (signal.candidate && typeof signal.candidate === 'object') {
+        const candidate = signal.candidate;
+        if (typeof candidate.candidate !== 'string' || candidate.candidate.length > 4096 ||
+            (candidate.sdpMid != null && (typeof candidate.sdpMid !== 'string' || candidate.sdpMid.length > 128)) ||
+            (candidate.sdpMLineIndex != null &&
+                (!Number.isInteger(candidate.sdpMLineIndex) || candidate.sdpMLineIndex < 0 ||
+                    candidate.sdpMLineIndex > 255)) ||
+            (candidate.usernameFragment != null &&
+                (typeof candidate.usernameFragment !== 'string' || candidate.usernameFragment.length > 256))) {
+            return null;
+        }
+        return {
+            candidate: {
+                candidate: candidate.candidate,
+                sdpMid: candidate.sdpMid ?? null,
+                sdpMLineIndex: candidate.sdpMLineIndex ?? null,
+                ...(candidate.usernameFragment == null
+                    ? {} : { usernameFragment: candidate.usernameFragment })
+            }
+        };
+    }
+    return null;
+};
 
 const setPresence = async (uid, isOnline) => {
     const result = await query(
@@ -178,6 +209,8 @@ const attachMessageSocket = server => {
 
     io.on('connection', async socket => {
         const uid = socket.data.firebaseUid;
+        let callSignalWindowStartedAt = Date.now();
+        let callSignalCount = 0;
         const authExpiryTimer = setTimeout(
             () => socket.disconnect(true),
             Math.max(0, socket.data.tokenExpiresAt - Date.now())
@@ -243,7 +276,9 @@ const attachMessageSocket = server => {
                     activeCalls: activeCalls.rows.map(row => ({
                         ...row,
                         created_at: row.created_at.toISOString(),
-                        ring_expires_at: row.ring_expires_at.toISOString()
+                        ring_expires_at: row.ring_expires_at.toISOString(),
+                        peer_uid: row.caller_uid === uid ? row.callee_uid : row.caller_uid,
+                        ice_servers: getMessageCallIceServers(uid)
                     }))
                 });
             } catch (error) {
@@ -255,6 +290,66 @@ const attachMessageSocket = server => {
         socket.on('conversation:leave', conversationId => {
             if (typeof conversationId === 'string' && roomPattern.test(conversationId)) {
                 socket.leave(conversationRoom(conversationId));
+            }
+        });
+
+        socket.on('call:signal', async (payload = {}, acknowledge) => {
+            const acknowledgeResult = typeof acknowledge === 'function' ? acknowledge : () => {};
+            const { conversationId, callId, targetUid } = payload;
+            const signal = normalizeCallSignal(payload.signal);
+            if (typeof conversationId !== 'string' || !roomPattern.test(conversationId) ||
+                typeof callId !== 'string' || !roomPattern.test(callId) ||
+                typeof targetUid !== 'string' || targetUid.length > 128 || !signal ||
+                !socket.rooms.has(conversationRoom(conversationId))) {
+                acknowledgeResult({ success: false, message: 'Invalid call signaling payload.' });
+                return;
+            }
+            if (Date.now() - callSignalWindowStartedAt >= 60_000) {
+                callSignalWindowStartedAt = Date.now();
+                callSignalCount = 0;
+            }
+            callSignalCount += 1;
+            if (callSignalCount > 120) {
+                acknowledgeResult({ success: false, message: 'Call signaling rate limit exceeded.' });
+                return;
+            }
+            try {
+                const callResult = await query(
+                    `SELECT call.conversation_id::text AS conversation_id,
+                            call.caller_uid, call.callee_uid, call.status
+                     FROM message_calls call
+                     JOIN message_conversations conversation
+                       ON conversation.conversation_id = call.conversation_id
+                     WHERE call.call_id = $1::uuid
+                       AND call.conversation_id = $2::uuid
+                       AND conversation.conversation_type = 'direct'
+                       AND call.expires_at > NOW()`,
+                    [callId, conversationId]
+                );
+                const call = callResult.rows[0];
+                const isParticipant = call &&
+                    (call.caller_uid === uid || call.callee_uid === uid);
+                const isTarget = call &&
+                    (targetUid === call.caller_uid || targetUid === call.callee_uid) &&
+                    targetUid !== uid;
+                if (!isParticipant || !isTarget || call.status !== 'accepted' ||
+                    !await isConversationMember(conversationId, uid) ||
+                    !await isConversationMember(conversationId, targetUid)) {
+                    acknowledgeResult({ success: false, message: 'Call signaling access denied.' });
+                    return;
+                }
+                emitToUser(targetUid, 'call:signal', {
+                    conversation_id: conversationId,
+                    call_id: callId,
+                    from_uid: uid,
+                    signal
+                });
+                acknowledgeResult({ success: true });
+            } catch (error) {
+                console.error('Unable to authorize WebRTC call signaling:', {
+                    conversationId, callId, message: error.message
+                });
+                acknowledgeResult({ success: false, message: 'Call signaling failed.' });
             }
         });
 

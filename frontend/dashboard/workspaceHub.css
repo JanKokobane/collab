@@ -1380,8 +1380,12 @@ body.dark-mode .messages-voice-record.is-recording,
     min-width: 230px;
     grid-template-columns: 38px minmax(90px, 1fr) auto;
     align-items: center;
-    gap: 10px;
-    margin: 5px 0 2px;
+    gap: 9px;
+    margin: 6px 0 3px;
+    padding: 7px 9px;
+    border: 1px solid rgba(40, 123, 103, .12);
+    border-radius: 16px;
+    background: rgba(40, 123, 103, .055);
 }
 
 .messages-voice-play {
@@ -1425,7 +1429,7 @@ body.dark-mode .messages-voice-record.is-recording,
 
 .messages-voice-time {
     color: #4B5E56;
-    font: 600 11px/1 'DM Sans', sans-serif;
+    font: 600 10px/1 'DM Sans', sans-serif;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
@@ -1465,6 +1469,12 @@ body.dark-mode .messages-recording-pause,
 body.dark-mode .messages-voice-waveform .messages-waveform-bar,
 [data-theme="dark"] .messages-voice-waveform .messages-waveform-bar {
     background: rgba(220, 232, 225, .4);
+}
+
+body.dark-mode .message-bubble .messages-voice-note-player,
+[data-theme="dark"] .message-bubble .messages-voice-note-player {
+    border-color: rgba(167, 243, 208, .14);
+    background: rgba(167, 243, 208, .06);
 }
 
 body.dark-mode .messages-voice-waveform .messages-waveform-bar.is-played,
@@ -7348,6 +7358,23 @@ body.dark-mode .dropdown-item.logout:hover .dropdown-item-icon,
     font-size: 12px;
 }
 
+.messages-call-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.messages-call-control {
+    min-height: 38px;
+    padding: 0 12px;
+    border: 1px solid #3B4945;
+    border-radius: 9px;
+    background: #202A27;
+    color: #F4F4F5;
+    font: 650 12px 'DM Sans', sans-serif;
+    cursor: pointer;
+}
+
 .messages-call-hangup,
 .messages-call-decline,
 .messages-call-accept {
@@ -7370,16 +7397,61 @@ body.dark-mode .dropdown-item.logout:hover .dropdown-item-icon,
 }
 
 .messages-call-frame {
+    position: relative;
     min-height: 0;
     flex: 1;
     overflow: hidden;
+    background: #080D0C;
 }
 
-.messages-call-frame iframe {
+.messages-call-frame video {
     display: block;
     width: 100%;
     height: 100%;
-    border: 0;
+    object-fit: contain;
+}
+
+.messages-call-audio-stream {
+    position: absolute;
+    width: 1px !important;
+    height: 1px !important;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.messages-call-frame.is-audio-call {
+    display: grid;
+    place-items: center;
+    background: radial-gradient(circle at center, #1D302A 0, #080D0C 62%);
+}
+
+.messages-call-audio-avatar {
+    display: grid;
+    width: 112px;
+    height: 112px;
+    place-items: center;
+    border: 1px solid rgba(167, 243, 208, .24);
+    border-radius: 50%;
+    background: #1C5547;
+    color: #E8FFF6;
+    font: 700 42px 'DM Sans', sans-serif;
+    box-shadow: 0 0 0 14px rgba(40, 123, 103, .09);
+}
+
+.messages-call-frame.is-video-call > video:first-child {
+    background: #080D0C;
+}
+
+.messages-call-frame.is-video-call > video:last-child:not([hidden]) {
+    position: absolute;
+    right: 18px;
+    bottom: 18px;
+    width: min(25%, 220px);
+    height: min(28%, 160px);
+    border: 1px solid rgba(255, 255, 255, .35);
+    border-radius: 12px;
+    background: #202A27;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
 }
 
 .messages-incoming-call {
@@ -7443,5 +7515,23 @@ body.dark-mode .messages-incoming-call h2,
 
     .messages-call-header {
         padding: 12px;
+    }
+
+    .messages-call-controls {
+        gap: 5px;
+    }
+
+    .messages-call-control,
+    .messages-call-hangup {
+        min-height: 36px;
+        padding: 0 9px;
+        font-size: 11px;
+    }
+
+    .messages-call-frame.is-video-call > video:last-child:not([hidden]) {
+        right: 12px;
+        bottom: 12px;
+        width: 32%;
+        height: 22%;
     }
 }

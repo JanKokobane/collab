@@ -1,83 +1,10 @@
-const { createHash, randomUUID } = require('node:crypto');
+const { randomUUID } = require('node:crypto');
 const { pool, query } = require('../config/db');
 const { emitToConversation } = require('../realtime/messageSocket');
 const { getConversation } = require('./messageController');
+const { getMessageCallIceServers } = require('../services/messageCallIceConfig');
 
 const callIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-class DailyApiError extends Error {
-    constructor(status, path, details = null) {
-        super('Daily API request failed.');
-        this.status = status;
-        this.path = path;
-        this.details = details;
-    }
-}
-
-const dailyRequest = async (path, body) => {
-    const apiKey = process.env.DAILY_API_KEY;
-    if (!apiKey) {
-        console.error('Daily call setup is missing DAILY_API_KEY.');
-        const error = new Error('Calling is not configured on the backend.');
-        error.status = 503;
-        throw error;
-    }
-    let response;
-    try {
-        response = await fetch(`https://api.daily.co/v1${path}`, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-        });
-    } catch (error) {
-        console.error('Daily API request could not connect.', {
-            path, errorName: error.name, message: error.message
-        });
-        throw new DailyApiError(502, path);
-    }
-    if (!response.ok) {
-        const responseBody = await response.json().catch(() => null);
-        const details = responseBody && typeof responseBody === 'object'
-            ? {
-                error: typeof responseBody.error === 'string' ? responseBody.error.slice(0, 300) : null,
-                info: typeof responseBody.info === 'string' ? responseBody.info.slice(0, 300) : null,
-                message: typeof responseBody.message === 'string' ? responseBody.message.slice(0, 300) : null
-            }
-            : null;
-        console.error('Daily API returned an unsuccessful response.', {
-            path, status: response.status, details
-        });
-        throw new DailyApiError(response.status, path, details);
-    }
-    return response.json();
-};
-
-const createRoom = (roomName, expiration) => dailyRequest('/rooms', {
-    name: roomName,
-    privacy: 'private',
-    properties: {
-        exp: expiration,
-        max_participants: 2,
-        enable_chat: false,
-        enable_screenshare: false
-    }
-});
-
-const createMeetingToken = (roomName, user, callType, expiration) =>
-    dailyRequest('/meeting-tokens', {
-        properties: {
-            room_name: roomName,
-            user_id: createHash('sha256').update(user.firebaseUid).digest('hex').slice(0, 36),
-            user_name: user.name || 'Project member',
-            exp: expiration,
-            eject_at_token_exp: true,
-            start_video_off: callType === 'audio',
-            enable_screenshare: false
-        }
-    });
 
 const getMember = async (conversationId, firebaseUid) => {
     const result = await query(
@@ -89,20 +16,13 @@ const getMember = async (conversationId, firebaseUid) => {
 };
 
 const responseError = (res, error, operation) => {
-    if (error.status === 503) {
-        return res.status(503).json({
-            success: false, code: 'CALLING_NOT_CONFIGURED', message: error.message
-        });
-    }
     console.error(`${operation} failed.`, {
         errorName: error.name,
         message: error.message,
         status: error.status || null,
-        dailyPath: error.path || null,
-        dailyDetails: error.details || null,
         stack: error.stack
     });
-    return res.status(error.status === 429 ? 429 : error instanceof DailyApiError ? 502 : 500).json({
+    return res.status(500).json({
         success: false,
         code: 'CALL_OPERATION_FAILED',
         message: 'The call could not be completed. Please try again.'
@@ -167,18 +87,9 @@ const startCall = async (req, res) => {
             });
         }
         const callId = randomUUID();
-        const roomName = `collab-${callId}`;
         const now = Date.now();
-        const expiration = Math.floor(now / 1000) + 60 * 60;
-        const room = await createRoom(roomName, expiration);
-        if (!room?.name || !room.url) throw new DailyApiError(502, '/rooms');
-        const token = await createMeetingToken(room.name, {
-            firebaseUid: req.firebaseUid,
-            name: caller.display_name || caller.email
-        }, callType, expiration);
-        if (!token?.token) throw new DailyApiError(502, '/meeting-tokens');
+        const expiresAt = new Date(now + 60 * 60 * 1000);
         const ringExpiresAt = new Date(now + 45_000);
-        const expiresAt = new Date(expiration * 1000);
         await client.query(
             `INSERT INTO message_calls (
                 call_id, conversation_id, caller_uid, caller_name, callee_uid,
@@ -186,13 +97,13 @@ const startCall = async (req, res) => {
                 expires_at, ring_expires_at
              ) VALUES (
                 $1::uuid, $2::uuid, $3, $4, $5, $6, $7, 'ringing',
-                $8, $9, $10, $11
+                '', '', $8, $9
              )`,
             [
                 callId, conversationId, req.firebaseUid,
                 caller.display_name || caller.email || 'Project member',
                 calleeUid, callee.display_name || callee.email || 'Project member',
-                callType, room.name, room.url, expiresAt, ringExpiresAt
+                callType, expiresAt, ringExpiresAt
             ]
         );
         await client.query('COMMIT');
@@ -216,14 +127,14 @@ const startCall = async (req, res) => {
                 call: {
                     ...call,
                     peer_name: call.callee_name,
-                    room_url: room.url,
-                    token: token.token
+                    peer_uid: calleeUid,
+                    ice_servers: getMessageCallIceServers(req.firebaseUid)
                 }
             }
         });
     } catch (error) {
         await client?.query('ROLLBACK').catch(() => {});
-        return responseError(res, error, 'Start Daily call');
+        return responseError(res, error, 'Start WebRTC call');
     } finally {
         client?.release();
     }
@@ -304,14 +215,6 @@ const updateCall = async (req, res) => {
                     message: 'This call invitation has expired.'
                 });
             }
-            const member = await getMember(conversationId, req.firebaseUid);
-            const token = await createMeetingToken(
-                call.daily_room_name,
-                { firebaseUid: req.firebaseUid, name: member?.display_name || member?.email },
-                call.call_type,
-                Math.floor(new Date(call.expires_at).getTime() / 1000)
-            );
-            if (!token?.token) throw new DailyApiError(502, '/meeting-tokens');
             await client.query(
                 `UPDATE message_calls SET status = 'accepted',
                     accepted_at = COALESCE(accepted_at, NOW())
@@ -325,7 +228,7 @@ const updateCall = async (req, res) => {
             res.set('Cache-Control', 'no-store');
             return res.json({
                 success: true,
-                data: { call: { room_url: call.daily_room_url, token: token.token } }
+                data: { call: { ice_servers: getMessageCallIceServers(req.firebaseUid) } }
             });
         }
         if ((action === 'decline' && (!isCallee || call.status !== 'ringing')) ||
@@ -349,7 +252,7 @@ const updateCall = async (req, res) => {
         return res.json({ success: true });
     } catch (error) {
         await client?.query('ROLLBACK').catch(() => {});
-        return responseError(res, error, `${action} Daily call`);
+        return responseError(res, error, `${action} WebRTC call`);
     } finally {
         client?.release();
     }
