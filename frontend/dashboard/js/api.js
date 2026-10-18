@@ -7,8 +7,7 @@ import {
 const configuredBaseUrl = window.COLLAB_API_BASE_URL;
 
 const apiBaseUrl = (
-    configuredBaseUrl ||
-    'https://collab-y7pb.onrender.com'
+    configuredBaseUrl !== undefined ? configuredBaseUrl : (typeof window !== 'undefined' && window.location ? window.location.origin : '')
 ).replace(/\/+$/, '');
 
 export class ApiError extends Error {

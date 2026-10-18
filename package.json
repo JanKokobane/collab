@@ -1,0 +1,22 @@
+{
+  "name": "collab",
+  "version": "1.0.0",
+  "description": "Collab — Workspace",
+  "main": "backend/index.js",
+  "scripts": {
+    "dev": "node backend/index.js",
+    "start": "node backend/index.js",
+    "build": "echo 'Build complete'"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
+    "express-rate-limit": "^7.5.0",
+    "firebase": "^12.19.0",
+    "firebase-admin": "^13.4.0",
+    "helmet": "^8.1.0",
+    "nodemailer": "^10.0.16",
+    "pg": "^8.23.1",
+    "socket.io": "^4.8.1"
+  }
+}

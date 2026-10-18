@@ -8,6 +8,11 @@
     <title>Collab — Sign in & Registration</title>
     <meta name="description" content="Sign in or register for your Collab workspace." />
     <link rel="icon" type="image/png" href="../images/favicon.png" />
+    <script>
+        if (!window.COLLAB_API_BASE_URL) {
+            window.COLLAB_API_BASE_URL = window.location.origin;
+        }
+    </script>
     <link rel="stylesheet" href="./auth.css">
 </head>
 

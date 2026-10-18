@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Terms of Service — Collab Workspace</title>
+    <meta name="description" content="Read the terms and conditions governing the use of the Collab workspace platform and services." />
+    <link rel="icon" type="image/png" href="../images/favicon.png" />
+    <link rel="stylesheet" href="./legal.css">
+    <link rel="stylesheet" href="../style.css">
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const yr = new Date().getFullYear();
+            document.querySelectorAll('.current-year').forEach(el => el.textContent = yr);
+
+            // Active section spy on scroll
+            const sections = document.querySelectorAll('.legal-section');
+            const navLinks = document.querySelectorAll('.legal-nav-links a');
+
+            function onScroll() {
+                let current = '';
+                sections.forEach(section => {
+                    const top = section.offsetTop - 140;
+                    if (window.scrollY >= top) {
+                        current = '#' + section.getAttribute('id');
+                    }
+                });
+
+                navLinks.forEach(link => {
+                    link.classList.toggle('active', link.getAttribute('href') === current);
+                });
+            }
+
+            window.addEventListener('scroll', onScroll, { passive: true });
+            onScroll();
+        });
+    </script>
+</head>
+
+<body class="legal-page-wrapper">
+    <!-- Sticky Landing Header matching Index page -->
+    <header class="landing-header">
+        <nav class="landing-nav">
+            <a class="brand logo-link" href="../index.html" aria-label="Collab Home">
+                <img src="../images/logo.png" alt="Collab." class="brand-logo-img" />
+            </a>
+            <div class="landing-links">
+               
+                <a href="./privacy.html">Privacy</a>
+                <span class="divider" style="color: #0d0d0e; user-select: none;">|</span>
+                <a href="../auth/auth.html" class="landing-signin">Sign in</a>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Aligned Header Banner -->
+    <header class="legal-header">
+        <div class="legal-header-inner">
+            <a href="../index.html" class="legal-back-breadcrumb">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="19" y1="12" x2="5" y2="12"></line>
+                    <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+                <span>Back to Collab Home</span>
+            </a>
+
+
+            <h1>Terms of Service</h1>
+            <p>These terms govern your access to and use of Collab workspaces, boards, real-time collaboration tools, and platform APIs.</p>
+        </div>
+    </header>
+
+    <!-- Main Two-Column Grid: Aligned Sidebar & Content -->
+    <main class="legal-main">
+        <!-- Table of Contents Sidebar -->
+        <aside class="legal-sidebar">
+            <div class="legal-nav-title">
+                <span>Agreement Sections</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="8" y1="6" x2="21" y2="6"></line>
+                    <line x1="8" y1="12" x2="21" y2="12"></line>
+                    <line x1="8" y1="18" x2="21" y2="18"></line>
+                    <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                    <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                    <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                </svg>
+            </div>
+            <ul class="legal-nav-links">
+                <li><a href="#acceptance">1. Acceptance of Terms</a></li>
+                <li><a href="#accounts">2. Accounts & Workspaces</a></li>
+                <li><a href="#acceptable-use">3. Acceptable Use Policy</a></li>
+                <li><a href="#ownership">4. Content & Ownership</a></li>
+                <li><a href="#subscriptions">5. Free Access & Plans</a></li>
+                <li><a href="#disclaimers">6. Disclaimers & Warranties</a></li>
+                <li><a href="#liability">7. Limitation of Liability</a></li>
+                <li><a href="#termination">8. Termination & Suspension</a></li>
+                <li><a href="#governing-law">9. Governing Law</a></li>
+            </ul>
+
+        </aside>
+
+        <!-- Document Content Card -->
+        <article class="legal-content-card">
+            <section id="acceptance" class="legal-section">
+                <h2><span class="legal-section-number">01</span> Acceptance of Terms</h2>
+                <p>Welcome to Collab. By creating an account, accessing project boards, or utilizing our services (collectively, the "Services"), you agree to be legally bound by these Terms of Service ("Terms") and our <a href="./privacy.html" style="color: #0052CC; text-decoration: underline;">Privacy Policy</a>. If you are entering into these Terms on behalf of a company, organization, or team, you represent that you hold the legal authority to bind that entity.</p>
+                <p>If you do not accept these Terms in their entirety, you must not access or use the Services.</p>
+
+                <div class="legal-callout">
+                    <strong>Important Summary:</strong> You own your project content. We provide a high-performance, calm, and secure workspace for you and your team to plan, organize, and execute work smoothly.
+                </div>
+            </section>
+
+            <section id="accounts" class="legal-section">
+                <h2><span class="legal-section-number">02</span> Accounts & Workspaces</h2>
+                <p>To use Collab, you may sign in immediately or register a workspace profile with your work email. You agree to:</p>
+                <ul>
+                    <li>Provide accurate, current, and complete registration details.</li>
+                    <li>Safeguard and maintain the confidentiality of your sign-in credentials.</li>
+                    <li>Notify us immediately of any unauthorized use or security compromise regarding your workspace.</li>
+                    <li>Assume responsibility for all activities that occur under your user profile and workspace boards.</li>
+                </ul>
+            </section>
+
+            <section id="acceptable-use" class="legal-section">
+                <h2><span class="legal-section-number">03</span> Acceptable Use Policy</h2>
+                <p>Collab is engineered for productive, professional team collaboration. You agree not to misuse the platform. Specifically, you may not:</p>
+                <ul>
+                    <li>Upload or transmit unlawful, malicious, harassing, defamatory, or infringing content.</li>
+                    <li>Attempt to reverse engineer, decompile, or extract the source code of the Collab platform.</li>
+                    <li>Disrupt, overload, or attack the integrity and performance of our servers, networks, or APIs.</li>
+                    <li>Circumvent account limits, access permissions, or security verification procedures.</li>
+                    <li>Scrape, crawl, or harvest user data or contact details through automated scripts.</li>
+                </ul>
+            </section>
+
+            <section id="ownership" class="legal-section">
+                <h2><span class="legal-section-number">04</span> Content & Intellectual Property Ownership</h2>
+                <h3>A. Your Workspace Content</h3>
+                <p>You retain 100% full ownership of all data, boards, tasks, comments, designs, and attachments that you submit to Collab. We claim no intellectual property rights over the materials you produce. You grant Collab only the technical license strictly required to host, back up, transmit, and display your content to you and your authorized workspace members.</p>
+
+                <h3>B. Collab Platform Rights</h3>
+                <p>The Collab interface, branding, logos, icons, designs, and codebase are the proprietary property of Collab Inc. and protected by copyright and intellectual property laws. You may not copy, reproduce, or resell any portion of the service without explicit written consent.</p>
+            </section>
+
+            <section id="subscriptions" class="legal-section">
+                <h2><span class="legal-section-number">05</span> Free Access & Pricing Plans</h2>
+                <p>Collab offers both free direct-access workspace tiers and premium capability options:</p>
+                <ul>
+                    <li><strong>Free Starter Tier:</strong> Includes unlimited personal tasks, active Kanban boards, direct sign-in, and team collaboration at zero charge.</li>
+                    <li><strong>Paid Add-ons / Enterprise:</strong> Billed on a monthly or annual subscription cadence. Prices are published transparently on our pricing page and are non-refundable except where required by applicable consumer law.</li>
+                    <li><strong>Taxes:</strong> All fees are exclusive of applicable sales tax, VAT, or goods and services tax, which will be calculated according to your jurisdiction.</li>
+                </ul>
+            </section>
+
+            <section id="disclaimers" class="legal-section">
+                <h2><span class="legal-section-number">06</span> Disclaimers & Warranties</h2>
+                <p>To the maximum extent permitted by applicable law, the Collab platform is provided on an "AS IS" and "AS AVAILABLE" basis. Collab makes no warranties, express or implied, including merchantability, fitness for a particular purpose, or non-infringement. We strive for 99.9% uptime but do not warrant that the Services will be uninterrupted, error-free, or completely immune to cyber threats.</p>
+            </section>
+
+            <section id="liability" class="legal-section">
+                <h2><span class="legal-section-number">07</span> Limitation of Liability</h2>
+                <p>To the fullest extent permitted by law, Collab Inc., its directors, employees, partners, and agents will not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, use, goodwill, or other intangible losses resulting from:</p>
+                <ul>
+                    <li>Your access to, use of, or inability to access or use the platform.</li>
+                    <li>Any unauthorized access, use, or alteration of your content or workspace transmissions.</li>
+                    <li>Any conduct or content of any third party using the service.</li>
+                </ul>
+            </section>
+
+            <section id="termination" class="legal-section">
+                <h2><span class="legal-section-number">08</span> Termination & Account Suspension</h2>
+                <p>You may discontinue your use of Collab at any time by closing your account and removing your workspaces. Collab reserves the right to suspend or terminate accounts that repeatedly violate our Acceptable Use Policy, with reasonable advance notice when legally permissible.</p>
+            </section>
+
+            <section id="governing-law" class="legal-section">
+                <h2><span class="legal-section-number">09</span> Governing Law & Dispute Resolution</h2>
+                <p>These Terms are governed by and construed in accordance with the laws of the State of California, without regard to conflict of law principles. Any dispute arising out of or relating to these Terms will be resolved through confidential, binding arbitration or before a court of competent jurisdiction located in San Francisco, California.</p>
+                
+                <div class="legal-contact-box">
+                    <div class="legal-contact-info">
+                        <h4>Legal Inquiries & Notice</h4>
+                        <p>Contact: legal@collab.io • Legal Department, Collab Inc.</p>
+                    </div>
+                    <a href="mailto:legal@collab.io" class="legal-contact-btn">Email Legal Counsel</a>
+                </div>
+            </section>
+        </article>
+    </main>
+
+    <!-- Trello-Style Dark Navy Footer for Collab -->
+    <footer class="trello-site-footer">
+        <div class="trello-footer-container">
+            <div class="trello-footer-top-grid">
+                <!-- Brand Column -->
+                <div class="trello-footer-col brand-col">
+                    <a href="../index.html" class="trello-footer-logo">
+                        <img src="../images/logo.png" alt="Collab" class="trello-footer-logo-img" />
+                    </a>
+                </div>
+
+                <!-- Column 1: About Collab -->
+                <div class="trello-footer-col">
+                    <h4><a href="../dashboard/dashboard.html">About Collab</a></h4>
+                    <p>What's behind the boards.</p>
+                </div>
+
+                <!-- Column 2: Jobs -->
+                <div class="trello-footer-col">
+                    <h4><a href="../dashboard/dashboard.html">Jobs</a></h4>
+                    <p>Learn about open roles on the Collab team.</p>
+                </div>
+
+                <!-- Column 3: Apps -->
+                <div class="trello-footer-col">
+                    <h4><a href="../dashboard/dashboard.html">Apps</a></h4>
+                    <p>Download the Collab App for your Desktop or Mobile devices.</p>
+                </div>
+
+                <!-- Column 4: Contact us -->
+                <div class="trello-footer-col">
+                    <h4><a href="../dashboard/dashboard.html">Contact us</a></h4>
+                    <p>Need anything? Get in touch and we can help.</p>
+                </div>
+            </div>
+
+            <div class="trello-footer-divider"></div>
+
+            <!-- Bottom Row with Dynamic Year -->
+            <div class="trello-footer-bottom">
+                <div class="trello-footer-lang">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="2" y1="12" x2="22" y2="12"></line>
+                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                    </svg>
+                    <span>English</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+
+                <div class="trello-footer-links">
+                    <a href="privacy.html#user-rights">Notice at Collection</a>
+                    <a href="privacy.html">Privacy Policy</a>
+                    <a href="terms.html" style="color: #FFFFFF; font-weight: 600;">Terms</a>
+                    <span>Copyright © <span class="current-year">2026</span> Collab</span>
+                </div>
+
+                <div class="trello-footer-socials">
+                    <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram" class="trello-social-btn">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                            <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+                            <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+                        </svg>
+                    </a>
+                    <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Facebook" class="trello-social-btn">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path>
+                        </svg>
+                    </a>
+                    <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" class="trello-social-btn">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path>
+                            <rect x="2" y="9" width="4" height="12"></rect>
+                            <circle cx="4" cy="4" r="2"></circle>
+                        </svg>
+                    </a>
+                    <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" aria-label="Twitter / X" class="trello-social-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+                        </svg>
+                    </a>
+                    <a href="https://youtube.com" target="_blank" rel="noopener noreferrer" aria-label="YouTube" class="trello-social-btn">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.43zM9.75 15.02V8.48l5.75 3.27-5.75 3.27z"></path>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

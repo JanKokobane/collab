@@ -2,14 +2,26 @@ require('dotenv').config();
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { pool, closeDB } = require('./db');
+const { pool, closeDB, isDatabaseConnected } = require('./db');
 
 const migrationsDirectory = path.join(__dirname, '../../db/migrations');
 const migrationLockId = 721946381;
 
 async function runMigrations() {
-    const client = await pool.connect();
+    if (typeof isDatabaseConnected === 'function' && !isDatabaseConnected()) {
+        console.log('[AI Studio] Database migrations skipped (mock database active)');
+        return;
+    }
+
+    let client;
     try {
+        client = await pool.connect();
+        const ping = await client.query('SELECT 1');
+        if (!ping || !ping.rows || ping.rows.length === 0) {
+            console.log('[AI Studio] Database migrations skipped (mock active)');
+            return;
+        }
+
         await client.query('SELECT pg_advisory_lock($1)', [migrationLockId]);
         await client.query(`
             CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -44,11 +56,16 @@ async function runMigrations() {
                 throw error;
             }
         }
+    } catch (error) {
+        console.warn('[AI Studio] Database migration error (skipped):', error.message);
     } finally {
-        try {
-            await client.query('SELECT pg_advisory_unlock($1)', [migrationLockId]);
-        } finally {
-            client.release();
+        if (client) {
+            try {
+                await client.query('SELECT pg_advisory_unlock($1)', [migrationLockId]);
+            } catch (unlockErr) {}
+            finally {
+                client.release();
+            }
         }
     }
 }

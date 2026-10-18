@@ -58,7 +58,11 @@ import {
 // BACKEND API
 // ============================================================
 
-const API_BASE_URL = "https://collab-y7pb.onrender.com";
+const API_BASE_URL = (
+    window.COLLAB_API_BASE_URL !== undefined
+        ? window.COLLAB_API_BASE_URL
+        : (typeof window !== 'undefined' && window.location ? window.location.origin : '')
+).replace(/\/+$/, '');
 
 
 // ============================================================

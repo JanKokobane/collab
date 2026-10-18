@@ -1,10 +1,10 @@
 import { activeView, currentUser, getAccessibleMembers, getAvatarSource, make, projects, renderAvatarElement } from './state.js'
 import { firebaseAuth } from '../../firebase.js'
 import { api, apiBaseUrl } from './api.js'
-import { clearCallInterface, renderCallInterface } from './messageCallUI.js?v=20261018-1420'
+import { clearCallInterface, renderCallInterface } from './messageCallUI.js?v=20261018-fix'
 
 const maxAttachmentBytes = 512 * 1024
-const messagesBuildId = '20261018-1420'
+const messagesBuildId = '20261018-fix'
 const presenceHeartbeatMs = 25000
 const callSocketConnectTimeoutMs = 15000
 const callMediaRequestTimeoutMs = 30000
@@ -981,7 +981,9 @@ async function finishActiveCall(notifyPeer) {
     try {
       await api.post(`${apiPath(call.conversationId)}/calls/${call.callId}/end`, {})
     } catch (error) {
-      showError(error, `end call ${call.callId}`)
+      if (error?.status !== 409 && error?.code !== 'CALL_NOT_ACTIVE' && error?.code !== 'CALL_NOT_FOUND') {
+        showError(error, `end call ${call.callId}`)
+      }
     }
   }
 }
@@ -1005,7 +1007,9 @@ async function expireOutgoingCall(call) {
   try {
     await api.post(`${apiPath(call.conversationId)}/calls/${call.callId}/missed`, {})
   } catch (error) {
-    showError(error, `mark call ${call.callId} as missed`)
+    if (error?.status !== 409 && error?.code !== 'CALL_NOT_ACTIVE' && error?.code !== 'CALL_NOT_FOUND') {
+      showError(error, `mark call ${call.callId} as missed`)
+    }
   }
   if (activeCall?.callId === call.callId) await finishActiveCall(false)
 }

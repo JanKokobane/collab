@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy Policy — Collab Workspace</title>
+    <meta name="description" content="Learn how Collab protects your personal data, workspace privacy, and project security." />
+    <link rel="icon" type="image/png" href="../images/favicon.png" />
+    <link rel="stylesheet" href="./legal.css">
+    <link rel="stylesheet" href="../style.css">
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const yr = new Date().getFullYear();
+            document.querySelectorAll('.current-year').forEach(el => el.textContent = yr);
+
+            // Active section spy on scroll
+            const sections = document.querySelectorAll('.legal-section');
+            const navLinks = document.querySelectorAll('.legal-nav-links a');
+
+            function onScroll() {
+                let current = '';
+                sections.forEach(section => {
+                    const top = section.offsetTop - 140;
+                    if (window.scrollY >= top) {
+                        current = '#' + section.getAttribute('id');
+                    }
+                });
+
+                navLinks.forEach(link => {
+                    link.classList.toggle('active', link.getAttribute('href') === current);
+                });
+            }
+
+            window.addEventListener('scroll', onScroll, { passive: true });
+            onScroll();
+        });
+    </script>
+</head>
+
+<body class="legal-page-wrapper">
+    <!-- Sticky Landing Header matching Index page -->
+    <header class="landing-header">
+        <nav class="landing-nav">
+            <a class="brand logo-link" href="../index.html" aria-label="Collab Home">
+                <img src="../images/logo.png" alt="Collab." class="brand-logo-img" />
+            </a>
+            <div class="landing-links">
+                
+                <a href="./terms.html">Terms</a>
+                <span class="divider" style="color: #454548; user-select: none;">|</span>
+                <a href="../auth/auth.html" class="landing-signin">Sign in</a>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Aligned Header Banner -->
+    <header class="legal-header">
+        <div class="legal-header-inner">
+            <a href="../index.html" class="legal-back-breadcrumb">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="19" y1="12" x2="5" y2="12"></line>
+                    <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+                <span>Back to Collab Home</span>
+            </a>
+
+            <h1>Privacy Policy</h1>
+            <p>We respect your privacy and are committed to safeguarding your workspace data, personal information, and collaborative content.</p>
+        </div>
+    </header>
+
+    <!-- Main Two-Column Grid: Aligned Sidebar & Content -->
+    <main class="legal-main">
+        <!-- Table of Contents Sidebar -->
+        <aside class="legal-sidebar">
+            <div class="legal-nav-title">
+                <span>On This Page</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="8" y1="6" x2="21" y2="6"></line>
+                    <line x1="8" y1="12" x2="21" y2="12"></line>
+                    <line x1="8" y1="18" x2="21" y2="18"></line>
+                    <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                    <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                    <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                </svg>
+            </div>
+            <ul class="legal-nav-links">
+                <li><a href="#overview">1. Overview & Scope</a></li>
+                <li><a href="#information-we-collect">2. Information We Collect</a></li>
+                <li><a href="#how-we-use">3. How We Use Information</a></li>
+                <li><a href="#storage-security">4. Data Storage & Security</a></li>
+                <li><a href="#data-sharing">5. Sharing & Disclosures</a></li>
+                <li><a href="#user-rights">6. Your Privacy Rights</a></li>
+                <li><a href="#retention">7. Data Retention & Deletion</a></li>
+                <li><a href="#contact">8. Contact Privacy Office</a></li>
+            </ul>
+        </aside>
+
+        <!-- Document Content Card -->
+        <article class="legal-content-card">
+            <section id="overview" class="legal-section">
+                <h2><span class="legal-section-number">01</span> Overview & Scope</h2>
+                <p>At Collab Inc. ("Collab," "we," "us," or "our"), privacy is a foundational pillar of how we build and maintain our platform. This Privacy Policy details our transparent policies and procedures concerning the collection, storage, handling, and protection of data when you access or use our collaborative platform, website, applications, APIs, and associated services (collectively, the "Services").</p>
+                <p>By accessing or utilizing Collab, you acknowledge that your personal and workspace information will be processed strictly in accordance with this Policy. If you disagree with these terms, your choice is to discontinue using our platform.</p>
+                
+                <div class="legal-callout">
+                    <strong>Our Core Privacy Guarantee:</strong> We never sell your personal data, workspace content, or task information to advertising brokers, data aggregators, or third parties. Your boards, cards, comments, and attachments remain strictly yours.
+                </div>
+            </section>
+
+            <section id="information-we-collect" class="legal-section">
+                <h2><span class="legal-section-number">02</span> Information We Collect</h2>
+                <p>We collect information in three ways: information you directly provide, data gathered automatically during platform usage, and details provided via team integrations.</p>
+                
+                <h3>A. Information You Provide Directly</h3>
+                <ul>
+                    <li><strong>Account & Profile Details:</strong> When you register or sign in, we collect your full name, work email address, team role, avatar initials, and workspace name.</li>
+                    <li><strong>Workspace Content:</strong> Tasks, board titles, column definitions, card descriptions, attachments, checklist items, and assignment statuses.</li>
+                    <li><strong>Communications:</strong> Support tickets, feedback, questions, or direct inquiries sent to our customer success or engineering teams.</li>
+                </ul>
+
+                <h3>B. Information Collected Automatically</h3>
+                <ul>
+                    <li><strong>Device & Network Identifiers:</strong> IP addresses, browser engine and version, operating system, and session timestamps.</li>
+                    <li><strong>Platform Telemetry:</strong> Feature interaction metrics (e.g. card movement, list creation), latency statistics, and error diagnostic logs to ensure high reliability.</li>
+                    <li><strong>Local Storage & Session Tokens:</strong> Secure local storage tokens used exclusively to preserve your active workspace session and user state.</li>
+                </ul>
+            </section>
+
+            <section id="how-we-use" class="legal-section">
+                <h2><span class="legal-section-number">03</span> How We Use Your Information</h2>
+                <p>We process your data strictly to deliver, secure, and improve the collaborative workspace experience, including:</p>
+                <ul>
+                    <li>Provisioning, maintaining, and updating the Collab workspace platform.</li>
+                    <li>Authenticating authorized user sessions and guarding against unauthorized access.</li>
+                    <li>Delivering instantaneous real-time board updates and task assignments to team members.</li>
+                    <li>Resolving technical bugs, performance bottlenecks, and software defects.</li>
+                    <li>Complying with statutory, legal, and regulatory obligations.</li>
+                </ul>
+            </section>
+
+            <section id="storage-security" class="legal-section">
+                <h2><span class="legal-section-number">04</span> Data Storage & Security Safeguards</h2>
+                <p>We implement enterprise-grade administrative, technical, and physical security measures to protect your workspace data:</p>
+                <ul>
+                    <li><strong>TLS 1.3 Encryption:</strong> All data transmitted between your device and Collab services is protected using modern end-to-end transport encryption.</li>
+                    <li><strong>AES-256 Storage Encryption:</strong> Databases, user accounts, and attachments are encrypted at rest with military-grade AES-256 standards.</li>
+                    <li><strong>Role-Based Access Control:</strong> Strict least-privilege access rules ensure only authenticated workspace members can access your specific project boards.</li>
+                </ul>
+            </section>
+
+            <section id="data-sharing" class="legal-section">
+                <h2><span class="legal-section-number">05</span> Sharing & Third-Party Disclosures</h2>
+                <p>We do not share your information except in the following limited and necessary situations:</p>
+                <ul>
+                    <li><strong>With Your Team Members:</strong> When you join a workspace, your profile name, email, avatar, and assigned tasks are visible to authorized members of that workspace.</li>
+                    <li><strong>Essential Infrastructure Providers:</strong> Vetted cloud hosting and data processing vendors governed by rigorous Data Processing Agreements (DPAs).</li>
+                    <li><strong>Legal Process:</strong> If required by valid court order or subpoena, subject to reasonable advance notice unless legally prohibited.</li>
+                </ul>
+            </section>
+
+            <section id="user-rights" class="legal-section">
+                <h2><span class="legal-section-number">06</span> Your Privacy Rights (GDPR & CCPA)</h2>
+                <p>We support comprehensive privacy rights for all users worldwide:</p>
+                <ul>
+                    <li><strong>Right to Access & Portability:</strong> You may request an export of all your workspace tasks, comments, and profile data in machine-readable JSON format.</li>
+                    <li><strong>Right to Rectification:</strong> You may update your name, email, team role, or workspace name directly in your account preferences.</li>
+                    <li><strong>Right to Erasure ("Right to be Forgotten"):</strong> You may permanently delete your account and workspace records at any time.</li>
+                    <li><strong>Right to Object:</strong> You can opt out of any non-essential notifications or revoke platform authorizations.</li>
+                </ul>
+            </section>
+
+            <section id="retention" class="legal-section">
+                <h2><span class="legal-section-number">07</span> Data Retention & Deletion</h2>
+                <p>Your workspace content is retained for as long as your account remains active. When you delete a card or board, it is immediately removed from view and permanently erased from active production backups within 30 days.</p>
+            </section>
+
+            <section id="contact" class="legal-section">
+                <h2><span class="legal-section-number">08</span> Contact Data Privacy Officer</h2>
+                <p>If you have any questions, inquiries, or privacy requests regarding this Privacy Policy, our dedicated Data Protection team is ready to assist:</p>
+                
+                <div class="legal-contact-box">
+                    <div class="legal-contact-info">
+                        <h4>Collab Data Protection Office</h4>
+                        <p>Email: privacy@collab.io • Response within 24–48 business hours</p>
+                    </div>
+                    <a href="mailto:privacy@collab.io" class="legal-contact-btn">Contact Privacy Team</a>
+                </div>
+            </section>
+        </article>
+    </main>
+
+    <!-- Trello-Style Dark Navy Footer for Collab -->
+    <footer class="trello-site-footer">
+        <div class="trello-footer-container">
+            <div class="trello-footer-top-grid">
+                <!-- Brand Column -->
+                <div class="trello-footer-col brand-col">
+                    <a href="../index.html" class="trello-footer-logo">
+                        <img src="../images/logo.png" alt="Collab" class="trello-footer-logo-img" />
+                    </a>
+                </div>
+
+                <!-- Column 1: About Collab -->
+                <div class="trello-footer-col">
+                    <h4><a href="../dashboard/dashboard.html">About Collab</a></h4>
+                    <p>What's behind the boards.</p>
+                </div>
+
+                <!-- Column 2: Jobs -->
+                <div class="trello-footer-col">
+                    <h4><a href="../dashboard/dashboard.html">Jobs</a></h4>
+                    <p>Learn about open roles on the Collab team.</p>
+                </div>
+
+                <!-- Column 3: Apps -->
+                <div class="trello-footer-col">
+                    <h4><a href="../dashboard/dashboard.html">Apps</a></h4>
+                    <p>Download the Collab App for your Desktop or Mobile devices.</p>
+                </div>
+
+                <!-- Column 4: Contact us -->
+                <div class="trello-footer-col">
+                    <h4><a href="../dashboard/dashboard.html">Contact us</a></h4>
+                    <p>Need anything? Get in touch and we can help.</p>
+                </div>
+            </div>
+
+            <div class="trello-footer-divider"></div>
+
+            <!-- Bottom Row with Dynamic Year -->
+            <div class="trello-footer-bottom">
+                <div class="trello-footer-lang">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="2" y1="12" x2="22" y2="12"></line>
+                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                    </svg>
+                    <span>English</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+
+                <div class="trello-footer-links">
+                    <a href="./terms.html">Terms</a>
+                    <span>Copyright © <span class="current-year">2026</span> Collab</span>
+                </div>
+
+                <div class="trello-footer-socials">
+                    <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram" class="trello-social-btn">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                            <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+                            <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+                        </svg>
+                    </a>
+                    <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Facebook" class="trello-social-btn">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path>
+                        </svg>
+                    </a>
+                    <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" class="trello-social-btn">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path>
+                            <rect x="2" y="9" width="4" height="12"></rect>
+                            <circle cx="4" cy="4" r="2"></circle>
+                        </svg>
+                    </a>
+                    <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" aria-label="Twitter / X" class="trello-social-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+                        </svg>
+                    </a>
+                    <a href="https://youtube.com" target="_blank" rel="noopener noreferrer" aria-label="YouTube" class="trello-social-btn">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19.1c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.43zM9.75 15.02V8.48l5.75 3.27-5.75 3.27z"></path>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

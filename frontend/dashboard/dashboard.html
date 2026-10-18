@@ -11,8 +11,13 @@
     <meta property="og:description"
         content="Collab brings your projects, tasks, and team conversations into one calm, focused workspace." />
     <link rel="icon" type="image/png" href="../images/favicon.png" />
-    <link rel="stylesheet" href="./dashboard.css?v=20261018-1420" />
-    <link rel="stylesheet" href="./workspaceHub.css?v=20261018-1420" />
+    <script>
+        if (!window.COLLAB_API_BASE_URL) {
+            window.COLLAB_API_BASE_URL = window.location.origin;
+        }
+    </script>
+    <link rel="stylesheet" href="./dashboard.css?v=20261018-fix" />
+    <link rel="stylesheet" href="./workspaceHub.css?v=20261018-fix" />
 </head>
 
 <body>
@@ -1659,7 +1664,7 @@
 
     <div id="messages-call-root" class="collab-call-portal" hidden aria-live="polite"></div>
 
-    <script type="module" src="./dashboard.js?v=20261018-1420"></script>
+    <script type="module" src="./dashboard.js?v=20261018-fix"></script>
 </body>
 
 </html>

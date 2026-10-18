@@ -1,0 +1,13 @@
+ALTER TABLE user_profiles
+    ADD COLUMN IF NOT EXISTS full_name TEXT,
+    ADD COLUMN IF NOT EXISTS email TEXT,
+    ADD COLUMN IF NOT EXISTS phone_country_code TEXT,
+    ADD COLUMN IF NOT EXISTS phone_number TEXT,
+    ADD COLUMN IF NOT EXISTS workspace TEXT,
+    ADD COLUMN IF NOT EXISTS role TEXT,
+    ADD COLUMN IF NOT EXISTS collaboration_type TEXT,
+    ADD COLUMN IF NOT EXISTS collaboration_details TEXT,
+    ADD COLUMN IF NOT EXISTS industry TEXT,
+    ADD COLUMN IF NOT EXISTS avatar_tone TEXT,
+    ADD COLUMN IF NOT EXISTS status TEXT,
+    ADD COLUMN IF NOT EXISTS timezone TEXT;
