@@ -242,12 +242,12 @@ const attachMessageSocket = server => {
                 const activeCalls = await query(
                     `SELECT call_id, conversation_id::text, caller_uid, caller_name,
                             callee_uid, callee_name, call_type, status, created_at,
-                            ring_expires_at
+                            ring_expires_at, participant_uids, participant_names
                      FROM message_calls
                      WHERE conversation_id = $1::uuid AND status IN ('ringing', 'accepted')
                        AND CASE WHEN status = 'ringing'
                            THEN ring_expires_at ELSE expires_at END > NOW()
-                       AND (caller_uid = $2 OR callee_uid = $2)
+                       AND (participant_uids @> jsonb_build_array($2::text) OR (participant_uids = '[]'::jsonb AND (caller_uid = $2 OR callee_uid = $2)))
                      ORDER BY created_at DESC`,
                     [conversationId, uid]
                 );
@@ -278,6 +278,9 @@ const attachMessageSocket = server => {
                         created_at: row.created_at.toISOString(),
                         ring_expires_at: row.ring_expires_at.toISOString(),
                         peer_uid: row.caller_uid === uid ? row.callee_uid : row.caller_uid,
+                        participant_uids: Array.isArray(row.participant_uids)
+                            ? row.participant_uids : [row.caller_uid, row.callee_uid],
+                        participant_names: row.participant_names || [],
                         ice_servers: getMessageCallIceServers(uid)
                     }))
                 });
@@ -316,22 +319,21 @@ const attachMessageSocket = server => {
             try {
                 const callResult = await query(
                     `SELECT call.conversation_id::text AS conversation_id,
-                            call.caller_uid, call.callee_uid, call.status
+                            call.caller_uid, call.callee_uid, call.status,
+                            call.participant_uids
                      FROM message_calls call
                      JOIN message_conversations conversation
                        ON conversation.conversation_id = call.conversation_id
                      WHERE call.call_id = $1::uuid
                        AND call.conversation_id = $2::uuid
-                       AND conversation.conversation_type = 'direct'
                        AND call.expires_at > NOW()`,
                     [callId, conversationId]
                 );
                 const call = callResult.rows[0];
-                const isParticipant = call &&
-                    (call.caller_uid === uid || call.callee_uid === uid);
-                const isTarget = call &&
-                    (targetUid === call.caller_uid || targetUid === call.callee_uid) &&
-                    targetUid !== uid;
+                const participantUids = Array.isArray(call?.participant_uids) && call.participant_uids.length
+                    ? call.participant_uids : [call?.caller_uid, call?.callee_uid];
+                const isParticipant = call && participantUids.includes(uid);
+                const isTarget = call && participantUids.includes(targetUid) && targetUid !== uid;
                 if (!isParticipant || !isTarget || call.status !== 'accepted' ||
                     !await isConversationMember(conversationId, uid) ||
                     !await isConversationMember(conversationId, targetUid)) {

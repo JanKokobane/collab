@@ -38,7 +38,8 @@ const markExpiredCallsMissed = async conversationId => {
            AND ring_expires_at <= NOW()
          RETURNING call_id, conversation_id::text AS conversation_id,
                    caller_uid, caller_name, callee_uid, callee_name,
-                   call_type, status, created_at, ring_expires_at, ended_at`,
+                   call_type, status, created_at, ring_expires_at, ended_at,
+                   participant_uids, participant_names`,
         [conversationId]
     );
     for (const call of result.rows) {
@@ -51,7 +52,7 @@ const getCallHistory = async (req, res) => {
     const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 100, 1), 200);
     try {
         const conversation = await getConversation(conversationId, req.firebaseUid);
-        if (!conversation || conversation.conversation_type !== 'direct') {
+        if (!conversation) {
             return res.status(404).json({
                 success: false, code: 'CONVERSATION_NOT_FOUND',
                 message: 'Conversation not found.'
@@ -62,7 +63,7 @@ const getCallHistory = async (req, res) => {
             `SELECT call_id, conversation_id::text AS conversation_id,
                     caller_uid, caller_name, callee_uid, callee_name,
                     call_type, status, created_at, accepted_at, ended_at,
-                    ended_by_uid, ring_expires_at
+                    ended_by_uid, ring_expires_at, participant_uids, participant_names
              FROM message_calls
              WHERE conversation_id = $1::uuid
              ORDER BY created_at DESC, call_id DESC
@@ -96,12 +97,16 @@ const startCall = async (req, res) => {
             });
         }
         conversationId = conversation.conversation_id;
-        const memberUids = conversation.member_uids || [];
-        if (conversation.conversation_type !== 'direct' || memberUids.length !== 2) {
+        const memberUids = [...new Set(conversation.member_uids || [])];
+        const requestedUids = Array.isArray(req.body?.participantUids)
+            ? req.body.participantUids.filter(uid => typeof uid === 'string' && uid.trim())
+            : memberUids.filter(uid => uid !== req.firebaseUid);
+        const participantUids = [...new Set([req.firebaseUid, ...requestedUids])];
+        if (participantUids.length < 2 || participantUids.some(uid => !memberUids.includes(uid))) {
             await client.query('ROLLBACK');
             return res.status(400).json({
-                success: false, code: 'DIRECT_CALLS_ONLY',
-                message: 'Calls are currently available for direct conversations only.'
+                success: false, code: 'INVALID_CALL_PARTICIPANTS',
+                message: 'Every call participant must belong to this conversation.'
             });
         }
         await client.query(
@@ -122,10 +127,11 @@ const startCall = async (req, res) => {
                 message: 'There is already an active call in this conversation.'
             });
         }
-        const calleeUid = memberUids.find(uid => uid !== req.firebaseUid);
-        const caller = await getMember(conversationId, req.firebaseUid);
-        const callee = await getMember(conversationId, calleeUid);
-        if (!caller || !callee) {
+        const calleeUid = participantUids.find(uid => uid !== req.firebaseUid);
+        const members = await Promise.all(participantUids.map(uid => getMember(conversationId, uid)));
+        const caller = members[0];
+        const callee = members[participantUids.indexOf(calleeUid)];
+        if (members.some(member => !member)) {
             await client.query('ROLLBACK');
             return res.status(409).json({
                 success: false, code: 'CONVERSATION_MEMBERS_UNAVAILABLE',
@@ -140,16 +146,21 @@ const startCall = async (req, res) => {
             `INSERT INTO message_calls (
                 call_id, conversation_id, caller_uid, caller_name, callee_uid,
                 callee_name, call_type, status, daily_room_name, daily_room_url,
-                expires_at, ring_expires_at
+                expires_at, ring_expires_at, participant_uids, participant_names
              ) VALUES (
                 $1::uuid, $2::uuid, $3, $4, $5, $6, $7, 'ringing',
-                '', '', $8, $9
+                '', '', $8, $9, $10::jsonb, $11::jsonb
              )`,
             [
                 callId, conversationId, req.firebaseUid,
                 caller.display_name || caller.email || 'Project member',
                 calleeUid, callee.display_name || callee.email || 'Project member',
-                callType, expiresAt, ringExpiresAt
+                callType, expiresAt, ringExpiresAt,
+                JSON.stringify(participantUids),
+                JSON.stringify(participantUids.map((uid, index) => ({
+                    uid,
+                    name: members[index].display_name || members[index].email || 'Project member'
+                })))
             ]
         );
         await client.query('COMMIT');
@@ -163,7 +174,12 @@ const startCall = async (req, res) => {
             call_type: callType,
             status: 'ringing',
             created_at: new Date(now).toISOString(),
-            ring_expires_at: ringExpiresAt.toISOString()
+            ring_expires_at: ringExpiresAt.toISOString(),
+            participant_uids: participantUids,
+            participant_names: participantUids.map((uid, index) => ({
+                uid,
+                name: members[index].display_name || members[index].email || 'Project member'
+            }))
         };
         emitToConversation(conversationId, 'call:updated', { call });
         res.set('Cache-Control', 'no-store');
@@ -199,7 +215,7 @@ const updateCall = async (req, res) => {
         client = await pool.connect();
         await client.query('BEGIN');
         const conversation = await getConversation(conversationId, req.firebaseUid, client);
-        if (!conversation || conversation.conversation_type !== 'direct') {
+        if (!conversation) {
             await client.query('ROLLBACK');
             return res.status(404).json({
                 success: false, code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found.'
@@ -217,9 +233,13 @@ const updateCall = async (req, res) => {
                 success: false, code: 'CALL_NOT_FOUND', message: 'This call is no longer available.'
             });
         }
+        const participantUids = Array.isArray(call.participant_uids) && call.participant_uids.length
+            ? call.participant_uids
+            : [call.caller_uid, call.callee_uid];
         const isCaller = call.caller_uid === req.firebaseUid;
-        const isCallee = call.callee_uid === req.firebaseUid;
-        if (!isCaller && !isCallee) {
+        const isParticipant = participantUids.includes(req.firebaseUid);
+        const isCallee = isParticipant && !isCaller;
+        if (!isParticipant) {
             await client.query('ROLLBACK');
             return res.status(403).json({
                 success: false, code: 'CALL_ACCESS_DENIED',
@@ -255,7 +275,8 @@ const updateCall = async (req, res) => {
                 );
                 await client.query('COMMIT');
                 emitToConversation(conversationId, 'call:updated', {
-                    call: { ...call, status: 'missed', ended_at: new Date().toISOString() }
+                    call: { ...call, status: 'missed', ended_at: new Date().toISOString(),
+                        participant_uids: participantUids }
                 });
                 return res.status(410).json({
                     success: false, code: 'CALL_EXPIRED',
@@ -270,13 +291,18 @@ const updateCall = async (req, res) => {
             );
             await client.query('COMMIT');
             emitToConversation(conversationId, 'call:updated', {
-                call: { ...call, status: 'accepted' }
+                call: { ...call, status: 'accepted', participant_uids: participantUids,
+                    participant_names: call.participant_names }
             });
             res.set('Cache-Control', 'no-store');
             return res.json({
                 success: true,
                 data: { call: { ice_servers: getMessageCallIceServers(req.firebaseUid) } }
             });
+        }
+        if (action === 'decline' && participantUids.length > 2) {
+            await client.query('COMMIT');
+            return res.json({ success: true });
         }
         if ((action === 'decline' && (!isCallee || call.status !== 'ringing')) ||
             (action === 'missed' && (!isCaller || call.status !== 'ringing' ||
@@ -297,7 +323,8 @@ const updateCall = async (req, res) => {
         );
         await client.query('COMMIT');
         emitToConversation(conversationId, 'call:updated', {
-            call: { ...call, status, ended_by_uid: req.firebaseUid }
+            call: { ...call, status, ended_by_uid: req.firebaseUid,
+                participant_uids: participantUids, participant_names: call.participant_names }
         });
         return res.json({ success: true });
     } catch (error) {
