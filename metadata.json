@@ -1,7 +1,0 @@
-{
-  "name": "Collab — Workspace",
-  "description": "Collab brings your projects, tasks, and team conversations into one calm, focused workspace.",
-  "capabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}

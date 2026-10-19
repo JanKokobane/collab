@@ -1,10 +1,10 @@
 import { activeView, currentUser, getAccessibleMembers, getAvatarSource, make, projects, renderAvatarElement } from './state.js'
 import { firebaseAuth } from '../../firebase.js'
 import { api, apiBaseUrl } from './api.js'
-import { clearCallInterface, renderCallInterface } from './messageCallUI.js?v=20261019-0118'
+import { clearCallInterface, renderCallInterface } from './messageCallUI.js?v=20261018-1420'
 
 const maxAttachmentBytes = 512 * 1024
-const messagesBuildId = '20261019-0118'
+const messagesBuildId = '20261018-1420'
 const presenceHeartbeatMs = 25000
 const callSocketConnectTimeoutMs = 15000
 const callMediaRequestTimeoutMs = 30000
@@ -300,13 +300,7 @@ function upsertCallHistory(call, shouldRender = true) {
     callerName: call.caller_name || call.callerName,
     calleeUid: call.callee_uid || call.calleeUid,
     calleeName: call.callee_name || call.calleeName,
-    endedByUid: call.ended_by_uid || call.endedByUid,
-    participantUids: Array.isArray(call.participant_uids || call.participantUids)
-      ? (call.participant_uids || call.participantUids)
-      : [call.caller_uid || call.callerUid, call.callee_uid || call.calleeUid].filter(Boolean),
-    participantNames: Array.isArray(call.participant_names || call.participantNames)
-      ? (call.participant_names || call.participantNames)
-      : []
+    endedByUid: call.ended_by_uid || call.endedByUid
   }
   const index = current.findIndex(item => item.callId === normalized.callId)
   if (index < 0) current.push(normalized)
@@ -477,13 +471,10 @@ function unsubscribeConversation(conversationId) {
 
 function handleCallUpdate(call) {
   const uid = currentUid()
-  const participantUids = Array.isArray(call?.participant_uids) && call.participant_uids.length
-    ? call.participant_uids
-    : [call?.caller_uid, call?.callee_uid]
-  if (!call || !participantUids.includes(uid)) return
+  if (!call || (call.caller_uid !== uid && call.callee_uid !== uid)) return
   if (['missed', 'declined', 'ended'].includes(call.status)) upsertCallHistory(call)
   const ringExpiry = Date.parse(call.ring_expires_at)
-  if (!activeCall && !incomingCall && participantUids.includes(uid) && call.caller_uid !== uid &&
+  if (!activeCall && !incomingCall && call.callee_uid === uid &&
     call.status === 'ringing' && ringExpiry > Date.now()) {
     if (mediaRecorder) cancelVoiceRecording()
     incomingCall = call
@@ -507,8 +498,6 @@ function handleCallUpdate(call) {
   if (activeCall?.callId === call.call_id) {
     if (call.status === 'accepted') {
       activeCall.status = 'accepted'
-      activeCall.participantUids = call.participant_uids || activeCall.participantUids
-      activeCall.participantNames = call.participant_names || activeCall.participantNames
       clearTimeout(activeCall.ringingTimer)
       setActiveCallStatus(`${activeCall.callType === 'video' ? 'Video' : 'Voice'} · Connecting…`)
       if (activeCall.isCaller) {
@@ -798,93 +787,21 @@ function joinConversationRoom(conversation) {
   })
 }
 
-function getProjectForActiveCall() {
-  const conversation = messageState.conversations.find(c => c.id === activeCall?.conversationId)
-  if (conversation?.projectId) {
-    const found = projects.find(p => p.projectId === conversation.projectId)
-    if (found) return found
-  }
-  const myUid = currentUid()
-  const otherUids = (conversation?.memberUids || []).filter(u => u !== myUid)
-  for (const proj of projects) {
-    const pMembers = getProjectMembers(proj).map(m => m.firebaseUid)
-    if (pMembers.includes(myUid) && otherUids.some(u => pMembers.includes(u))) {
-      return proj
-    }
-  }
-  return projects[0] || null
-}
-
-function getAddableProjectMembersForCall() {
-  const project = getProjectForActiveCall()
-  if (!project) return []
-  const allProjectMembers = getProjectMembers(project)
-  const currentParticipantUids = new Set(activeCall?.participantUids || [currentUid()])
-  return allProjectMembers.filter(m => m.firebaseUid && !currentParticipantUids.has(m.firebaseUid))
-}
-
-async function inviteMemberToActiveCall(member) {
-  if (!activeCall || !member || !member.firebaseUid) return
-  const uid = member.firebaseUid
-  if (activeCall.participantUids.includes(uid)) return
-
-  activeCall.participantUids.push(uid)
-  activeCall.participantNames ||= []
-  activeCall.participantNames.push({
-    uid: member.firebaseUid,
-    name: member.name || member.email
-  })
-
-  renderCallOverlay()
-
-  // Save in-thread activity
-  saveMessage({
-    conversationId: activeCall.conversationId,
-    body: `📞 Invited ${member.name || member.email} to the ${activeCall.callType === 'video' ? 'video' : 'voice'} call`
-  }).catch(() => {})
-
-  // Emit realtime call signal to the newly invited peer
-  if (realtimeSocket?.connected) {
-    realtimeSocket.emit('call:signal', {
-      conversationId: activeCall.conversationId,
-      callId: activeCall.callId,
-      targetUid: uid,
-      signal: {
-        type: 'invite',
-        callType: activeCall.callType,
-        inviterName: currentUser.name || 'A teammate',
-        conversationId: activeCall.conversationId,
-        callId: activeCall.callId
-      }
-    }, () => {})
-  }
-
-  // Setup WebRTC peer connection for this newly added teammate
-  if (activeCall.iceServers && activeCall.iceServers.length) {
-    createCallPeerConnection(activeCall, activeCall.iceServers, uid)
-    if (activeCall.isCaller || activeCall.status === 'accepted') {
-      startWebRtcOffer(activeCall).catch(err => console.log('[messages] multi-peer offer error:', err))
-    }
-  }
-}
-
 function renderCallOverlay() {
   const { callRoot } = getElements()
   if (!callRoot) return
+  if (activeCall?.overlay?.isConnected) return
   const view = renderCallInterface(callRoot, {
     activeCall,
     incomingCall,
-    startingCall: null,
-    callError: null
+    startingCall: callStarting,
+    callError
   }, {
     onHangUp: () => finishActiveCall(true),
     onAccept: () => acceptIncomingCall(),
     onDecline: () => declineIncomingCall(),
     onCancelSetup: cancelCallSetup,
-    onDismissError: dismissCallError,
-    onAddParticipant: (member) => inviteMemberToActiveCall(member),
-    getAvailableProjectMembers: () => getAddableProjectMembersForCall(),
-    projectName: getProjectForActiveCall()?.name || 'Project Workspace'
+    onDismissError: dismissCallError
   })
   if (activeCall && view) {
     activeCall.overlay = view.overlay
@@ -908,6 +825,11 @@ function dismissCallError() {
 }
 
 function subscribeToConversationCalls(conversation) {
+  if (conversation.type !== 'direct') {
+    conversationCallSubscriptions.get(conversation.id)?.()
+    conversationCallSubscriptions.delete(conversation.id)
+    return
+  }
   if (!realtimeSocket || conversationCallSubscriptions.has(conversation.id)) return
   const onCallUpdate = ({ call } = {}) => {
     if (call?.conversation_id === conversation.id) handleCallUpdate(call)
@@ -918,14 +840,10 @@ function subscribeToConversationCalls(conversation) {
   )
 }
 
-function createCallPeerConnection(call, iceServers, peerUid = call.peerUid) {
+function createCallPeerConnection(call, iceServers) {
   const peerConnection = new RTCPeerConnection({ iceServers })
   const remoteStream = new MediaStream()
-  call.peerConnections ||= new Map()
-  call.remoteStreams ||= new Map()
-  call.pendingIceCandidatesByUid ||= new Map()
-  call.peerConnections.set(peerUid, peerConnection)
-  call.remoteStreams.set(peerUid, remoteStream)
+  call.peerConnection = peerConnection
   call.remoteStream = remoteStream
   call.localStream.getTracks().forEach(track => {
     peerConnection.addTrack(track, call.localStream)
@@ -933,20 +851,20 @@ function createCallPeerConnection(call, iceServers, peerUid = call.peerUid) {
   peerConnection.addEventListener('track', event => {
     const stream = event.streams[0]
     if (stream) {
-        call.remoteStream = stream
-    } else if (!remoteStream.getTracks().some(track => track.id === event.track.id)) {
-      remoteStream.addTrack(event.track)
+      call.remoteStream = stream
+    } else if (!call.remoteStream.getTracks().some(track => track.id === event.track.id)) {
+      call.remoteStream.addTrack(event.track)
     }
-    call.remoteStream = remoteStream
-    if (call.remoteVideo && peerUid === call.peerUid) {
-      call.remoteVideo.srcObject = remoteStream
-      call.remoteVideo.play().catch(() => {})
+    if (call.remoteVideo) {
+      call.remoteVideo.srcObject = call.remoteStream
+      call.remoteVideo.play().catch(error => {
+        console.warn('[messages] Remote call audio/video awaits a user gesture.', error.message)
+      })
     }
-    renderCallOverlay()
   })
   peerConnection.addEventListener('icecandidate', event => {
     if (!event.candidate || activeCall?.callId !== call.callId) return
-    sendCallSignal(call, { candidate: event.candidate.toJSON() }, peerUid).catch(error => {
+    sendCallSignal(call, { candidate: event.candidate.toJSON() }).catch(error => {
       console.error('[messages] Unable to send WebRTC ICE candidate.', error.message)
     })
   })
@@ -963,7 +881,7 @@ function createCallPeerConnection(call, iceServers, peerUid = call.peerUid) {
   return peerConnection
 }
 
-function sendCallSignal(call, signal, targetUid = call.peerUid) {
+function sendCallSignal(call, signal) {
   if (!realtimeSocket?.connected) {
     return Promise.reject(new Error('Realtime signaling is disconnected. Reconnect and try the call again.'))
   }
@@ -972,7 +890,7 @@ function sendCallSignal(call, signal, targetUid = call.peerUid) {
     realtimeSocket.emit('call:signal', {
       conversationId: call.conversationId,
       callId: call.callId,
-      targetUid,
+      targetUid: call.peerUid,
       signal
     }, result => {
       clearTimeout(timeout)
@@ -983,60 +901,48 @@ function sendCallSignal(call, signal, targetUid = call.peerUid) {
 }
 
 async function startWebRtcOffer(call) {
-  if (!call.isCaller || activeCall?.callId !== call.callId) return
-  const peerUids = (call.participantUids || [call.peerUid]).filter(uid => uid && uid !== currentUid())
-  for (const peerUid of peerUids) {
-    let peerConnection = call.peerConnections?.get(peerUid)
-    if (!peerConnection) peerConnection = createCallPeerConnection(call, call.iceServers || [], peerUid)
-    if (call.offeredPeerUids?.has(peerUid)) continue
-    call.offeredPeerUids ||= new Set()
-    call.offeredPeerUids.add(peerUid)
-    const offer = await peerConnection.createOffer()
-    await peerConnection.setLocalDescription(offer)
-    await sendCallSignal(call, {
-      type: peerConnection.localDescription.type,
-      sdp: peerConnection.localDescription.sdp
-    }, peerUid)
-  }
+  if (!call.isCaller || call.offerStarted || activeCall?.callId !== call.callId) return
+  call.offerStarted = true
+  const offer = await call.peerConnection.createOffer()
+  await call.peerConnection.setLocalDescription(offer)
+  await sendCallSignal(call, {
+    type: call.peerConnection.localDescription.type,
+    sdp: call.peerConnection.localDescription.sdp
+  })
 }
 
 async function applyCallSignal(packet) {
   const call = activeCall
-  if (!call || call.callId !== packet.call_id || call.conversationId !== packet.conversation_id) return
-  const peerUid = packet.from_uid
-  call.peerConnections ||= new Map()
-  call.pendingIceCandidatesByUid ||= new Map()
-  let peerConnection = call.peerConnections.get(peerUid)
-  if (!peerConnection) peerConnection = createCallPeerConnection(call, call.iceServers || [], peerUid)
+  if (!call || call.callId !== packet.call_id || call.conversationId !== packet.conversation_id ||
+      call.peerUid !== packet.from_uid || !call.peerConnection) return
   const signal = packet.signal
   if (signal.type === 'offer') {
-    if (call.isCaller) return
-    await peerConnection.setRemoteDescription(signal)
-    const pendingCandidates = call.pendingIceCandidatesByUid.get(peerUid) || []
-    call.pendingIceCandidatesByUid.delete(peerUid)
-    for (const candidate of pendingCandidates) await peerConnection.addIceCandidate(candidate)
-    const answer = await peerConnection.createAnswer()
-    await peerConnection.setLocalDescription(answer)
+    if (call.isCaller) throw new Error('Unexpected WebRTC offer received.')
+    await call.peerConnection.setRemoteDescription(signal)
+    for (const candidate of call.pendingIceCandidates.splice(0)) {
+      await call.peerConnection.addIceCandidate(candidate)
+    }
+    const answer = await call.peerConnection.createAnswer()
+    await call.peerConnection.setLocalDescription(answer)
     await sendCallSignal(call, {
-      type: peerConnection.localDescription.type,
-      sdp: peerConnection.localDescription.sdp
-    }, peerUid)
+      type: call.peerConnection.localDescription.type,
+      sdp: call.peerConnection.localDescription.sdp
+    })
     return
   }
   if (signal.type === 'answer') {
-    if (!call.isCaller) return
-    await peerConnection.setRemoteDescription(signal)
-    const pendingCandidates = call.pendingIceCandidatesByUid.get(peerUid) || []
-    call.pendingIceCandidatesByUid.delete(peerUid)
-    for (const candidate of pendingCandidates) await peerConnection.addIceCandidate(candidate)
+    if (!call.isCaller) throw new Error('Unexpected WebRTC answer received.')
+    await call.peerConnection.setRemoteDescription(signal)
+    for (const candidate of call.pendingIceCandidates.splice(0)) {
+      await call.peerConnection.addIceCandidate(candidate)
+    }
     return
   }
   if (signal.candidate) {
-    if (peerConnection.remoteDescription) await peerConnection.addIceCandidate(signal.candidate)
-    else {
-      const pendingCandidates = call.pendingIceCandidatesByUid.get(peerUid) || []
-      pendingCandidates.push(signal.candidate)
-      call.pendingIceCandidatesByUid.set(peerUid, pendingCandidates)
+    if (call.peerConnection.remoteDescription) {
+      await call.peerConnection.addIceCandidate(signal.candidate)
+    } else {
+      call.pendingIceCandidates.push(signal.candidate)
     }
   }
 }
@@ -1064,7 +970,6 @@ async function finishActiveCall(notifyPeer) {
   if (!call) return
   clearTimeout(call.ringingTimer)
   activeCall = null
-  call.peerConnections?.forEach(peerConnection => peerConnection.close())
   call.peerConnection?.close()
   call.localStream?.getTracks().forEach(track => track.stop())
   if (call.remoteVideo) call.remoteVideo.srcObject = null
@@ -1084,7 +989,7 @@ async function finishActiveCall(notifyPeer) {
 async function failActiveCall(error, operation) {
   showError(error, operation)
   await finishActiveCall(true)
-  callError = null
+  callError = { message: error?.message || 'The call could not be completed. Please try again.' }
   renderCallOverlay()
 }
 
@@ -1107,204 +1012,135 @@ async function expireOutgoingCall(call) {
 
 async function startCall(conversation, callType) {
   if (mediaRecorder) cancelVoiceRecording()
-
-  // If already in an active call on this conversation, restore focus
-  if (activeCall && activeCall.conversationId === conversation.id) {
-    renderCallOverlay()
-    return
-  }
-  if (activeCall) {
+  if (activeCall?.status === 'ringing' && activeCall.ringExpiresAt <= Date.now()) {
     await finishActiveCall(true)
-  }
-  if (incomingCall && incomingCall.conversation_id === conversation.id) {
-    await acceptIncomingCall()
-    return
   }
   if (incomingCall && Date.parse(incomingCall.ring_expires_at) <= Date.now()) {
     incomingCall = null
     clearTimeout(incomingCallTimer)
     incomingCallTimer = null
+    renderCallOverlay()
   }
-
+  if (activeCall || incomingCall || callStartInFlight) {
+    showError(new Error('Finish the current call invitation before starting another call.'))
+    return
+  }
   callStartInFlight = true
   const startSequence = ++callStartSequence
   callError = null
-  callStarting = null
-
-  const peer = conversation.participants?.find(member => member.firebaseUid !== currentUid())
-  const peerName = peer?.name || (conversation.type === 'channel' || conversation.type === 'group' ? conversation.name : 'Project member')
-  const peerUid = peer?.firebaseUid || null
-  const participantUids = (conversation.memberUids || []).filter(uid => uid !== currentUid())
-
-  // TAKE USER STRAIGHT TO CALL UI
-  activeCall = {
-    callId: null,
-    conversationId: conversation.id,
+  callStarting = {
     callType,
-    peerName,
-    peerUid,
-    currentUid: currentUid(),
-    participantUids: [currentUid(), ...participantUids],
-    participantNames: conversation.participants || [{ uid: peerUid, name: peerName }],
-    status: 'ringing',
-    isCaller: true,
-    localStream: null,
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
-    ],
-    peerConnections: new Map(),
-    remoteStreams: new Map(),
-    pendingIceCandidatesByUid: new Map(),
-    offeredPeerUids: new Set(),
-    isMuted: false,
-    isCameraOff: false,
-    isScreenSharing: false,
-    connectedStartTime: null
+    peerName: conversation.participants?.find(member => member.firebaseUid !== currentUid())?.name,
+    status: 'Connecting to call service…'
   }
   renderCallOverlay()
-
-  let localStream = null
+  let localStream
   let createdCallId = null
-
+  let setupStage = 'check browser call support'
   try {
-    // Request media in background while already in call stage
-    if (navigator.mediaDevices?.getUserMedia && typeof RTCPeerConnection !== 'undefined') {
-      try {
-        localStream = await requestCallMedia(callType)
-        if (activeCall && activeCall.conversationId === conversation.id) {
-          activeCall.localStream = localStream
-          renderCallOverlay()
-        }
-      } catch (mediaErr) {
-        console.warn('[messages] Media request warning:', mediaErr)
-      }
+    if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
+      throw new Error('WebRTC calling is not available in this browser. Use a supported browser over HTTPS.')
     }
-
-    if (startSequence !== callStartSequence) {
-      localStream?.getTracks().forEach(track => track.stop())
-      return
-    }
-
-    // Connect realtime signaling
-    const socket = await ensureRealtimeSocket().catch(() => null)
-    if (socket && startSequence === callStartSequence) {
-      await waitForRealtimeConnection(socket).catch(() => {})
-    }
-
-    if (startSequence !== callStartSequence) {
-      localStream?.getTracks().forEach(track => track.stop())
-      return
-    }
-
-    // Create call with backend or connect to existing active call
-    let responseCall = null
-    try {
-      const result = await api.post(`${apiPath(conversation.id)}/calls`, { callType, participantUids })
-      responseCall = result?.data?.call
-    } catch (apiError) {
-      const isAlreadyActive = apiError?.code === 'CALL_ALREADY_ACTIVE' ||
-        apiError?.payload?.code === 'CALL_ALREADY_ACTIVE' ||
-        (apiError?.message && apiError.message.toLowerCase().includes('already an active call')) ||
-        apiError?.status === 409
-
-      if (isAlreadyActive) {
-        console.log('[messages] Active call exists in this conversation, connecting directly…')
-        const historyResult = await api.get(`${apiPath(conversation.id)}/calls?limit=5`).catch(() => null)
-        const calls = historyResult?.data?.calls || []
-        const ongoing = calls.find(c => ['ringing', 'accepted'].includes(c.status))
-
-        if (ongoing) {
-          createdCallId = ongoing.call_id
-          if (ongoing.status === 'ringing' && ongoing.caller_uid !== currentUid()) {
-            const acceptResult = await api.post(`${apiPath(conversation.id)}/calls/${ongoing.call_id}/accept`, {}).catch(() => null)
-            responseCall = {
-              ...ongoing,
-              status: 'accepted',
-              peer_uid: ongoing.caller_uid,
-              peer_name: ongoing.caller_name,
-              ice_servers: acceptResult?.data?.call?.ice_servers || activeCall.iceServers
-            }
-          } else {
-            responseCall = {
-              ...ongoing,
-              status: ongoing.status,
-              peer_uid: ongoing.caller_uid === currentUid() ? ongoing.callee_uid : ongoing.caller_uid,
-              peer_name: ongoing.caller_uid === currentUid() ? ongoing.callee_name : ongoing.caller_name,
-              ice_servers: activeCall.iceServers
-            }
-          }
-        } else {
-          // If previous call was stale, end it and restart
-          if (calls[0]?.call_id) {
-            await api.post(`${apiPath(conversation.id)}/calls/${calls[0].call_id}/end`, {}).catch(() => {})
-          }
-          const retry = await api.post(`${apiPath(conversation.id)}/calls`, { callType, participantUids }).catch(() => null)
-          responseCall = retry?.data?.call
-        }
-      }
-    }
-
-    if (!responseCall) {
-      responseCall = {
-        call_id: crypto.randomUUID(),
-        peer_uid: peerUid || 'peer',
-        peer_name: peerName,
-        status: 'accepted',
-        ice_servers: activeCall.iceServers,
-        ring_expires_at: new Date(Date.now() + 60000).toISOString()
-      }
-    }
-
-    createdCallId = responseCall.call_id
-    if (startSequence !== callStartSequence) {
-      localStream?.getTracks().forEach(track => track.stop())
-      if (createdCallId) {
-        await api.post(`${apiPath(conversation.id)}/calls/${createdCallId}/end`, {}).catch(() => {})
-      }
-      return
-    }
-
-    activeCall.callId = responseCall.call_id
-    activeCall.peerName = responseCall.peer_name || activeCall.peerName
-    activeCall.peerUid = responseCall.peer_uid || activeCall.peerUid
-    activeCall.status = responseCall.status || 'accepted'
-    if (responseCall.ice_servers?.length) activeCall.iceServers = responseCall.ice_servers
-    if (responseCall.participant_uids) activeCall.participantUids = responseCall.participant_uids
-    if (responseCall.participant_names) activeCall.participantNames = responseCall.participant_names
-    if (activeCall.status === 'accepted' && !activeCall.connectedStartTime) {
-      activeCall.connectedStartTime = Date.now()
-    }
-
+    setupStage = 'load realtime call signaling'
+    const socket = await ensureRealtimeSocket()
+    if (startSequence !== callStartSequence) return
+    setupStage = 'connect realtime call signaling'
+    await waitForRealtimeConnection(socket)
+    if (startSequence !== callStartSequence) return
+    setupStage = 'request microphone/camera permission'
+    callStarting.status = 'Requesting microphone and camera access…'
     renderCallOverlay()
-
-    if (activeCall.localStream) {
-      const peerConnection = createCallPeerConnection(activeCall, activeCall.iceServers, activeCall.peerUid)
-      const pendingUpdate = pendingCallUpdates.get(responseCall.call_id)
-      if (pendingUpdate) {
-        pendingCallUpdates.delete(responseCall.call_id)
-        handleCallUpdate(pendingUpdate)
-      }
-      if (activeCall?.callId !== responseCall.call_id) return
-      const ringExpiresAt = Date.parse(responseCall.ring_expires_at || '')
-      if (ringExpiresAt) {
-        activeCall.ringingTimer = setTimeout(() => {
-          if (activeCall?.callId === responseCall.call_id && activeCall.status === 'ringing') {
-            expireOutgoingCall(activeCall)
-          }
-        }, Math.max(0, ringExpiresAt - Date.now()) + 500)
-      }
-      if (activeCall.status === 'accepted') await startWebRtcOffer(activeCall)
-      if (activeCall) await applyPendingCallSignals(activeCall)
+    localStream = await requestCallMedia(callType)
+    if (startSequence !== callStartSequence) {
+      localStream.getTracks().forEach(track => track.stop())
+      localStream = null
+      return
     }
+    setupStage = 'create call with backend'
+    const result = await api.post(`${apiPath(conversation.id)}/calls`, { callType })
+    const responseCall = result?.data?.call
+    createdCallId = responseCall?.call_id || null
+    if (startSequence !== callStartSequence) {
+      localStream?.getTracks().forEach(track => track.stop())
+      localStream = null
+      if (createdCallId) {
+        await api.post(`${apiPath(conversation.id)}/calls/${createdCallId}/end`, {})
+          .catch(error => console.error('[messages] Unable to end cancelled call setup.', error.message))
+      }
+      return
+    }
+    setupStage = 'validate call setup response'
+    if (!responseCall?.call_id || !responseCall.peer_uid ||
+      !Array.isArray(responseCall.ice_servers) ||
+      !Number.isFinite(Date.parse(responseCall.ring_expires_at))) {
+      throw new Error('The call service returned incomplete WebRTC setup information.')
+    }
+    activeCall = {
+      callId: responseCall.call_id,
+      conversationId: conversation.id,
+      callType,
+      peerName: responseCall.peer_name,
+      peerUid: responseCall.peer_uid,
+      status: responseCall.status,
+      isCaller: true,
+      localStream,
+      pendingIceCandidates: [],
+      ringExpiresAt: Date.parse(responseCall.ring_expires_at)
+    }
+    setupStage = 'initialize WebRTC media connection'
+    callStarting = null
+    localStream = null
+    renderCallOverlay()
+    const peerConnection = createCallPeerConnection(activeCall, responseCall.ice_servers)
+    const pendingUpdate = pendingCallUpdates.get(responseCall.call_id)
+    if (pendingUpdate) {
+      pendingCallUpdates.delete(responseCall.call_id)
+      handleCallUpdate(pendingUpdate)
+    }
+    if (activeCall?.callId !== responseCall.call_id) return
+    const ringExpiresAt = Date.parse(responseCall.ring_expires_at)
+    activeCall.ringingTimer = setTimeout(() => {
+      if (activeCall?.callId === responseCall.call_id && activeCall.status === 'ringing') {
+        expireOutgoingCall(activeCall)
+      }
+    }, Math.max(0, ringExpiresAt - Date.now()) + 500)
+    if (activeCall?.status === 'accepted') await startWebRtcOffer(activeCall)
+    if (!peerConnection) throw new Error('Unable to initialize the WebRTC connection.')
+    if (activeCall) await applyPendingCallSignals(activeCall)
   } catch (error) {
-    console.warn('[messages] Call connection notification:', error?.message)
-    if (activeCall && !activeCall.callId) {
-      setActiveCallStatus('Call ended')
-      setTimeout(() => {
-        if (activeCall && !activeCall.callId) finishActiveCall(false)
-      }, 1200)
+    const wasCancelled = startSequence !== callStartSequence
+    console.error('[messages] Call setup failed', {
+      stage: setupStage,
+      method: setupStage === 'create call with backend' ? 'POST' : null,
+      path: setupStage === 'create call with backend'
+        ? `${apiPath(conversation.id)}/calls`
+        : null,
+      callType,
+      conversationId: conversation.id,
+      errorName: error?.name || 'Error',
+      status: error?.status ?? null,
+      code: error?.code || error?.payload?.code || null,
+      message: error?.message || String(error),
+      serverMessage: error?.payload?.message || null,
+      stack: error?.stack || null
+    })
+    if (activeCall) await finishActiveCall(Boolean(activeCall.callId))
+    else if (createdCallId) {
+      try {
+        await api.post(`${apiPath(conversation.id)}/calls/${createdCallId}/end`, {})
+      } catch (endError) {
+        console.error('[messages] Unable to clean up failed call setup.', endError.message)
+      }
     }
+    for (const [callId, pendingCall] of pendingCallUpdates) {
+      if (pendingCall.conversation_id === conversation.id) pendingCallUpdates.delete(callId)
+    }
+    localStream?.getTracks().forEach(track => track.stop())
+    if (wasCancelled) return
+    callStarting = null
+    callError = { message: error?.message || 'The call could not be completed. Please try again.' }
+    renderCallOverlay()
+    showError(error, `start ${callType} call`)
   } finally {
     callStartInFlight = false
   }
@@ -1337,36 +1173,16 @@ async function acceptIncomingCall() {
       callType: call.call_type,
       peerName: call.caller_name,
       peerUid: call.caller_uid,
-      participantUids: call.participant_uids || [call.caller_uid, currentUid()],
-      participantNames: call.participant_names || [],
       status: 'accepted',
       isCaller: false,
       localStream,
-      iceServers: responseCall.ice_servers,
-      peerConnections: new Map(),
-      remoteStreams: new Map(),
-      pendingIceCandidatesByUid: new Map(),
-      offeredPeerUids: new Set()
+      pendingIceCandidates: []
     }
     localStream = null
     renderCallOverlay()
-    createCallPeerConnection(activeCall, responseCall.ice_servers, call.caller_uid)
+    createCallPeerConnection(activeCall, responseCall.ice_servers)
     await applyPendingCallSignals(activeCall)
   } catch (error) {
-    const callIsAlreadyClosed = ['CALL_NOT_ACTIVE', 'CALL_EXPIRED'].includes(
-      error?.code || error?.payload?.code
-    )
-    if (callIsAlreadyClosed) {
-      localStream?.getTracks().forEach(track => track.stop())
-      if (incomingCall?.call_id === call.call_id) {
-        incomingCall = null
-        clearTimeout(incomingCallTimer)
-        incomingCallTimer = null
-      }
-      acceptingCallId = null
-      renderCallOverlay()
-      return
-    }
     if (activeCall?.callId === call.call_id) await finishActiveCall(true)
     else {
       localStream?.getTracks().forEach(track => track.stop())
@@ -1381,7 +1197,8 @@ async function acceptIncomingCall() {
         clearTimeout(incomingCallTimer)
         incomingCallTimer = null
       }
-    callError = null
+    }
+    callError = { message: error?.message || 'The call could not be completed. Please try again.' }
     renderCallOverlay()
     showError(error, `accept call ${call.call_id}`)
   } finally {
@@ -1470,7 +1287,7 @@ async function loadConversationMessages(conversationId) {
 
 async function refreshCallHistory(conversationId) {
   const conversation = messageState.conversations.find(item => item.id === conversationId)
-  if (!conversation) {
+  if (!conversation || conversation.type !== 'direct') {
     conversationCallHistory.delete(conversationId)
     return
   }
@@ -2133,7 +1950,7 @@ function renderMessagesView() {
     trigger.setAttribute('aria-expanded', String(!menu.hidden))
   })
   actions.append(trigger, menu)
-  if (conversation.memberUids.length > 1) {
+  if (conversation.type === 'direct') {
     const voiceCall = make('button', 'collab-call-launch')
     voiceCall.type = 'button'
     voiceCall.setAttribute('aria-label', 'Start voice call')
