@@ -122,6 +122,11 @@ import { initModalChrome, showDashboardToast } from './js/modalChrome.js'
 let notificationRefreshInterval = null
 let notificationRefreshDelay = 30_000
 let notificationRefreshWarningShown = false
+let dashboardSyncInterval = null
+let dashboardSyncDelay = 60_000
+let dashboardSyncWarningShown = false
+let dashboardSyncInProgress = false
+let lastDashboardSyncAt = 0
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000
 let inactivityTimer = null
 let inactivityUserUid = null
@@ -252,7 +257,85 @@ document.addEventListener('visibilitychange', () => {
       Date.now() - lastActivityAt >= INACTIVITY_TIMEOUT_MS && isInactivityLogoutEnabled()) {
     logoutForInactivity()
   }
+  if (document.visibilityState === 'visible' && firebaseAuth.currentUser &&
+      Date.now() - lastDashboardSyncAt >= 15_000) {
+    scheduleDashboardSync(0)
+  }
 })
+
+function canApplyBackgroundRefresh() {
+  if (!firebaseAuth.currentUser || document.visibilityState !== 'visible') return false
+  if (document.querySelector('#modal-root > *, .project-progress-aside-backdrop')) return false
+  if (tasks.some(task => task.statusUpdating)) return false
+
+  const activeElement = document.activeElement
+  if (activeElement?.matches('input, textarea, select, [contenteditable="true"]')) return false
+  if (activeElement?.closest(
+    '.sidebar, #board-columns, #admin-tasks-tbody, #calendar-container, #notifications-container, #messages-container'
+  )) return false
+  if (document.querySelector(
+    '.sidebar:hover, #board-columns:hover, #admin-tasks-tbody:hover, #calendar-container:hover, #notifications-container:hover'
+  )) return false
+
+  return true
+}
+
+async function refreshDashboardDataInBackground() {
+  if (dashboardSyncInProgress || !canApplyBackgroundRefresh()) return null
+  dashboardSyncInProgress = true
+  const syncUid = firebaseAuth.currentUser?.uid
+  const canApplySync = () =>
+    firebaseAuth.currentUser?.uid === syncUid && canApplyBackgroundRefresh()
+
+  try {
+    await loadProjectsFromAPI({
+      silent: true,
+      shouldApply: canApplySync
+    })
+    if (!canApplySync()) return null
+
+    renderProjectNav()
+    await renderAdminTasksTable({
+      silent: true,
+      canApply: canApplySync
+    })
+    if (!canApplySync()) return null
+
+    await loadProjectMeetings({ shouldApply: canApplySync })
+    if (!canApplySync()) return null
+    if (activeView === 'Calendar') renderCalendarPanel()
+
+    lastDashboardSyncAt = Date.now()
+    dashboardSyncDelay = 60_000
+    dashboardSyncWarningShown = false
+    return true
+  } catch (error) {
+    if (!dashboardSyncWarningShown) {
+      console.warn('Unable to sync dashboard data in the background; will retry:', error)
+      dashboardSyncWarningShown = true
+    }
+    dashboardSyncDelay = Math.min(dashboardSyncDelay * 2, 300_000)
+    return false
+  } finally {
+    dashboardSyncInProgress = false
+  }
+}
+
+function scheduleDashboardSync(delay = dashboardSyncDelay) {
+  clearTimeout(dashboardSyncInterval)
+  dashboardSyncInterval = window.setTimeout(async () => {
+    dashboardSyncInterval = null
+    if (!firebaseAuth.currentUser) return
+
+    const refreshed = await refreshDashboardDataInBackground()
+    const nextDelay = document.visibilityState !== 'visible'
+      ? dashboardSyncDelay
+      : refreshed === null
+        ? 10_000
+        : dashboardSyncDelay
+    scheduleDashboardSync(nextDelay)
+  }, delay)
+}
 
 function scheduleNotificationRefresh(delay = notificationRefreshDelay) {
   clearTimeout(notificationRefreshInterval)
@@ -260,13 +343,19 @@ function scheduleNotificationRefresh(delay = notificationRefreshDelay) {
     notificationRefreshInterval = null
     if (!firebaseAuth.currentUser) return
 
-    if (document.visibilityState !== 'visible') {
+    if (!canApplyBackgroundRefresh() || activeView === 'Notifications') {
       scheduleNotificationRefresh(30_000)
       return
     }
 
     try {
-      await loadNotificationsFromAPI()
+      const refreshUid = firebaseAuth.currentUser.uid
+      await loadNotificationsFromAPI({
+        shouldApply: () =>
+          firebaseAuth.currentUser?.uid === refreshUid &&
+          canApplyBackgroundRefresh() &&
+          activeView !== 'Notifications'
+      })
       notificationRefreshDelay = 30_000
       notificationRefreshWarningShown = false
     } catch (error) {
@@ -341,6 +430,12 @@ onAuthStateChanged(firebaseAuth, async user => {
   initializeInactivityLogout(user)
   clearTimeout(notificationRefreshInterval)
   notificationRefreshInterval = null
+  clearTimeout(dashboardSyncInterval)
+  dashboardSyncInterval = null
+  dashboardSyncInProgress = false
+  lastDashboardSyncAt = 0
+  dashboardSyncDelay = 60_000
+  dashboardSyncWarningShown = false
   notificationRefreshDelay = 30_000
   notificationRefreshWarningShown = false
   clearNotificationsForSignedOutUser()
@@ -476,6 +571,7 @@ onAuthStateChanged(firebaseAuth, async user => {
   }
 
   scheduleNotificationRefresh(0)
+  scheduleDashboardSync()
 })
 
 // Re-export core modules and functions

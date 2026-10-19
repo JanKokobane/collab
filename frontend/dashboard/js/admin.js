@@ -499,14 +499,21 @@ function renderProjectTaskDetails(project, taskRecords, loadError, refreshDetail
   return wrapper
 }
 
-export async function renderAdminTasksTable() {
+export async function renderAdminTasksTable({ silent = false, canApply = () => true } = {}) {
   const tbody = document.querySelector('#admin-tasks-tbody')
   if (!tbody) return
   const loadVersion = ++projectTaskLoadVersion
-  tbody.replaceChildren()
-  const loadingRow = document.createElement('tr')
-  loadingRow.append(taskTableCell('Loading project tasks…', 'notification-empty-state'))
-  tbody.append(loadingRow)
+  const expandedProjectIds = silent
+    ? new Set([...tbody.querySelectorAll('.project-task-project-row[data-project-id]')]
+      .filter(row => row.querySelector('.project-task-project-toggle')?.getAttribute('aria-expanded') === 'true')
+      .map(row => row.dataset.projectId))
+    : new Set()
+  if (!silent) {
+    tbody.replaceChildren()
+    const loadingRow = document.createElement('tr')
+    loadingRow.append(taskTableCell('Loading project tasks…', 'notification-empty-state'))
+    tbody.append(loadingRow)
+  }
 
   const projectResults = await Promise.all(projects.map(async project => {
     try {
@@ -518,9 +525,28 @@ export async function renderAdminTasksTable() {
     }
   }))
   if (loadVersion !== projectTaskLoadVersion || !tbody.isConnected) return
-  replaceProjectTasksFromBackend(projectResults.map(({ project, tasks: projectTasks }) => ({
+  if (silent && !canApply()) return
+  if (silent && projectResults.some(result => result.error)) {
+    throw new Error('One or more project task lists could not be refreshed.')
+  }
+  replaceProjectTasksFromBackend(projectResults.map(({ project, tasks: projectTasks, error }) => ({
     projectId: project.projectId,
-    tasks: projectTasks
+    tasks: error
+      ? tasks.filter(task => task.backendPersistent && task.projectId === project.projectId).map(task => ({
+        task_id: task.taskId,
+        title: task.title,
+        description: task.description,
+        category: task.category,
+        sprint_name: task.sprint_name,
+        assignee_name: task.assignee_name,
+        assignee_email: task.assignee_email,
+        assignee_firebase_uid: task.assignee_firebase_uid,
+        assignee_profile_image: task.assigneeProfileImage,
+        status: task.status,
+        start_date: task.start_date,
+        due_date: task.due_date
+      }))
+      : projectTasks
   })))
   hub.renderTasks?.()
   tbody.replaceChildren()
@@ -535,6 +561,7 @@ export async function renderAdminTasksTable() {
   projectResults.forEach(({ project, tasks: projectTasks, error }) => {
     const projectRow = document.createElement('tr')
     projectRow.className = 'project-task-project-row'
+    projectRow.dataset.projectId = project.projectId
     const projectCell = document.createElement('td')
     const rowLayout = make('div', 'project-task-row-layout')
     const expandButton = make('button', 'project-task-project-toggle')
@@ -593,19 +620,26 @@ export async function renderAdminTasksTable() {
     expandButton.addEventListener('click', toggleProjectDetails)
     expandButtonToggle.addEventListener('click', toggleProjectDetails)
     tbody.append(projectRow, detailsRow)
+    if (expandedProjectIds.has(project.projectId)) toggleProjectDetails()
   })
 }
 
 export function openProjectTaskModal(project, task = null, defaults = {}) {
   const isOwner = project.creatorFirebaseUid === firebaseAuth.currentUser?.uid
+  if (task && !isOwner) {
+    showDashboardToast('Only the project owner can edit project tasks.', 'error')
+    return
+  }
   const acceptedMembers = Array.isArray(project.acceptedMembers) ? project.acceptedMembers : []
   const projectOwner = project.creatorFirebaseUid
     ? {
       firebaseUid: project.creatorFirebaseUid,
-      name: currentUser.name || project.creatorName || firebaseAuth.currentUser?.displayName,
-      email: currentUser.email || project.creatorEmail,
-      initials: currentUser.initials || project.creatorInitials,
-      tone: currentUser.tone || project.creatorTone,
+      name: isOwner
+        ? currentUser.name || project.creatorName || firebaseAuth.currentUser?.displayName
+        : project.creatorName || project.creatorEmail || 'Project owner',
+      email: isOwner ? currentUser.email || project.creatorEmail : project.creatorEmail,
+      initials: isOwner ? currentUser.initials || project.creatorInitials : project.creatorInitials,
+      tone: isOwner ? currentUser.tone || project.creatorTone : project.creatorTone,
       role: 'Project owner'
     }
     : null
@@ -614,8 +648,6 @@ export function openProjectTaskModal(project, task = null, defaults = {}) {
     ...acceptedMembers.filter(member => member.firebaseUid !== projectOwner?.firebaseUid)
   ]
   let sprints = Array.isArray(project.sprints) ? project.sprints : []
-  if (!isOwner) return
-
   const backdrop = make('div', 'modal-backdrop')
   const form = make('form', 'modal project-task-parent-form')
   const close = make('button', 'close-modal', '×')
@@ -647,11 +679,16 @@ export function openProjectTaskModal(project, task = null, defaults = {}) {
   let selectedSprintName = task?.sprint_name || initialSprint?.name || ''
   let selectedAssigneeFirebaseUid = initialSprint?.assigneeFirebaseUid ||
     task?.assignee_firebase_uid ||
-    (!task ? projectOwner?.firebaseUid : '') ||
+    (!task && isOwner ? projectOwner?.firebaseUid : '') ||
     ''
   let selectedSprintNeedsOwnerAssignment = Boolean(
-    !task && initialSprint && !initialSprint.assigneeFirebaseUid && selectedAssigneeFirebaseUid
+    !task && isOwner && initialSprint && !initialSprint.assigneeFirebaseUid && selectedAssigneeFirebaseUid
   )
+  if (!isOwner && !initialSprint?.assigneeFirebaseUid) {
+    copy.textContent = !sprints.length
+      ? `A project owner needs to create a sprint before you can add a task to ${project.name}.`
+      : `A project owner needs to assign a sprint lead before you can add a task to ${project.name}.`
+  }
   const originalSprintSelection = {
     isInProject: selectedSprintIsInProject,
     name: selectedSprintName,
@@ -678,9 +715,9 @@ export function openProjectTaskModal(project, task = null, defaults = {}) {
   const sprintCreateCopy = make('p', 'modal-copy', task
     ? 'Add sprint drafts here. They will be added to the project when you save this task; edit or remove them first if needed.'
     : 'Add sprint drafts here. They will be added to the project when you create the task; edit or remove them first if needed.')
-  if (!task && !sprints.length) {
+  if (isOwner && !task && !sprints.length) {
     copy.textContent = `Create a sprint and assign a project member before creating a task for ${project.name}.`
-  } else if (selectedSprintNeedsOwnerAssignment) {
+  } else if (isOwner && selectedSprintNeedsOwnerAssignment) {
     copy.textContent = `No sprint lead is assigned yet. The project owner will be assigned to ${selectedSprintName} when you create this task.`
   }
   const draftSprintList = make('div', 'project-task-draft-sprint-list')
@@ -863,7 +900,7 @@ export function openProjectTaskModal(project, task = null, defaults = {}) {
   })
 
   const sprintSection = make('div', 'project-task-sprint-field')
-  sprintSection.append(createSprintToggle)
+  if (isOwner) sprintSection.append(createSprintToggle)
 
   const categoryLabel = make('label', 'no-input-icon', 'Category')
   const categorySelect = document.createElement('select')
@@ -954,7 +991,17 @@ export function openProjectTaskModal(project, task = null, defaults = {}) {
   const submit = make('button', 'primary-button full gold', task ? 'Save Task' : 'Create Task')
   submit.type = 'submit'
   submit.disabled = !selectedSprintIsInProject || !selectedSprintName || !selectedAssigneeFirebaseUid
-  form.append(close, heading, copy, titleLabel, descriptionLabel, assignmentRow, sprintCreatePanel, draftSprintList, schedulePicker.element, submit)
+  form.append(
+    close,
+    heading,
+    copy,
+    titleLabel,
+    descriptionLabel,
+    assignmentRow,
+    ...(isOwner ? [sprintCreatePanel, draftSprintList] : []),
+    schedulePicker.element,
+    submit
+  )
   backdrop.append(form)
   root.replaceChildren(backdrop)
   titleInput.focus()
@@ -1287,23 +1334,23 @@ export function openLegacyAdminTaskModal(prefilledStatus = 'To do', prefilledPro
 }
 
 export function openAdminTaskModal(prefilledStatus = 'To do', prefilledProject = null, prefilledDate = toLocalDateKey()) {
-  const ownedProjects = projects.filter(project => project.creatorFirebaseUid === firebaseAuth.currentUser?.uid)
+  const availableProjects = projects
   const requestedProject = (prefilledProject && typeof prefilledProject === 'object'
-    ? prefilledProject
-    : ownedProjects.find(project =>
+    ? availableProjects.find(project => project.projectId === prefilledProject.projectId)
+    : availableProjects.find(project =>
       project.name === prefilledProject ||
       project.projectId === prefilledProject ||
       project.id === prefilledProject
     ))
-  if (prefilledProject && requestedProject?.creatorFirebaseUid !== firebaseAuth.currentUser?.uid) {
-    showDashboardToast('Only the project creator can create tasks for that project.', 'error')
+  if (prefilledProject && !requestedProject) {
+    showDashboardToast('The selected project could not be found in your workspace.', 'error')
     return
   }
   const activeProject = getActiveProject()
   const targetProject = requestedProject ||
     (!prefilledProject
-      ? ownedProjects.find(project => project.projectId === activeProject?.projectId) ||
-        (!activeProject && ownedProjects.length === 1 ? ownedProjects[0] : null)
+      ? availableProjects.find(project => project.projectId === activeProject?.projectId) ||
+        (!activeProject && availableProjects.length === 1 ? availableProjects[0] : null)
       : null)
   const defaults = { status: prefilledStatus, dueDate: prefilledDate }
 
@@ -1311,8 +1358,8 @@ export function openAdminTaskModal(prefilledStatus = 'To do', prefilledProject =
     openProjectTaskModal(targetProject, null, defaults)
     return
   }
-  if (!ownedProjects.length) {
-    showDashboardToast('Only a project creator can create project tasks.', 'error')
+  if (!availableProjects.length) {
+    showDashboardToast('No accessible projects are available for task creation.', 'error')
     return
   }
 
@@ -1323,7 +1370,7 @@ export function openAdminTaskModal(prefilledStatus = 'To do', prefilledProject =
   close.addEventListener('click', closeModal)
   const projectLabel = make('label', '', 'Choose a project')
   const projectSelect = document.createElement('select')
-  ownedProjects.forEach(project => {
+  availableProjects.forEach(project => {
     const option = make('option', '', project.name)
     option.value = project.projectId
     projectSelect.append(option)
@@ -1336,7 +1383,7 @@ export function openAdminTaskModal(prefilledStatus = 'To do', prefilledProject =
   root.replaceChildren(backdrop)
   form.addEventListener('submit', event => {
     event.preventDefault()
-    const project = ownedProjects.find(item => item.projectId === projectSelect.value)
+    const project = availableProjects.find(item => item.projectId === projectSelect.value)
     if (project) openProjectTaskModal(project, null, defaults)
   })
 }

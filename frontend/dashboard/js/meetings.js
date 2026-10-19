@@ -76,7 +76,9 @@ function normalizeMeeting(record, project) {
   }
 }
 
-export async function loadProjectMeetings() {
+export async function loadProjectMeetings({
+  shouldApply = () => true
+} = {}) {
   const recordsByProject = await Promise.all(projects.map(async project => {
     const response = await api.get(`/projects/${encodeURIComponent(project.projectId)}/meetings`)
     return (response?.data?.meetings || []).map(record => normalizeMeeting(record, project))
@@ -84,6 +86,7 @@ export async function loadProjectMeetings() {
   const meetings = recordsByProject.flat().sort((first, second) =>
     first.date.localeCompare(second.date) || first.startTime.localeCompare(second.startTime)
   )
+  if (!shouldApply()) return meetings
   setMeetings(meetings)
   return meetings
 }

@@ -28,6 +28,77 @@ function sprintLeadName(project, sprint) {
   return member?.name || member?.email || 'No sprint lead'
 }
 
+async function removeProjectSprint(project, sprint, task, removeButton) {
+  const sprints = Array.isArray(project.sprints) ? project.sprints : []
+  const sprintIndex = sprints.indexOf(sprint)
+  if (sprintIndex < 0) return
+
+  const projectTasks = tasks.filter(candidate =>
+    candidate.backendPersistent && candidate.projectId === project.projectId
+  )
+  const linkedTasks = projectTasks.filter(candidate => candidate.sprint_name === sprint.name)
+  const remainingSprints = sprints.filter((_, index) => index !== sprintIndex)
+  if (!remainingSprints.length && linkedTasks.length) {
+    showDashboardToast(
+      "Reassign or delete this sprint's tasks before removing the last sprint.",
+      'error'
+    )
+    return
+  }
+
+  const updatedSprints = remainingSprints.map((item, index) => ({
+    ...item,
+    name: `Sprint ${index + 1}: ${String(item.name || 'Sprint')
+      .replace(/^Sprint\s+\d+\s*:\s*/i, '')
+      .trim() || 'Untitled'}`
+  }))
+  const sprintNameMap = {}
+  sprints.forEach((item, oldIndex) => {
+    const targetIndex = oldIndex < sprintIndex
+      ? oldIndex
+      : oldIndex === sprintIndex
+        ? Math.min(sprintIndex, updatedSprints.length - 1)
+        : oldIndex - 1
+    const targetSprint = updatedSprints[targetIndex]
+    if (targetSprint) sprintNameMap[item.name] = targetSprint.name
+  })
+  const taskDestination = remainingSprints[Math.min(sprintIndex, remainingSprints.length - 1)]
+  const destinationName = updatedSprints[Math.min(sprintIndex, updatedSprints.length - 1)]?.name
+  const destinationAssignment = taskDestination?.assigneeFirebaseUid
+    ? `assigned to ${sprintLeadName(project, taskDestination)}`
+    : 'keeping their current assignees'
+  const confirmed = await showDashboardConfirmation({
+    title: 'Remove project sprint?',
+    message: linkedTasks.length
+      ? `Remove "${sprint.name}"? Its ${linkedTasks.length} ${linkedTasks.length === 1 ? 'task will' : 'tasks will'} move to "${destinationName}", ${destinationAssignment}, and sprint numbers will be updated.`
+      : `Remove "${sprint.name}" and update the numbering of the remaining sprints?`,
+    confirmText: 'Remove sprint',
+    danger: true,
+    compact: true
+  })
+  if (!confirmed) return
+
+  const restoreButton = setDashboardButtonLoading(removeButton, 'Removing…')
+  try {
+    await api.put(`/projects/${encodeURIComponent(project.projectId)}`, {
+      sprints: updatedSprints,
+      ...(Object.keys(sprintNameMap).length ? { sprint_name_map: sprintNameMap } : {})
+    })
+    project.sprints = updatedSprints
+    await hub.renderAdminTasksTable?.()
+    showDashboardToast('Sprint removed and remaining sprints renumbered.', 'success')
+    closeAsideAndReopen(task)
+  } catch (error) {
+    restoreButton()
+    showDashboardToast(error.message || 'The sprint could not be removed.', 'error')
+  }
+}
+
+function closeAsideAndReopen(task) {
+  document.querySelector('.project-progress-aside-close')?.click()
+  openProjectProgressAside(task)
+}
+
 export function openProjectProgressAside(task) {
   const project = projects.find(candidate => candidate.projectId === task.projectId)
   if (!project) {
@@ -81,17 +152,23 @@ export function openProjectProgressAside(task) {
   sprintHeadingTitle.id = 'project-progress-aside-sprints-title'
   sprintHeading.append(sprintHeadingTitle, make('span', 'project-progress-aside-count', String(sprints.length)))
   sprintSection.append(sprintHeading)
-  const sprintList = make('div', 'project-progress-aside-sprints')
+  const sprintList = make('div', 'project-sprint-list project-progress-aside-sprints')
   sprints.forEach(sprint => {
     const sprintStatus = sprint.status || 'Upcoming'
-    const row = make('article', `project-progress-aside-sprint is-${sprintStatus.toLowerCase().replaceAll(' ', '-')}`)
-    const details = make('div', 'project-progress-aside-sprint-details')
-    details.append(
+    const row = make('span', 'project-sprint-chip')
+    row.append(
       make('strong', '', sprint.name || 'Untitled sprint'),
-      make('span', 'project-progress-aside-sprint-status', sprintStatus),
-      make('small', 'project-progress-aside-sprint-lead', `Assigned to ${sprintLeadName(project, sprint)}`)
+      make('small', '', sprintStatus),
+      make('small', 'project-sprint-assignee', `Assigned to ${sprintLeadName(project, sprint)}`)
     )
-    row.append(details)
+    if (isProjectOwner) {
+      const removeButton = make('button', 'project-sprint-remove', '×')
+      removeButton.type = 'button'
+      removeButton.setAttribute('aria-label', `Remove ${sprint.name || 'sprint'}`)
+      removeButton.title = 'Remove sprint'
+      removeButton.addEventListener('click', () => removeProjectSprint(project, sprint, task, removeButton))
+      row.append(removeButton)
+    }
     if (
       currentUid &&
       sprint.assigneeFirebaseUid === currentUid &&

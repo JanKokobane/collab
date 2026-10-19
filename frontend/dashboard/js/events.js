@@ -28,6 +28,7 @@ import {
   filterMembersByProject,
   getSelectedMembersProject,
   loadProjectMembers,
+  openAdminTaskModal,
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   openInviteModal

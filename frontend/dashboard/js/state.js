@@ -202,7 +202,8 @@ function setProjectsFromBackend(serverProjects = []) {
  * The frontend does NOT send or trust a creator UID.
  */
 export async function loadProjectsFromAPI({
-  silent = false
+  silent = false,
+  shouldApply = () => true
 } = {}) {
   if (projectsLoading) {
     return projects
@@ -245,6 +246,7 @@ export async function loadProjectsFromAPI({
       throw new Error('The server returned an invalid projects response.')
     }
 
+    if (!shouldApply()) return projects
     setProjectsFromBackend(serverProjects)
 
     return projects
@@ -261,8 +263,10 @@ export async function loadProjectsFromAPI({
       )
     }
 
-    projects = []
-    projectsLoaded = false
+    if (!silent) {
+      projects = []
+      projectsLoaded = false
+    }
 
     throw error
   } finally {
@@ -1116,12 +1120,15 @@ function normalizeNotification(notification) {
   }
 }
 
-export async function loadNotificationsFromAPI() {
+export async function loadNotificationsFromAPI({
+  shouldApply = () => true
+} = {}) {
   const response = await api.get('/notifications')
   const records = response?.data?.notifications
   if (!Array.isArray(records)) {
     throw new Error('The server returned an invalid notifications response.')
   }
+  if (!shouldApply()) return notifications
   const storageKey = localNotificationsKey()
   const cached = storageKey
     ? JSON.parse(localStorage.getItem(storageKey) || '[]')

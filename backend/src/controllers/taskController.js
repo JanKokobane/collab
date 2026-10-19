@@ -352,12 +352,12 @@ const createProjectTask = async (req, res) => {
     }
 
     try {
-        const project = await getProjectAndCheckAccess(req.params.projectId, req.firebaseUid, true);
+        const project = await getProjectAndCheckAccess(req.params.projectId, req.firebaseUid);
         if (!project) {
             return res.status(404).json({
                 success: false,
                 code: 'PROJECT_NOT_FOUND',
-                message: 'Project not found or you are not its creator.'
+                message: 'Project not found or you are not an accepted project member.'
             });
         }
         if (normalized.value.status !== 'To do') {
