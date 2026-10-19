@@ -82,26 +82,6 @@ function getElements() {
   }
 }
 
-function createCallIcon(type) {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-  svg.setAttribute('viewBox', '0 0 24 24')
-  svg.setAttribute('width', '19')
-  svg.setAttribute('height', '19')
-  svg.setAttribute('fill', 'none')
-  svg.setAttribute('stroke', 'currentColor')
-  svg.setAttribute('stroke-width', '1.8')
-  svg.setAttribute('stroke-linecap', 'round')
-  svg.setAttribute('stroke-linejoin', 'round')
-  svg.setAttribute('aria-hidden', 'true')
-  const pathData = type === 'audio'
-    ? 'M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.2 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.96.36 1.9.7 2.8a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.84.58 2.8.7a2 2 0 0 1 1.73 2.03Z'
-    : 'M15 10l5-3v10l-5-3M3 7h12v10H3z'
-  const path = document.createElementNS(svg.namespaceURI, 'path')
-  path.setAttribute('d', pathData)
-  svg.append(path)
-  return svg
-}
-
 function createVoiceRecordIcon(isRecording = false) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svg.setAttribute('viewBox', '0 0 24 24')
@@ -1950,21 +1930,6 @@ function renderMessagesView() {
     trigger.setAttribute('aria-expanded', String(!menu.hidden))
   })
   actions.append(trigger, menu)
-  if (conversation.type === 'direct') {
-    const voiceCall = make('button', 'collab-call-launch')
-    voiceCall.type = 'button'
-    voiceCall.setAttribute('aria-label', 'Start voice call')
-    voiceCall.title = 'Start voice call'
-    voiceCall.replaceChildren(createCallIcon('audio'))
-    voiceCall.addEventListener('click', () => startCall(conversation, 'audio'))
-    const videoCall = make('button', 'collab-call-launch')
-    videoCall.type = 'button'
-    videoCall.setAttribute('aria-label', 'Start video call')
-    videoCall.title = 'Start video call'
-    videoCall.replaceChildren(createCallIcon('video'))
-    videoCall.addEventListener('click', () => startCall(conversation, 'video'))
-    actions.prepend(voiceCall, videoCall)
-  }
   header.append(actions)
   input.disabled = false
   send.disabled = false

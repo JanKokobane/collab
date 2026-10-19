@@ -680,6 +680,7 @@ export function replaceProjectTasksFromBackend(projectTaskGroups = []) {
         assignee_email: task.assignee_email,
         assigneeFirebaseUid: task.assignee_firebase_uid,
         assignee_firebase_uid: task.assignee_firebase_uid,
+        assigneeProfileImage: task.assignee_profile_image || '',
         assigneeTone: 'teal',
         status: task.status || 'To do',
         done: task.status === 'Done',

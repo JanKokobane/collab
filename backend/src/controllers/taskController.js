@@ -42,7 +42,7 @@ const normalizeTaskInput = body => {
         return { error: 'Choose a valid project sprint.' };
     }
     if (!assigneeFirebaseUid) {
-        return { error: 'Choose an accepted project invitee to assign this task to.' };
+        return { error: 'Choose the project owner or an accepted project invitee to assign this task to.' };
     }
     if (!allowedStatuses.has(status)) {
         return { error: 'Choose a valid task status.' };
@@ -102,13 +102,17 @@ const validateAssignmentAndSprint = async (project, task, { allowLegacyTaskAssig
         return 'Choose a sprint that belongs to this project.';
     }
     if (!sprint.assigneeFirebaseUid && !allowLegacyTaskAssignee) {
-        return 'Assign an accepted invitee as the sprint lead before creating tasks in this sprint.';
+        return 'Assign a project member as the sprint lead before creating tasks in this sprint.';
     }
     if (
         sprint.assigneeFirebaseUid &&
         sprint.assigneeFirebaseUid !== task.assigneeFirebaseUid
     ) {
-        return 'Tasks must be assigned to the accepted invitee assigned to their sprint.';
+        return 'Tasks must be assigned to the project member assigned to their sprint.';
+    }
+
+    if (task.assigneeFirebaseUid === project.creator_firebase_uid) {
+        return null;
     }
 
     const assignee = await query(
@@ -123,7 +127,7 @@ const validateAssignmentAndSprint = async (project, task, { allowLegacyTaskAssig
         [project.project_id, task.assigneeFirebaseUid]
     );
     if (!assignee.rowCount) {
-        return 'Tasks can only be assigned to users who accepted an invitation to this project.';
+        return 'Tasks can only be assigned to the project owner or users who accepted an invitation to this project.';
     }
     return null;
 };
@@ -356,6 +360,13 @@ const createProjectTask = async (req, res) => {
                 message: 'Project not found or you are not its creator.'
             });
         }
+        if (normalized.value.status !== 'To do') {
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_TASK_STATUS',
+                message: 'New project tasks must start in To do.'
+            });
+        }
         const assignmentError = await validateAssignmentAndSprint(project, normalized.value);
         if (assignmentError) {
             return res.status(400).json({
@@ -519,15 +530,41 @@ const updateProjectTaskStatus = async (req, res) => {
             });
         }
 
+        const existingTask = await query(
+            `
+                SELECT task_id, assignee_firebase_uid
+                FROM project_tasks
+                WHERE project_id = $1
+                  AND task_id = $2::uuid
+                LIMIT 1
+            `,
+            [project.project_id, req.params.taskId]
+        );
+        if (!existingTask.rowCount) {
+            return res.status(404).json({
+                success: false,
+                code: 'TASK_NOT_FOUND',
+                message: 'Task not found.'
+            });
+        }
+        if (existingTask.rows[0].assignee_firebase_uid !== req.firebaseUid) {
+            return res.status(403).json({
+                success: false,
+                code: 'TASK_STATUS_UPDATE_FORBIDDEN',
+                message: 'Only the assigned user can move this task.'
+            });
+        }
+
         const result = await query(
             `
                 UPDATE project_tasks
                 SET status = $1, updated_at = NOW()
                 WHERE project_id = $2
                   AND task_id = $3::uuid
+                  AND assignee_firebase_uid = $4
                 RETURNING task_id
             `,
-            [status, project.project_id, req.params.taskId]
+            [status, project.project_id, req.params.taskId, req.firebaseUid]
         );
         if (!result.rowCount) {
             return res.status(404).json({

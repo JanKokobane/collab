@@ -5,6 +5,7 @@ const {
     getProjects,
     getProject,
     updateProject,
+    completeProjectSprint,
     deleteProject
 } = require('../controllers/projectController');
 const {
@@ -79,6 +80,7 @@ router.get('/:projectId/invitations', listProjectInvitations);
 router.delete('/:projectId/invitations/:invitationId', revokeInvitation);
 router.get('/:projectId/tasks', getProjectTasks);
 router.post('/:projectId/tasks', createProjectTask);
+router.post('/:projectId/sprints/:sprintName/complete', completeProjectSprint);
 router.get('/:projectId/tasks/:taskId/comments', getProjectTaskComments);
 router.post('/:projectId/tasks/:taskId/comments', createProjectTaskComment);
 router.patch('/:projectId/tasks/:taskId/status', updateProjectTaskStatus);

@@ -14,12 +14,14 @@ import {
   saveTasks,
   addAuditLog,
   pushNotification,
+  renderAvatarElement,
   hub
 } from './state.js'
 import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } from './auth.js'
 import { createScheduleCalendarPicker } from './calendar.js'
 import { api } from './api.js'
 import { setDashboardButtonLoading, showDashboardToast } from './modalChrome.js'
+import { openProjectProgressAside } from './projectProgressAside.js'
 
 // ============================================================
 // TASKS & BOARD MANAGEMENT
@@ -80,9 +82,18 @@ export function updateTaskCounts(filtered) {
   if (workspaceNavBadge) workspaceNavBadge.textContent = `${getAccessibleTasks().length}`
 }
 
+function canCurrentUserMoveTask(task) {
+  return !task.backendPersistent ||
+    Boolean(currentUser.uid && task.assigneeFirebaseUid === currentUser.uid)
+}
+
 export async function moveTaskStatus(taskId, newStatus) {
   const task = tasks.find(t => t.id === taskId)
   if (!task || task.status === newStatus || task.statusUpdating) return
+  if (!canCurrentUserMoveTask(task)) {
+    showDashboardToast('Only the assigned user can move this project task.', 'error')
+    return
+  }
 
   const oldStatus = task.status
   const previousState = {
@@ -162,10 +173,7 @@ export function taskCard(task) {
   const project = task.backendPersistent
     ? projects.find(item => item.projectId === task.projectId)
     : null
-  const canUpdateBackendTask = !task.backendPersistent ||
-    currentUser.uid === project?.creatorFirebaseUid ||
-    project?.acceptedMembers?.some(member => member.firebaseUid === currentUser.uid)
-  const canMoveTask = canUpdateBackendTask && !task.statusUpdating
+  const canMoveTask = canCurrentUserMoveTask(task) && !task.statusUpdating
   card.setAttribute('draggable', String(canMoveTask))
   if (task.statusUpdating) card.setAttribute('aria-busy', 'true')
 
@@ -193,6 +201,22 @@ export function taskCard(task) {
   top.append(tagWrap, moreBtn)
 
   const title = make('h4', '', task.title)
+  if (task.backendPersistent && task.status === 'In progress' && project) {
+    card.classList.add('task-card-has-project-details')
+    card.tabIndex = 0
+    card.setAttribute('aria-label', `Open project details for ${task.title}`)
+    card.addEventListener('click', event => {
+      if (!event.target.closest('button, a, input, select, textarea')) {
+        openProjectProgressAside(task)
+      }
+    })
+    card.addEventListener('keydown', event => {
+      if ((event.key === 'Enter' || event.key === ' ') && event.target === card) {
+        event.preventDefault()
+        openProjectProgressAside(task)
+      }
+    })
+  }
 
   const meta = make('div', 'task-meta')
   const dueSpan = make('span', task.due === 'Today' ? 'due today meta-due-span' : 'due meta-due-span')
@@ -218,7 +242,13 @@ export function taskCard(task) {
   }
 
   const footer = make('div', 'card-footer')
-  const assigneeEl = make('div', `avatar ${task.assigneeTone || 'teal'}-bg`, task.assignee)
+  const assigneeEl = make('div')
+  renderAvatarElement(assigneeEl, {
+    name: task.assigneeName || task.assignee,
+    initials: task.assignee,
+    profileImage: task.assigneeProfileImage,
+    tone: task.assigneeTone || 'teal'
+  })
   assigneeEl.title = `${task.assigneeName || task.assignee}`
   footer.append(assigneeEl)
 
@@ -229,7 +259,26 @@ export function taskCard(task) {
   } else {
     const progress = make('div', 'progress')
     const bar = make('span')
-    bar.style.width = `${task.progress || 0}%`
+    const projectSprints = Array.isArray(project?.sprints) ? project.sprints : []
+    const completedSprintCount = projectSprints.filter(
+      sprint => String(sprint.status || '').trim().toLowerCase() === 'completed'
+    ).length
+    const taskProgress = task.backendPersistent
+      ? projectSprints.length
+        ? Math.round((completedSprintCount / projectSprints.length) * 100)
+        : 0
+      : task.progress || 0
+    progress.setAttribute('role', 'progressbar')
+    progress.setAttribute('aria-valuemin', '0')
+    progress.setAttribute('aria-valuemax', '100')
+    progress.setAttribute('aria-valuenow', String(taskProgress))
+    progress.setAttribute(
+      'aria-label',
+      task.backendPersistent
+        ? `${completedSprintCount} of ${projectSprints.length} project sprints completed`
+        : 'Task progress'
+    )
+    bar.style.width = `${taskProgress}%`
     progress.append(bar)
     footer.append(progress)
   }
@@ -348,6 +397,10 @@ export function renderListView(filtered) {
     const tdCheck = document.createElement('td')
     const checkBtn = make('button', `task-checkbox-btn ${task.status === 'Done' ? 'checked' : ''}`)
     checkBtn.type = 'button'
+    checkBtn.disabled = !canCurrentUserMoveTask(task)
+    if (checkBtn.disabled) {
+      checkBtn.title = 'Only the assigned user can complete this project task.'
+    }
     checkBtn.innerHTML = getSvg('check', 'check-icon', 12, 12)
     checkBtn.addEventListener('click', e => {
       e.stopPropagation()
@@ -382,7 +435,7 @@ export function renderListView(filtered) {
   })
 }
 
-export function openTaskModal(prefilledStatus = 'To do') {
+export function openTaskModal() {
   const proj = getActiveProject()
   const isCreator = isCurrentUserProjectCreator()
 
@@ -449,12 +502,10 @@ export function openTaskModal(prefilledStatus = 'To do') {
 
   const statusLabel = make('label', '', 'Initial Status')
   const statusSelect = document.createElement('select')
-  ;['Backlog', 'To do', 'In progress', 'Done'].forEach(s => {
-    const opt = make('option', '', s)
-    opt.value = s
-    if (typeof prefilledStatus === 'string' && prefilledStatus === s) opt.selected = true
-    statusSelect.append(opt)
-  })
+  const todoOption = make('option', '', 'To do')
+  todoOption.value = 'To do'
+  todoOption.selected = true
+  statusSelect.append(todoOption)
   statusLabel.append(statusSelect)
 
   const schedulePicker = createScheduleCalendarPicker()
@@ -489,11 +540,11 @@ export function openTaskModal(prefilledStatus = 'To do') {
       assignee: assignedMember.initials,
       assigneeName: assignedMember.name,
       assigneeTone: assignedMember.tone || 'teal',
-      status: statusSelect.value,
-      done: statusSelect.value === 'Done',
+      status: 'To do',
+      done: false,
       sprint: sprintSelect.value,
-      approvalStatus: statusSelect.value === 'Done' ? 'approved' : 'none',
-      progress: statusSelect.value === 'Done' ? 100 : statusSelect.value === 'In progress' ? 50 : 0,
+      approvalStatus: 'none',
+      progress: 0,
       comments: 0,
       commentsList: []
     }

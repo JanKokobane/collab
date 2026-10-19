@@ -390,7 +390,7 @@ function renderProjectTaskDetails(project, taskRecords, loadError, refreshDetail
     const emptyInvitees = make('div', 'project-task-empty-state')
     emptyInvitees.append(
       make('p', '', 'No accepted invitees yet.'),
-      make('small', '', 'Invite a teammate. Tasks can be assigned once they accept.')
+      make('small', '', 'You can assign tasks to yourself as project owner or invite a teammate.')
     )
     if (isOwner) {
       const inviteButton = make('button', 'outline-button project-task-invite-button', '+ Invite Member')
@@ -596,9 +596,23 @@ export async function renderAdminTasksTable() {
   })
 }
 
-function openProjectTaskModal(project, task = null, defaults = {}) {
+export function openProjectTaskModal(project, task = null, defaults = {}) {
   const isOwner = project.creatorFirebaseUid === firebaseAuth.currentUser?.uid
   const acceptedMembers = Array.isArray(project.acceptedMembers) ? project.acceptedMembers : []
+  const projectOwner = project.creatorFirebaseUid
+    ? {
+      firebaseUid: project.creatorFirebaseUid,
+      name: currentUser.name || project.creatorName || firebaseAuth.currentUser?.displayName,
+      email: currentUser.email || project.creatorEmail,
+      initials: currentUser.initials || project.creatorInitials,
+      tone: currentUser.tone || project.creatorTone,
+      role: 'Project owner'
+    }
+    : null
+  const assignmentMembers = [
+    ...(projectOwner ? [projectOwner] : []),
+    ...acceptedMembers.filter(member => member.firebaseUid !== projectOwner?.firebaseUid)
+  ]
   let sprints = Array.isArray(project.sprints) ? project.sprints : []
   if (!isOwner) return
 
@@ -608,7 +622,7 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
   close.type = 'button'
   close.addEventListener('click', closeModal)
   const heading = make('h2', '', task ? 'Edit Project Task' : 'Create Project Task')
-  const copy = make('p', 'modal-copy', `Task assignments are limited to accepted invitees of ${project.name}.`)
+  const copy = make('p', 'modal-copy', `Task assignments are available to the project owner and accepted invitees of ${project.name}.`)
 
   const titleLabel = make('label', '', 'Task title')
   const titleInput = make('input')
@@ -628,14 +642,21 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
 
   const initialSprint = task
     ? sprints.find(sprint => sprint.name === task.sprint_name)
-    : [...sprints].reverse().find(sprint => sprint.assigneeFirebaseUid)
+    : [...sprints].reverse().find(sprint => sprint.assigneeFirebaseUid) || sprints.at(-1)
   let selectedSprintIsInProject = Boolean(initialSprint)
   let selectedSprintName = task?.sprint_name || initialSprint?.name || ''
-  let selectedAssigneeFirebaseUid = initialSprint?.assigneeFirebaseUid || task?.assignee_firebase_uid || ''
+  let selectedAssigneeFirebaseUid = initialSprint?.assigneeFirebaseUid ||
+    task?.assignee_firebase_uid ||
+    (!task ? projectOwner?.firebaseUid : '') ||
+    ''
+  let selectedSprintNeedsOwnerAssignment = Boolean(
+    !task && initialSprint && !initialSprint.assigneeFirebaseUid && selectedAssigneeFirebaseUid
+  )
   const originalSprintSelection = {
     isInProject: selectedSprintIsInProject,
     name: selectedSprintName,
-    assigneeFirebaseUid: selectedAssigneeFirebaseUid
+    assigneeFirebaseUid: selectedAssigneeFirebaseUid,
+    needsOwnerAssignment: selectedSprintNeedsOwnerAssignment
   }
   const draftSprints = []
   let editingDraftSprintId = null
@@ -657,6 +678,11 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
   const sprintCreateCopy = make('p', 'modal-copy', task
     ? 'Add sprint drafts here. They will be added to the project when you save this task; edit or remove them first if needed.'
     : 'Add sprint drafts here. They will be added to the project when you create the task; edit or remove them first if needed.')
+  if (!task && !sprints.length) {
+    copy.textContent = `Create a sprint and assign a project member before creating a task for ${project.name}.`
+  } else if (selectedSprintNeedsOwnerAssignment) {
+    copy.textContent = `No sprint lead is assigned yet. The project owner will be assigned to ${selectedSprintName} when you create this task.`
+  }
   const draftSprintList = make('div', 'project-task-draft-sprint-list')
   const draftSprintListHeading = make('h4', 'project-task-draft-sprint-heading', 'Sprints to add when the task is saved')
   draftSprintList.hidden = true
@@ -666,13 +692,13 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
   newSprintNameInput.placeholder = `Sprint ${sprints.length + 1}: Your title`
   newSprintNameLabel.append(newSprintNameInput)
 
-  const newSprintAssigneeLabel = make('label', 'no-input-icon', `Assign sprint to accepted invitee${task ? ' (optional)' : ''}`)
+  const newSprintAssigneeLabel = make('label', 'no-input-icon', `Assign sprint to project member${task ? ' (optional)' : ''}`)
   const newSprintAssigneeSelect = document.createElement('select')
   const noSprintAssigneeOption = make('option', '', 'No sprint lead')
   noSprintAssigneeOption.value = ''
   newSprintAssigneeSelect.append(noSprintAssigneeOption)
-  acceptedMembers.forEach(member => {
-    const option = make('option', '', `${member.name || member.email || 'Invitee'}${member.role ? ` (${member.role})` : ''}`)
+  assignmentMembers.forEach(member => {
+    const option = make('option', '', `${member.name || member.email || 'Project member'}${member.role ? ` (${member.role})` : ''}`)
     option.value = member.firebaseUid
     newSprintAssigneeSelect.append(option)
   })
@@ -726,7 +752,7 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
     draftSprints.forEach((sprint, index) => {
       const item = make('article', 'project-task-draft-sprint')
       const details = make('div', 'project-task-draft-sprint-details')
-      const lead = acceptedMembers.find(member => member.firebaseUid === sprint.assigneeFirebaseUid)
+      const lead = assignmentMembers.find(member => member.firebaseUid === sprint.assigneeFirebaseUid)
       details.append(
         make('strong', '', sprint.name),
         make('small', '', `${sprint.status}${lead ? ` · ${lead.name || lead.email}` : ''}`)
@@ -761,6 +787,9 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
         selectedSprintName = selectedSprint?.name || originalSprintSelection.name
         selectedAssigneeFirebaseUid = selectedSprint?.assigneeFirebaseUid || originalSprintSelection.assigneeFirebaseUid
         selectedSprintIsInProject = Boolean(selectedSprint) || originalSprintSelection.isInProject
+        selectedSprintNeedsOwnerAssignment = selectedSprint
+          ? false
+          : originalSprintSelection.needsOwnerAssignment
         submit.disabled = !selectedSprintIsInProject || !selectedSprintName || !selectedAssigneeFirebaseUid
       })
       actions.append(editButton, removeButton)
@@ -794,9 +823,9 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
       return
     }
 
-    const selectedSprintMember = acceptedMembers.find(member => member.firebaseUid === newSprintAssigneeSelect.value)
+    const selectedSprintMember = assignmentMembers.find(member => member.firebaseUid === newSprintAssigneeSelect.value)
     if (!task && !selectedSprintMember) {
-      sprintCreateError.textContent = 'Select an accepted invitee to assign tasks in this sprint.'
+      sprintCreateError.textContent = 'Select a project member to assign tasks in this sprint.'
       sprintCreateError.hidden = false
       return
     }
@@ -823,6 +852,7 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
     selectedSprintName = draftSprint.name
     selectedAssigneeFirebaseUid = draftSprint.assigneeFirebaseUid || task?.assignee_firebase_uid || ''
     selectedSprintIsInProject = true
+    selectedSprintNeedsOwnerAssignment = false
     submit.disabled = !selectedSprintName || !selectedAssigneeFirebaseUid
     editingDraftSprintId = null
     newSprintNameInput.value = ''
@@ -903,10 +933,10 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
 
   const statusLabel = make('label', 'no-input-icon', 'Status')
   const statusSelect = document.createElement('select')
-  ;['Backlog', 'To do', 'In progress', 'Done'].forEach(status => {
+  ;(task ? ['Backlog', 'To do', 'In progress', 'Done'] : ['To do']).forEach(status => {
     const option = make('option', '', status)
     option.value = status
-    if (status === (task?.status || defaults.status || 'To do')) option.selected = true
+    if (status === (task?.status || 'To do')) option.selected = true
     statusSelect.append(option)
   })
   statusLabel.append(statusSelect)
@@ -938,14 +968,14 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
       category: categorySelect.value,
       sprintName: selectedSprintName,
       assigneeFirebaseUid: selectedAssigneeFirebaseUid,
-      status: statusSelect.value,
+      status: task ? statusSelect.value : 'To do',
       startDate: schedule.startDate || null,
       dueDate: schedule.dueDate || null
     }
     const restoreSubmit = setDashboardButtonLoading(submit, task ? 'Saving task…' : 'Creating task…')
     try {
       const projectId = encodeURIComponent(project.projectId)
-      if (draftSprints.length) {
+      if (draftSprints.length || selectedSprintNeedsOwnerAssignment) {
         const persistedDraftSprints = draftSprints.map((draft, index) => ({
           ...draft,
           name: draft.name.replace(/^Sprint\s+\d+\s*:\s*/i, `Sprint ${sprints.length + index + 1}: `)
@@ -954,12 +984,21 @@ function openProjectTaskModal(project, task = null, defaults = {}) {
         const persistedSelectedSprintName = selectedDraftIndex >= 0
           ? persistedDraftSprints[selectedDraftIndex].name
           : selectedSprintName
-        const updatedSprints = [...sprints, ...persistedDraftSprints]
+        const updatedSprints = selectedSprintNeedsOwnerAssignment
+          ? sprints.map(sprint => sprint.name === selectedSprintName
+            ? {
+              ...sprint,
+              assigneeFirebaseUid: selectedAssigneeFirebaseUid,
+              assigneeName: projectOwner.name || projectOwner.email
+            }
+            : sprint)
+          : [...sprints, ...persistedDraftSprints]
         await api.put(`/projects/${projectId}`, { sprints: updatedSprints })
         project.sprints = updatedSprints
         sprints = updatedSprints
         selectedSprintName = persistedSelectedSprintName
         selectedSprintIsInProject = true
+        selectedSprintNeedsOwnerAssignment = false
         draftSprints.splice(0, draftSprints.length)
         selectedDraftSprintId = null
         updateSprintDrafts()
@@ -1554,13 +1593,23 @@ export function renderAdminProjectsTable() {
     // 4. Creator
     const tdCreator = document.createElement('td')
     const creatorWrap = make('div', 'member-cell')
-    const creatorTone = project.creatorInitials === 'ER' ? 'purple' : project.creatorInitials === 'SK' ? 'teal' : 'coral'
+    const currentFirebaseUid = firebaseAuth.currentUser?.uid || currentUser.uid
+    const isCurrentUserCreator = Boolean(project.creatorFirebaseUid && currentFirebaseUid &&
+      project.creatorFirebaseUid === currentFirebaseUid)
+    const creatorName = (
+      isCurrentUserCreator ? currentUser.name?.trim() : ''
+    ) || project.creatorName?.trim() || project.creatorEmail?.trim() || 'Project creator'
+    const creatorEmail = project.creatorEmail?.trim()
+    const creatorInitials = isCurrentUserCreator && currentUser.initials
+      ? currentUser.initials
+      : project.creatorInitials || creatorName.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase()
+    const creatorTone = creatorInitials === 'ER' ? 'purple' : creatorInitials === 'SK' ? 'teal' : 'coral'
     const creatorAv = make('div', `avatar ${creatorTone}-bg`)
-    creatorAv.textContent = project.creatorInitials || 'AM'
+    creatorAv.textContent = creatorInitials
     const creatorInfo = make('div', 'member-info')
     creatorInfo.append(
-      make('strong', '', project.creatorName || 'Alex Morgan'),
-      make('small', '', project.creatorEmail || 'admin@collab.io')
+      make('strong', '', creatorName),
+      ...(creatorEmail && creatorName !== creatorEmail ? [make('small', '', creatorEmail)] : [])
     )
     creatorWrap.append(creatorAv, creatorInfo)
     tdCreator.append(creatorWrap)

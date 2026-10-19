@@ -762,7 +762,10 @@ const updateProject = async (req, res) => {
                 const assigneeUids = [
                     ...new Set(sprintAssignmentNotifications.map(item => item.assigneeFirebaseUid))
                 ];
-                if (assigneeUids.length) {
+                const inviteeAssigneeUids = assigneeUids.filter(
+                    uid => uid !== current.creator_firebase_uid
+                );
+                if (inviteeAssigneeUids.length) {
                     const acceptedAssignees = await client.query(
                         `
                             SELECT invited_firebase_uid
@@ -771,18 +774,18 @@ const updateProject = async (req, res) => {
                               AND status = 'accepted'
                               AND invited_firebase_uid = ANY($2::text[])
                         `,
-                        [projectId, assigneeUids]
+                        [projectId, inviteeAssigneeUids]
                     );
                     const acceptedUids = new Set(
                         acceptedAssignees.rows.map(row => row.invited_firebase_uid)
                     );
-                    const invalidAssignee = assigneeUids.find(uid => !acceptedUids.has(uid));
+                    const invalidAssignee = inviteeAssigneeUids.find(uid => !acceptedUids.has(uid));
                     if (invalidAssignee) {
                         await client.query('ROLLBACK');
                         return res.status(400).json({
                             success: false,
                             code: 'INVALID_SPRINT_ASSIGNEE',
-                            message: 'Sprint leads must be accepted invitees of this project.'
+                            message: 'Sprint leads must be the project owner or accepted invitees.'
                         });
                     }
                 }
@@ -890,6 +893,102 @@ const updateProject = async (req, res) => {
 
 
 /**
+ * POST /api/projects/:projectId/sprints/:sprintName/complete
+ */
+const completeProjectSprint = async (req, res) => {
+    try {
+        const { projectId, sprintName } = req.params;
+        const firebaseUid = req.firebaseUid;
+
+        if (!projectId || !sprintName?.trim()) {
+            return res.status(400).json({
+                success: false,
+                code: 'SPRINT_REQUIRED',
+                message: 'Project and sprint are required.'
+            });
+        }
+
+        const result = await query(
+            `
+                UPDATE projects AS project
+                SET
+                    sprints = (
+                        SELECT jsonb_agg(
+                            CASE
+                                WHEN sprint_row.sprint->>'name' = $2
+                                    THEN jsonb_set(
+                                        sprint_row.sprint,
+                                        '{status}',
+                                        '"Completed"'::jsonb,
+                                        true
+                                    )
+                                ELSE sprint_row.sprint
+                            END
+                            ORDER BY sprint_row.ordinality
+                        )
+                        FROM jsonb_array_elements(COALESCE(project.sprints, '[]'::jsonb))
+                            WITH ORDINALITY AS sprint_row(sprint, ordinality)
+                    ),
+                    updated_at = NOW()
+                WHERE project.project_id = $1
+                  AND EXISTS (
+                      SELECT 1
+                      FROM jsonb_array_elements(COALESCE(project.sprints, '[]'::jsonb)) AS sprint_row(sprint)
+                      WHERE sprint_row.sprint->>'name' = $2
+                        AND sprint_row.sprint->>'assigneeFirebaseUid' = $3
+                  )
+                RETURNING project.project_id, project.sprints
+            `,
+            [projectId, sprintName.trim(), firebaseUid]
+        );
+
+        if (!result.rowCount) {
+            const projectResult = await query(
+                'SELECT sprints FROM projects WHERE project_id = $1',
+                [projectId]
+            );
+            if (!projectResult.rowCount) {
+                return res.status(404).json({
+                    success: false,
+                    code: 'PROJECT_NOT_FOUND',
+                    message: 'Project not found.'
+                });
+            }
+
+            const sprints = Array.isArray(projectResult.rows[0].sprints)
+                ? projectResult.rows[0].sprints
+                : [];
+            if (!sprints.some(sprint => sprint?.name === sprintName.trim())) {
+                return res.status(404).json({
+                    success: false,
+                    code: 'SPRINT_NOT_FOUND',
+                    message: 'Sprint not found.'
+                });
+            }
+            return res.status(403).json({
+                success: false,
+                code: 'SPRINT_COMPLETION_FORBIDDEN',
+                message: 'Only the assigned sprint lead can complete this sprint.'
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Sprint completed successfully.',
+            data: { project: result.rows[0] }
+        });
+    } catch (error) {
+        console.error('Complete project sprint error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'SPRINT_COMPLETION_FAILED',
+            message: 'The sprint could not be completed.'
+        });
+    }
+};
+
+
+/**
  * Delete a project
  * DELETE /api/projects/:projectId
  */
@@ -968,5 +1067,6 @@ module.exports = {
     getProjects,
     getProject,
     updateProject,
+    completeProjectSprint,
     deleteProject
 };
