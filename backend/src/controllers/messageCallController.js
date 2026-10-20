@@ -174,7 +174,7 @@ const startCall = async (req, res) => {
                     ...call,
                     peer_name: call.callee_name,
                     peer_uid: calleeUid,
-                    ice_servers: getMessageCallIceServers(req.firebaseUid)
+                    ice_servers: await getMessageCallIceServers(req.firebaseUid)
                 }
             }
         });
@@ -275,7 +275,7 @@ const updateCall = async (req, res) => {
             res.set('Cache-Control', 'no-store');
             return res.json({
                 success: true,
-                data: { call: { ice_servers: getMessageCallIceServers(req.firebaseUid) } }
+                data: { call: { ice_servers: await getMessageCallIceServers(req.firebaseUid) } }
             });
         }
         if ((action === 'decline' && (!isCallee || call.status !== 'ringing')) ||

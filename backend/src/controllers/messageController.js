@@ -581,6 +581,16 @@ const createMessage = async (req, res) => {
             item.fileName.length > 255 || typeof item.mediaType !== 'string' ||
             item.mediaType.length > 128 || typeof item.data !== 'string' ||
             !Number.isSafeInteger(item.size) || item.size < 0 ||
+            (item.is_voice_note && (
+                !/^audio\/(?:ogg|webm);codecs=opus$/i.test(item.mediaType) ||
+                !Number.isSafeInteger(item.duration_seconds) ||
+                item.duration_seconds < 1 || item.duration_seconds > 3600 ||
+                !Array.isArray(item.waveform_peaks) ||
+                item.waveform_peaks.length !== 40 ||
+                item.waveform_peaks.some(peak =>
+                    typeof peak !== 'number' || !Number.isFinite(peak) || peak < 0 || peak > 1
+                )
+            )) ||
             !/^data:[^;,]+;base64,[a-zA-Z0-9+/=]+$/.test(item.data)) ||
         attachmentBytes > maxAttachmentBytes || (!body && attachments.length === 0) ||
         !uuidPattern.test(messageId) ||

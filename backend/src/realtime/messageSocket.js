@@ -251,6 +251,9 @@ const attachMessageSocket = server => {
                      ORDER BY created_at DESC`,
                     [conversationId, uid]
                 );
+                const iceServers = activeCalls.rowCount
+                    ? await getMessageCallIceServers(uid)
+                    : null;
                 const pendingMessages = await query(
                     `INSERT INTO message_deliveries (message_id, firebase_uid)
                      SELECT m.message_id, $2
@@ -278,7 +281,7 @@ const attachMessageSocket = server => {
                         created_at: row.created_at.toISOString(),
                         ring_expires_at: row.ring_expires_at.toISOString(),
                         peer_uid: row.caller_uid === uid ? row.callee_uid : row.caller_uid,
-                        ice_servers: getMessageCallIceServers(uid)
+                        ice_servers: iceServers
                     }))
                 });
             } catch (error) {
