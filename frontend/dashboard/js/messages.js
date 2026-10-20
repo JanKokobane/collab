@@ -760,6 +760,7 @@ async function ensureRealtimeSocket() {
       renderMessages()
     })
     socket.on('conversation:cleared', ({ conversation_id: conversationId } = {}) => {
+      if (conversationId) conversationCallHistory.set(conversationId, [])
       if (conversationId && selectedConversationId === conversationId) {
         loadConversationMessages(conversationId)
       }
@@ -2023,6 +2024,7 @@ function confirmConversationAction(conversation, action) {
         )
         conversation.latestMessage = ''
         conversation.latestMessageCreatedAt = null
+        conversationCallHistory.set(conversation.id, [])
       }
       closeModal()
       renderMessages()

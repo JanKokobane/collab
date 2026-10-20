@@ -75,15 +75,19 @@ const getCallHistory = async (req, res) => {
         }
         await markExpiredCallsMissed(conversation.conversation_id);
         const result = await query(
-            `SELECT call_id, conversation_id::text AS conversation_id,
-                    caller_uid, caller_name, callee_uid, callee_name,
-                    call_type, status, created_at, accepted_at, ended_at,
-                    ended_by_uid, ring_expires_at
-             FROM message_calls
-             WHERE conversation_id = $1::uuid
-             ORDER BY created_at DESC, call_id DESC
-             LIMIT $2`,
-            [conversation.conversation_id, limit]
+                        `SELECT calls.call_id, calls.conversation_id::text AS conversation_id,
+                                        calls.caller_uid, calls.caller_name, calls.callee_uid, calls.callee_name,
+                                        calls.call_type, calls.status, calls.created_at, calls.accepted_at, calls.ended_at,
+                                        calls.ended_by_uid, calls.ring_expires_at
+                         FROM message_calls calls
+                         LEFT JOIN message_conversation_user_state state
+                             ON state.conversation_id = calls.conversation_id
+                            AND state.firebase_uid = $2
+                         WHERE calls.conversation_id = $1::uuid
+                             AND (state.calls_cleared_at IS NULL OR calls.created_at > state.calls_cleared_at)
+                         ORDER BY calls.created_at DESC, calls.call_id DESC
+             LIMIT $3`,
+                        [conversation.conversation_id, req.firebaseUid, limit]
         );
         return res.json({ success: true, data: { calls: result.rows } });
     } catch (error) {

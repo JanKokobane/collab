@@ -438,10 +438,11 @@ const deleteConversationForMe = async (req, res) => {
             success: false, code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found.'
         });
         await query(
-            `INSERT INTO message_conversation_user_state (conversation_id, firebase_uid, hidden_at)
-             VALUES ($1::uuid, $2, NOW())
+            `INSERT INTO message_conversation_user_state (
+                conversation_id, firebase_uid, hidden_at, calls_cleared_at
+             ) VALUES ($1::uuid, $2, NOW(), NOW())
              ON CONFLICT (conversation_id, firebase_uid)
-             DO UPDATE SET hidden_at = NOW()`,
+             DO UPDATE SET hidden_at = NOW(), calls_cleared_at = NOW()`,
             [conversation.conversation_id, req.firebaseUid]
         );
         emitToUser(req.firebaseUid, 'conversation:removed', {
@@ -870,13 +871,23 @@ const clearConversationMessages = async (req, res) => {
         if (!conversation) return res.status(404).json({
             success: false, code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found.'
         });
-        await query(
-            `INSERT INTO message_hidden_for (message_id, firebase_uid)
-             SELECT msg.message_id, $2 FROM messages msg
-             WHERE msg.conversation_id = $1::uuid
-             ON CONFLICT DO NOTHING`,
-            [conversation.conversation_id, req.firebaseUid]
-        );
+        await withTransaction(async client => {
+            await client.query(
+                `INSERT INTO message_hidden_for (message_id, firebase_uid)
+                 SELECT msg.message_id, $2 FROM messages msg
+                 WHERE msg.conversation_id = $1::uuid
+                 ON CONFLICT DO NOTHING`,
+                [conversation.conversation_id, req.firebaseUid]
+            );
+            await client.query(
+                `INSERT INTO message_conversation_user_state (
+                    conversation_id, firebase_uid, calls_cleared_at
+                 ) VALUES ($1::uuid, $2, NOW())
+                 ON CONFLICT (conversation_id, firebase_uid)
+                 DO UPDATE SET calls_cleared_at = NOW()`,
+                [conversation.conversation_id, req.firebaseUid]
+            );
+        });
         emitToUser(req.firebaseUid, 'conversation:cleared', {
             conversation_id: conversation.conversation_id
         });
