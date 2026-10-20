@@ -1289,13 +1289,10 @@ body.dark-mode .messages-voice-record.is-recording,
 }
 
 .messages-recording-waveform .messages-waveform-bar {
-    transform-origin: center;
-    animation: messages-waveform-live .7s ease-in-out infinite alternate;
-    animation-delay: var(--bar-delay, 0ms);
+    transition: height 80ms linear, opacity .15s ease;
 }
 
 .messages-recording-panel.is-paused .messages-waveform-bar {
-    animation-play-state: paused;
     opacity: .58;
 }
 
@@ -1376,9 +1373,9 @@ body.dark-mode .messages-voice-record.is-recording,
 
 .message-bubble .messages-voice-note-player {
     display: grid;
-    width: min(330px, 100%);
-    min-width: 230px;
-    grid-template-columns: 38px minmax(90px, 1fr) auto;
+    width: min(360px, 100%);
+    min-width: 250px;
+    grid-template-columns: 38px minmax(70px, 1fr) auto auto;
     align-items: center;
     gap: 10px;
     margin: 5px 0 2px;
@@ -1425,9 +1422,26 @@ body.dark-mode .messages-voice-record.is-recording,
 
 .messages-voice-time {
     color: #4B5E56;
-    font: 600 11px/1 'DM Sans', sans-serif;
+    font: 600 10px/1 'DM Sans', sans-serif;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+}
+
+.messages-voice-speed {
+    min-width: 34px;
+    padding: 5px 4px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #4B5E56;
+    font: 700 10px/1 'DM Sans', sans-serif;
+    cursor: pointer;
+}
+
+.messages-voice-speed:hover,
+.messages-voice-speed:focus-visible {
+    background: rgba(40, 123, 103, .12);
+    outline: none;
 }
 
 .message-row.own .messages-voice-play {
@@ -1477,12 +1491,13 @@ body.dark-mode .messages-voice-time,
     color: #CFD9D3;
 }
 
-@keyframes messages-recording-pulse {
-    50% { box-shadow: 0 0 0 7px rgba(229, 72, 77, 0); }
+body.dark-mode .messages-voice-speed,
+[data-theme="dark"] .messages-voice-speed {
+    color: #CFD9D3;
 }
 
-@keyframes messages-waveform-live {
-    to { transform: scaleY(.55); }
+@keyframes messages-recording-pulse {
+    50% { box-shadow: 0 0 0 7px rgba(229, 72, 77, 0); }
 }
 
 @media (max-width: 640px) {
@@ -1513,10 +1528,10 @@ body.dark-mode .messages-voice-time,
     }
 
     .message-bubble .messages-voice-note-player {
-        width: min(290px, 100%);
-        min-width: 210px;
-        grid-template-columns: 34px minmax(80px, 1fr) auto;
-        gap: 8px;
+        width: min(320px, 100%);
+        min-width: 220px;
+        grid-template-columns: 34px minmax(45px, 1fr) auto auto;
+        gap: 6px;
     }
 
     .messages-voice-play {
@@ -7371,6 +7386,16 @@ body.dark-mode .call-log-label,
 
 .collab-call-launch:hover {
     background: #EAF5F1;
+}
+
+.collab-call-launch svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 .collab-call-portal:not([hidden]) {

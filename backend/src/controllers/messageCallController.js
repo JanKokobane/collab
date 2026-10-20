@@ -15,6 +15,22 @@ const getMember = async (conversationId, firebaseUid) => {
     return result.rows[0] || null;
 };
 
+const toPublicCall = call => ({
+    call_id: call.call_id,
+    conversation_id: call.conversation_id,
+    caller_uid: call.caller_uid,
+    caller_name: call.caller_name,
+    callee_uid: call.callee_uid,
+    callee_name: call.callee_name,
+    call_type: call.call_type,
+    status: call.status,
+    created_at: call.created_at,
+    accepted_at: call.accepted_at,
+    ended_at: call.ended_at,
+    ended_by_uid: call.ended_by_uid,
+    ring_expires_at: call.ring_expires_at
+});
+
 const responseError = (res, error, operation) => {
     console.error(`${operation} failed.`, {
         errorName: error.name,
@@ -133,26 +149,25 @@ const startCall = async (req, res) => {
             });
         }
         const callId = randomUUID();
-        const now = Date.now();
-        const expiresAt = new Date(now + 60 * 60 * 1000);
-        const ringExpiresAt = new Date(now + 45_000);
-        await client.query(
+        const timing = await client.query(
             `INSERT INTO message_calls (
                 call_id, conversation_id, caller_uid, caller_name, callee_uid,
                 callee_name, call_type, status, daily_room_name, daily_room_url,
                 expires_at, ring_expires_at
              ) VALUES (
                 $1::uuid, $2::uuid, $3, $4, $5, $6, $7, 'ringing',
-                '', '', $8, $9
-             )`,
+                '', '', NOW() + INTERVAL '1 hour', NOW() + INTERVAL '45 seconds'
+             )
+             RETURNING created_at, ring_expires_at`,
             [
                 callId, conversationId, req.firebaseUid,
                 caller.display_name || caller.email || 'Project member',
                 calleeUid, callee.display_name || callee.email || 'Project member',
-                callType, expiresAt, ringExpiresAt
+                callType
             ]
         );
         await client.query('COMMIT');
+        const { created_at: createdAt, ring_expires_at: ringExpiresAt } = timing.rows[0];
         const call = {
             call_id: callId,
             conversation_id: conversationId,
@@ -162,7 +177,7 @@ const startCall = async (req, res) => {
             callee_name: callee.display_name || callee.email || 'Project member',
             call_type: callType,
             status: 'ringing',
-            created_at: new Date(now).toISOString(),
+            created_at: createdAt.toISOString(),
             ring_expires_at: ringExpiresAt.toISOString()
         };
         emitToConversation(conversationId, 'call:updated', { call });
@@ -226,8 +241,53 @@ const updateCall = async (req, res) => {
                 message: 'You are not a participant in this call.'
             });
         }
+        if (action === 'missed') {
+            if (!isCaller) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({
+                    success: false, code: 'CALL_ACCESS_DENIED',
+                    message: 'Only the caller can mark an unanswered call as missed.'
+                });
+            }
+            if (call.status === 'ringing') {
+                const expired = await client.query(
+                    `SELECT ring_expires_at <= NOW() AS is_expired,
+                            GREATEST(0, CEIL(EXTRACT(EPOCH FROM ring_expires_at - NOW()) * 1000))::integer
+                                AS retry_after_ms
+                     FROM message_calls WHERE call_id = $1::uuid`,
+                    [callId]
+                );
+                if (!expired.rows[0]?.is_expired) {
+                    await client.query('COMMIT');
+                    return res.status(409).json({
+                        success: false, code: 'CALL_NOT_EXPIRED',
+                        message: 'The call is still ringing.',
+                        data: {
+                            call: toPublicCall(call),
+                            retry_after_ms: expired.rows[0].retry_after_ms
+                        }
+                    });
+                }
+                const updated = await client.query(
+                    `UPDATE message_calls
+                     SET status = 'missed', ended_at = NOW(), ended_by_uid = $2
+                     WHERE call_id = $1::uuid
+                     RETURNING call_id, conversation_id::text AS conversation_id,
+                               caller_uid, caller_name, callee_uid, callee_name,
+                               call_type, status, created_at, accepted_at, ended_at,
+                               ended_by_uid, ring_expires_at`,
+                    [callId, req.firebaseUid]
+                );
+                await client.query('COMMIT');
+                const updatedCall = toPublicCall(updated.rows[0]);
+                emitToConversation(conversationId, 'call:updated', { call: updatedCall });
+                return res.json({ success: true, data: { call: updatedCall } });
+            }
+            await client.query('COMMIT');
+            return res.json({ success: true, data: { call: toPublicCall(call) } });
+        }
         if (['declined', 'missed', 'ended'].includes(call.status)) {
-            if (action === 'end' || action === 'missed' ||
+            if (action === 'end' ||
                 (action === 'decline' && isCallee && call.status === 'declined')) {
                 await client.query('COMMIT');
                 return res.json({ success: true });
@@ -279,8 +339,6 @@ const updateCall = async (req, res) => {
             });
         }
         if ((action === 'decline' && (!isCallee || call.status !== 'ringing')) ||
-            (action === 'missed' && (!isCaller || call.status !== 'ringing' ||
-                new Date(call.ring_expires_at) > new Date())) ||
             (action === 'end' && !['ringing', 'accepted'].includes(call.status))) {
             await client.query('ROLLBACK');
             return res.status(409).json({

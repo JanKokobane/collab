@@ -4,7 +4,7 @@ import { api, apiBaseUrl } from './api.js'
 import { clearCallInterface, renderCallInterface } from './messageCallUI.js?v=20261018-1420'
 
 const maxAttachmentBytes = 512 * 1024
-const messagesBuildId = '20261018-1420'
+const messagesBuildId = '20261019-1818'
 const presenceHeartbeatMs = 25000
 const callSocketConnectTimeoutMs = 15000
 const callMediaRequestTimeoutMs = 30000
@@ -44,6 +44,12 @@ let mediaRecorder = null
 let mediaStream = null
 let voiceRecordingChunks = []
 let voiceRecordingTimer = null
+let voiceRecordingFrame = null
+let voiceRecordingAudioContext = null
+let voiceRecordingSource = null
+let voiceRecordingAnalyser = null
+let voiceRecordingSamples = []
+let voiceRecordingSampledAt = 0
 let voiceRecordingStartedAt = 0
 let voiceRecordingElapsedMs = 0
 let voiceRecordingConversationId = null
@@ -982,12 +988,39 @@ async function callRootReplace() {
 }
 
 async function expireOutgoingCall(call) {
+  let updatedCall = null
   try {
-    await api.post(`${apiPath(call.conversationId)}/calls/${call.callId}/missed`, {})
+    const result = await api.post(`${apiPath(call.conversationId)}/calls/${call.callId}/missed`, {})
+    updatedCall = result?.data?.call || null
   } catch (error) {
-    showError(error, `mark call ${call.callId} as missed`)
+    if (error?.status !== 409) {
+      showError(error, `mark call ${call.callId} as missed`)
+      if (activeCall?.callId === call.callId) await finishActiveCall(false)
+      return
+    }
+    if (error?.code === 'CALL_NOT_EXPIRED') {
+      const retryAfter = Number(error.payload?.data?.retry_after_ms)
+      activeCall.ringingTimer = setTimeout(
+        () => expireOutgoingCall(call),
+        Number.isFinite(retryAfter) ? Math.max(250, retryAfter + 100) : 1000
+      )
+      return
+    }
+    try {
+      const result = await api.get(`${apiPath(call.conversationId)}/calls?limit=200`)
+      updatedCall = result?.data?.calls?.find(item => item.call_id === call.callId) || null
+    } catch (reconcileError) {
+      showError(reconcileError, `reconcile call ${call.callId} after timeout`)
+      if (activeCall?.callId === call.callId) await finishActiveCall(false)
+      return
+    }
+    if (updatedCall?.status === 'ringing' && activeCall?.callId === call.callId) {
+      activeCall.ringingTimer = setTimeout(() => expireOutgoingCall(call), 1000)
+      return
+    }
   }
-  if (activeCall?.callId === call.callId) await finishActiveCall(false)
+  if (updatedCall) handleCallUpdate(updatedCall)
+  else if (activeCall?.callId === call.callId) await finishActiveCall(false)
 }
 
 async function startCall(conversation, callType) {
@@ -1442,12 +1475,15 @@ function createFileIcon(attachment) {
   return icon
 }
 
-function createVoiceWaveform(className, seed = '') {
+function createVoiceWaveform(className, seed = '', waveformPeaks = null) {
   const waveform = make('div', className)
   let value = [...seed].reduce((sum, character) => sum + character.charCodeAt(0), 17) || 17
   for (let index = 0; index < 40; index += 1) {
     value = (value * 9301 + 49297) % 233280
-    const height = 18 + Math.round((value / 233280) * 82)
+    const normalizedPeak = Array.isArray(waveformPeaks) && Number.isFinite(waveformPeaks[index])
+      ? Math.max(0, Math.min(1, waveformPeaks[index]))
+      : 0.18 + (value / 233280) * 0.82
+    const height = 16 + Math.round(normalizedPeak * 84)
     const bar = make('span', 'messages-waveform-bar')
     bar.style.setProperty('--bar-height', `${height}%`)
     bar.style.setProperty('--bar-delay', `${index * 18}ms`)
@@ -1469,7 +1505,9 @@ function updateVoicePlayerProgress(audio, waveform, timeLabel, playButton, store
   ))
   waveform.setAttribute('aria-valuenow', String(Math.round(progress * 100)))
   waveform.setAttribute('aria-valuetext', `${formatVoiceDuration(Math.floor(currentTime))} of ${formatVoiceDuration(Math.floor(duration))}`)
-  timeLabel.textContent = duration ? formatVoiceDuration(Math.ceil(duration)) : 'Unavailable'
+  timeLabel.textContent = duration
+    ? `${formatVoiceDuration(Math.floor(currentTime))} / ${formatVoiceDuration(Math.ceil(duration))}`
+    : 'Unavailable'
   const isPlaying = !audio.paused && !audio.ended
   playButton.setAttribute('aria-label', isPlaying ? 'Pause voice note' : 'Play voice note')
   playButton.title = isPlaying ? 'Pause voice note' : 'Play voice note'
@@ -1532,7 +1570,8 @@ function renderAttachment(attachment, container) {
     playButton.append(createVoicePlayerIcon(false))
     const waveform = createVoiceWaveform(
       'messages-voice-waveform',
-      `${attachment.fileName || ''}${attachment.size || ''}`
+      `${attachment.fileName || ''}${attachment.size || ''}`,
+      attachment.waveform_peaks || attachment.waveformPeaks
     )
     waveform.setAttribute('role', 'slider')
     waveform.setAttribute('aria-label', 'Voice note playback position')
@@ -1547,8 +1586,20 @@ function renderAttachment(attachment, container) {
     const timeLabel = make(
       'span',
       'messages-voice-time',
-      storedDuration ? formatVoiceDuration(storedDuration) : 'Unavailable'
+      storedDuration ? `00:00 / ${formatVoiceDuration(storedDuration)}` : 'Unavailable'
     )
+    const speedButton = make('button', 'messages-voice-speed', '1x')
+    speedButton.type = 'button'
+    speedButton.setAttribute('aria-label', 'Playback speed 1x')
+    const playbackSpeeds = [1, 1.5, 2]
+    let playbackSpeedIndex = 0
+    speedButton.addEventListener('click', () => {
+      playbackSpeedIndex = (playbackSpeedIndex + 1) % playbackSpeeds.length
+      const speed = playbackSpeeds[playbackSpeedIndex]
+      player.playbackRate = speed
+      speedButton.textContent = `${speed}x`
+      speedButton.setAttribute('aria-label', `Playback speed ${speed}x`)
+    })
     const togglePlayback = async () => {
       if (player.paused) {
         try {
@@ -1598,7 +1649,7 @@ function renderAttachment(attachment, container) {
       })
       showError(new Error('This voice note could not be played. Please try downloading or resending it.'), 'load voice note')
     })
-    playerUi.append(playButton, waveform, timeLabel)
+    playerUi.append(playButton, waveform, timeLabel, speedButton)
     container.append(player, playerUi)
     updateVoicePlayerProgress(player, waveform, timeLabel, playButton, storedDuration)
     return
@@ -1872,6 +1923,26 @@ function deleteConversationForMe(conversation) {
   confirmConversationAction(conversation, 'delete-chat')
 }
 
+function createCallLaunchButton(conversation, callType) {
+  const isVideo = callType === 'video'
+  const label = isVideo ? 'Start video call' : 'Start voice call'
+  const button = make('button', 'collab-call-launch')
+  button.type = 'button'
+  button.setAttribute('aria-label', label)
+  button.title = label
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  icon.setAttribute('viewBox', '0 0 24 24')
+  icon.setAttribute('aria-hidden', 'true')
+  const path = document.createElementNS(icon.namespaceURI, 'path')
+  path.setAttribute('d', isVideo
+    ? 'M15 10l5-3v10l-5-3zM3 6h12v12H3z'
+    : 'M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.14 4.2 2 2 0 0 1 4.13 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8.03 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z')
+  icon.append(path)
+  button.append(icon)
+  button.addEventListener('click', () => startCall(conversation, callType))
+  return button
+}
+
 function renderMessagesView() {
   const { header, input, send } = getElements()
   if (!header || !input || !send) return
@@ -1904,6 +1975,12 @@ function renderMessagesView() {
   heading.append(subtitle)
   header.append(heading)
   const actions = make('div', 'messages-thread-actions')
+  if (conversation.type === 'direct') {
+    actions.append(
+      createCallLaunchButton(conversation, 'audio'),
+      createCallLaunchButton(conversation, 'video')
+    )
+  }
   const trigger = make('button', 'message-actions-trigger messages-thread-actions-trigger', '⋮')
   trigger.type = 'button'
   trigger.setAttribute('aria-label', 'Conversation actions')
@@ -2360,6 +2437,61 @@ function formatVoiceDuration(seconds) {
   return `${minutes}:${remainingSeconds}`
 }
 
+function buildVoiceWaveformPeaks(samples, peakCount = 40) {
+  if (!samples.length) return Array(peakCount).fill(0.08)
+  return Array.from({ length: peakCount }, (_, index) => {
+    const start = Math.floor(index * samples.length / peakCount)
+    const end = Math.max(start + 1, Math.floor((index + 1) * samples.length / peakCount))
+    const peak = Math.max(...samples.slice(start, end))
+    return Math.round(Math.max(0.08, Math.min(1, peak)) * 1000) / 1000
+  })
+}
+
+function drawLiveVoiceWaveform() {
+  if (!mediaRecorder || mediaRecorder.state !== 'recording' || !voiceRecordingAnalyser) return
+  const now = performance.now()
+  if (now - voiceRecordingSampledAt >= 80) {
+    const samples = new Uint8Array(voiceRecordingAnalyser.fftSize)
+    voiceRecordingAnalyser.getByteTimeDomainData(samples)
+    const rms = Math.sqrt(samples.reduce((sum, sample) => {
+      const amplitude = (sample - 128) / 128
+      return sum + amplitude * amplitude
+    }, 0) / samples.length)
+    voiceRecordingSamples.push(Math.max(0.08, Math.min(1, rms * 3.5)))
+    voiceRecordingSampledAt = now
+
+    const { recordingWaveform } = getElements()
+    const bars = recordingWaveform?.querySelectorAll('.messages-waveform-bar') || []
+    const livePeaks = buildVoiceWaveformPeaks(voiceRecordingSamples.slice(-bars.length), bars.length)
+    bars.forEach((bar, index) => {
+      bar.style.setProperty('--bar-height', `${16 + Math.round(livePeaks[index] * 84)}%`)
+    })
+  }
+  voiceRecordingFrame = window.requestAnimationFrame(drawLiveVoiceWaveform)
+}
+
+function releaseVoiceRecordingAudioGraph() {
+  if (voiceRecordingFrame !== null) {
+    window.cancelAnimationFrame(voiceRecordingFrame)
+    voiceRecordingFrame = null
+  }
+  try {
+    voiceRecordingSource?.disconnect()
+    voiceRecordingSource = null
+    voiceRecordingAnalyser?.disconnect()
+    voiceRecordingAnalyser = null
+  } catch (error) {
+    console.warn('[messages] Unable to disconnect the voice waveform analyser.', error)
+  }
+  if (voiceRecordingAudioContext) {
+    const context = voiceRecordingAudioContext
+    voiceRecordingAudioContext = null
+    context.close().catch(error => {
+      console.warn('[messages] Unable to close the voice recording audio context.', error)
+    })
+  }
+}
+
 function updateVoiceRecordingStatus() {
   const { voiceStatus } = getElements()
   if (voiceStatus) {
@@ -2375,6 +2507,8 @@ function resetVoiceRecordingUi() {
   voiceRecordingTimer = null
   voiceRecordingElapsedMs = 0
   voiceRecordingStartedAt = 0
+  voiceRecordingSamples = []
+  voiceRecordingSampledAt = 0
   voiceRecordingShouldSend = false
   if (voiceRecord) {
     voiceRecord.replaceChildren(createVoiceRecordIcon())
@@ -2404,6 +2538,10 @@ function toggleVoiceRecordingPause() {
     voiceRecordingElapsedMs += Date.now() - voiceRecordingStartedAt
     voiceRecordingStartedAt = 0
     mediaRecorder.pause()
+    if (voiceRecordingFrame !== null) {
+      window.cancelAnimationFrame(voiceRecordingFrame)
+      voiceRecordingFrame = null
+    }
     recordingPanel?.classList.add('is-paused')
     if (voicePause) {
       voicePause.replaceChildren(createVoicePlayerIcon(false), make('span', '', 'Resume'))
@@ -2417,6 +2555,7 @@ function toggleVoiceRecordingPause() {
       voicePause.replaceChildren(createVoicePlayerIcon(true), make('span', '', 'Pause'))
       voicePause.setAttribute('aria-label', 'Pause voice recording')
     }
+    voiceRecordingFrame = window.requestAnimationFrame(drawLiveVoiceWaveform)
   }
   updateVoiceRecordingStatus()
 }
@@ -2470,17 +2609,35 @@ async function startVoiceRecording() {
       mediaStream = null
       return
     }
-    const mimeType = typeof MediaRecorder.isTypeSupported === 'function' ? [
-      'audio/webm;codecs=opus',
-      'audio/mp4;codecs=mp4a.40.2',
-      'audio/ogg;codecs=opus'
-    ].find(type => MediaRecorder.isTypeSupported(type)) : ''
-    const recorderOptions = {
-      audioBitsPerSecond: 24_000,
-      ...(mimeType ? { mimeType } : {})
+    const AudioContextConstructor = window.AudioContext || window.webkitAudioContext
+    if (!AudioContextConstructor) {
+      throw new Error('Live voice-note waveform visualization is not supported in this browser.')
     }
-    mediaRecorder = new MediaRecorder(mediaStream, recorderOptions)
+    voiceRecordingAudioContext = new AudioContextConstructor()
+    await voiceRecordingAudioContext.resume()
+    voiceRecordingAnalyser = voiceRecordingAudioContext.createAnalyser()
+    voiceRecordingAnalyser.fftSize = 1024
+    voiceRecordingSource = voiceRecordingAudioContext.createMediaStreamSource(mediaStream)
+    voiceRecordingSource.connect(voiceRecordingAnalyser)
+
+    const preferredMimeTypes = [
+      'audio/ogg;codecs=opus',
+      'audio/webm;codecs=opus'
+    ]
+    const mimeType = preferredMimeTypes.find(type =>
+      typeof MediaRecorder.isTypeSupported === 'function' &&
+      MediaRecorder.isTypeSupported(type)
+    )
+    if (!mimeType) {
+      throw new Error('This browser cannot record Opus audio in OGG or WebM format.')
+    }
+    mediaRecorder = new MediaRecorder(mediaStream, {
+      mimeType,
+      audioBitsPerSecond: 24_000
+    })
     voiceRecordingChunks = []
+    voiceRecordingSamples = []
+    voiceRecordingSampledAt = 0
     voiceRecordingConversationId = targetConversationId
     cancelVoiceRecordingOnStop = false
     voiceRecordingShouldSend = false
@@ -2499,12 +2656,13 @@ async function startVoiceRecording() {
       recordingPanel.classList.remove('is-paused')
     }
     if (recordingWaveform) {
-      const bars = createVoiceWaveform('messages-recording-bars')
+      const bars = createVoiceWaveform('messages-recording-bars', '', Array(40).fill(0.08))
       recordingWaveform.replaceChildren(...Array.from(bars.children))
     }
     composer?.classList.add('is-recording')
     updateVoiceRecordingStatus()
     voiceRecordingTimer = setInterval(updateVoiceRecordingStatus, 1000)
+    voiceRecordingFrame = window.requestAnimationFrame(drawLiveVoiceWaveform)
     mediaRecorder.addEventListener('dataavailable', event => {
       if (event.data.size) voiceRecordingChunks.push(event.data)
       const totalSize = voiceRecordingChunks.reduce((size, chunk) => size + chunk.size, 0)
@@ -2528,15 +2686,13 @@ async function startVoiceRecording() {
       cancelVoiceRecordingOnStop = false
       const shouldSend = voiceRecordingShouldSend
       const durationSeconds = Math.max(1, Math.ceil(voiceRecordingElapsedMs / 1000))
+      const waveformPeaks = buildVoiceWaveformPeaks(voiceRecordingSamples)
+      releaseVoiceRecordingAudioGraph()
       resetVoiceRecordingUi()
       if (cancelled || conversationId !== selectedConversationId || !chunks.length) return
       const currentAttachmentBytes = pendingFiles.reduce((size, file) => size + file.size, 0)
       const voiceNoteByteLimit = maxAttachmentBytes - currentAttachmentBytes
-      let blob = new Blob(chunks, { type: recordingType })
-      while (blob.size > voiceNoteByteLimit && chunks.length > 1) {
-        chunks.pop()
-        blob = new Blob(chunks, { type: recordingType })
-      }
+      const blob = new Blob(chunks, { type: recordingType })
       if (blob.size > voiceNoteByteLimit) {
         showError(new Error(
           'The voice note reached the message size limit and could not be added. Remove another attachment or record a shorter note.'
@@ -2546,9 +2702,11 @@ async function startVoiceRecording() {
       const extension = recordingType.includes('mp4') ? 'm4a' :
         recordingType.includes('ogg') ? 'ogg' : 'webm'
       const voiceFile = new File([blob], `voice-note-${durationSeconds}s-${Date.now()}.${extension}`, {
-        type: recordingType.split(';')[0]
+        type: recordingType
       })
       voiceFile.isVoiceNote = true
+      voiceFile.durationSeconds = durationSeconds
+      voiceFile.waveformPeaks = waveformPeaks
       pendingFiles.push(voiceFile)
       clearError()
       if (shouldSend) getElements().composer?.requestSubmit()
@@ -2560,6 +2718,7 @@ async function startVoiceRecording() {
       mediaStream?.getTracks().forEach(track => track.stop())
       mediaStream = null
       voiceRecordingChunks = []
+      releaseVoiceRecordingAudioGraph()
       resetVoiceRecordingUi()
       showError(event.error || new Error('Voice recording failed.'))
     })
@@ -2570,6 +2729,7 @@ async function startVoiceRecording() {
     mediaStream = null
     mediaRecorder = null
     voiceRecordingChunks = []
+    releaseVoiceRecordingAudioGraph()
     resetVoiceRecordingUi()
     showError(error, 'start voice recording')
   } finally {
@@ -2580,12 +2740,13 @@ async function startVoiceRecording() {
 function cancelVoiceRecording() {
   if (!mediaRecorder) return
   cancelVoiceRecordingOnStop = true
-  if (mediaRecorder.state === 'recording') mediaRecorder.stop()
+  if (['recording', 'paused'].includes(mediaRecorder.state)) mediaRecorder.stop()
   else {
     mediaStream?.getTracks().forEach(track => track.stop())
     mediaStream = null
     mediaRecorder = null
     voiceRecordingChunks = []
+    releaseVoiceRecordingAudioGraph()
     resetVoiceRecordingUi()
   }
 }
@@ -2635,6 +2796,10 @@ async function sendMessage(event) {
         mediaType: file.type || 'application/octet-stream',
         size: file.size,
         is_voice_note: Boolean(file.isVoiceNote),
+        ...(file.isVoiceNote ? {
+          duration_seconds: file.durationSeconds,
+          waveform_peaks: file.waveformPeaks
+        } : {}),
         data: await fileToDataUrl(file)
       })))
       const clientMessageId = crypto.randomUUID()
