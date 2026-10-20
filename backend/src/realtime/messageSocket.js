@@ -165,6 +165,12 @@ const emitToConversation = async (conversationId, event, payload, exceptSocketId
 
 const emitToUser = (uid, event, payload) => io?.to(userRoom(uid)).emit(event, payload);
 
+const emitToCallParticipants = (call, event, payload) => {
+    if (!call) return;
+    const participantUids = new Set([call.caller_uid, call.callee_uid].filter(Boolean));
+    participantUids.forEach(uid => emitToUser(uid, event, payload));
+};
+
 const reconcileUserConversationAccess = async (uid, conversationIds) => {
     if (!io || !conversationIds.length) return;
     for (const conversationId of conversationIds) {
@@ -392,6 +398,7 @@ const attachMessageSocket = server => {
 module.exports = {
     attachMessageSocket,
     emitToConversation,
+    emitToCallParticipants,
     emitToUser,
     reconcileUserConversationAccess,
     setPresence

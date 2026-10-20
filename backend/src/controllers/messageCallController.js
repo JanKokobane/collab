@@ -1,6 +1,6 @@
 const { randomUUID } = require('node:crypto');
 const { pool, query } = require('../config/db');
-const { emitToConversation } = require('../realtime/messageSocket');
+const { emitToCallParticipants } = require('../realtime/messageSocket');
 const { getConversation } = require('./messageController');
 const { getMessageCallIceServers } = require('../services/messageCallIceConfig');
 
@@ -58,7 +58,7 @@ const markExpiredCallsMissed = async conversationId => {
         [conversationId]
     );
     for (const call of result.rows) {
-        emitToConversation(conversationId, 'call:updated', { call });
+        emitToCallParticipants(call, 'call:updated', { call });
     }
 };
 
@@ -180,7 +180,7 @@ const startCall = async (req, res) => {
             created_at: createdAt.toISOString(),
             ring_expires_at: ringExpiresAt.toISOString()
         };
-        emitToConversation(conversationId, 'call:updated', { call });
+        emitToCallParticipants(call, 'call:updated', { call });
         res.set('Cache-Control', 'no-store');
         return res.status(201).json({
             success: true,
@@ -280,7 +280,7 @@ const updateCall = async (req, res) => {
                 );
                 await client.query('COMMIT');
                 const updatedCall = toPublicCall(updated.rows[0]);
-                emitToConversation(conversationId, 'call:updated', { call: updatedCall });
+                emitToCallParticipants(updatedCall, 'call:updated', { call: updatedCall });
                 return res.json({ success: true, data: { call: updatedCall } });
             }
             await client.query('COMMIT');
@@ -314,9 +314,8 @@ const updateCall = async (req, res) => {
                     [callId]
                 );
                 await client.query('COMMIT');
-                emitToConversation(conversationId, 'call:updated', {
-                    call: { ...call, status: 'missed', ended_at: new Date().toISOString() }
-                });
+                const updatedCall = { ...call, status: 'missed', ended_at: new Date().toISOString() };
+                emitToCallParticipants(updatedCall, 'call:updated', { call: updatedCall });
                 return res.status(410).json({
                     success: false, code: 'CALL_EXPIRED',
                     message: 'This call invitation has expired.'
@@ -329,9 +328,8 @@ const updateCall = async (req, res) => {
                 [callId]
             );
             await client.query('COMMIT');
-            emitToConversation(conversationId, 'call:updated', {
-                call: { ...call, status: 'accepted' }
-            });
+            const updatedCall = { ...call, status: 'accepted' };
+            emitToCallParticipants(updatedCall, 'call:updated', { call: updatedCall });
             res.set('Cache-Control', 'no-store');
             return res.json({
                 success: true,
@@ -354,9 +352,8 @@ const updateCall = async (req, res) => {
             [callId, status, req.firebaseUid]
         );
         await client.query('COMMIT');
-        emitToConversation(conversationId, 'call:updated', {
-            call: { ...call, status, ended_by_uid: req.firebaseUid }
-        });
+        const updatedCall = { ...call, status, ended_by_uid: req.firebaseUid };
+        emitToCallParticipants(updatedCall, 'call:updated', { call: updatedCall });
         return res.json({ success: true });
     } catch (error) {
         await client?.query('ROLLBACK').catch(() => {});

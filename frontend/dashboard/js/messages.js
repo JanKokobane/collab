@@ -1,7 +1,7 @@
 import { activeView, currentUser, getAccessibleMembers, getAvatarSource, make, projects, renderAvatarElement } from './state.js'
 import { firebaseAuth } from '../../firebase.js'
 import { api, apiBaseUrl } from './api.js'
-import { clearCallInterface, renderCallInterface } from './messageCallUI.js?v=20261018-1420'
+import { clearCallInterface, renderCallInterface } from './messageCallUI.js?v=20261020-call-dimmer'
 
 const maxAttachmentBytes = 512 * 1024
 const messagesBuildId = '20261019-1818'
@@ -479,26 +479,29 @@ function shouldPlayCallTone() {
 function playCallRingtoneTone() {
   const context = callRingtoneContext
   if (!shouldPlayCallTone() || acceptingCallId || !context || context.state !== 'running') return
-  const startAt = context.currentTime
-  ;[440, 480].forEach(frequency => {
-    const oscillator = context.createOscillator()
-    const gain = context.createGain()
-    oscillator.type = 'sine'
-    oscillator.frequency.setValueAtTime(frequency, startAt)
-    gain.gain.setValueAtTime(0, startAt)
-    gain.gain.linearRampToValueAtTime(0.07, startAt + 0.035)
-    gain.gain.setValueAtTime(0.07, startAt + 0.42)
-    gain.gain.linearRampToValueAtTime(0, startAt + 0.58)
-    oscillator.connect(gain)
-    gain.connect(context.destination)
-    callRingtoneOscillators.add(oscillator)
-    oscillator.addEventListener('ended', () => {
-      callRingtoneOscillators.delete(oscillator)
-      oscillator.disconnect()
-      gain.disconnect()
-    }, { once: true })
-    oscillator.start(startAt)
-    oscillator.stop(startAt + 0.6)
+  const patternStart = context.currentTime
+  ;[0, 0.68].forEach(offset => {
+    ;[440, 480].forEach(frequency => {
+      const oscillator = context.createOscillator()
+      const gain = context.createGain()
+      const startAt = patternStart + offset
+      oscillator.type = 'sine'
+      oscillator.frequency.setValueAtTime(frequency, startAt)
+      gain.gain.setValueAtTime(0, startAt)
+      gain.gain.linearRampToValueAtTime(0.07, startAt + 0.035)
+      gain.gain.setValueAtTime(0.07, startAt + 0.38)
+      gain.gain.linearRampToValueAtTime(0, startAt + 0.44)
+      oscillator.connect(gain)
+      gain.connect(context.destination)
+      callRingtoneOscillators.add(oscillator)
+      oscillator.addEventListener('ended', () => {
+        callRingtoneOscillators.delete(oscillator)
+        oscillator.disconnect()
+        gain.disconnect()
+      }, { once: true })
+      oscillator.start(startAt)
+      oscillator.stop(startAt + 0.46)
+    })
   })
 }
 
@@ -510,7 +513,7 @@ function startCallRingtone() {
   callRingtoneTimer = setInterval(() => {
     if (shouldPlayCallTone()) playCallRingtoneTone()
     else stopCallRingtone()
-  }, 2600)
+  }, 3200)
 }
 
 function stopCallRingtone() {
@@ -587,6 +590,10 @@ function setActiveCallStatus(text) {
   if (!activeCall) return
   const status = activeCall.overlay?.querySelector('.collab-call-status')
   if (status) status.textContent = text
+  const placeholderStatus = activeCall.videoPlaceholder?.querySelector('span')
+  if (placeholderStatus) {
+    placeholderStatus.textContent = activeCall.status === 'ringing' ? 'Ringing…' : 'Connecting video…'
+  }
 }
 
 function waitForRealtimeConnection(socket) {
@@ -877,6 +884,7 @@ function renderCallOverlay() {
     activeCall.overlay = view.overlay
     activeCall.remoteVideo = view.remoteVideo
     activeCall.localVideo = view.localVideo
+    activeCall.videoPlaceholder = view.videoPlaceholder
   } else if (incomingCall && view) {
     incomingCall.overlay = view.overlay
   }
@@ -924,6 +932,9 @@ function createCallPeerConnection(call, iceServers) {
       call.remoteStream = stream
     } else if (!call.remoteStream.getTracks().some(track => track.id === event.track.id)) {
       call.remoteStream.addTrack(event.track)
+    }
+    if (event.track.kind === 'video' && call.videoPlaceholder) {
+      call.videoPlaceholder.hidden = true
     }
     if (call.remoteVideo) {
       call.remoteVideo.srcObject = call.remoteStream
