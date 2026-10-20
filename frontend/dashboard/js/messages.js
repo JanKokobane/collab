@@ -787,7 +787,6 @@ function subscribeToConversationMessages(conversation) {
       }
     }
     if (selectedConversationId === conversation.id) {
-      messageState.messages = messageState.messages.filter(item => item.id !== saved.message.id)
       if (saved.changed) renderMessages()
       if (message.sender_firebase_uid !== uid) {
         api.post(`${apiPath(conversation.id)}/read`, {})
@@ -1843,7 +1842,9 @@ function renderMessageActions(message, container) {
     ? [{ label: 'Delete for me', action: () => deleteMessage(message, 'me'), destructive: true }]
     : [
        { label: 'Reply', action: () => startReply(message) },
-       { label: 'Edit', action: () => startEdit(message) },
+       ...(message.senderUid === currentUid()
+         ? [{ label: 'Edit', action: () => startEdit(message) }]
+         : []),
        { label: 'Forward', action: () => openForwardModal(message) },
        { label: message.pinned ? 'Unpin' : 'Pin', action: () => mutateMessage(message, 'pin') },
        { label: 'Delete for me', action: () => deleteMessage(message, 'me'), destructive: true },
@@ -2005,19 +2006,26 @@ function confirmConversationAction(conversation, action) {
     confirm.disabled = true
     try {
       if (deletingChat) {
+        const wasSelected = selectedConversationId === conversation.id
         await api.delete(apiPath(conversation.id))
         unsubscribeConversation(conversation.id)
         messageState.conversations = messageState.conversations
           .filter(item => item.id !== conversation.id)
-        if (selectedConversationId === conversation.id) {
+        if (wasSelected || selectedConversationId === conversation.id) {
           selectedConversationId = messageState.conversations[0]?.id || null
           messageState.messages = []
           if (selectedConversationId) await loadConversationMessages(selectedConversationId)
         }
       } else {
         await api.delete(`${apiPath(conversation.id)}/messages`)
+        messageState.messages = messageState.messages.filter(
+          message => message.conversationId !== conversation.id
+        )
+        conversation.latestMessage = ''
+        conversation.latestMessageCreatedAt = null
       }
       closeModal()
+      renderMessages()
       await refreshFromServer()
     } catch (error) {
       confirm.disabled = false

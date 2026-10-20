@@ -713,6 +713,12 @@ const mutateMessage = async (req, res) => {
             );
             const message = found.rows[0];
             if (!message) return { status: 404, code: 'MESSAGE_NOT_FOUND', message: 'Message not found.' };
+            if (action === 'edit' && message.sender_firebase_uid !== req.firebaseUid) {
+                return {
+                    status: 403, code: 'MESSAGE_EDIT_FORBIDDEN',
+                    message: 'Only the sender can edit this message.'
+                };
+            }
             if (message.deleted_at) return { status: 400, code: 'MESSAGE_ALREADY_DELETED', message: 'A deleted message cannot be changed.' };
             if (action === 'edit') {
                 const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
