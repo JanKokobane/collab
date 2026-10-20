@@ -33,6 +33,9 @@ let presenceHeartbeatTimer = null
 let incomingCall = null
 let activeCall = null
 let incomingCallTimer = null
+let callRingtoneContext = null
+let callRingtoneTimer = null
+const callRingtoneOscillators = new Set()
 let callStartInFlight = false
 let callStartSequence = 0
 let callStarting = null
@@ -455,6 +458,83 @@ function unsubscribeConversation(conversationId) {
   conversationCallHistory.delete(conversationId)
 }
 
+function getCallRingtoneContext() {
+  const AudioContextConstructor = window.AudioContext || window.webkitAudioContext
+  if (!AudioContextConstructor) return null
+  if (!callRingtoneContext) {
+    try {
+      callRingtoneContext = new AudioContextConstructor()
+    } catch (error) {
+      console.warn('[messages] Incoming-call sound is not supported.', error.message)
+      return null
+    }
+  }
+  return callRingtoneContext
+}
+
+function shouldPlayCallTone() {
+  return Boolean(incomingCall || (activeCall?.isCaller && activeCall.status === 'ringing'))
+}
+
+function playCallRingtoneTone() {
+  const context = callRingtoneContext
+  if (!shouldPlayCallTone() || acceptingCallId || !context || context.state !== 'running') return
+  const startAt = context.currentTime
+  ;[440, 480].forEach(frequency => {
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    oscillator.type = 'sine'
+    oscillator.frequency.setValueAtTime(frequency, startAt)
+    gain.gain.setValueAtTime(0, startAt)
+    gain.gain.linearRampToValueAtTime(0.07, startAt + 0.035)
+    gain.gain.setValueAtTime(0.07, startAt + 0.42)
+    gain.gain.linearRampToValueAtTime(0, startAt + 0.58)
+    oscillator.connect(gain)
+    gain.connect(context.destination)
+    callRingtoneOscillators.add(oscillator)
+    oscillator.addEventListener('ended', () => {
+      callRingtoneOscillators.delete(oscillator)
+      oscillator.disconnect()
+      gain.disconnect()
+    }, { once: true })
+    oscillator.start(startAt)
+    oscillator.stop(startAt + 0.6)
+  })
+}
+
+function startCallRingtone() {
+  if (!shouldPlayCallTone() || acceptingCallId || callRingtoneTimer !== null) return
+  const context = getCallRingtoneContext()
+  if (!context) return
+  playCallRingtoneTone()
+  callRingtoneTimer = setInterval(() => {
+    if (shouldPlayCallTone()) playCallRingtoneTone()
+    else stopCallRingtone()
+  }, 2600)
+}
+
+function stopCallRingtone() {
+  if (callRingtoneTimer !== null) {
+    clearInterval(callRingtoneTimer)
+    callRingtoneTimer = null
+  }
+  callRingtoneOscillators.forEach(oscillator => {
+    try {
+      oscillator.stop()
+    } catch {}
+  })
+}
+
+function unlockCallRingtone() {
+  const context = getCallRingtoneContext()
+  if (!context || context.state !== 'suspended') return
+  context.resume().then(() => {
+    if (shouldPlayCallTone()) playCallRingtoneTone()
+  }).catch(error => {
+    console.warn('[messages] Incoming-call sound is unavailable until audio is enabled.', error.message)
+  })
+}
+
 function handleCallUpdate(call) {
   const uid = currentUid()
   if (!call || (call.caller_uid !== uid && call.callee_uid !== uid)) return
@@ -464,10 +544,12 @@ function handleCallUpdate(call) {
     call.status === 'ringing' && ringExpiry > Date.now()) {
     if (mediaRecorder) cancelVoiceRecording()
     incomingCall = call
+    startCallRingtone()
     clearTimeout(incomingCallTimer)
     incomingCallTimer = setTimeout(() => {
       if (incomingCall?.call_id === call.call_id) {
         incomingCall = null
+        stopCallRingtone()
         renderCallOverlay()
         refreshCallHistory(call.conversation_id).catch(error =>
           showError(error, `refresh missed call history for ${call.conversation_id}`)
@@ -477,6 +559,7 @@ function handleCallUpdate(call) {
     renderCallOverlay()
   } else if (incomingCall?.call_id === call.call_id && call.status !== 'ringing') {
     incomingCall = null
+    stopCallRingtone()
     clearTimeout(incomingCallTimer)
     incomingCallTimer = null
     renderCallOverlay()
@@ -484,6 +567,7 @@ function handleCallUpdate(call) {
   if (activeCall?.callId === call.call_id) {
     if (call.status === 'accepted') {
       activeCall.status = 'accepted'
+      stopCallRingtone()
       clearTimeout(activeCall.ringingTimer)
       setActiveCallStatus(`${activeCall.callType === 'video' ? 'Video' : 'Voice'} · Connecting…`)
       if (activeCall.isCaller) {
@@ -780,7 +864,7 @@ function renderCallOverlay() {
   const view = renderCallInterface(callRoot, {
     activeCall,
     incomingCall,
-    startingCall: callStarting,
+    startingCall: null,
     callError
   }, {
     onHangUp: () => finishActiveCall(true),
@@ -954,6 +1038,7 @@ async function applyPendingCallSignals(call) {
 async function finishActiveCall(notifyPeer) {
   const call = activeCall
   if (!call) return
+  stopCallRingtone()
   clearTimeout(call.ringingTimer)
   activeCall = null
   call.peerConnection?.close()
@@ -989,9 +1074,18 @@ async function callRootReplace() {
 
 async function expireOutgoingCall(call) {
   let updatedCall = null
+  let retryAfterMs = null
+  const scheduleRetry = delay => {
+    if (activeCall?.callId !== call.callId) return
+    activeCall.ringingTimer = setTimeout(
+      () => expireOutgoingCall(call),
+      Number.isFinite(delay) ? Math.max(250, delay + 100) : 1000
+    )
+  }
   try {
     const result = await api.post(`${apiPath(call.conversationId)}/calls/${call.callId}/missed`, {})
     updatedCall = result?.data?.call || null
+    retryAfterMs = Number(result?.data?.retry_after_ms)
   } catch (error) {
     if (error?.status !== 409) {
       showError(error, `mark call ${call.callId} as missed`)
@@ -1015,9 +1109,14 @@ async function expireOutgoingCall(call) {
       return
     }
     if (updatedCall?.status === 'ringing' && activeCall?.callId === call.callId) {
-      activeCall.ringingTimer = setTimeout(() => expireOutgoingCall(call), 1000)
+      const ringExpiry = Date.parse(updatedCall.ring_expires_at)
+      scheduleRetry(Number.isFinite(ringExpiry) ? ringExpiry - Date.now() : retryAfterMs)
       return
     }
+  }
+  if (updatedCall?.status === 'ringing') {
+    scheduleRetry(retryAfterMs)
+    return
   }
   if (updatedCall) handleCallUpdate(updatedCall)
   else if (activeCall?.callId === call.callId) await finishActiveCall(false)
@@ -1100,6 +1199,7 @@ async function startCall(conversation, callType) {
       pendingIceCandidates: [],
       ringExpiresAt: Date.parse(responseCall.ring_expires_at)
     }
+    startCallRingtone()
     setupStage = 'initialize WebRTC media connection'
     callStarting = null
     localStream = null
@@ -1163,6 +1263,7 @@ async function acceptIncomingCall() {
   const call = incomingCall
   if (!call || activeCall || acceptingCallId) return
   acceptingCallId = call.call_id
+  stopCallRingtone()
   let localStream
   try {
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
@@ -1223,6 +1324,7 @@ async function declineIncomingCall() {
   const call = incomingCall
   if (!call) return
   incomingCall = null
+  stopCallRingtone()
   pendingCallSignals.delete(call.call_id)
   clearTimeout(incomingCallTimer)
   incomingCallTimer = null
@@ -2896,6 +2998,8 @@ export function initMessages() {
   document.querySelector('#messages-new-group')?.addEventListener('click', () => openConversationModal('group'))
   document.querySelector('#messages-new-direct')?.addEventListener('click', () => openConversationModal('direct'))
   const { voiceRecord, voiceCancel, voicePause, voiceSend } = getElements()
+  document.addEventListener('pointerdown', unlockCallRingtone)
+  document.addEventListener('keydown', unlockCallRingtone)
   voiceRecord?.replaceChildren(createVoiceRecordIcon())
   if (voiceRecord) {
     voiceRecord.disabled = !selectedConversationId
@@ -2977,6 +3081,7 @@ export async function refreshMessagesForCurrentUser() {
   clearTimeout(incomingCallTimer)
   incomingCallTimer = null
   incomingCall = null
+  stopCallRingtone()
   if (activeCall) await finishActiveCall(false)
   callRootReplace()
   memberPresence.clear()

@@ -108,7 +108,7 @@ import {
   renderNotifications,
   initWorkspaceHubEvents
 } from './js/workspaceHub.js'
-import { initMessages, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261019-1818'
+import { initMessages, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261020-ring-audio'
 import { initProjectStickyNotes } from './js/projectStickyNotes.js'
 import { initProfileOnboarding } from './js/profileOnboarding.js'
 import {

@@ -259,8 +259,8 @@ const updateCall = async (req, res) => {
                 );
                 if (!expired.rows[0]?.is_expired) {
                     await client.query('COMMIT');
-                    return res.status(409).json({
-                        success: false, code: 'CALL_NOT_EXPIRED',
+                    return res.json({
+                        success: true, code: 'CALL_NOT_EXPIRED',
                         message: 'The call is still ringing.',
                         data: {
                             call: toPublicCall(call),
