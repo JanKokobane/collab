@@ -108,7 +108,7 @@ import {
   renderNotifications,
   initWorkspaceHubEvents
 } from './js/workspaceHub.js'
-import { initMessages, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261020-call-dimmer'
+import { initMessages, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261021-call-delivery'
 import { initProjectStickyNotes } from './js/projectStickyNotes.js'
 import { initProfileOnboarding } from './js/profileOnboarding.js'
 import {

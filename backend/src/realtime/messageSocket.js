@@ -162,7 +162,17 @@ const emitToUser = (uid, event, payload) => io?.to(userRoom(uid)).emit(event, pa
 const emitToCallParticipants = (call, event, payload) => {
     if (!call) return;
     const participantUids = new Set([call.caller_uid, call.callee_uid].filter(Boolean));
-    participantUids.forEach(uid => emitToUser(uid, event, payload));
+    participantUids.forEach(uid => {
+        if (!socketsByUid.get(uid)?.size) {
+            console.warn('Realtime call update has no connected participant socket.', {
+                callId: call.call_id || null,
+                event,
+                participant: uid === call.caller_uid ? 'caller' : 'callee'
+            });
+            return;
+        }
+        emitToUser(uid, event, payload);
+    });
 };
 
 const reconcileUserConversationAccess = async (uid, conversationIds) => {

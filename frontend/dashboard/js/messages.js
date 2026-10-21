@@ -4,8 +4,9 @@ import { api, apiBaseUrl } from './api.js'
 import { clearCallInterface, renderCallInterface } from './messageCallUI.js?v=20261020-call-dimmer'
 
 const maxAttachmentBytes = 512 * 1024
-const messagesBuildId = '20261019-1818'
+const messagesBuildId = '20261021-call-delivery'
 const presenceHeartbeatMs = 25000
+const incomingCallRingDurationMs = 45000
 const callSocketConnectTimeoutMs = 15000
 const callMediaRequestTimeoutMs = 30000
 const reactionChoices = ['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']
@@ -21,7 +22,6 @@ let realtimeSocket = null
 let realtimeSocketPromise = null
 let realtimeSocketUid = null
 const conversationMessageSubscriptions = new Map()
-const conversationCallSubscriptions = new Map()
 const conversationCallHistory = new Map()
 const messageCursors = new Map()
 const messageHasMore = new Map()
@@ -470,8 +470,6 @@ function renderConversationList() {
 function unsubscribeConversation(conversationId) {
   conversationMessageSubscriptions.get(conversationId)?.()
   conversationMessageSubscriptions.delete(conversationId)
-  conversationCallSubscriptions.get(conversationId)?.()
-  conversationCallSubscriptions.delete(conversationId)
   realtimeSocket?.emit('conversation:leave', conversationId)
   joinedConversationIds.delete(conversationId)
   messageCursors.delete(conversationId)
@@ -563,9 +561,8 @@ function handleCallUpdate(call) {
   const uid = currentUid()
   if (!call || (call.caller_uid !== uid && call.callee_uid !== uid)) return
   if (['missed', 'declined', 'ended'].includes(call.status)) upsertCallHistory(call)
-  const ringExpiry = Date.parse(call.ring_expires_at)
   if (!activeCall && !incomingCall && call.callee_uid === uid &&
-    call.status === 'ringing' && ringExpiry > Date.now()) {
+    call.status === 'ringing') {
     if (mediaRecorder) cancelVoiceRecording()
     incomingCall = call
     startCallRingtone()
@@ -579,7 +576,7 @@ function handleCallUpdate(call) {
           showError(error, `refresh missed call history for ${call.conversation_id}`)
         )
       }
-    }, Math.max(0, ringExpiry - Date.now()) + 500)
+    }, incomingCallRingDurationMs)
     renderCallOverlay()
   } else if (incomingCall?.call_id === call.call_id && call.status !== 'ringing') {
     incomingCall = null
@@ -710,7 +707,6 @@ async function ensureRealtimeSocket() {
         subscribeToConversationMessages(conversation)
         joinConversationRoom(conversation)
       })
-      messageState.conversations.forEach(subscribeToConversationCalls)
       if (activeCall) {
         setActiveCallStatus(`${activeCall.callType === 'video' ? 'Video' : 'Voice'} · ${
           activeCall.status === 'accepted' ? 'Connecting…' : 'Calling…'
@@ -754,6 +750,16 @@ async function ensureRealtimeSocket() {
         lastSeenAt: presence.last_seen_at || null
       })
       if (activeView === 'Messages') renderMessagesView()
+    })
+    socket.on('call:updated', ({ call } = {}) => {
+      if (!call) return
+      console.info('[messages] Realtime call update received.', {
+        callId: call.call_id || null,
+        conversationId: call.conversation_id || null,
+        callType: call.call_type || null,
+        status: call.status || null
+      })
+      handleCallUpdate(call)
     })
     socket.on('call:signal', packet => {
       handleCallSignal(packet).catch(error => {
@@ -921,22 +927,6 @@ function cancelCallSetup() {
 function dismissCallError() {
   callError = null
   renderCallOverlay()
-}
-
-function subscribeToConversationCalls(conversation) {
-  if (conversation.type !== 'direct') {
-    conversationCallSubscriptions.get(conversation.id)?.()
-    conversationCallSubscriptions.delete(conversation.id)
-    return
-  }
-  if (!realtimeSocket || conversationCallSubscriptions.has(conversation.id)) return
-  const onCallUpdate = ({ call } = {}) => {
-    if (call?.conversation_id === conversation.id) handleCallUpdate(call)
-  }
-  realtimeSocket.on('call:updated', onCallUpdate)
-  conversationCallSubscriptions.set(conversation.id, () =>
-    realtimeSocket?.off('call:updated', onCallUpdate)
-  )
 }
 
 function createCallPeerConnection(call, iceServers) {
@@ -1493,8 +1483,6 @@ async function reloadMessages() {
   if (subscriptionsUid !== user.uid) {
     conversationMessageSubscriptions.forEach(unsubscribe => unsubscribe())
     conversationMessageSubscriptions.clear()
-    conversationCallSubscriptions.forEach(unsubscribe => unsubscribe())
-    conversationCallSubscriptions.clear()
     realtimeSocket?.disconnect()
     realtimeSocket = null
     realtimeSocketUid = null
@@ -1520,7 +1508,6 @@ async function reloadMessages() {
     })
   }))
   messageState.conversations.forEach(subscribeToConversationMessages)
-  messageState.conversations.forEach(subscribeToConversationCalls)
   if (!selectedConversationId || !visibleIds.has(selectedConversationId)) {
     selectedConversationId = conversations[0]?.id || null
   }
@@ -3131,8 +3118,6 @@ export async function refreshMessagesForCurrentUser() {
   subscriptionsUid = null
   conversationMessageSubscriptions.forEach(unsubscribe => unsubscribe())
   conversationMessageSubscriptions.clear()
-  conversationCallSubscriptions.forEach(unsubscribe => unsubscribe())
-  conversationCallSubscriptions.clear()
   conversationCallHistory.clear()
   clearTimeout(incomingCallTimer)
   incomingCallTimer = null
