@@ -100,10 +100,12 @@ export function renderCallInterface(root, {
     const details = element('div', 'collab-call-details')
     details.append(
       element('strong', 'collab-call-name', activeCall.peerName || 'Teammate'),
+      Object.assign(element('time', 'collab-call-duration', '00:00'), {
+        hidden: !activeCall.connectedAt
+      }),
       element('span', 'collab-call-status', `${activeCall.callType === 'video' ? 'Video' : 'Voice'} · ${
         activeCall.status === 'accepted' ? 'Connecting…' : 'Calling…'
-      }`),
-      element('time', 'collab-call-duration', '00:00')
+      }`)
     )
 
     header.append(details)
@@ -233,18 +235,6 @@ export function renderCallParticipants(container, call, currentUid) {
   )
 
   if (call.callType === 'video') {
-    const localTile = element('div', 'collab-call-participant-tile is-local')
-    const localVideo = element('video', 'collab-call-participant-video')
-    localVideo.autoplay = true
-    localVideo.muted = true
-    localVideo.playsInline = true
-    localVideo.srcObject = call.localStream || null
-    const localAvatar = appendParticipantAvatar(localTile, 'collab-call-participant-avatar')
-    localAvatar.hidden = Boolean(call.localStream?.getVideoTracks()
-      .some(track => track.readyState === 'live' && track.enabled))
-    localTile.append(localVideo, element('span', 'collab-call-participant-name', 'You'))
-    container.append(localTile)
-
     remoteParticipants.forEach(participant => {
       const tile = element('div', 'collab-call-participant-tile')
       tile.dataset.participantUid = participant.firebase_uid
@@ -264,10 +254,6 @@ export function renderCallParticipants(container, call, currentUid) {
     return
   }
 
-  const localTile = element('div', 'collab-call-audio-participant is-local')
-  appendParticipantAvatar(localTile, 'collab-call-audio-avatar')
-  localTile.append(element('span', 'collab-call-participant-name', 'You'))
-  container.append(localTile)
   remoteParticipants.forEach(participant => {
     const tile = element('div', 'collab-call-audio-participant')
     tile.dataset.participantUid = participant.firebase_uid

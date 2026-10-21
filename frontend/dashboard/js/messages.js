@@ -5,10 +5,10 @@ import {
   clearCallInterface,
   renderCallInterface,
   renderCallParticipants
-} from './messageCallUI.js?v=20261022-call-polish'
+} from './messageCallUI.js?v=20261022-call-timer-answer'
 
 const maxAttachmentBytes = 512 * 1024
-const messagesBuildId = '20261022-call-polish'
+const messagesBuildId = '20261022-call-timer-answer'
 const presenceHeartbeatMs = 25000
 const incomingCallRingDurationMs = 45000
 const callSocketConnectTimeoutMs = 15000
@@ -629,6 +629,7 @@ function handleCallUpdate(call) {
   if (activeCall?.callId === call.call_id) {
     if (call.status === 'accepted') {
       activeCall.status = 'accepted'
+      startCallDuration(activeCall)
       stopCallRingtone()
       clearTimeout(activeCall.ringingTimer)
       setActiveCallStatus(`${activeCall.callType === 'video' ? 'Video' : 'Voice'} · Connecting…`)
@@ -661,6 +662,7 @@ function updateCallDuration(call) {
     : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
   const timer = call.overlay?.querySelector('.collab-call-duration')
   if (timer) {
+    timer.hidden = false
     timer.textContent = duration
     timer.dateTime = `PT${hours ? `${hours}H` : ''}${minutes}M${seconds}S`
   }
@@ -1152,6 +1154,7 @@ function updateCallParticipants(update = {}) {
   }
   if (update.call_status === 'accepted' && activeCall.status !== 'accepted') {
     activeCall.status = 'accepted'
+    startCallDuration(activeCall)
     stopCallRingtone()
     clearTimeout(activeCall.ringingTimer)
     setActiveCallStatus(`${activeCall.callType === 'video' ? 'Video' : 'Voice'} · Connecting…`)
@@ -1397,6 +1400,7 @@ async function startCall(conversation, callType) {
       peerName: responseCall.peer_name,
       peerUid: responseCall.peer_uid,
       peerProfileImage: getMemberProfileImage(responseCall.peer_uid),
+      localProfileImage: getAvatarSource(currentUser),
       status: responseCall.status,
       isCaller: true,
       localStream,
@@ -1487,6 +1491,7 @@ async function acceptIncomingCall() {
       peerName: call.caller_name,
       peerUid: call.caller_uid,
       peerProfileImage: call.caller_profile_image || getMemberProfileImage(call.caller_uid),
+      localProfileImage: getAvatarSource(currentUser),
       participants: result?.data?.participants || [],
       peerConnections: new Map(),
       iceServers,
@@ -1497,6 +1502,7 @@ async function acceptIncomingCall() {
     }
     localStream = null
     renderCallOverlay()
+    startCallDuration(activeCall)
     await joinCallRoom(activeCall)
     await syncCallPeers(activeCall, activeCall.participants)
     await applyPendingCallSignals(activeCall)
