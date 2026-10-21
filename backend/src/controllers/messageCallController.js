@@ -18,6 +18,18 @@ const getCallParticipants = async callId => {
     return result.rows;
 };
 
+const emitCallParticipantsUpdate = async callId => {
+    const participants = await getCallParticipants(callId);
+    const callResult = await query(
+        'SELECT status FROM message_calls WHERE call_id = $1::uuid',
+        [callId]
+    );
+    const payload = { call_id: callId, call_status: callResult.rows[0]?.status, participants };
+    participants.forEach(participant =>
+        emitToUser(participant.firebase_uid, 'call:participant-updated', payload)
+    );
+};
+
 const getMember = async (conversationId, firebaseUid) => {
     const result = await query(
         `SELECT email, display_name FROM message_conversation_members
@@ -70,7 +82,15 @@ const markExpiredCallsMissed = async conversationId => {
         [conversationId]
     );
     for (const call of result.rows) {
+        await query(
+            `UPDATE message_call_participants
+             SET status = CASE WHEN firebase_uid = $2 THEN 'accepted' ELSE 'missed' END,
+                 left_at = CASE WHEN firebase_uid = $2 THEN left_at ELSE NOW() END
+             WHERE call_id = $1::uuid AND status = 'ringing'`,
+            [call.call_id, call.caller_uid]
+        );
         emitToCallParticipants(call, 'call:updated', { call });
+        await emitCallParticipantsUpdate(call.call_id);
     }
 };
 
@@ -356,13 +376,15 @@ const inviteCallParticipants = async (req, res) => {
             if (inserted.rowCount) invited.push(inserted.rows[0]);
         }
         await client.query('COMMIT');
+        await emitCallParticipantsUpdate(callId);
         for (const member of invited) {
             emitToUser(member.firebase_uid, 'call:updated', {
                 call: {
                     ...call,
                     callee_uid: member.firebase_uid,
                     callee_name: member.display_name,
-                    status: 'ringing'
+                    status: 'ringing',
+                    added_participant: true
                 }
             });
         }
@@ -415,10 +437,7 @@ const joinInvitedCall = async (req, res) => {
         );
         const participants = await getCallParticipants(callId);
         const acceptedCall = { ...call, status: 'accepted' };
-        emitToCallParticipants(acceptedCall, 'call:participant-updated', {
-            call_id: callId,
-            participants
-        });
+        await emitCallParticipantsUpdate(callId);
         return res.json({
             success: true,
             data: {
@@ -453,14 +472,58 @@ const declineInvitedCall = async (req, res) => {
                 message: 'This call invitation is no longer available.'
             });
         }
-        const participants = await getCallParticipants(callId);
-        emitToCallParticipants({ call_id: callId }, 'call:participant-updated', {
-            call_id: callId,
-            participants
+        await emitCallParticipantsUpdate(callId);
+        const invitedCall = await query(
+            `SELECT conversation_id::text AS conversation_id, caller_uid, caller_name,
+                    call_type, ring_expires_at
+             FROM message_calls WHERE call_id = $1::uuid`,
+            [callId]
+        );
+        const call = invitedCall.rows[0];
+        emitToUser(req.firebaseUid, 'call:updated', {
+            call: {
+                ...call,
+                call_id: callId,
+                callee_uid: req.firebaseUid,
+                status: 'declined'
+            }
         });
         return res.json({ success: true });
     } catch (error) {
         return responseError(res, error, 'Decline invited call');
+    }
+};
+
+const leaveCall = async (req, res) => {
+    const callId = req.params.callId;
+    if (!callIdPattern.test(callId || '')) {
+        return res.status(400).json({
+            success: false, code: 'INVALID_CALL_ID', message: 'The call identifier is not valid.'
+        });
+    }
+    try {
+        const result = await query(
+            `UPDATE message_call_participants participant
+             SET status = 'left', left_at = NOW()
+             FROM message_calls call
+             WHERE participant.call_id = $1::uuid
+               AND participant.firebase_uid = $2
+               AND participant.status = 'accepted'
+               AND call.call_id = participant.call_id
+               AND call.status = 'accepted'
+             RETURNING participant.call_id`,
+            [callId, req.firebaseUid]
+        );
+        if (!result.rowCount) {
+            return res.status(404).json({
+                success: false, code: 'CALL_PARTICIPANT_NOT_FOUND',
+                message: 'You are not an active participant in this call.'
+            });
+        }
+        await emitCallParticipantsUpdate(callId);
+        return res.json({ success: true });
+    } catch (error) {
+        return responseError(res, error, 'Leave call');
     }
 };
 
@@ -495,9 +558,15 @@ const updateCall = async (req, res) => {
                 success: false, code: 'CALL_NOT_FOUND', message: 'This call is no longer available.'
             });
         }
+        const participantResult = await client.query(
+            `SELECT status FROM message_call_participants
+             WHERE call_id = $1::uuid AND firebase_uid = $2 FOR UPDATE`,
+            [callId, req.firebaseUid]
+        );
+        const participant = participantResult.rows[0];
         const isCaller = call.caller_uid === req.firebaseUid;
         const isCallee = call.callee_uid === req.firebaseUid;
-        if (!isCaller && !isCallee) {
+        if (!participant) {
             await client.query('ROLLBACK');
             return res.status(403).json({
                 success: false, code: 'CALL_ACCESS_DENIED',
@@ -541,9 +610,17 @@ const updateCall = async (req, res) => {
                                ended_by_uid, ring_expires_at`,
                     [callId, req.firebaseUid]
                 );
+                await client.query(
+                    `UPDATE message_call_participants
+                     SET status = CASE WHEN firebase_uid = $2 THEN 'accepted' ELSE 'missed' END,
+                         left_at = CASE WHEN firebase_uid = $2 THEN left_at ELSE NOW() END
+                     WHERE call_id = $1::uuid AND status = 'ringing'`,
+                    [callId, req.firebaseUid]
+                );
                 await client.query('COMMIT');
                 const updatedCall = toPublicCall(updated.rows[0]);
                 emitToCallParticipants(updatedCall, 'call:updated', { call: updatedCall });
+                await emitCallParticipantsUpdate(callId);
                 return res.json({ success: true, data: { call: updatedCall } });
             }
             await client.query('COMMIT');
@@ -576,9 +653,17 @@ const updateCall = async (req, res) => {
                      WHERE call_id = $1::uuid`,
                     [callId]
                 );
+                await client.query(
+                    `UPDATE message_call_participants
+                     SET status = CASE WHEN firebase_uid = $2 THEN 'accepted' ELSE 'missed' END,
+                         left_at = CASE WHEN firebase_uid = $2 THEN left_at ELSE NOW() END
+                     WHERE call_id = $1::uuid AND status = 'ringing'`,
+                    [callId, req.firebaseUid]
+                );
                 await client.query('COMMIT');
                 const updatedCall = { ...call, status: 'missed', ended_at: new Date().toISOString() };
                 emitToCallParticipants(updatedCall, 'call:updated', { call: updatedCall });
+                await emitCallParticipantsUpdate(callId);
                 return res.status(410).json({
                     success: false, code: 'CALL_EXPIRED',
                     message: 'This call invitation has expired.'
@@ -590,16 +675,26 @@ const updateCall = async (req, res) => {
                  WHERE call_id = $1::uuid`,
                 [callId]
             );
+            await client.query(
+                `UPDATE message_call_participants
+                 SET status = 'accepted', accepted_at = COALESCE(accepted_at, NOW())
+                 WHERE call_id = $1::uuid AND firebase_uid = $2`,
+                [callId, req.firebaseUid]
+            );
             await client.query('COMMIT');
             const updatedCall = { ...call, status: 'accepted' };
             emitToCallParticipants(updatedCall, 'call:updated', { call: updatedCall });
+            await emitCallParticipantsUpdate(callId);
             res.set('Cache-Control', 'no-store');
             return res.json({
                 success: true,
-                data: { call: { ice_servers: await getMessageCallIceServers(req.firebaseUid) } }
+                data: {
+                    call: { ice_servers: await getMessageCallIceServers(req.firebaseUid) },
+                    participants: await getCallParticipants(callId)
+                }
             });
         }
-        if ((action === 'decline' && (!isCallee || call.status !== 'ringing')) ||
+        if ((action === 'decline' && (!isCallee || participant.status !== 'ringing')) ||
             (action === 'end' && !['ringing', 'accepted'].includes(call.status))) {
             await client.query('ROLLBACK');
             return res.status(409).json({
@@ -607,16 +702,74 @@ const updateCall = async (req, res) => {
                 message: 'This call is no longer active.'
             });
         }
-        const status = action === 'decline' ? 'declined' :
-            action === 'missed' ? 'missed' : 'ended';
+        if (action === 'decline') {
+            await client.query(
+                `UPDATE message_call_participants
+                 SET status = 'declined', left_at = NOW()
+                 WHERE call_id = $1::uuid AND firebase_uid = $2`,
+                [callId, req.firebaseUid]
+            );
+            const remaining = await client.query(
+                `SELECT 1 FROM message_call_participants
+                                 WHERE call_id = $1::uuid AND firebase_uid <> $2
+                                     AND firebase_uid <> $3
+                   AND status IN ('ringing', 'accepted') LIMIT 1`,
+                                [callId, req.firebaseUid, call.caller_uid]
+            );
+            let updatedCall = call;
+            if (!remaining.rowCount) {
+                const updated = await client.query(
+                    `UPDATE message_calls SET status = 'declined', ended_at = NOW(), ended_by_uid = $2
+                     WHERE call_id = $1::uuid
+                     RETURNING call_id, conversation_id::text AS conversation_id,
+                               caller_uid, caller_name, callee_uid, callee_name,
+                               call_type, status, created_at, accepted_at, ended_at,
+                               ended_by_uid, ring_expires_at`,
+                    [callId, req.firebaseUid]
+                );
+                updatedCall = updated.rows[0];
+            }
+            await client.query('COMMIT');
+            if (!remaining.rowCount) {
+                emitToCallParticipants(updatedCall, 'call:updated', { call: updatedCall });
+            }
+            await emitCallParticipantsUpdate(callId);
+            return res.json({ success: true });
+        }
+        if (action === 'end' && !isCaller) {
+            await client.query(
+                `UPDATE message_call_participants
+                 SET status = 'left', left_at = NOW()
+                 WHERE call_id = $1::uuid AND firebase_uid = $2`,
+                [callId, req.firebaseUid]
+            );
+            await client.query('COMMIT');
+            await emitCallParticipantsUpdate(callId);
+            return res.json({ success: true });
+        }
+        const status = action === 'missed' ? 'missed' : 'ended';
         await client.query(
             `UPDATE message_calls SET status = $2, ended_at = NOW(), ended_by_uid = $3
              WHERE call_id = $1::uuid`,
             [callId, status, req.firebaseUid]
         );
+        await client.query(
+            `UPDATE message_call_participants
+             SET status = CASE
+                     WHEN firebase_uid = $2 AND $3 = 'missed' THEN 'missed'
+                     ELSE 'left'
+                 END,
+                 left_at = CASE
+                     WHEN firebase_uid = $2 AND $3 = 'missed' THEN left_at
+                     ELSE NOW()
+                 END
+             WHERE call_id = $1::uuid AND status IN ('ringing', 'accepted')`,
+            [callId, req.firebaseUid, action === 'missed' ? 'missed' : 'ended']
+        );
         await client.query('COMMIT');
         const updatedCall = { ...call, status, ended_by_uid: req.firebaseUid };
         emitToCallParticipants(updatedCall, 'call:updated', { call: updatedCall });
+        await emitCallParticipantsUpdate(callId);
         return res.json({ success: true });
     } catch (error) {
         await client?.query('ROLLBACK').catch(() => {});
@@ -632,5 +785,6 @@ module.exports = {
     updateCall,
     inviteCallParticipants,
     joinInvitedCall,
-    declineInvitedCall
+    declineInvitedCall,
+    leaveCall
 };

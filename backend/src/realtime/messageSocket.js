@@ -10,6 +10,7 @@ const roomPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 
 const userRoom = uid => `user:${uid}`;
 const conversationRoom = id => `conversation:${id}`;
+const callRoom = id => `call:${id}`;
 
 const normalizeCallSignal = signal => {
     if (!signal || typeof signal !== 'object' || Array.isArray(signal)) return null;
@@ -236,6 +237,39 @@ const attachMessageSocket = server => {
             socket.disconnect(true);
             return;
         }
+        try {
+            const pendingCallInvites = await query(
+                `SELECT call.call_id, call.conversation_id::text AS conversation_id,
+                        call.caller_uid, call.caller_name, call.callee_uid,
+                        call.callee_name, call.call_type, call.status,
+                        call.ring_expires_at,
+                        participant.firebase_uid AS invited_uid
+                 FROM message_call_participants participant
+                 JOIN message_calls call ON call.call_id = participant.call_id
+                 WHERE participant.firebase_uid = $1
+                   AND participant.status = 'ringing'
+                   AND call.status IN ('ringing', 'accepted')
+                   AND call.expires_at > NOW()
+                   AND (call.status <> 'ringing' OR call.ring_expires_at > NOW())
+                 ORDER BY participant.invited_at DESC
+                 LIMIT 10`,
+                [uid]
+            );
+            pendingCallInvites.rows.forEach(call => {
+                socket.emit('call:updated', {
+                    call: {
+                        ...call,
+                        callee_uid: call.invited_uid,
+                        added_participant: call.invited_uid !== call.callee_uid
+                    }
+                });
+            });
+        } catch (error) {
+            console.error('Unable to restore pending call invitations:', {
+                uid,
+                message: error.message
+            });
+        }
 
         socket.on('conversation:join', async (conversationId, acknowledge) => {
             const acknowledgeResult = typeof acknowledge === 'function' ? acknowledge : () => {};
@@ -306,6 +340,62 @@ const attachMessageSocket = server => {
             }
         });
 
+        socket.on('call:join', async (callId, acknowledge) => {
+            const acknowledgeResult = typeof acknowledge === 'function' ? acknowledge : () => {};
+            if (typeof callId !== 'string' || !roomPattern.test(callId)) {
+                acknowledgeResult({ success: false, message: 'Invalid call.' });
+                return;
+            }
+            try {
+                const callResult = await query(
+                    `SELECT call.conversation_id::text AS conversation_id,
+                            call.call_type, call.status
+                     FROM message_calls call
+                     JOIN message_call_participants participant
+                       ON participant.call_id = call.call_id
+                     WHERE call.call_id = $1::uuid
+                       AND participant.firebase_uid = $2
+                       AND participant.status = 'accepted'
+                       AND call.status IN ('ringing', 'accepted')
+                       AND call.expires_at > NOW()`,
+                    [callId, uid]
+                );
+                const call = callResult.rows[0];
+                if (!call) {
+                    acknowledgeResult({ success: false, message: 'You are not an accepted participant in this call.' });
+                    return;
+                }
+                await socket.join(callRoom(callId));
+                const participants = await query(
+                    `SELECT firebase_uid, display_name, status, invited_at, accepted_at
+                     FROM message_call_participants
+                     WHERE call_id = $1::uuid
+                     ORDER BY invited_at, display_name`,
+                    [callId]
+                );
+                acknowledgeResult({
+                    success: true,
+                    conversationId: call.conversation_id,
+                    callType: call.call_type,
+                    participants: participants.rows,
+                    iceServers: await getMessageCallIceServers(uid)
+                });
+            } catch (error) {
+                console.error('Unable to join call room:', {
+                    callId,
+                    uid,
+                    message: error.message
+                });
+                acknowledgeResult({ success: false, message: 'Unable to join call.' });
+            }
+        });
+
+        socket.on('call:leave', callId => {
+            if (typeof callId === 'string' && roomPattern.test(callId)) {
+                socket.leave(callRoom(callId));
+            }
+        });
+
         socket.on('call:signal', async (payload = {}, acknowledge) => {
             const acknowledgeResult = typeof acknowledge === 'function' ? acknowledge : () => {};
             const { conversationId, callId, targetUid } = payload;
@@ -313,7 +403,7 @@ const attachMessageSocket = server => {
             if (typeof conversationId !== 'string' || !roomPattern.test(conversationId) ||
                 typeof callId !== 'string' || !roomPattern.test(callId) ||
                 typeof targetUid !== 'string' || targetUid.length > 128 || !signal ||
-                !socket.rooms.has(conversationRoom(conversationId))) {
+                !socket.rooms.has(callRoom(callId))) {
                 acknowledgeResult({ success: false, message: 'Invalid call signaling payload.' });
                 return;
             }
@@ -328,26 +418,23 @@ const attachMessageSocket = server => {
             }
             try {
                 const callResult = await query(
-                    `SELECT call.conversation_id::text AS conversation_id,
-                            call.caller_uid, call.callee_uid, call.status
+                                        `SELECT call.conversation_id::text AS conversation_id,
+                                                        call.status,
+                                                        sender.status AS sender_status,
+                                                        recipient.status AS recipient_status
                      FROM message_calls call
-                     JOIN message_conversations conversation
-                       ON conversation.conversation_id = call.conversation_id
+                                         JOIN message_call_participants sender
+                                             ON sender.call_id = call.call_id AND sender.firebase_uid = $3
+                                         JOIN message_call_participants recipient
+                                             ON recipient.call_id = call.call_id AND recipient.firebase_uid = $4
                      WHERE call.call_id = $1::uuid
                        AND call.conversation_id = $2::uuid
-                       AND conversation.conversation_type = 'direct'
                        AND call.expires_at > NOW()`,
-                    [callId, conversationId]
+                                        [callId, conversationId, uid, targetUid]
                 );
                 const call = callResult.rows[0];
-                const isParticipant = call &&
-                    (call.caller_uid === uid || call.callee_uid === uid);
-                const isTarget = call &&
-                    (targetUid === call.caller_uid || targetUid === call.callee_uid) &&
-                    targetUid !== uid;
-                if (!isParticipant || !isTarget || call.status !== 'accepted' ||
-                    !await isConversationMember(conversationId, uid) ||
-                    !await isConversationMember(conversationId, targetUid)) {
+                                if (!call || uid === targetUid || call.status !== 'accepted' ||
+                                        call.sender_status !== 'accepted' || call.recipient_status !== 'accepted') {
                     acknowledgeResult({ success: false, message: 'Call signaling access denied.' });
                     return;
                 }

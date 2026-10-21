@@ -18,7 +18,8 @@ const {
     updateCall,
     inviteCallParticipants,
     joinInvitedCall,
-    declineInvitedCall
+    declineInvitedCall,
+    leaveCall
 } = require('../controllers/messageCallController');
 const { requireFirebaseAuth } = require('../middleware/requireFirebaseAuth');
 
@@ -51,6 +52,7 @@ router.post('/conversations/:conversationId/calls', callStartRateLimit, startCal
 router.post('/conversations/:conversationId/calls/:callId/invite', inviteCallParticipants);
 router.post('/conversations/:conversationId/calls/:callId/join', joinInvitedCall);
 router.post('/conversations/:conversationId/calls/:callId/decline-invite', declineInvitedCall);
+router.post('/calls/:callId/leave', leaveCall);
 router.post('/conversations/:conversationId/calls/:callId/:action', updateCall);
 
 module.exports = router;

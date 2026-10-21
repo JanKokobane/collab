@@ -5884,6 +5884,46 @@ body.dark-mode .hub-res-logo {
     border-radius: 14px;
 }
 
+.messages-call-invite-modal {
+    width: min(520px, 100%);
+    max-width: 520px;
+    height: min(620px, calc(100vh - 40px));
+}
+
+.messages-call-invite-backdrop {
+    z-index: 20001;
+}
+
+.messages-call-project-label {
+    display: grid;
+    gap: 6px;
+    margin: 8px 14px;
+    color: #52525B;
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.messages-call-project-select,
+.messages-call-member-search {
+    width: 100%;
+    min-height: 38px;
+    padding: 0 10px;
+    border: 1px solid #D4D4D8;
+    border-radius: 8px;
+    background: #FFFFFF;
+    color: #27272A;
+    font: 12px 'DM Sans', sans-serif;
+}
+
+.messages-call-member-search {
+    width: auto;
+    margin: 8px 14px 10px;
+}
+
+.messages-call-member-list {
+    display: block;
+}
+
 form.messages-forward-modal {
     display: flex;
     flex-direction: column;
@@ -7545,6 +7585,112 @@ body.dark-mode .call-log-label,
     flex: 1;
     overflow: hidden;
     background: #080D0C;
+}
+
+.collab-call-participants {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+    align-content: center;
+    gap: 12px;
+    padding: 20px 20px 92px;
+}
+
+.collab-call-participant-tile {
+    position: relative;
+    min-width: 0;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .15);
+    border-radius: 8px;
+    background: #202A27;
+}
+
+.collab-call-participant-video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.collab-call-participant-avatar {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 92px;
+    height: 92px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: #35394F;
+    color: #A9ADBA;
+}
+
+.collab-call-participant-avatar[hidden] {
+    display: none;
+}
+
+.collab-call-participant-avatar img {
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    object-fit: cover;
+}
+
+.collab-call-participant-name {
+    position: absolute;
+    right: 10px;
+    bottom: 9px;
+    left: 10px;
+    overflow: hidden;
+    color: #FFFFFF;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    text-shadow: 0 1px 5px rgba(0, 0, 0, .8);
+    white-space: nowrap;
+}
+
+.collab-call-participants.is-audio {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+}
+
+.collab-call-audio-participant {
+    position: relative;
+    display: grid;
+    min-width: 120px;
+    justify-items: center;
+    gap: 10px;
+}
+
+.collab-call-audio-avatar {
+    display: grid;
+    width: 112px;
+    height: 112px;
+    place-items: center;
+    overflow: hidden;
+    border-radius: 50%;
+    background: #35394F;
+    color: #A9ADBA;
+}
+
+.collab-call-audio-avatar img {
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    object-fit: cover;
+}
+
+.collab-call-audio-participant .collab-call-participant-name {
+    position: static;
+    text-align: center;
+}
+
+.collab-call-audio-participant audio {
+    display: none;
 }
 
 .collab-call-stage video {

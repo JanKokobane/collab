@@ -21,6 +21,7 @@ function callIcon(name) {
     microphoneOff: ['M9 9v2a3 3 0 0 0 5.12 2.12', 'M15 9V5a3 3 0 0 0-5.76-1.16', 'M19 10v1a7 7 0 0 1-1.6 4.47', 'M5 10v1a7 7 0 0 0 11.95 5.05', 'M12 18v4', 'M8 22h8', 'm2 2 20 20'],
     camera: ['M14 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2l6 4V5l-6 4V7a2 2 0 0 0-2-2Z'],
     cameraOff: ['m2 2 20 20', 'M10.6 5H14a2 2 0 0 1 2 2v2l6-4v14l-6-4v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2.6'],
+    usersPlus: ['M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2', 'M10 7a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z', 'M19 8v6', 'M22 11h-6'],
     hangup: ['M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.14 4.2 2 2 0 0 1 4.13 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8.03 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z']
   }
   paths[name].forEach(pathData => {
@@ -84,6 +85,7 @@ export function renderCallInterface(root, {
   onHangUp,
   onAccept,
   onDecline,
+  onAddPeople,
   onCancelSetup,
   onDismissError
 }) {
@@ -110,28 +112,8 @@ export function renderCallInterface(root, {
       'div',
       `collab-call-stage${activeCall.callType === 'video' ? ' is-video' : ' is-audio'}`
     )
-    const remoteVideo = element('video', activeCall.callType === 'video' ? 'collab-call-remote' : 'collab-call-audio')
-    remoteVideo.autoplay = true
-    remoteVideo.playsInline = true
-    remoteVideo.setAttribute('aria-label', 'Remote participant')
-    const localVideo = element('video', 'collab-call-local')
-    localVideo.autoplay = true
-    localVideo.muted = true
-    localVideo.playsInline = true
-    localVideo.setAttribute('aria-label', 'Your camera preview')
-    localVideo.hidden = activeCall.callType !== 'video'
-    stage.append(remoteVideo)
-    let videoPlaceholder = null
-
-    if (activeCall.callType === 'video') {
-      videoPlaceholder = element('div', 'collab-call-video-placeholder')
-      appendParticipantAvatar(videoPlaceholder, 'collab-call-video-avatar', activeCall.peerProfileImage)
-      videoPlaceholder.append(element('span', '', activeCall.status === 'ringing' ? 'Ringing…' : 'Connecting video…'))
-      stage.append(localVideo)
-      stage.append(videoPlaceholder)
-    } else {
-      appendParticipantAvatar(stage, 'collab-call-avatar', activeCall.peerProfileImage)
-    }
+    const participantGrid = element('div', `collab-call-participants is-${activeCall.callType}`)
+    stage.append(participantGrid)
 
     const controls = element('div', 'collab-call-controls')
     const mute = iconActionButton(
@@ -161,6 +143,7 @@ export function renderCallInterface(root, {
           activeCall.localStream?.getVideoTracks().forEach(track => {
             track.enabled = !activeCall.isCameraOff
           })
+          activeCall.renderParticipants?.()
           camera.classList.toggle('is-active', activeCall.isCameraOff)
           camera.setAttribute('aria-label', activeCall.isCameraOff ? 'Turn camera on' : 'Turn camera off')
           camera.title = activeCall.isCameraOff ? 'Turn camera on' : 'Turn camera off'
@@ -169,19 +152,25 @@ export function renderCallInterface(root, {
       )
       controls.append(camera)
     }
-    controls.append(iconActionButton('collab-call-hangup', 'End call', 'hangup', onHangUp))
+    if (activeCall.isCaller) {
+      controls.append(iconActionButton(
+        'collab-call-control collab-call-add-participants',
+        'Add people to call',
+        'usersPlus',
+        onAddPeople
+      ))
+    }
+    controls.append(iconActionButton(
+      'collab-call-hangup',
+      activeCall.isCaller ? 'End call' : 'Leave call',
+      'hangup',
+      onHangUp
+    ))
     stage.append(controls)
     panel.append(header, stage)
     root.append(backdrop)
     root.hidden = false
-    remoteVideo.srcObject = activeCall.remoteStream || null
-    localVideo.srcObject = activeCall.localStream || null
-    if (videoPlaceholder) {
-      videoPlaceholder.hidden = Boolean(
-        activeCall.remoteStream?.getVideoTracks().some(track => track.readyState === 'live')
-      )
-    }
-    return { overlay: backdrop, remoteVideo, localVideo, videoPlaceholder }
+    return { overlay: backdrop, participantGrid }
   }
 
   if (incomingCall) {
@@ -234,6 +223,70 @@ export function renderCallInterface(root, {
 
   root.hidden = true
   return null
+}
+
+export function renderCallParticipants(container, call, currentUid) {
+  if (!container || !call) return
+  container.replaceChildren()
+  const remoteParticipants = (call.participants || []).filter(participant =>
+    ['accepted', 'ringing'].includes(participant.status) && participant.firebase_uid !== currentUid
+  )
+
+  if (call.callType === 'video') {
+    const localTile = element('div', 'collab-call-participant-tile is-local')
+    const localVideo = element('video', 'collab-call-participant-video')
+    localVideo.autoplay = true
+    localVideo.muted = true
+    localVideo.playsInline = true
+    localVideo.srcObject = call.localStream || null
+    const localAvatar = appendParticipantAvatar(localTile, 'collab-call-participant-avatar')
+    localAvatar.hidden = Boolean(call.localStream?.getVideoTracks()
+      .some(track => track.readyState === 'live' && track.enabled))
+    localTile.append(localVideo, element('span', 'collab-call-participant-name', 'You'))
+    container.append(localTile)
+
+    remoteParticipants.forEach(participant => {
+      const tile = element('div', 'collab-call-participant-tile')
+      tile.dataset.participantUid = participant.firebase_uid
+      const video = element('video', 'collab-call-participant-video')
+      video.autoplay = true
+      video.playsInline = true
+      video.srcObject = call.peerConnections?.get(participant.firebase_uid)?.remoteStream || null
+      const avatar = appendParticipantAvatar(tile, 'collab-call-participant-avatar', participant.profile_image || '')
+      avatar.hidden = Boolean(video.srcObject?.getVideoTracks().some(track => track.readyState === 'live'))
+      video.addEventListener('loadeddata', () => { avatar.hidden = true })
+      const participantLabel = participant.status === 'ringing'
+        ? `${participant.display_name || 'Teammate'} · Ringing…`
+        : participant.display_name || 'Teammate'
+      tile.append(video, element('span', 'collab-call-participant-name', participantLabel))
+      container.append(tile)
+    })
+    return
+  }
+
+  const localTile = element('div', 'collab-call-audio-participant is-local')
+  appendParticipantAvatar(localTile, 'collab-call-audio-avatar')
+  localTile.append(element('span', 'collab-call-participant-name', 'You'))
+  container.append(localTile)
+  remoteParticipants.forEach(participant => {
+    const tile = element('div', 'collab-call-audio-participant')
+    tile.dataset.participantUid = participant.firebase_uid
+    appendParticipantAvatar(tile, 'collab-call-audio-avatar', participant.profile_image || '')
+    const participantLabel = participant.status === 'ringing'
+      ? `${participant.display_name || 'Teammate'} · Ringing…`
+      : participant.display_name || 'Teammate'
+    tile.append(element('span', 'collab-call-participant-name', participantLabel))
+    if (participant.status === 'accepted') {
+      const audio = element('audio', 'collab-call-audio')
+      audio.autoplay = true
+      audio.srcObject = call.peerConnections?.get(participant.firebase_uid)?.remoteStream || null
+      audio.play().catch(error => {
+        console.warn('[messages] Remote call audio awaits a user gesture.', error.message)
+      })
+      tile.append(audio)
+    }
+    container.append(tile)
+  })
 }
 
 export function clearCallInterface(root) {

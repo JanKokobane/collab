@@ -1,10 +1,14 @@
 import { activeView, currentUser, getAccessibleMembers, getAvatarSource, make, projects, renderAvatarElement } from './state.js'
 import { firebaseAuth } from '../../firebase.js'
 import { api, apiBaseUrl } from './api.js'
-import { clearCallInterface, renderCallInterface } from './messageCallUI.js?v=20261021-call-duration'
+import {
+  clearCallInterface,
+  renderCallInterface,
+  renderCallParticipants
+} from './messageCallUI.js?v=20261021-group-call'
 
 const maxAttachmentBytes = 512 * 1024
-const messagesBuildId = '20261021-call-avatars'
+const messagesBuildId = '20261021-group-call'
 const presenceHeartbeatMs = 25000
 const incomingCallRingDurationMs = 45000
 const callSocketConnectTimeoutMs = 15000
@@ -68,6 +72,10 @@ const currentUid = () => firebaseAuth.currentUser?.uid || ''
 const apiPath = conversationId => `/messages/conversations/${encodeURIComponent(conversationId)}`
 const getMemberProfileImage = uid =>
   getAccessibleMembers().find(member => member.firebaseUid === uid)?.profileImage || ''
+const normalizeCallParticipants = participants => (participants || []).map(participant => ({
+  ...participant,
+  profile_image: getMemberProfileImage(participant.firebase_uid)
+}))
 
 function getElements() {
   return {
@@ -596,11 +604,6 @@ function handleCallUpdate(call) {
       stopCallRingtone()
       clearTimeout(activeCall.ringingTimer)
       setActiveCallStatus(`${activeCall.callType === 'video' ? 'Video' : 'Voice'} · Connecting…`)
-      if (activeCall.isCaller) {
-        startWebRtcOffer(activeCall).catch(error => {
-          failActiveCall(error, 'start WebRTC offer')
-        })
-      }
     } else if (['declined', 'missed', 'ended'].includes(call.status)) {
       finishActiveCall(false)
     }
@@ -739,11 +742,20 @@ async function ensureRealtimeSocket() {
         setActiveCallStatus(`${activeCall.callType === 'video' ? 'Video' : 'Voice'} · ${
           activeCall.status === 'accepted' ? 'Connecting…' : 'Calling…'
         }`)
+        joinCallRoom(activeCall)
+          .then(async () => {
+            await syncCallPeers(activeCall, activeCall.participants)
+            await applyPendingCallSignals(activeCall)
+          })
+          .catch(error => failActiveCall(error, 'rejoin active call'))
       }
     })
     socket.on('disconnect', () => {
       joinedConversationIds.clear()
-      if (activeCall) setActiveCallStatus('Signaling disconnected · reconnecting…')
+      if (activeCall) {
+        activeCall.callRoomJoined = false
+        setActiveCallStatus('Signaling disconnected · reconnecting…')
+      }
     })
     let refreshedRealtimeAuth = false
     socket.on('connect_error', async error => {
@@ -788,6 +800,9 @@ async function ensureRealtimeSocket() {
         status: call.status || null
       })
       handleCallUpdate(call)
+    })
+    socket.on('call:participant-updated', update => {
+      updateCallParticipants(update)
     })
     socket.on('call:signal', packet => {
       handleCallSignal(packet).catch(error => {
@@ -932,14 +947,17 @@ function renderCallOverlay() {
     onHangUp: () => finishActiveCall(true),
     onAccept: () => acceptIncomingCall(),
     onDecline: () => declineIncomingCall(),
+    onAddPeople: () => openCallInviteModal(activeCall),
     onCancelSetup: cancelCallSetup,
     onDismissError: dismissCallError
   })
   if (activeCall && view) {
-    activeCall.overlay = view.overlay
-    activeCall.remoteVideo = view.remoteVideo
-    activeCall.localVideo = view.localVideo
-    activeCall.videoPlaceholder = view.videoPlaceholder
+    const call = activeCall
+    call.overlay = view.overlay
+    call.participantGrid = view.participantGrid
+    call.renderParticipants = () =>
+      renderCallParticipants(call.participantGrid, call, currentUid())
+    call.renderParticipants()
   } else if (incomingCall && view) {
     incomingCall.overlay = view.overlay
   }
@@ -957,35 +975,65 @@ function dismissCallError() {
   renderCallOverlay()
 }
 
-function createCallPeerConnection(call, iceServers) {
-  const peerConnection = new RTCPeerConnection({ iceServers })
-  const remoteStream = new MediaStream()
-  call.peerConnection = peerConnection
-  call.remoteStream = remoteStream
+function joinCallRoom(call) {
+  if (!realtimeSocket?.connected) {
+    return Promise.reject(new Error('Realtime call signaling is not connected.'))
+  }
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Joining the call room timed out.')), 10_000)
+    realtimeSocket.emit('call:join', call.callId, result => {
+      clearTimeout(timeout)
+      if (!result?.success) {
+        reject(new Error(result?.message || 'You could not join this call.'))
+        return
+      }
+      call.conversationId = result.conversationId || call.conversationId
+      call.iceServers = result.iceServers || call.iceServers || []
+      call.participants = normalizeCallParticipants(result.participants || call.participants)
+      call.callRoomJoined = true
+      resolve()
+    })
+  })
+}
+
+function createCallPeerConnection(call, peerUid) {
+  if (!call.peerConnections) call.peerConnections = new Map()
+  const existing = call.peerConnections.get(peerUid)
+  if (existing) return existing
+  const peerConnection = new RTCPeerConnection({ iceServers: call.iceServers || [] })
+  const peerState = {
+    peerUid,
+    peerConnection,
+    remoteStream: new MediaStream(),
+    pendingIceCandidates: [],
+    offerStarted: false
+  }
+  call.peerConnections.set(peerUid, peerState)
   call.localStream.getTracks().forEach(track => {
     peerConnection.addTrack(track, call.localStream)
   })
   peerConnection.addEventListener('track', event => {
-    const stream = event.streams[0]
-    if (stream) {
-      call.remoteStream = stream
-    } else if (!call.remoteStream.getTracks().some(track => track.id === event.track.id)) {
-      call.remoteStream.addTrack(event.track)
+    if (event.streams[0]) {
+      peerState.remoteStream = event.streams[0]
+    } else if (!peerState.remoteStream.getTracks().some(track => track.id === event.track.id)) {
+      peerState.remoteStream.addTrack(event.track)
     }
-    if (event.track.kind === 'video' && call.videoPlaceholder) {
-      call.videoPlaceholder.hidden = true
-    }
-    if (call.remoteVideo) {
-      call.remoteVideo.srcObject = call.remoteStream
-      call.remoteVideo.play().catch(error => {
-        console.warn('[messages] Remote call audio/video awaits a user gesture.', error.message)
-      })
-    }
+    call.renderParticipants?.()
+    const audio = [...(call.participantGrid?.querySelectorAll('[data-participant-uid]') || [])]
+      .find(tile => tile.dataset.participantUid === peerUid)
+      ?.querySelector('audio')
+    audio?.play().catch(error => {
+      console.warn('[messages] Remote call audio awaits a user gesture.', error.message)
+    })
   })
   peerConnection.addEventListener('icecandidate', event => {
     if (!event.candidate || activeCall?.callId !== call.callId) return
-    sendCallSignal(call, { candidate: event.candidate.toJSON() }).catch(error => {
-      console.error('[messages] Unable to send WebRTC ICE candidate.', error.message)
+    sendCallSignal(call, peerUid, { candidate: event.candidate.toJSON() }).catch(error => {
+      console.error('[messages] Unable to send WebRTC ICE candidate.', {
+        callId: call.callId,
+        peerUid,
+        message: error.message
+      })
     })
   })
   peerConnection.addEventListener('connectionstatechange', () => {
@@ -994,15 +1042,17 @@ function createCallPeerConnection(call, iceServers) {
       startCallDuration(call)
       setActiveCallStatus(`${call.callType === 'video' ? 'Video' : 'Voice'} · Connected`)
     } else if (peerConnection.connectionState === 'failed') {
-      failActiveCall(new Error(
-        'The call could not connect. This network may require a TURN relay; configure WebRTC TURN settings on the backend.'
-      ), 'WebRTC connection')
+      console.error('[messages] WebRTC peer connection failed.', {
+        callId: call.callId,
+        peerUid,
+        state: peerConnection.connectionState
+      })
     }
   })
-  return peerConnection
+  return peerState
 }
 
-function sendCallSignal(call, signal) {
+function sendCallSignal(call, targetUid, signal) {
   if (!realtimeSocket?.connected) {
     return Promise.reject(new Error('Realtime signaling is disconnected. Reconnect and try the call again.'))
   }
@@ -1011,7 +1061,7 @@ function sendCallSignal(call, signal) {
     realtimeSocket.emit('call:signal', {
       conversationId: call.conversationId,
       callId: call.callId,
-      targetUid: call.peerUid,
+      targetUid,
       signal
     }, result => {
       clearTimeout(timeout)
@@ -1021,60 +1071,115 @@ function sendCallSignal(call, signal) {
   })
 }
 
-async function startWebRtcOffer(call) {
-  if (!call.isCaller || call.offerStarted || activeCall?.callId !== call.callId) return
-  call.offerStarted = true
-  const offer = await call.peerConnection.createOffer()
-  await call.peerConnection.setLocalDescription(offer)
-  await sendCallSignal(call, {
-    type: call.peerConnection.localDescription.type,
-    sdp: call.peerConnection.localDescription.sdp
+async function startWebRtcOffer(call, peerUid) {
+  const peer = call.peerConnections?.get(peerUid)
+  if (!peer || currentUid() >= peerUid || peer.offerStarted ||
+    activeCall?.callId !== call.callId) return
+  peer.offerStarted = true
+  const offer = await peer.peerConnection.createOffer()
+  await peer.peerConnection.setLocalDescription(offer)
+  await sendCallSignal(call, peerUid, {
+    type: peer.peerConnection.localDescription.type,
+    sdp: peer.peerConnection.localDescription.sdp
+  })
+}
+
+async function syncCallPeers(call, participants = call.participants || []) {
+  if (activeCall?.callId !== call.callId) return
+  call.participants = normalizeCallParticipants(participants)
+  const acceptedUids = new Set(participants
+    .filter(participant => participant.status === 'accepted')
+    .map(participant => participant.firebase_uid))
+  for (const [uid, peer] of call.peerConnections || []) {
+    if (!acceptedUids.has(uid)) {
+      peer.peerConnection.close()
+      call.peerConnections.delete(uid)
+    }
+  }
+  call.renderParticipants?.()
+  for (const peerUid of acceptedUids) {
+    if (peerUid === currentUid()) continue
+    createCallPeerConnection(call, peerUid)
+    if (currentUid() < peerUid) {
+      startWebRtcOffer(call, peerUid).catch(error => {
+        failActiveCall(error, `connect call participant ${peerUid}`)
+      })
+    }
+  }
+}
+
+function updateCallParticipants(update = {}) {
+  const isTerminal = update.call_status && ['ended', 'declined', 'missed'].includes(update.call_status)
+  if (incomingCall?.call_id === update.call_id && isTerminal) {
+    incomingCall = null
+    clearTimeout(incomingCallTimer)
+    incomingCallTimer = null
+    stopCallRingtone()
+    renderCallOverlay()
+  }
+  if (!activeCall || activeCall.callId !== update.call_id) return
+  if (isTerminal) {
+    finishActiveCall(false)
+    return
+  }
+  if (update.call_status === 'accepted' && activeCall.status !== 'accepted') {
+    activeCall.status = 'accepted'
+    stopCallRingtone()
+    clearTimeout(activeCall.ringingTimer)
+    setActiveCallStatus(`${activeCall.callType === 'video' ? 'Video' : 'Voice'} · Connecting…`)
+  }
+  syncCallPeers(activeCall, update.participants || []).catch(error => {
+    failActiveCall(error, 'update call participants')
   })
 }
 
 async function applyCallSignal(packet) {
   const call = activeCall
-  if (!call || call.callId !== packet.call_id || call.conversationId !== packet.conversation_id ||
-      call.peerUid !== packet.from_uid || !call.peerConnection) return
+  if (!call || call.callId !== packet.call_id || call.conversationId !== packet.conversation_id) return
+  const participant = call.participants?.find(item =>
+    item.firebase_uid === packet.from_uid && item.status === 'accepted'
+  )
+  if (!participant) return
+  const peer = createCallPeerConnection(call, packet.from_uid)
+  const peerConnection = peer.peerConnection
   const signal = packet.signal
   if (signal.type === 'offer') {
-    if (call.isCaller) throw new Error('Unexpected WebRTC offer received.')
-    await call.peerConnection.setRemoteDescription(signal)
-    for (const candidate of call.pendingIceCandidates.splice(0)) {
-      await call.peerConnection.addIceCandidate(candidate)
+    await peerConnection.setRemoteDescription(signal)
+    for (const candidate of peer.pendingIceCandidates.splice(0)) {
+      await peerConnection.addIceCandidate(candidate)
     }
-    const answer = await call.peerConnection.createAnswer()
-    await call.peerConnection.setLocalDescription(answer)
-    await sendCallSignal(call, {
-      type: call.peerConnection.localDescription.type,
-      sdp: call.peerConnection.localDescription.sdp
+    const answer = await peerConnection.createAnswer()
+    await peerConnection.setLocalDescription(answer)
+    await sendCallSignal(call, packet.from_uid, {
+      type: peerConnection.localDescription.type,
+      sdp: peerConnection.localDescription.sdp
     })
     return
   }
   if (signal.type === 'answer') {
-    if (!call.isCaller) throw new Error('Unexpected WebRTC answer received.')
-    await call.peerConnection.setRemoteDescription(signal)
-    for (const candidate of call.pendingIceCandidates.splice(0)) {
-      await call.peerConnection.addIceCandidate(candidate)
+    await peerConnection.setRemoteDescription(signal)
+    for (const candidate of peer.pendingIceCandidates.splice(0)) {
+      await peerConnection.addIceCandidate(candidate)
     }
     return
   }
   if (signal.candidate) {
-    if (call.peerConnection.remoteDescription) {
-      await call.peerConnection.addIceCandidate(signal.candidate)
+    if (peerConnection.remoteDescription) {
+      await peerConnection.addIceCandidate(signal.candidate)
     } else {
-      call.pendingIceCandidates.push(signal.candidate)
+      peer.pendingIceCandidates.push(signal.candidate)
     }
   }
 }
 
 async function handleCallSignal(packet) {
   if (!packet?.call_id || !packet?.signal) return
-  if (activeCall?.callId === packet.call_id) {
+  if (activeCall?.callId === packet.call_id && activeCall.callRoomJoined) {
     await applyCallSignal(packet)
     return
   }
-  if (incomingCall?.call_id !== packet.call_id && acceptingCallId !== packet.call_id) return
+  if (activeCall?.callId !== packet.call_id &&
+    incomingCall?.call_id !== packet.call_id && acceptingCallId !== packet.call_id) return
   const signals = pendingCallSignals.get(packet.call_id) || []
   if (signals.length < 64) signals.push(packet)
   pendingCallSignals.set(packet.call_id, signals)
@@ -1092,17 +1197,21 @@ async function finishActiveCall(notifyPeer) {
   stopCallRingtone()
   clearTimeout(call.ringingTimer)
   clearInterval(call.durationTimer)
+  realtimeSocket?.emit('call:leave', call.callId)
   activeCall = null
-  call.peerConnection?.close()
+  call.peerConnections?.forEach(peer => peer.peerConnection.close())
+  call.peerConnections?.clear()
   call.localStream?.getTracks().forEach(track => track.stop())
-  if (call.remoteVideo) call.remoteVideo.srcObject = null
-  if (call.localVideo) call.localVideo.srcObject = null
   pendingCallSignals.delete(call.callId)
   pendingCallUpdates.delete(call.callId)
   callRootReplace()
   if (notifyPeer && call.callId) {
     try {
-      await api.post(`${apiPath(call.conversationId)}/calls/${call.callId}/end`, {})
+      if (call.isCaller) {
+        await api.post(`${apiPath(call.conversationId)}/calls/${call.callId}/end`, {})
+      } else {
+        await api.post(`/messages/calls/${call.callId}/leave`, {})
+      }
     } catch (error) {
       showCallError(error, 'end call', {
         callId: call.callId,
@@ -1263,7 +1372,9 @@ async function startCall(conversation, callType) {
       status: responseCall.status,
       isCaller: true,
       localStream,
-      pendingIceCandidates: [],
+      peerConnections: new Map(),
+      participants: responseCall.participants || [],
+      iceServers: responseCall.ice_servers,
       ringExpiresAt: Date.parse(responseCall.ring_expires_at)
     }
     startCallRingtone()
@@ -1271,7 +1382,8 @@ async function startCall(conversation, callType) {
     callStarting = null
     localStream = null
     renderCallOverlay()
-    const peerConnection = createCallPeerConnection(activeCall, responseCall.ice_servers)
+    await joinCallRoom(activeCall)
+    await syncCallPeers(activeCall, activeCall.participants)
     const pendingUpdate = pendingCallUpdates.get(responseCall.call_id)
     if (pendingUpdate) {
       pendingCallUpdates.delete(responseCall.call_id)
@@ -1284,8 +1396,6 @@ async function startCall(conversation, callType) {
         expireOutgoingCall(activeCall)
       }
     }, Math.max(0, ringExpiresAt - Date.now()) + 500)
-    if (activeCall?.status === 'accepted') await startWebRtcOffer(activeCall)
-    if (!peerConnection) throw new Error('Unable to initialize the WebRTC connection.')
     if (activeCall) await applyPendingCallSignals(activeCall)
   } catch (error) {
     const wasCancelled = startSequence !== callStartSequence
@@ -1331,11 +1441,12 @@ async function acceptIncomingCall() {
     }
     await waitForRealtimeConnection(await ensureRealtimeSocket())
     localStream = await requestCallMedia(call.call_type)
-    const result = await api.post(
-      `${apiPath(call.conversation_id)}/calls/${call.call_id}/accept`, {}
-    )
+    const result = call.added_participant
+      ? await api.post(`${apiPath(call.conversation_id)}/calls/${call.call_id}/join`, {})
+      : await api.post(`${apiPath(call.conversation_id)}/calls/${call.call_id}/accept`, {})
     const responseCall = result?.data?.call
-    if (!Array.isArray(responseCall?.ice_servers)) {
+    const iceServers = result?.data?.ice_servers || responseCall?.ice_servers
+    if (!Array.isArray(iceServers)) {
       throw new Error('The call service returned incomplete WebRTC setup information.')
     }
     incomingCall = null
@@ -1348,14 +1459,18 @@ async function acceptIncomingCall() {
       peerName: call.caller_name,
       peerUid: call.caller_uid,
       peerProfileImage: call.caller_profile_image || getMemberProfileImage(call.caller_uid),
+      participants: result?.data?.participants || [],
+      peerConnections: new Map(),
+      iceServers,
       status: 'accepted',
-      isCaller: false,
+      isCaller: call.caller_uid === currentUid(),
       localStream,
       pendingIceCandidates: []
     }
     localStream = null
     renderCallOverlay()
-    createCallPeerConnection(activeCall, responseCall.ice_servers)
+    await joinCallRoom(activeCall)
+    await syncCallPeers(activeCall, activeCall.participants)
     await applyPendingCallSignals(activeCall)
   } catch (error) {
     if (activeCall?.callId === call.call_id) await finishActiveCall(true)
@@ -1363,7 +1478,10 @@ async function acceptIncomingCall() {
       localStream?.getTracks().forEach(track => track.stop())
       acceptingCallId = null
       try {
-        await api.post(`${apiPath(call.conversation_id)}/calls/${call.call_id}/end`, {})
+        await api.post(
+          `${apiPath(call.conversation_id)}/calls/${call.call_id}/${call.added_participant ? 'decline-invite' : 'end'}`,
+          {}
+        )
       } catch (endError) {
         console.error('[messages] Unable to end failed WebRTC call setup.', endError.message)
       }
@@ -1394,7 +1512,10 @@ async function declineIncomingCall() {
   incomingCallTimer = null
   renderCallOverlay()
   try {
-    await api.post(`${apiPath(call.conversation_id)}/calls/${call.call_id}/decline`, {})
+    await api.post(
+      `${apiPath(call.conversation_id)}/calls/${call.call_id}/${call.added_participant ? 'decline-invite' : 'decline'}`,
+      {}
+    )
   } catch (error) {
     showCallError(error, 'decline call', {
       callId: call.call_id,
@@ -2406,6 +2527,153 @@ function cancelComposerContext() {
   editingMessageId = null
   setSendButtonMode(false)
   renderComposerContext()
+}
+
+function openCallInviteModal(call) {
+  if (!call?.isCaller) return
+  const availableProjects = projects.filter(project =>
+    getProjectMembers(project).some(member => member.firebaseUid === currentUid())
+  )
+  if (!availableProjects.length) {
+    showCallError(new Error('You do not have a project with members available to invite.'), 'load call invite projects', {
+      callId: call.callId
+    })
+    return
+  }
+
+  const backdrop = make('div', 'modal-backdrop messages-call-invite-backdrop')
+  const form = make('form', 'modal messages-forward-modal messages-call-invite-modal')
+  form.setAttribute('role', 'dialog')
+  form.setAttribute('aria-modal', 'true')
+  form.setAttribute('aria-label', 'Add people to call')
+  const closeModal = () => {
+    backdrop.remove()
+    document.removeEventListener('keydown', onKeyDown)
+  }
+  const onKeyDown = event => {
+    if (event.key === 'Escape') closeModal()
+  }
+  const header = make('header', 'messages-forward-header')
+  const cancel = make('button', 'messages-forward-cancel', 'Cancel')
+  cancel.type = 'button'
+  cancel.addEventListener('click', closeModal)
+  header.append(cancel, make('h2', '', 'Add people to call'), make('span', 'messages-forward-selection-count'))
+
+  const projectLabel = make('label', 'messages-call-project-label', 'Project')
+  const projectSelect = document.createElement('select')
+  projectSelect.className = 'messages-call-project-select'
+  availableProjects.forEach(project => {
+    const option = document.createElement('option')
+    option.value = project.projectId
+    option.textContent = project.name
+    projectSelect.append(option)
+  })
+  projectLabel.append(projectSelect)
+
+  const search = document.createElement('input')
+  search.type = 'search'
+  search.className = 'messages-call-member-search'
+  search.placeholder = 'Search project members'
+  search.setAttribute('aria-label', 'Search project members')
+  const membersList = make('div', 'messages-forward-list messages-call-member-list')
+  const modalError = make('p', 'messages-error')
+  modalError.setAttribute('role', 'alert')
+  modalError.hidden = true
+  const footer = make('footer', 'messages-forward-footer')
+  const selectedSummary = make('span', 'messages-forward-selected', 'Select teammates')
+  const submit = make('button', 'primary-button messages-forward-submit', 'Add to call')
+  submit.type = 'submit'
+  submit.disabled = true
+  footer.append(selectedSummary, submit)
+
+  const activeUids = new Set((call.participants || [])
+    .filter(participant => ['ringing', 'accepted'].includes(participant.status))
+    .map(participant => participant.firebase_uid))
+  const maxAdditional = Math.max(0, 4 - activeUids.size)
+  const selectedUids = new Set()
+  const selectionCount = header.querySelector('.messages-forward-selection-count')
+  const updateSelection = () => {
+    const count = selectedUids.size
+    selectionCount.textContent = count ? `${count} selected` : ''
+    selectedSummary.textContent = count
+      ? `${count} selected · ${maxAdditional} available`
+      : `${maxAdditional} invite${maxAdditional === 1 ? '' : 's'} available`
+    submit.disabled = count === 0 || count > maxAdditional
+  }
+  const renderRecipients = () => {
+    const query = search.value.trim().toLowerCase()
+    const project = availableProjects.find(item => item.projectId === projectSelect.value)
+    const recipients = (project ? getProjectMembers(project) : [])
+      .filter(member => member.firebaseUid !== currentUid() && !activeUids.has(member.firebaseUid))
+      .filter(member => !query || `${member.name} ${member.email}`.toLowerCase().includes(query))
+      .sort((left, right) => left.name.localeCompare(right.name))
+    membersList.replaceChildren()
+    recipients.forEach(member => {
+      const option = make('label', `messages-forward-recipient${selectedUids.has(member.firebaseUid) ? ' selected' : ''}`)
+      const avatar = make('span', 'messages-forward-avatar')
+      renderAvatarElement(avatar, member, 'messages-forward-avatar')
+      const details = make('span', 'messages-forward-recipient-details')
+      details.append(make('strong', '', member.name), make('small', '', member.email))
+      const checkbox = document.createElement('input')
+      checkbox.type = 'checkbox'
+      checkbox.checked = selectedUids.has(member.firebaseUid)
+      checkbox.disabled = !checkbox.checked && selectedUids.size >= maxAdditional
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) selectedUids.add(member.firebaseUid)
+        else selectedUids.delete(member.firebaseUid)
+        option.classList.toggle('selected', checkbox.checked)
+        updateSelection()
+        renderRecipients()
+      })
+      option.append(avatar, details, checkbox)
+      membersList.append(option)
+    })
+    if (!membersList.childElementCount) {
+      membersList.append(make('p', 'messages-forward-empty', query
+        ? 'No matching project members.'
+        : 'No eligible members in this project.'))
+    }
+  }
+  search.addEventListener('input', renderRecipients)
+  projectSelect.addEventListener('change', () => {
+    selectedUids.clear()
+    updateSelection()
+    renderRecipients()
+  })
+  renderRecipients()
+  updateSelection()
+  form.append(header, projectLabel, search, membersList, modalError, footer)
+  backdrop.append(form)
+  document.querySelector('#modal-root').append(backdrop)
+  document.addEventListener('keydown', onKeyDown)
+  search.focus()
+  backdrop.addEventListener('click', event => {
+    if (event.target === backdrop) closeModal()
+  })
+  form.addEventListener('submit', async event => {
+    event.preventDefault()
+    if (!selectedUids.size || selectedUids.size > maxAdditional) return
+    submit.disabled = true
+    try {
+      const result = await api.post(
+        `${apiPath(call.conversationId)}/calls/${call.callId}/invite`,
+        { projectId: projectSelect.value, participantFirebaseUids: [...selectedUids] }
+      )
+      if (!result?.data?.invited?.length) {
+        throw new Error('Those teammates are already invited or in the call.')
+      }
+      closeModal()
+    } catch (error) {
+      showCallError(error, 'invite call participants', {
+        callId: call.callId,
+        conversationId: call.conversationId,
+        projectId: projectSelect.value
+      })
+      modalError.textContent = error.message
+      modalError.hidden = false
+      submit.disabled = false
+    }
+  })
 }
 
 function openForwardModal(message) {
