@@ -7430,9 +7430,9 @@ body.dark-mode .call-log-label,
 }
 
 .collab-call-active {
-    width: min(620px, 100%);
-    height: min(392px, 88vh);
-    min-height: 320px;
+    width: min(820px, 100%);
+    height: min(560px, 88vh);
+    min-height: 420px;
 }
 
 .collab-call-header {
@@ -7462,6 +7462,12 @@ body.dark-mode .call-log-label,
 .collab-call-status {
     color: #A9B9B1;
     font-size: 12px;
+}
+
+.collab-call-duration {
+    color: #F4F7F5;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
 }
 
 .collab-call-controls {
@@ -7564,8 +7570,8 @@ body.dark-mode .call-log-label,
 
 .collab-call-avatar {
     display: grid;
-    width: 112px;
-    height: 112px;
+    width: 160px;
+    height: 160px;
     place-items: center;
     border-radius: 50%;
     background: #35394F;
@@ -7628,6 +7634,14 @@ body.dark-mode .call-log-label,
     color: #A9ADBA;
 }
 
+.collab-call-profile-image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    object-fit: cover;
+}
+
 .collab-call-control {
     display: grid;
     width: 48px;
@@ -7672,7 +7686,7 @@ body.dark-mode .call-log-label,
 
 .collab-call-incoming,
 .collab-call-state {
-    width: min(430px, 100%);
+    width: min(520px, 100%);
     align-items: center;
     padding: 34px;
     border-color: #34413D;
@@ -7680,6 +7694,7 @@ body.dark-mode .call-log-label,
 }
 
 .collab-call-incoming {
+    min-height: 390px;
     gap: 12px;
     border-color: rgba(255, 255, 255, .2);
     background: #191D2D;
@@ -7688,7 +7703,7 @@ body.dark-mode .call-log-label,
 }
 
 .collab-call-incoming-avatar {
-    width: 92px;
+    width: 112px;
 }
 
 .collab-call-state {
@@ -7772,6 +7787,12 @@ body.dark-mode .collab-call-incoming .collab-call-description,
         aspect-ratio: auto;
         min-height: 0;
         border: 0;
+        border-radius: 0;
+    }
+
+    .collab-call-incoming {
+        width: 100%;
+        min-height: min(390px, 100vh);
         border-radius: 0;
     }
 

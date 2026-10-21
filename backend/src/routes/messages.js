@@ -12,7 +12,14 @@ const {
     clearConversationMessages,
     markConversationRead
 } = require('../controllers/messageController');
-const { getCallHistory, startCall, updateCall } = require('../controllers/messageCallController');
+const {
+    getCallHistory,
+    startCall,
+    updateCall,
+    inviteCallParticipants,
+    joinInvitedCall,
+    declineInvitedCall
+} = require('../controllers/messageCallController');
 const { requireFirebaseAuth } = require('../middleware/requireFirebaseAuth');
 
 const router = express.Router();
@@ -41,6 +48,9 @@ router.post('/conversations/:conversationId/read', markConversationRead);
 router.patch('/conversations/:conversationId/messages/:messageId/:action', mutateMessage);
 router.get('/conversations/:conversationId/calls', getCallHistory);
 router.post('/conversations/:conversationId/calls', callStartRateLimit, startCall);
+router.post('/conversations/:conversationId/calls/:callId/invite', inviteCallParticipants);
+router.post('/conversations/:conversationId/calls/:callId/join', joinInvitedCall);
+router.post('/conversations/:conversationId/calls/:callId/decline-invite', declineInvitedCall);
 router.post('/conversations/:conversationId/calls/:callId/:action', updateCall);
 
 module.exports = router;

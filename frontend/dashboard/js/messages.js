@@ -1,10 +1,10 @@
 import { activeView, currentUser, getAccessibleMembers, getAvatarSource, make, projects, renderAvatarElement } from './state.js'
 import { firebaseAuth } from '../../firebase.js'
 import { api, apiBaseUrl } from './api.js'
-import { clearCallInterface, renderCallInterface } from './messageCallUI.js?v=20261020-call-dimmer'
+import { clearCallInterface, renderCallInterface } from './messageCallUI.js?v=20261021-call-duration'
 
 const maxAttachmentBytes = 512 * 1024
-const messagesBuildId = '20261021-call-delivery'
+const messagesBuildId = '20261021-call-avatars'
 const presenceHeartbeatMs = 25000
 const incomingCallRingDurationMs = 45000
 const callSocketConnectTimeoutMs = 15000
@@ -66,6 +66,8 @@ const voiceNoteGainNodes = new WeakMap()
 const currentEmail = () => currentUser.email?.trim().toLowerCase() || firebaseAuth.currentUser?.email?.trim().toLowerCase() || ''
 const currentUid = () => firebaseAuth.currentUser?.uid || ''
 const apiPath = conversationId => `/messages/conversations/${encodeURIComponent(conversationId)}`
+const getMemberProfileImage = uid =>
+  getAccessibleMembers().find(member => member.firebaseUid === uid)?.profileImage || ''
 
 function getElements() {
   return {
@@ -564,7 +566,10 @@ function handleCallUpdate(call) {
   if (!activeCall && !incomingCall && call.callee_uid === uid &&
     call.status === 'ringing') {
     if (mediaRecorder) cancelVoiceRecording()
-    incomingCall = call
+    incomingCall = {
+      ...call,
+      caller_profile_image: getMemberProfileImage(call.caller_uid)
+    }
     startCallRingtone()
     clearTimeout(incomingCallTimer)
     incomingCallTimer = setTimeout(() => {
@@ -612,6 +617,29 @@ function setActiveCallStatus(text) {
   if (placeholderStatus) {
     placeholderStatus.textContent = activeCall.status === 'ringing' ? 'Ringing…' : 'Connecting video…'
   }
+}
+
+function updateCallDuration(call) {
+  if (!call?.connectedAt) return
+  const totalSeconds = Math.floor((Date.now() - call.connectedAt) / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  const duration = hours
+    ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+    : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  const timer = call.overlay?.querySelector('.collab-call-duration')
+  if (timer) {
+    timer.textContent = duration
+    timer.dateTime = `PT${hours ? `${hours}H` : ''}${minutes}M${seconds}S`
+  }
+}
+
+function startCallDuration(call) {
+  if (call.connectedAt) return
+  call.connectedAt = Date.now()
+  updateCallDuration(call)
+  call.durationTimer = setInterval(() => updateCallDuration(call), 1000)
 }
 
 function waitForRealtimeConnection(socket) {
@@ -963,6 +991,7 @@ function createCallPeerConnection(call, iceServers) {
   peerConnection.addEventListener('connectionstatechange', () => {
     if (activeCall?.callId !== call.callId) return
     if (peerConnection.connectionState === 'connected') {
+      startCallDuration(call)
       setActiveCallStatus(`${call.callType === 'video' ? 'Video' : 'Voice'} · Connected`)
     } else if (peerConnection.connectionState === 'failed') {
       failActiveCall(new Error(
@@ -1062,6 +1091,7 @@ async function finishActiveCall(notifyPeer) {
   if (!call) return
   stopCallRingtone()
   clearTimeout(call.ringingTimer)
+  clearInterval(call.durationTimer)
   activeCall = null
   call.peerConnection?.close()
   call.localStream?.getTracks().forEach(track => track.stop())
@@ -1229,6 +1259,7 @@ async function startCall(conversation, callType) {
       callType,
       peerName: responseCall.peer_name,
       peerUid: responseCall.peer_uid,
+      peerProfileImage: getMemberProfileImage(responseCall.peer_uid),
       status: responseCall.status,
       isCaller: true,
       localStream,
@@ -1316,6 +1347,7 @@ async function acceptIncomingCall() {
       callType: call.call_type,
       peerName: call.caller_name,
       peerUid: call.caller_uid,
+      peerProfileImage: call.caller_profile_image || getMemberProfileImage(call.caller_uid),
       status: 'accepted',
       isCaller: false,
       localStream,

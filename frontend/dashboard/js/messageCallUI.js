@@ -39,9 +39,18 @@ function iconActionButton(className, label, iconName, onClick) {
   return button
 }
 
-function appendParticipantAvatar(container, className) {
+function appendParticipantAvatar(container, className, profileImage = '') {
   const avatar = element('div', className)
   avatar.setAttribute('aria-hidden', 'true')
+  if (profileImage) {
+    const image = element('img', 'collab-call-profile-image')
+    image.src = profileImage
+    image.alt = ''
+    image.decoding = 'async'
+    avatar.append(image)
+    container.append(avatar)
+    return avatar
+  }
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svg.setAttribute('viewBox', '0 0 64 64')
   const head = document.createElementNS(svg.namespaceURI, 'circle')
@@ -91,7 +100,8 @@ export function renderCallInterface(root, {
       element('strong', 'collab-call-name', activeCall.peerName || 'Teammate'),
       element('span', 'collab-call-status', `${activeCall.callType === 'video' ? 'Video' : 'Voice'} · ${
         activeCall.status === 'accepted' ? 'Connecting…' : 'Calling…'
-      }`)
+      }`),
+      element('time', 'collab-call-duration', '00:00')
     )
 
     header.append(details)
@@ -115,12 +125,12 @@ export function renderCallInterface(root, {
 
     if (activeCall.callType === 'video') {
       videoPlaceholder = element('div', 'collab-call-video-placeholder')
-      appendParticipantAvatar(videoPlaceholder, 'collab-call-video-avatar')
+      appendParticipantAvatar(videoPlaceholder, 'collab-call-video-avatar', activeCall.peerProfileImage)
       videoPlaceholder.append(element('span', '', activeCall.status === 'ringing' ? 'Ringing…' : 'Connecting video…'))
       stage.append(localVideo)
       stage.append(videoPlaceholder)
     } else {
-      appendParticipantAvatar(stage, 'collab-call-avatar')
+      appendParticipantAvatar(stage, 'collab-call-avatar', activeCall.peerProfileImage)
     }
 
     const controls = element('div', 'collab-call-controls')
@@ -176,7 +186,7 @@ export function renderCallInterface(root, {
 
   if (incomingCall) {
     const { backdrop, panel } = createDialog('Incoming call', 'collab-call-dialog collab-call-incoming')
-    appendParticipantAvatar(panel, 'collab-call-incoming-avatar')
+    appendParticipantAvatar(panel, 'collab-call-incoming-avatar', incomingCall.caller_profile_image)
     panel.append(
       element('h2', 'collab-call-title', `Incoming ${incomingCall.call_type === 'video' ? 'video' : 'voice'} call`),
       element('p', 'collab-call-description', incomingCall.caller_name || 'Teammate')
