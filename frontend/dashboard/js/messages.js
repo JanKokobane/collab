@@ -133,6 +133,27 @@ function showError(error, operation = 'message operation') {
   element.hidden = false
 }
 
+function showCallError(error, operation, context = {}) {
+  const diagnosticId = `CALL-${crypto.randomUUID()}`
+  const message = error?.message || 'The call could not be completed. Please try again.'
+  console.error(`[messages] Call failure ${diagnosticId}`, {
+    operation,
+    ...context,
+    errorName: error?.name || 'Error',
+    code: error?.code || error?.payload?.code || null,
+    status: error?.status ?? null,
+    message,
+    serverMessage: error?.payload?.message || null,
+    stack: error?.stack || null
+  })
+  const errorElement = getElements().error
+  if (errorElement) {
+    errorElement.textContent = `${message} (Reference: ${diagnosticId})`
+    errorElement.hidden = false
+  }
+  return { diagnosticId, message }
+}
+
 function logMessageApiFailure(operation, error, context = {}) {
   console.error(`[messages] ${operation} failed.`, {
     operation,
@@ -1063,15 +1084,23 @@ async function finishActiveCall(notifyPeer) {
     try {
       await api.post(`${apiPath(call.conversationId)}/calls/${call.callId}/end`, {})
     } catch (error) {
-      showError(error, `end call ${call.callId}`)
+      showCallError(error, 'end call', {
+        callId: call.callId,
+        conversationId: call.conversationId
+      })
     }
   }
 }
 
 async function failActiveCall(error, operation) {
-  showError(error, operation)
+  const call = activeCall
+  const failure = showCallError(error, operation, call ? {
+    callId: call.callId,
+    conversationId: call.conversationId,
+    callType: call.callType
+  } : {})
   await finishActiveCall(true)
-  callError = { message: error?.message || 'The call could not be completed. Please try again.' }
+  callError = failure
   renderCallOverlay()
 }
 
@@ -1099,7 +1128,10 @@ async function expireOutgoingCall(call) {
     retryAfterMs = Number(result?.data?.retry_after_ms)
   } catch (error) {
     if (error?.status !== 409) {
-      showError(error, `mark call ${call.callId} as missed`)
+        showCallError(error, 'mark call as missed', {
+          callId: call.callId,
+          conversationId: call.conversationId
+        })
       if (activeCall?.callId === call.callId) await finishActiveCall(false)
       return
     }
@@ -1115,7 +1147,10 @@ async function expireOutgoingCall(call) {
       const result = await api.get(`${apiPath(call.conversationId)}/calls?limit=200`)
       updatedCall = result?.data?.calls?.find(item => item.call_id === call.callId) || null
     } catch (reconcileError) {
-      showError(reconcileError, `reconcile call ${call.callId} after timeout`)
+        showCallError(reconcileError, 'reconcile call after timeout', {
+          callId: call.callId,
+          conversationId: call.conversationId
+        })
       if (activeCall?.callId === call.callId) await finishActiveCall(false)
       return
     }
@@ -1233,7 +1268,7 @@ async function startCall(conversation, callType) {
     if (activeCall) await applyPendingCallSignals(activeCall)
   } catch (error) {
     const wasCancelled = startSequence !== callStartSequence
-    console.error('[messages] Call setup failed', {
+    const failure = showCallError(error, 'start call', {
       stage: setupStage,
       method: setupStage === 'create call with backend' ? 'POST' : null,
       path: setupStage === 'create call with backend'
@@ -1241,12 +1276,6 @@ async function startCall(conversation, callType) {
         : null,
       callType,
       conversationId: conversation.id,
-      errorName: error?.name || 'Error',
-      status: error?.status ?? null,
-      code: error?.code || error?.payload?.code || null,
-      message: error?.message || String(error),
-      serverMessage: error?.payload?.message || null,
-      stack: error?.stack || null
     })
     if (activeCall) await finishActiveCall(Boolean(activeCall.callId))
     else if (createdCallId) {
@@ -1262,9 +1291,8 @@ async function startCall(conversation, callType) {
     localStream?.getTracks().forEach(track => track.stop())
     if (wasCancelled) return
     callStarting = null
-    callError = { message: error?.message || 'The call could not be completed. Please try again.' }
+    callError = failure
     renderCallOverlay()
-    showError(error, `start ${callType} call`)
   } finally {
     callStartInFlight = false
   }
@@ -1323,9 +1351,12 @@ async function acceptIncomingCall() {
         incomingCallTimer = null
       }
     }
-    callError = { message: error?.message || 'The call could not be completed. Please try again.' }
+    callError = showCallError(error, 'accept call', {
+      callId: call.call_id,
+      conversationId: call.conversation_id,
+      callType: call.call_type
+    })
     renderCallOverlay()
-    showError(error, `accept call ${call.call_id}`)
   } finally {
     acceptingCallId = null
   }
@@ -1343,7 +1374,11 @@ async function declineIncomingCall() {
   try {
     await api.post(`${apiPath(call.conversation_id)}/calls/${call.call_id}/decline`, {})
   } catch (error) {
-    showError(error, `decline call ${call.call_id}`)
+    showCallError(error, 'decline call', {
+      callId: call.call_id,
+      conversationId: call.conversation_id,
+      callType: call.call_type
+    })
   }
 }
 

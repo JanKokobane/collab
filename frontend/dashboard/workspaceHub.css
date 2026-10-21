@@ -7713,6 +7713,12 @@ body.dark-mode .call-log-label,
     overflow-wrap: anywhere;
 }
 
+.collab-call-reference {
+    color: #A9B9B1;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
 .collab-call-incoming .collab-call-description {
     color: #A9B9B1;
 }

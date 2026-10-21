@@ -212,6 +212,9 @@ export function renderCallInterface(root, {
     panel.append(
       element('h2', 'collab-call-title', callError.title || 'Call could not start'),
       element('p', 'collab-call-description', callError.message),
+      ...(callError.diagnosticId
+        ? [element('small', 'collab-call-reference', `Reference: ${callError.diagnosticId}`)]
+        : []),
       actionButton('collab-call-secondary', 'Close', onDismissError)
     )
     root.append(backdrop)
