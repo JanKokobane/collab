@@ -2,17 +2,11 @@ const { Server } = require('socket.io');
 const { query } = require('../config/db');
 const { getFirebaseAdmin } = require('../config/firebaseAdmin');
 const { getMessageCallIceServers } = require('../services/messageCallIceConfig');
+const { isOriginAllowed } = require('../config/cors');
 
 let io;
 const socketsByUid = new Map();
 const roomPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const allowedOrigins = [
-    process.env.FRONTEND_URL,
-    process.env.PRODUCTION_FRONTEND_URL,
-    ...(process.env.CORS_ALLOWED_ORIGINS ||
-        'http://127.0.0.1:5500,http://localhost:5500,http://127.0.0.1:8000,http://localhost:8000'
-    ).split(',')
-].map(origin => origin?.trim()).filter(Boolean);
 
 const userRoom = uid => `user:${uid}`;
 const conversationRoom = id => `conversation:${id}`;
@@ -188,7 +182,7 @@ const attachMessageSocket = server => {
     io = new Server(server, {
         cors: {
             origin(origin, callback) {
-                if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+                if (isOriginAllowed(origin)) return callback(null, true);
                 return callback(new Error('Origin is not allowed.'));
             },
             methods: ['GET', 'POST'],

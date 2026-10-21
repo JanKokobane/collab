@@ -14,8 +14,14 @@ Copy `.env.example` to `.env` for local development and set:
 - Firebase Admin credentials through `GOOGLE_APPLICATION_CREDENTIALS`
   (local) or Render's secret environment variables
   (`FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY`).
-- `CORS_ALLOWED_ORIGINS`: comma-separated, exact frontend origins. Include
-  the local development origin and the deployed frontend origin.
+- `CORS_ALLOWED_ORIGINS`: defaults to `*` so the frontend can be hosted on any
+  domain. Set a comma-separated exact-origin allowlist to restrict browser
+  access. CORS does not enable cookie credentials; API routes still require
+  Firebase authentication where applicable.
+
+For an existing Render deployment, set `CORS_ALLOWED_ORIGINS` to `*` (or remove
+the variable) and redeploy the backend; an existing exact-origin value overrides
+the wildcard default.
 - `WEBRTC_STUN_URLS`: Optional comma-separated STUN URLs; defaults to Google's
   public STUN servers.
 - `WEBRTC_TURN_URLS` and `WEBRTC_TURN_SHARED_SECRET`: Optional TURN relay

@@ -10,21 +10,39 @@ const userRouter = require('./src/routes/user');
 const messagesRouter = require('./src/routes/messages');
 
 const { pool } = require('./src/config/db');
+const { getCorsOrigin, isOriginAllowed } = require('./src/config/cors');
 
 const app = express();
 app.set('trust proxy', 1);
 
-const allowedOrigins = [
-    process.env.FRONTEND_URL,
-    process.env.PRODUCTION_FRONTEND_URL,
-    ...(process.env.CORS_ALLOWED_ORIGINS ||
-        'http://127.0.0.1:5500,http://localhost:5500,http://127.0.0.1:8000,http://localhost:8000'
-    ).split(',')
-]
-    .map(origin => origin?.trim())
-    .filter(Boolean);
-
 app.disable('x-powered-by');
+
+app.use((req, res, next) => {
+    const requestOrigin = req.get('Origin');
+    const originAllowed = isOriginAllowed(requestOrigin);
+
+    if (requestOrigin && originAllowed) {
+        const corsOrigin = getCorsOrigin(requestOrigin);
+        res.setHeader('Access-Control-Allow-Origin', corsOrigin);
+        if (corsOrigin !== '*') res.setHeader('Vary', 'Origin');
+
+        res.setHeader(
+            'Access-Control-Allow-Headers',
+            'Authorization, Content-Type'
+        );
+
+        res.setHeader(
+            'Access-Control-Allow-Methods',
+            'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+        );
+    }
+
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(originAllowed ? 204 : 403);
+    }
+
+    next();
+});
 
 app.use(helmet());
 
@@ -39,43 +57,6 @@ app.use(
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
-
-app.use((req, res, next) => {
-    const requestOrigin = req.get('Origin');
-
-    if (
-        requestOrigin &&
-        allowedOrigins.includes(requestOrigin)
-    ) {
-        res.setHeader(
-            'Access-Control-Allow-Origin',
-            requestOrigin
-        );
-
-        res.setHeader('Vary', 'Origin');
-
-        res.setHeader(
-            'Access-Control-Allow-Headers',
-            'Authorization, Content-Type'
-        );
-
-        res.setHeader(
-            'Access-Control-Allow-Methods',
-            'GET, POST, PUT, PATCH, DELETE, OPTIONS'
-        );
-    }
-
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(
-            requestOrigin &&
-            allowedOrigins.includes(requestOrigin)
-                ? 204
-                : 403
-        );
-    }
-
-    next();
-});
 
 app.get('/', (req, res) => {
     res.json({
