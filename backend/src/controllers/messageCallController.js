@@ -5,7 +5,7 @@ const { getConversation } = require('./messageController');
 const { getMessageCallIceServers } = require('../services/messageCallIceConfig');
 
 const callIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const projectIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const projectIdPattern = /^[A-Za-z0-9_-]{1,128}$/;
 
 const getCallParticipants = async callId => {
     const result = await query(
@@ -300,7 +300,7 @@ const inviteCallParticipants = async (req, res) => {
         }
         const projectAccess = await client.query(
             `SELECT 1 FROM projects p
-             WHERE p.project_id = $1::uuid
+             WHERE p.project_id = $1
                AND (p.creator_firebase_uid = $2 OR EXISTS (
                    SELECT 1 FROM project_invitations i
                    WHERE i.project_id = p.project_id
@@ -319,7 +319,7 @@ const inviteCallParticipants = async (req, res) => {
             `SELECT candidates.firebase_uid,
                     COALESCE(profile.full_name, invitation.invited_name, profile.email, 'Project member') AS display_name
              FROM unnest($2::text[]) AS candidates(firebase_uid)
-             JOIN projects p ON p.project_id = $1::uuid
+             JOIN projects p ON p.project_id = $1
              LEFT JOIN user_profiles profile ON profile.firebase_uid = candidates.firebase_uid
              LEFT JOIN LATERAL (
                  SELECT invited_name

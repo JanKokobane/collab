@@ -5884,12 +5884,6 @@ body.dark-mode .hub-res-logo {
     border-radius: 14px;
 }
 
-.messages-call-invite-modal {
-    width: min(520px, 100%);
-    max-width: 520px;
-    height: min(620px, calc(100vh - 40px));
-}
-
 .messages-call-invite-backdrop {
     z-index: 20001;
 }
@@ -5903,8 +5897,7 @@ body.dark-mode .hub-res-logo {
     font-weight: 650;
 }
 
-.messages-call-project-select,
-.messages-call-member-search {
+.messages-call-project-select {
     width: 100%;
     min-height: 38px;
     padding: 0 10px;
@@ -5913,15 +5906,6 @@ body.dark-mode .hub-res-logo {
     background: #FFFFFF;
     color: #27272A;
     font: 12px 'DM Sans', sans-serif;
-}
-
-.messages-call-member-search {
-    width: auto;
-    margin: 8px 14px 10px;
-}
-
-.messages-call-member-list {
-    display: block;
 }
 
 form.messages-forward-modal {

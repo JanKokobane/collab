@@ -5,10 +5,10 @@ import {
   clearCallInterface,
   renderCallInterface,
   renderCallParticipants
-} from './messageCallUI.js?v=20261021-group-call'
+} from './messageCallUI.js?v=20261022-call-polish'
 
 const maxAttachmentBytes = 512 * 1024
-const messagesBuildId = '20261021-group-call'
+const messagesBuildId = '20261022-call-polish'
 const presenceHeartbeatMs = 25000
 const incomingCallRingDurationMs = 45000
 const callSocketConnectTimeoutMs = 15000
@@ -39,6 +39,7 @@ let activeCall = null
 let incomingCallTimer = null
 let callRingtoneContext = null
 let callRingtoneTimer = null
+let incomingRingtone = null
 const callRingtoneOscillators = new Set()
 let callStartInFlight = false
 let callStartSequence = 0
@@ -517,8 +518,8 @@ function playCallRingtoneTone() {
       oscillator.type = 'sine'
       oscillator.frequency.setValueAtTime(frequency, startAt)
       gain.gain.setValueAtTime(0, startAt)
-      gain.gain.linearRampToValueAtTime(0.07, startAt + 0.035)
-      gain.gain.setValueAtTime(0.07, startAt + 0.38)
+      gain.gain.linearRampToValueAtTime(0.18, startAt + 0.035)
+      gain.gain.setValueAtTime(0.18, startAt + 0.38)
       gain.gain.linearRampToValueAtTime(0, startAt + 0.44)
       oscillator.connect(gain)
       gain.connect(context.destination)
@@ -534,8 +535,27 @@ function playCallRingtoneTone() {
   })
 }
 
+function playIncomingCallRingtone() {
+  if (!incomingCall || acceptingCallId) return
+  if (!incomingRingtone) {
+    incomingRingtone = new Audio(new URL('../../images/microsoft_ringtone.mp3', import.meta.url))
+    incomingRingtone.loop = true
+    incomingRingtone.preload = 'auto'
+  }
+  incomingRingtone.volume = 1
+  if (incomingRingtone.paused) {
+    incomingRingtone.play().catch(error => {
+      console.warn('[messages] Incoming ringtone awaits a user gesture.', error.message)
+    })
+  }
+}
+
 function startCallRingtone() {
   if (!shouldPlayCallTone() || acceptingCallId || callRingtoneTimer !== null) return
+  if (incomingCall) {
+    playIncomingCallRingtone()
+    return
+  }
   const context = getCallRingtoneContext()
   if (!context) return
   playCallRingtoneTone()
@@ -546,6 +566,10 @@ function startCallRingtone() {
 }
 
 function stopCallRingtone() {
+  if (incomingRingtone) {
+    incomingRingtone.pause()
+    incomingRingtone.currentTime = 0
+  }
   if (callRingtoneTimer !== null) {
     clearInterval(callRingtoneTimer)
     callRingtoneTimer = null
@@ -558,6 +582,10 @@ function stopCallRingtone() {
 }
 
 function unlockCallRingtone() {
+  if (incomingCall) {
+    playIncomingCallRingtone()
+    return
+  }
   const context = getCallRingtoneContext()
   if (!context || context.state !== 'suspended') return
   context.resume().then(() => {
@@ -2559,7 +2587,8 @@ function openCallInviteModal(call) {
   cancel.addEventListener('click', closeModal)
   header.append(cancel, make('h2', '', 'Add people to call'), make('span', 'messages-forward-selection-count'))
 
-  const projectLabel = make('label', 'messages-call-project-label', 'Project')
+  const projectLabel = make('label', 'messages-call-project-label')
+  projectLabel.append(make('span', '', 'Project'))
   const projectSelect = document.createElement('select')
   projectSelect.className = 'messages-call-project-select'
   availableProjects.forEach(project => {
@@ -2570,11 +2599,14 @@ function openCallInviteModal(call) {
   })
   projectLabel.append(projectSelect)
 
+  const searchWrap = make('label', 'messages-forward-search')
+  const searchIcon = make('span', '', '⌕')
+  searchIcon.setAttribute('aria-hidden', 'true')
   const search = document.createElement('input')
   search.type = 'search'
-  search.className = 'messages-call-member-search'
-  search.placeholder = 'Search project members'
+  search.placeholder = 'Search name or email'
   search.setAttribute('aria-label', 'Search project members')
+  searchWrap.append(searchIcon, search)
   const membersList = make('div', 'messages-forward-list messages-call-member-list')
   const modalError = make('p', 'messages-error')
   modalError.setAttribute('role', 'alert')
@@ -2642,7 +2674,7 @@ function openCallInviteModal(call) {
   })
   renderRecipients()
   updateSelection()
-  form.append(header, projectLabel, search, membersList, modalError, footer)
+  form.append(header, projectLabel, searchWrap, membersList, modalError, footer)
   backdrop.append(form)
   document.querySelector('#modal-root').append(backdrop)
   document.addEventListener('keydown', onKeyDown)
