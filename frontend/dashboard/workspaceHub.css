@@ -5884,20 +5884,31 @@ body.dark-mode .hub-res-logo {
     border-radius: 14px;
 }
 
+form.modal.messages-forward-modal.messages-call-invite-modal {
+    border: 0;
+    outline: 0;
+    box-shadow: none;
+}
+
 .messages-call-invite-backdrop {
     z-index: 20001;
 }
 
-.messages-call-project-label {
-    display: grid;
+.messages-call-project-control {
+    display: flex;
+    flex-direction: column;
     gap: 6px;
     margin: 8px 14px;
+}
+
+.messages-call-project-control > label {
     color: #52525B;
     font-size: 11px;
     font-weight: 650;
+    line-height: 1.3;
 }
 
-.messages-call-project-select {
+.messages-call-invite-modal .messages-call-project-select {
     width: 100%;
     min-height: 38px;
     padding: 0 10px;
@@ -5906,11 +5917,18 @@ body.dark-mode .hub-res-logo {
     background: #FFFFFF;
     color: #27272A;
     font: 12px 'DM Sans', sans-serif;
+    box-sizing: border-box;
+    margin: 0;
 }
 
 form.messages-forward-modal {
     display: flex;
     flex-direction: column;
+}
+
+form.messages-call-invite-modal > .messages-forward-header {
+    overflow: hidden;
+    border-radius: 14px 14px 0 0;
 }
 
 .messages-forward-header {

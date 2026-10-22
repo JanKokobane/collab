@@ -108,7 +108,7 @@ import {
   renderNotifications,
   initWorkspaceHubEvents
 } from './js/workspaceHub.js'
-import { initMessages, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261022-call-timer-answer'
+import { initMessages, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261022-shared-recipient-modal'
 import { initProjectStickyNotes } from './js/projectStickyNotes.js'
 import { initProfileOnboarding } from './js/profileOnboarding.js'
 import {

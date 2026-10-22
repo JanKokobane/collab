@@ -8,7 +8,7 @@ import {
 } from './messageCallUI.js?v=20261022-call-timer-answer'
 
 const maxAttachmentBytes = 512 * 1024
-const messagesBuildId = '20261022-call-timer-answer'
+const messagesBuildId = '20261022-shared-recipient-modal'
 const presenceHeartbeatMs = 25000
 const incomingCallRingDurationMs = 45000
 const callSocketConnectTimeoutMs = 15000
@@ -280,6 +280,14 @@ function getProjectMembers(project) {
   ]
   return [...new Map(all.filter(member => member.firebaseUid && member.email)
     .map(member => [member.firebaseUid, member])).values()]
+}
+
+function findSharedProjectWithMember(firebaseUid) {
+  return projects.find(project => {
+    const members = getProjectMembers(project)
+    return members.some(member => member.firebaseUid === currentUid()) &&
+      members.some(member => member.firebaseUid === firebaseUid)
+  })
 }
 
 function getContact(email) {
@@ -1159,9 +1167,9 @@ function updateCallParticipants(update = {}) {
     clearTimeout(activeCall.ringingTimer)
     setActiveCallStatus(`${activeCall.callType === 'video' ? 'Video' : 'Voice'} · Connecting…`)
   }
-  syncCallPeers(activeCall, update.participants || []).catch(error => {
-    failActiveCall(error, 'update call participants')
-  })
+  syncCallPeers(activeCall, update.participants || [])
+    .then(() => applyPendingCallSignals(activeCall))
+    .catch(error => failActiveCall(error, 'update call participants'))
 }
 
 async function applyCallSignal(packet) {
@@ -1205,12 +1213,23 @@ async function applyCallSignal(packet) {
 
 async function handleCallSignal(packet) {
   if (!packet?.call_id || !packet?.signal) return
-  if (activeCall?.callId === packet.call_id && activeCall.callRoomJoined) {
-    await applyCallSignal(packet)
+  if (activeCall?.callId === packet.call_id) {
+    const peerAccepted = activeCall.participants?.some(participant =>
+      participant.firebase_uid === packet.from_uid && participant.status === 'accepted'
+    )
+    if (activeCall.callRoomJoined && peerAccepted) {
+      await applyCallSignal(packet)
+    } else {
+      queuePendingCallSignal(packet)
+    }
     return
   }
   if (activeCall?.callId !== packet.call_id &&
     incomingCall?.call_id !== packet.call_id && acceptingCallId !== packet.call_id) return
+  queuePendingCallSignal(packet)
+}
+
+function queuePendingCallSignal(packet) {
   const signals = pendingCallSignals.get(packet.call_id) || []
   if (signals.length < 64) signals.push(packet)
   pendingCallSignals.set(packet.call_id, signals)
@@ -1219,7 +1238,15 @@ async function handleCallSignal(packet) {
 async function applyPendingCallSignals(call) {
   const signals = pendingCallSignals.get(call.callId) || []
   pendingCallSignals.delete(call.callId)
-  for (const signal of signals) await applyCallSignal(signal)
+  const deferred = []
+  for (const signal of signals) {
+    const peerAccepted = call.participants?.some(participant =>
+      participant.firebase_uid === signal.from_uid && participant.status === 'accepted'
+    )
+    if (call.callRoomJoined && peerAccepted) await applyCallSignal(signal)
+    else deferred.push(signal)
+  }
+  if (deferred.length) pendingCallSignals.set(call.callId, deferred)
 }
 
 async function finishActiveCall(notifyPeer) {
@@ -1354,6 +1381,7 @@ async function startCall(conversation, callType) {
   renderCallOverlay()
   let localStream
   let createdCallId = null
+  let callConversationId = conversation.id
   let setupStage = 'check browser call support'
   try {
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
@@ -1375,14 +1403,28 @@ async function startCall(conversation, callType) {
       return
     }
     setupStage = 'create call with backend'
-    const result = await api.post(`${apiPath(conversation.id)}/calls`, { callType })
+    let result
+    try {
+      result = await api.post(`${apiPath(callConversationId)}/calls`, { callType })
+    } catch (error) {
+      if (error?.status !== 404 || error?.code !== 'CONVERSATION_NOT_FOUND') throw error
+      setupStage = 'reopen direct conversation'
+      const reopenedConversationId = await reopenDirectConversation(conversation)
+      if (!reopenedConversationId) {
+        setupStage = 'create call with backend'
+        throw error
+      }
+      callConversationId = reopenedConversationId
+      setupStage = 'create call with backend'
+      result = await api.post(`${apiPath(callConversationId)}/calls`, { callType })
+    }
     const responseCall = result?.data?.call
     createdCallId = responseCall?.call_id || null
     if (startSequence !== callStartSequence) {
       localStream?.getTracks().forEach(track => track.stop())
       localStream = null
       if (createdCallId) {
-        await api.post(`${apiPath(conversation.id)}/calls/${createdCallId}/end`, {})
+        await api.post(`${apiPath(callConversationId)}/calls/${createdCallId}/end`, {})
           .catch(error => console.error('[messages] Unable to end cancelled call setup.', error.message))
       }
       return
@@ -1395,7 +1437,7 @@ async function startCall(conversation, callType) {
     }
     activeCall = {
       callId: responseCall.call_id,
-      conversationId: conversation.id,
+      conversationId: callConversationId,
       callType,
       peerName: responseCall.peer_name,
       peerUid: responseCall.peer_uid,
@@ -1433,23 +1475,27 @@ async function startCall(conversation, callType) {
     const wasCancelled = startSequence !== callStartSequence
     const failure = showCallError(error, 'start call', {
       stage: setupStage,
-      method: setupStage === 'create call with backend' ? 'POST' : null,
-      path: setupStage === 'create call with backend'
-        ? `${apiPath(conversation.id)}/calls`
+      method: ['create call with backend', 'reopen direct conversation'].includes(setupStage)
+        ? 'POST'
         : null,
+      path: setupStage === 'reopen direct conversation'
+        ? '/messages/conversations'
+        : setupStage === 'create call with backend'
+          ? `${apiPath(callConversationId)}/calls`
+          : null,
       callType,
-      conversationId: conversation.id,
+      conversationId: callConversationId,
     })
     if (activeCall) await finishActiveCall(Boolean(activeCall.callId))
     else if (createdCallId) {
       try {
-        await api.post(`${apiPath(conversation.id)}/calls/${createdCallId}/end`, {})
+        await api.post(`${apiPath(callConversationId)}/calls/${createdCallId}/end`, {})
       } catch (endError) {
         console.error('[messages] Unable to clean up failed call setup.', endError.message)
       }
     }
     for (const [callId, pendingCall] of pendingCallUpdates) {
-      if (pendingCall.conversation_id === conversation.id) pendingCallUpdates.delete(callId)
+      if (pendingCall.conversation_id === callConversationId) pendingCallUpdates.delete(callId)
     }
     localStream?.getTracks().forEach(track => track.stop())
     if (wasCancelled) return
@@ -2354,8 +2400,7 @@ export function renderMessages() {
 }
 
 async function openDirectConversation(contact) {
-  const project = projects.find(item => getProjectMembers(item).some(member => member.firebaseUid === contact.firebaseUid) &&
-    getProjectMembers(item).some(member => member.firebaseUid === currentUid()))
+  const project = findSharedProjectWithMember(contact.firebaseUid)
   if (!project) {
     showError(new Error('You and this teammate do not share an accessible project.'))
     return
@@ -2372,6 +2417,23 @@ async function openDirectConversation(contact) {
   } catch (error) {
     showError(error, 'POST /messages/conversations (start direct conversation)')
   }
+}
+
+async function reopenDirectConversation(conversation) {
+  const peerUid = conversation.memberUids?.find(uid => uid !== currentUid()) ||
+    conversation.participants?.find(member => member.firebaseUid !== currentUid())?.firebaseUid
+  const project = peerUid ? findSharedProjectWithMember(peerUid) : null
+  if (!project) return null
+  const result = await api.post('/messages/conversations', {
+    projectId: project.projectId,
+    type: 'direct',
+    memberFirebaseUids: [peerUid]
+  })
+  const conversationId = result?.data?.conversation?.conversation_id
+  if (!conversationId) {
+    throw new Error('The messaging service did not return the reopened conversation.')
+  }
+  return conversationId
 }
 
 function openConversationModal(type) {
@@ -2563,6 +2625,31 @@ function cancelComposerContext() {
   renderComposerContext()
 }
 
+function createRecipientOption(member, {
+  selected,
+  disabled = false,
+  name = '',
+  onChange
+}) {
+  const option = make('label', `messages-forward-recipient${selected ? ' selected' : ''}`)
+  const avatar = make('span', 'messages-forward-avatar')
+  renderAvatarElement(avatar, member, 'messages-forward-avatar')
+  const details = make('span', 'messages-forward-recipient-details')
+  details.append(make('strong', '', member.name), make('small', '', member.email))
+  const checkbox = document.createElement('input')
+  checkbox.type = 'checkbox'
+  if (name) checkbox.name = name
+  if (member.firebaseUid) checkbox.value = member.firebaseUid
+  checkbox.checked = selected
+  checkbox.disabled = disabled
+  checkbox.addEventListener('change', () => {
+    option.classList.toggle('selected', checkbox.checked)
+    onChange(checkbox.checked, option)
+  })
+  option.append(avatar, details, checkbox)
+  return option
+}
+
 function openCallInviteModal(call) {
   if (!call?.isCaller) return
   const availableProjects = projects.filter(project =>
@@ -2593,17 +2680,19 @@ function openCallInviteModal(call) {
   cancel.addEventListener('click', closeModal)
   header.append(cancel, make('h2', '', 'Add people to call'), make('span', 'messages-forward-selection-count'))
 
-  const projectLabel = make('label', 'messages-call-project-label')
-  projectLabel.append(make('span', '', 'Project'))
+  const projectControl = make('div', 'messages-call-project-control')
   const projectSelect = document.createElement('select')
   projectSelect.className = 'messages-call-project-select'
+  projectSelect.id = `call-project-${call.callId}`
+  const projectLabel = make('label', '', 'Project')
+  projectLabel.htmlFor = projectSelect.id
   availableProjects.forEach(project => {
     const option = document.createElement('option')
     option.value = project.projectId
     option.textContent = project.name
     projectSelect.append(option)
   })
-  projectLabel.append(projectSelect)
+  projectControl.append(projectLabel, projectSelect)
 
   const searchWrap = make('label', 'messages-forward-search')
   const searchIcon = make('span', '', '⌕')
@@ -2647,23 +2736,17 @@ function openCallInviteModal(call) {
       .sort((left, right) => left.name.localeCompare(right.name))
     membersList.replaceChildren()
     recipients.forEach(member => {
-      const option = make('label', `messages-forward-recipient${selectedUids.has(member.firebaseUid) ? ' selected' : ''}`)
-      const avatar = make('span', 'messages-forward-avatar')
-      renderAvatarElement(avatar, member, 'messages-forward-avatar')
-      const details = make('span', 'messages-forward-recipient-details')
-      details.append(make('strong', '', member.name), make('small', '', member.email))
-      const checkbox = document.createElement('input')
-      checkbox.type = 'checkbox'
-      checkbox.checked = selectedUids.has(member.firebaseUid)
-      checkbox.disabled = !checkbox.checked && selectedUids.size >= maxAdditional
-      checkbox.addEventListener('change', () => {
-        if (checkbox.checked) selectedUids.add(member.firebaseUid)
-        else selectedUids.delete(member.firebaseUid)
-        option.classList.toggle('selected', checkbox.checked)
-        updateSelection()
-        renderRecipients()
+      const selected = selectedUids.has(member.firebaseUid)
+      const option = createRecipientOption(member, {
+        selected,
+        disabled: !selected && selectedUids.size >= maxAdditional,
+        onChange: checked => {
+          if (checked) selectedUids.add(member.firebaseUid)
+          else selectedUids.delete(member.firebaseUid)
+          updateSelection()
+          renderRecipients()
+        }
       })
-      option.append(avatar, details, checkbox)
       membersList.append(option)
     })
     if (!membersList.childElementCount) {
@@ -2680,7 +2763,7 @@ function openCallInviteModal(call) {
   })
   renderRecipients()
   updateSelection()
-  form.append(header, projectLabel, searchWrap, membersList, modalError, footer)
+  form.append(header, projectControl, searchWrap, membersList, modalError, footer)
   backdrop.append(form)
   document.querySelector('#modal-root').append(backdrop)
   document.addEventListener('keydown', onKeyDown)
@@ -2831,24 +2914,15 @@ function openForwardModal(message) {
       if (!matches.length) return
       membersList.append(make('h3', 'messages-forward-section-title', section.title))
       matches.forEach(contact => {
-        const option = make('label', `messages-forward-recipient${selectedUids.has(contact.firebaseUid) ? ' selected' : ''}`)
-        const avatar = make('span', 'messages-forward-avatar')
-        renderAvatarElement(avatar, contact, 'messages-forward-avatar')
-        const details = make('span', 'messages-forward-recipient-details')
-        details.append(make('strong', '', contact.name), make('small', '', contact.email))
-        const checkbox = document.createElement('input')
-        checkbox.type = 'checkbox'
-        checkbox.name = 'forward-members'
-        checkbox.value = contact.firebaseUid
-        checkbox.checked = selectedUids.has(contact.firebaseUid)
-        checkbox.addEventListener('change', () => {
-          if (checkbox.checked) selectedUids.add(contact.firebaseUid)
-          else selectedUids.delete(contact.firebaseUid)
-          option.classList.toggle('selected', checkbox.checked)
+        membersList.append(createRecipientOption(contact, {
+          selected: selectedUids.has(contact.firebaseUid),
+          name: 'forward-members',
+          onChange: checked => {
+            if (checked) selectedUids.add(contact.firebaseUid)
+            else selectedUids.delete(contact.firebaseUid)
           updateSelection()
-        })
-        option.append(avatar, details, checkbox)
-        membersList.append(option)
+          }
+        }))
       })
     })
     if (!membersList.childElementCount) {

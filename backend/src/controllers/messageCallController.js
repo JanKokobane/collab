@@ -564,7 +564,8 @@ const leaveCall = async (req, res) => {
 
 const updateCall = async (req, res) => {
     const { conversationId, callId, action } = req.params;
-    if (!['accept', 'decline', 'end', 'missed'].includes(action) || !callIdPattern.test(callId || '')) {
+    if (!['accept', 'decline', 'end', 'missed'].includes(action) ||
+        !callIdPattern.test(callId || '') || !callIdPattern.test(conversationId || '')) {
         return res.status(400).json({
             success: false, code: 'INVALID_CALL_ACTION',
             message: 'The requested call action is not valid.'
@@ -574,13 +575,6 @@ const updateCall = async (req, res) => {
     try {
         client = await pool.connect();
         await client.query('BEGIN');
-        const conversation = await getConversation(conversationId, req.firebaseUid, client);
-        if (!conversation || conversation.conversation_type !== 'direct') {
-            await client.query('ROLLBACK');
-            return res.status(404).json({
-                success: false, code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found.'
-            });
-        }
         const result = await client.query(
             `SELECT * FROM message_calls
              WHERE conversation_id = $1::uuid AND call_id = $2::uuid FOR UPDATE`,
