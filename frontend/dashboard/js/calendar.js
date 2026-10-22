@@ -16,6 +16,7 @@ import {
 import { createProjectMeeting, deleteProjectMeeting, getMeetingProjectMembers, getSafeMeetingUrl } from './meetings.js'
 import { createProjectReminder } from './calendarData.js'
 import { showDashboardToast } from './modalChrome.js'
+import { isMeteredRoomUrl, openMeteredMeetingModal } from './meteredMeetingModal.js'
 import {
   addDaysToDateKey,
   formatRelativeDate,
@@ -132,6 +133,12 @@ export function renderPinnedMeetingsStrip() {
       join.target = '_blank'
       join.rel = 'noopener noreferrer'
       join.setAttribute('aria-label', `Open meeting link for ${meet.title}`)
+      if (isMeteredRoomUrl(meetingUrl)) {
+        join.addEventListener('click', event => {
+          event.preventDefault()
+          openMeteredMeetingModal(meetingUrl, meet.title)
+        })
+      }
       footer.append(join)
     }
     if (meet.location && !getSafeMeetingUrl(meet.location)) {
@@ -340,6 +347,12 @@ export function openDayScheduleModal(dateStr) {
         join.href = meetingUrl
         join.target = '_blank'
         join.rel = 'noopener noreferrer'
+        if (isMeteredRoomUrl(meetingUrl)) {
+          join.addEventListener('click', event => {
+            event.preventDefault()
+            openMeteredMeetingModal(meetingUrl, m.title)
+          })
+        }
         row.append(join)
       }
       if (m.location && !getSafeMeetingUrl(m.location)) {
@@ -966,7 +979,6 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
       showDashboardToast('Choose a project before scheduling a meeting.', 'error')
       return
     }
-    const instantRoomWindow = instant ? window.open('about:blank', '_blank') : null
     submit.disabled = true
     submitSpinner.hidden = false
     submitLabel.textContent = instant ? 'Creating room…' : 'Scheduling…'
@@ -985,11 +997,6 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
           .map(input => input.value)
       })
       const meetingUrl = getSafeMeetingUrl(newMeet.meeting_url)
-      if (instant) {
-        if (meetingUrl && instantRoomWindow) instantRoomWindow.location.href = meetingUrl
-        else if (meetingUrl) window.location.assign(meetingUrl)
-        else instantRoomWindow?.close()
-      }
       closeModal()
       renderCalendarPanel()
       hub.renderMeetingsPage?.()
@@ -997,14 +1004,15 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
       hub.renderWorkspaceHub?.()
       addAuditLog('Project meeting scheduled', `${newMeet.title} scheduled for ${newMeet.meeting_date}.`, 'sync')
       if (instant) {
-        showDashboardToast(meetingUrl
-          ? 'Instant meeting room is ready.'
-          : 'Meeting created, but its room link is unavailable.')
+        if (meetingUrl && isMeteredRoomUrl(meetingUrl)) {
+          openMeteredMeetingModal(meetingUrl, newMeet.title)
+        } else {
+          showDashboardToast('Meeting created, but its Metered room link is unavailable.', 'error')
+        }
       } else {
         showDashboardToast('Meeting scheduled.')
       }
     } catch (error) {
-      instantRoomWindow?.close()
       submit.disabled = false
       submitSpinner.hidden = true
       submitLabel.textContent = submitText

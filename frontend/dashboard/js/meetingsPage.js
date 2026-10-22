@@ -3,6 +3,7 @@ import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
 import { openScheduleMeetingModal } from './calendar.js'
 import { formatRelativeDate, toLocalDateKey } from './dateUtils.js'
 import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
+import { isMeteredRoomUrl, openMeteredMeetingModal } from './meteredMeetingModal.js'
 
 const formatMeetingTime = time => {
   const [hours, minutes] = time.split(':').map(Number)
@@ -53,6 +54,12 @@ function createMeetingCard(meeting) {
     join.target = '_blank'
     join.rel = 'noopener noreferrer'
     join.setAttribute('aria-label', `${isLive ? 'Join' : 'Open'} meeting: ${meeting.title}`)
+    if (isMeteredRoomUrl(meetingUrl)) {
+      join.addEventListener('click', event => {
+        event.preventDefault()
+        openMeteredMeetingModal(meetingUrl, meeting.title)
+      })
+    }
     actions.append(join)
 
     const copy = make('button', 'meetings-page-copy', 'Copy link')

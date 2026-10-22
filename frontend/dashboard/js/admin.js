@@ -25,6 +25,7 @@ import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
 import { setDashboardButtonLoading, showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
+import { isMeteredRoomUrl, openMeteredMeetingModal } from './meteredMeetingModal.js'
 
 // ============================================================
 // ADMIN CONSOLE TABLE & FUNCTIONS
@@ -1128,7 +1129,12 @@ export function renderAdminMeetingsTable() {
       location.href = meetingUrl
       location.target = '_blank'
       location.rel = 'noopener noreferrer'
-      location.addEventListener('click', event => event.stopPropagation())
+      location.addEventListener('click', event => {
+        event.stopPropagation()
+        if (!isMeteredRoomUrl(meetingUrl)) return
+        event.preventDefault()
+        openMeteredMeetingModal(meetingUrl, meet.title)
+      })
     }
     if (meet.meetingUrl && meet.location && !getSafeMeetingUrl(meet.location)) {
       location.append(document.createTextNode(` · ${meet.location}`))

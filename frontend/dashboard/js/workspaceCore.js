@@ -4,6 +4,7 @@ import { renderScratchpad, renderHubResources, initWorkspaceResourceEvents } fro
 import { api } from './api.js'
 import { getSafeMeetingUrl } from './meetings.js'
 import { showDashboardToast } from './modalChrome.js'
+import { isMeteredRoomUrl, openMeteredMeetingModal } from './meteredMeetingModal.js'
 
 // RENDER WORKSPACE HUB
 export function renderWorkspaceHub() {
@@ -207,7 +208,12 @@ export function renderUpcomingMeetings() {
       link.href = meetingUrl
       link.target = '_blank'
       link.rel = 'noopener noreferrer'
-      link.addEventListener('click', event => event.stopPropagation())
+      link.addEventListener('click', event => {
+        event.stopPropagation()
+        if (!isMeteredRoomUrl(meetingUrl)) return
+        event.preventDefault()
+        openMeteredMeetingModal(meetingUrl, meeting.title)
+      })
       locationCell.append(link)
       if (meeting.location && !getSafeMeetingUrl(meeting.location)) {
         locationCell.append(make('small', 'meeting-location-detail', meeting.location))

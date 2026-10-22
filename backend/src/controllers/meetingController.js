@@ -288,7 +288,7 @@ const createMeeting = async (req, res) => {
             return res.status(503).json({
                 success: false,
                 code: error.code,
-                message: 'Metered meeting rooms are not configured. Set the backend Metered app name and secret key.'
+                message: 'Metered meeting rooms are not configured. Set METERED_APP_NAME and METERED_SECRET_KEY in the backend environment, then redeploy.'
             });
         }
         if (typeof error.code === 'string' && error.code.startsWith('METERED_ROOM_')) {
