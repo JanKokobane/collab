@@ -1,11 +1,16 @@
 const { randomUUID } = require('node:crypto');
 const { pool, query } = require('../config/db');
-const { emitToCallParticipants, emitToUser } = require('../realtime/messageSocket');
+const {
+    emitToCallParticipants,
+    emitToUser,
+    hasConnectedCallParticipants
+} = require('../realtime/messageSocket');
 const { getConversation } = require('./messageController');
 const { getMessageCallIceServers } = require('../services/messageCallIceConfig');
 
 const callIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const projectIdPattern = /^[A-Za-z0-9_-]{1,128}$/;
+const staleCallGracePeriodMs = 60_000;
 
 const getCallParticipants = async callId => {
     const result = await query(
@@ -161,18 +166,43 @@ const startCall = async (req, res) => {
             [`call:${conversationId}`]
         );
         const active = await client.query(
-            `SELECT 1 FROM message_calls
+            `SELECT call_id, caller_uid, caller_name, callee_uid, callee_name,
+                    call_type, status, created_at
+             FROM message_calls
              WHERE conversation_id = $1::uuid AND status IN ('ringing', 'accepted')
                AND CASE WHEN status = 'ringing' THEN ring_expires_at ELSE expires_at END > NOW()
              LIMIT 1`,
             [conversationId]
         );
         if (active.rowCount) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({
-                success: false, code: 'CALL_ALREADY_ACTIVE',
-                message: 'There is already an active call in this conversation.'
-            });
+            const staleCall = active.rows[0];
+            const isOldEnough = Date.now() - new Date(staleCall.created_at).getTime() > staleCallGracePeriodMs;
+            if (!isOldEnough || hasConnectedCallParticipants(staleCall.call_id)) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false, code: 'CALL_ALREADY_ACTIVE',
+                    message: 'There is already an active call in this conversation.'
+                });
+            }
+            const staleStatus = staleCall.status === 'ringing' ? 'missed' : 'ended';
+            await client.query(
+                `UPDATE message_calls
+                 SET status = $2, ended_at = NOW(), ended_by_uid = $3
+                 WHERE call_id = $1::uuid`,
+                [staleCall.call_id, staleStatus, req.firebaseUid]
+            );
+            await client.query(
+                `UPDATE message_call_participants
+                 SET status = CASE
+                         WHEN status = 'ringing' AND $2 = 'missed' THEN 'missed'
+                         ELSE 'left'
+                     END,
+                     left_at = NOW()
+                 WHERE call_id = $1::uuid AND status IN ('ringing', 'accepted')`,
+                [staleCall.call_id, staleStatus]
+            );
+            staleCall.status = staleStatus;
+            staleCall.ended_by_uid = req.firebaseUid;
         }
         const calleeUid = memberUids.find(uid => uid !== req.firebaseUid);
         const caller = await getMember(conversationId, req.firebaseUid);
@@ -218,6 +248,11 @@ const startCall = async (req, res) => {
             ]
         );
         await client.query('COMMIT');
+        if (active.rowCount) {
+            const staleCall = active.rows[0];
+            emitToCallParticipants(staleCall, 'call:updated', { call: staleCall });
+            await emitCallParticipantsUpdate(staleCall.call_id);
+        }
         const { created_at: createdAt, ring_expires_at: ringExpiresAt } = timing.rows[0];
         const call = {
             call_id: callId,

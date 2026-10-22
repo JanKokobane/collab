@@ -11,6 +11,8 @@ const roomPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const userRoom = uid => `user:${uid}`;
 const conversationRoom = id => `conversation:${id}`;
 const callRoom = id => `call:${id}`;
+const hasConnectedCallParticipants = callId =>
+    Boolean(io?.sockets.adapter.rooms.get(callRoom(callId))?.size);
 
 const normalizeCallSignal = signal => {
     if (!signal || typeof signal !== 'object' || Array.isArray(signal)) return null;
@@ -491,6 +493,7 @@ module.exports = {
     emitToConversation,
     emitToCallParticipants,
     emitToUser,
+    hasConnectedCallParticipants,
     reconcileUserConversationAccess,
     setPresence
 };
