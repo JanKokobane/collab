@@ -125,7 +125,7 @@ export function renderPinnedMeetingsStrip() {
     })
     team.append(attendeeList)
     footer.append(team)
-    const meetingUrl = getSafeMeetingUrl(meet.location)
+    const meetingUrl = getSafeMeetingUrl(meet.meetingUrl || meet.location)
     if (meetingUrl) {
       const join = make('a', 'pinned-join-btn', 'Join Meeting')
       join.href = meetingUrl
@@ -133,7 +133,8 @@ export function renderPinnedMeetingsStrip() {
       join.rel = 'noopener noreferrer'
       join.setAttribute('aria-label', `Open meeting link for ${meet.title}`)
       footer.append(join)
-    } else if (meet.location) {
+    }
+    if (meet.location && !getSafeMeetingUrl(meet.location)) {
       footer.append(make('span', 'meeting-location', meet.location))
     }
     card.append(top, openButton, footer)
@@ -333,14 +334,15 @@ export function openDayScheduleModal(dateStr) {
       details.style.fontSize = '11px'
       description.append(meetingTitle, details)
       row.append(description)
-      const meetingUrl = getSafeMeetingUrl(m.location)
+      const meetingUrl = getSafeMeetingUrl(m.meetingUrl || m.location)
       if (meetingUrl) {
         const join = make('a', 'pinned-join-btn', 'Join Meeting')
         join.href = meetingUrl
         join.target = '_blank'
         join.rel = 'noopener noreferrer'
         row.append(join)
-      } else if (m.location) {
+      }
+      if (m.location && !getSafeMeetingUrl(m.location)) {
         row.append(make('span', 'meeting-location', m.location))
       }
       meetSec.append(row)
@@ -796,15 +798,32 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
   }
 }
 
-export function openScheduleMeetingModal(prefilledDate = toLocalDateKey()) {
+export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { instant = false } = {}) {
+  const instantStart = new Date()
+  instantStart.setSeconds(0, 0)
+  if (instant) instantStart.setMinutes(instantStart.getMinutes() + 1)
+  const instantEnd = new Date(instantStart.getTime() + 60 * 60 * 1000)
+  if (instant && toLocalDateKey(instantEnd) !== toLocalDateKey(instantStart)) {
+    instantEnd.setTime(instantStart.getTime())
+    instantEnd.setHours(23, 59, 0, 0)
+    if (instantEnd <= instantStart) {
+      instantStart.setDate(instantStart.getDate() + 1)
+      instantStart.setHours(0, 0, 0, 0)
+      instantEnd.setTime(instantStart.getTime() + 60 * 60 * 1000)
+    }
+  }
+  const formatInputTime = date =>
+    `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
   const backdrop = make('div', 'modal-backdrop')
   const form = make('form', 'modal')
   const close = make('button', 'close-modal', '×')
   close.type = 'button'
   close.addEventListener('click', closeModal)
 
-  const title = make('h2', '', 'Schedule Team Meeting')
-  const copy = make('p', 'modal-copy', 'Schedule a meeting for a project you own or have joined.')
+  const title = make('h2', '', instant ? 'Start Instant Meeting' : 'Schedule Team Meeting')
+  const copy = make('p', 'modal-copy', instant
+    ? 'Create a Metered room and invite your project members to join now.'
+    : 'Schedule a meeting for a project you own or have joined.')
 
   const projectLabel = make('label', '', 'Project')
   const projectSelect = document.createElement('select')
@@ -856,7 +875,7 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey()) {
   const dateInput = make('input')
   dateInput.type = 'date'
   dateInput.min = toLocalDateKey()
-  dateInput.value = notBeforeTodayDateKey(prefilledDate)
+  dateInput.value = notBeforeTodayDateKey(instant ? toLocalDateKey(instantStart) : prefilledDate)
   dateInput.required = true
   dateLabel.append(dateInput)
 
@@ -864,16 +883,16 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey()) {
   const startTimeLabel = make('label', '', 'Start time')
   const startTimeInput = make('input')
   startTimeInput.type = 'time'
-  startTimeInput.value = '10:00'
-  startTimeInput.step = '900'
+  startTimeInput.value = instant ? formatInputTime(instantStart) : '10:00'
+  startTimeInput.step = instant ? '60' : '900'
   startTimeInput.required = true
   startTimeLabel.append(startTimeInput)
 
   const endTimeLabel = make('label', '', 'End time')
   const endTimeInput = make('input')
   endTimeInput.type = 'time'
-  endTimeInput.value = '11:00'
-  endTimeInput.step = '900'
+  endTimeInput.value = instant ? formatInputTime(instantEnd) : '11:00'
+  endTimeInput.step = instant ? '60' : '900'
   endTimeInput.required = true
   endTimeLabel.append(endTimeInput)
   const validateMeetingTime = () => {
@@ -897,13 +916,25 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey()) {
   pinInput.checked = true
   pinLabel.append(pinInput, make('span', '', '📍 Pin this meeting on the Calendar for all team members'))
 
-  const locLabel = make('label', '', 'Meeting Link / Location')
+  const locLabel = make('label', '', 'Additional Link / Physical Location')
   const locInput = make('input')
   locInput.type = 'text'
   locInput.maxLength = 2048
-  locInput.placeholder = 'https://meet.google.com/... or a physical location'
-  locInput.title = 'Enter an HTTPS or HTTP meeting link, or a physical location.'
+  locInput.placeholder = 'Optional: address or another meeting link'
+  locInput.title = 'Enter an optional HTTPS or HTTP meeting link, or a physical location.'
   locLabel.append(locInput)
+
+  const meteredLabel = make('label', 'checkbox-label', '')
+  meteredLabel.style.display = 'flex'
+  meteredLabel.style.alignItems = 'center'
+  meteredLabel.style.gap = '8px'
+  meteredLabel.style.margin = '4px 0'
+  const meteredInput = document.createElement('input')
+  meteredInput.type = 'checkbox'
+  meteredInput.checked = true
+  meteredInput.disabled = instant
+  meteredLabel.append(meteredInput, make('span', '',
+    instant ? 'Metered room link will be generated' : 'Generate a Metered meeting link'))
 
   const notesLabel = make('label', 'no-input-icon', 'Agenda & Discussion Topics')
   const notesInput = document.createElement('textarea')
@@ -915,13 +946,15 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey()) {
   const submit = make('button', 'primary-button gold', 'Schedule & Pin Meeting')
   submit.type = 'submit'
   submit.disabled = projects.length === 0
-  const submitLabel = make('span', '', 'Schedule & Pin Meeting')
+  const submitText = instant ? 'Create Room & Join' : 'Schedule & Pin Meeting'
+  const submitLabel = make('span', '', submitText)
   const submitSpinner = make('span', 'form-submit-spinner')
   submitSpinner.setAttribute('aria-hidden', 'true')
   submitSpinner.hidden = true
   submit.replaceChildren(submitSpinner, submitLabel)
 
-  form.append(close, title, copy, projectLabel, attendeesFieldset, titleLabel, dateLabel, timeRange, pinLabel, locLabel, notesLabel, submit)
+  if (instant) titleInput.value = 'Instant team meeting'
+  form.append(close, title, copy, projectLabel, attendeesFieldset, titleLabel, dateLabel, timeRange, pinLabel, meteredLabel, locLabel, notesLabel, submit)
   backdrop.append(form)
   root.replaceChildren(backdrop)
 
@@ -933,9 +966,10 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey()) {
       showDashboardToast('Choose a project before scheduling a meeting.', 'error')
       return
     }
+    const instantRoomWindow = instant ? window.open('about:blank', '_blank') : null
     submit.disabled = true
     submitSpinner.hidden = false
-    submitLabel.textContent = 'Scheduling…'
+    submitLabel.textContent = instant ? 'Creating room…' : 'Scheduling…'
     submit.setAttribute('aria-busy', 'true')
     try {
       const newMeet = await createProjectMeeting(projectSelect.value, {
@@ -945,20 +979,35 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey()) {
         endTime: endTimeInput.value,
         pinned: pinInput.checked,
         location: locInput.value.trim(),
+        createMeteredRoom: instant || meteredInput.checked,
         notes: notesInput.value.trim(),
         attendeeFirebaseUids: [...attendeesList.querySelectorAll('input[name="meetingAttendee"]:checked')]
           .map(input => input.value)
       })
+      const meetingUrl = getSafeMeetingUrl(newMeet.meeting_url)
+      if (instant) {
+        if (meetingUrl && instantRoomWindow) instantRoomWindow.location.href = meetingUrl
+        else if (meetingUrl) window.location.assign(meetingUrl)
+        else instantRoomWindow?.close()
+      }
       closeModal()
       renderCalendarPanel()
+      hub.renderMeetingsPage?.()
       hub.renderAdminMeetingsTable?.()
       hub.renderWorkspaceHub?.()
       addAuditLog('Project meeting scheduled', `${newMeet.title} scheduled for ${newMeet.meeting_date}.`, 'sync')
-      showDashboardToast('Meeting scheduled.')
+      if (instant) {
+        showDashboardToast(meetingUrl
+          ? 'Instant meeting room is ready.'
+          : 'Meeting created, but its room link is unavailable.')
+      } else {
+        showDashboardToast('Meeting scheduled.')
+      }
     } catch (error) {
+      instantRoomWindow?.close()
       submit.disabled = false
       submitSpinner.hidden = true
-      submitLabel.textContent = 'Schedule & Pin Meeting'
+      submitLabel.textContent = submitText
       submit.removeAttribute('aria-busy')
       showDashboardToast(error.message || 'Unable to schedule this meeting.', 'error')
     }

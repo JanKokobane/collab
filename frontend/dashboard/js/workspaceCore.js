@@ -201,14 +201,17 @@ export function renderUpcomingMeetings() {
     hostWrap.append(make('span', 'meeting-host-name', hostName))
     hostCell.append(hostWrap)
     const locationCell = make('td', 'meeting-location')
-    const meetingUrl = getSafeMeetingUrl(meeting.location)
+    const meetingUrl = getSafeMeetingUrl(meeting.meetingUrl || meeting.location)
     if (meetingUrl) {
-      const link = make('a', '', meeting.location)
+      const link = make('a', '', meeting.meetingUrl ? 'Open meeting room ↗' : meeting.location)
       link.href = meetingUrl
       link.target = '_blank'
       link.rel = 'noopener noreferrer'
       link.addEventListener('click', event => event.stopPropagation())
       locationCell.append(link)
+      if (meeting.location && !getSafeMeetingUrl(meeting.location)) {
+        locationCell.append(make('small', 'meeting-location-detail', meeting.location))
+      }
     } else {
       locationCell.textContent = meeting.location || 'Location not set'
     }

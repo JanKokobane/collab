@@ -1120,13 +1120,18 @@ export function renderAdminMeetingsTable() {
 
     const location = field('location')
     location.removeAttribute('href')
-    const meetingUrl = getSafeMeetingUrl(meet.location)
-    location.textContent = meetingUrl ? 'Open meeting link ↗' : meet.location || 'Location not set'
+    const meetingUrl = getSafeMeetingUrl(meet.meetingUrl || meet.location)
+    location.textContent = meetingUrl
+      ? meet.meetingUrl ? 'Open Metered room ↗' : 'Open meeting link ↗'
+      : meet.location || 'Location not set'
     if (meetingUrl) {
       location.href = meetingUrl
       location.target = '_blank'
       location.rel = 'noopener noreferrer'
       location.addEventListener('click', event => event.stopPropagation())
+    }
+    if (meet.meetingUrl && meet.location && !getSafeMeetingUrl(meet.location)) {
+      location.append(document.createTextNode(` · ${meet.location}`))
     }
     const delBtn = field('delete')
     delBtn.style.display = meet.canCancel ? '' : 'none'

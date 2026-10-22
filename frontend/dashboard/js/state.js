@@ -1029,6 +1029,7 @@ export const hub = {
   renderListView: () => {},
   renderOverviewPanel: () => {},
   renderCalendarPanel: () => {},
+  renderMeetingsPage: () => {},
   renderMembersTable: () => {},
   renderAdminTasksTable: () => {},
   renderAdminMeetingsTable: () => {},

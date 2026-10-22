@@ -61,6 +61,7 @@ function normalizeMeeting(record, project) {
     time: `${startTime} - ${endTime}`,
     pinned: record.pinned,
     location: record.location || '',
+    meetingUrl: record.meeting_url || record.meetingUrl || '',
     notes: record.notes || '',
     hostFirebaseUid: hostUid,
     host: host?.name || record.host_name || 'Project member',

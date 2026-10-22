@@ -86,6 +86,7 @@ frontend/
 │   ├── dashboard.html         Dashboard shell and feature containers
 │   ├── dashboard.js           Dashboard application entry point
 │   ├── dashboard.css          Shared shell and dashboard styles
+│   ├── meetingsPage.css       Dedicated team meetings view
 │   ├── workspaceHub.css       Workspace, brainstorm, and messaging styles
 │   └── js/
 │       ├── admin.js           Administration tables and dialogs
@@ -100,6 +101,7 @@ frontend/
 │       ├── events.js             Dashboard UI event wiring and search
 │       ├── icons.js              Shared inline SVG icon generator
 │       ├── meetings.js           Project meeting API and normalization
+│       ├── meetingsPage.js       Meetings page rendering and actions
 │       ├── messageCallUI.js      WebRTC call modal and controls
 │       ├── messages.js           Persistent messaging, signaling, and call lifecycle
 │       ├── modalChrome.js        Shared modal enhancement

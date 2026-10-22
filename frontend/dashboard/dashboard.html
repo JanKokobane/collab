@@ -13,6 +13,7 @@
     <link rel="icon" type="image/png" href="../images/favicon.png" />
     <link rel="stylesheet" href="./dashboard.css?v=20261019-1724" />
     <link rel="stylesheet" href="./workspaceHub.css?v=20261022-call-modal-no-border" />
+    <link rel="stylesheet" href="./meetingsPage.css?v=20261022-meetings-page" />
 </head>
 
 <body>
@@ -43,6 +44,15 @@
                         <path d="M3 9h18" />
                     </svg>
                     <span>Calendar</span>
+                </a>
+                <a class="nav-item" data-view="Meetings" id="meetings-nav-item">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="lucide lucide-video preview-icon">
+                        <rect x="3" y="5" width="13" height="14" rx="2" />
+                        <path d="m16 10 5-3v10l-5-3" />
+                    </svg>
+                    <span>Meetings</span>
                 </a>
                 <a class="nav-item admin-nav-link" data-view="Admin Console" id="admin-nav-item">
                     <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -794,6 +804,9 @@
                     </div>
 
                 </div>
+
+                <section id="meetings-page-container" class="meetings-page-container" style="display: none;"
+                    aria-labelledby="meetings-page-title"></section>
 
                 <!-- Admin Console Workspace Management Panel -->
                 <div id="admin-container" class="admin-container" style="display: none;">
@@ -1652,7 +1665,7 @@
 
     <div id="messages-call-root" class="collab-call-portal" hidden aria-live="polite"></div>
 
-    <script type="module" src="./dashboard.js?v=20261022-shared-recipient-modal"></script>
+    <script type="module" src="./dashboard.js?v=20261022-meetings-page"></script>
 </body>
 
 </html>

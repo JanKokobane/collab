@@ -44,6 +44,7 @@ export function switchView(viewName) {
 
   const boardContainer = document.querySelector('#board-container')
   const calendarContainer = document.querySelector('#calendar-container')
+  const meetingsPageContainer = document.querySelector('#meetings-page-container')
   const adminContainer = document.querySelector('#admin-container')
   const settingsContainer = document.querySelector('#settings-container')
   const notificationsContainer = document.querySelector('#notifications-container')
@@ -58,12 +59,13 @@ export function switchView(viewName) {
   const pageHeading = document.querySelector('.page-heading')
 
   if (pageHeading) {
-    const hideProjectActions = ['Workspace', 'My Tasks', 'Overview', 'Calendar', 'Admin Console', 'Settings', 'Notifications', 'Brainstorm', 'Messages'].includes(activeView)
+    const hideProjectActions = ['Workspace', 'My Tasks', 'Overview', 'Calendar', 'Meetings', 'Admin Console', 'Settings', 'Notifications', 'Brainstorm', 'Messages'].includes(activeView)
     pageHeading.style.display = hideProjectActions ? 'none' : ''
   }
 
   if (boardContainer) boardContainer.style.display = 'none'
   if (calendarContainer) calendarContainer.style.display = 'none'
+  if (meetingsPageContainer) meetingsPageContainer.style.display = 'none'
   if (adminContainer) adminContainer.style.display = 'none'
   if (settingsContainer) settingsContainer.style.display = 'none'
   if (notificationsContainer) notificationsContainer.style.display = 'none'
@@ -81,6 +83,10 @@ export function switchView(viewName) {
       pageHeadingSubtitle.textContent = 'Interactive calendar with pinned team meetings, deliverable deadlines, and collaboration syncs.'
     }
     hub.renderCalendarPanel?.()
+  } else if (activeView === 'Meetings') {
+    if (meetingsPageContainer) meetingsPageContainer.style.display = 'flex'
+    if (statsStrip) statsStrip.style.display = 'none'
+    hub.renderMeetingsPage?.()
   } else if (activeView === 'Admin Console') {
     if (adminContainer) adminContainer.style.display = 'flex'
     if (statsStrip) statsStrip.style.display = 'none'
@@ -135,17 +141,20 @@ export function switchView(viewName) {
 
   renderProjectStickyNotes()
   enhanceInputsWithIcons(document)
-  if (['Calendar', 'Workspace', 'Admin Console'].includes(viewName)) {
+  if (['Calendar', 'Meetings', 'Workspace', 'Admin Console'].includes(viewName)) {
     const dataLoad = viewName === 'Calendar'
       ? Promise.all([loadProjectMeetings(), loadProjectCalendarData()])
-      : Promise.all([
-        loadProjectMeetings(),
-        ...(viewName === 'Workspace' || viewName === 'Admin Console' ? [loadProjectResources()] : []),
-        ...(viewName === 'Workspace' ? [loadProjectScratchpad()] : [])
-      ])
+      : viewName === 'Meetings'
+        ? loadProjectMeetings()
+        : Promise.all([
+            loadProjectMeetings(),
+            ...(viewName === 'Workspace' || viewName === 'Admin Console' ? [loadProjectResources()] : []),
+            ...(viewName === 'Workspace' ? [loadProjectScratchpad()] : [])
+          ])
     dataLoad.then(() => {
       if (activeView !== viewName) return
       if (viewName === 'Calendar') hub.renderCalendarPanel?.()
+      if (viewName === 'Meetings') hub.renderMeetingsPage?.()
       if (viewName === 'Workspace') hub.renderWorkspaceHub?.()
       if (viewName === 'Admin Console') {
         hub.renderAdminMeetingsTable?.()

@@ -109,6 +109,7 @@ import {
   initWorkspaceHubEvents
 } from './js/workspaceHub.js'
 import { initMessages, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261022-shared-recipient-modal'
+import { renderMeetingsPage } from './js/meetingsPage.js'
 import { initProjectStickyNotes } from './js/projectStickyNotes.js'
 import { initProfileOnboarding } from './js/profileOnboarding.js'
 import {
@@ -385,6 +386,7 @@ registerHub({
   renderOverviewPanel,
   renderWorkspaceSummary,
   renderCalendarPanel,
+  renderMeetingsPage,
   renderAdminProjectsTable,
   renderMembersTable,
   loadProjectMembers,
@@ -547,6 +549,7 @@ onAuthStateChanged(firebaseAuth, async user => {
     const builtInViews = [
       'Overview',
       'Calendar',
+      'Meetings',
       'Admin Console',
       'Settings',
       'Notifications',

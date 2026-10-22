@@ -1,5 +1,6 @@
 const { randomUUID } = require('node:crypto');
 const { pool, query } = require('../config/db');
+const { createMeteredRoom } = require('../services/meteredRoomService');
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
@@ -50,6 +51,7 @@ const getMeetings = async (req, res) => {
                     end_time,
                     pinned,
                     location,
+                    meeting_url,
                     notes,
                     host_firebase_uid,
                     host_name,
@@ -82,6 +84,7 @@ const createMeeting = async (req, res) => {
     const startTime = typeof req.body?.startTime === 'string' ? req.body.startTime : '';
     const endTime = typeof req.body?.endTime === 'string' ? req.body.endTime : '';
     const location = typeof req.body?.location === 'string' ? req.body.location.trim() : '';
+    const createMeteredRoomRequested = req.body?.createMeteredRoom === true;
     const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
     const pinned = req.body?.pinned === undefined ? true : req.body.pinned;
     const attendeeUids = Array.isArray(req.body?.attendeeFirebaseUids)
@@ -166,6 +169,9 @@ const createMeeting = async (req, res) => {
             .join('')
             .slice(0, 2)
             .toUpperCase() || '📅';
+        const meetingUrl = createMeteredRoomRequested
+            ? await createMeteredRoom()
+            : '';
 
         const client = await pool.connect();
         let result;
@@ -182,12 +188,13 @@ const createMeeting = async (req, res) => {
                         end_time,
                         pinned,
                         location,
+                        meeting_url,
                         notes,
                         host_firebase_uid,
                         host_name,
                         attendee_firebase_uids
                     )
-                    VALUES ($1, $2, $3, $4::date, $5::time, $6::time, $7, $8, $9, $10, $11, $12::jsonb)
+                    VALUES ($1, $2, $3, $4::date, $5::time, $6::time, $7, $8, $9, $10, $11, $12, $13::jsonb)
                     RETURNING
                         meeting_id,
                         project_id,
@@ -197,6 +204,7 @@ const createMeeting = async (req, res) => {
                         end_time,
                         pinned,
                         location,
+                        meeting_url,
                         notes,
                         host_firebase_uid,
                         host_name,
@@ -213,6 +221,7 @@ const createMeeting = async (req, res) => {
                     endTime,
                     pinned,
                     location,
+                    meetingUrl,
                     notes,
                     req.firebaseUid,
                     hostName,
@@ -270,7 +279,25 @@ const createMeeting = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Create project meeting error:', error);
+        console.error('Create project meeting error:', {
+            code: error.code || null,
+            message: error.message
+        });
+        if (error.code === 'METERED_ROOM_NOT_CONFIGURED' ||
+            error.code === 'METERED_ROOM_CONFIGURATION_INVALID') {
+            return res.status(503).json({
+                success: false,
+                code: error.code,
+                message: 'Metered meeting rooms are not configured. Set the backend Metered app name and secret key.'
+            });
+        }
+        if (typeof error.code === 'string' && error.code.startsWith('METERED_ROOM_')) {
+            return res.status(502).json({
+                success: false,
+                code: error.code,
+                message: 'A Metered room could not be created. Check the backend Metered configuration and try again.'
+            });
+        }
         return res.status(500).json({
             success: false,
             code: 'PROJECT_MEETING_CREATE_FAILED',
