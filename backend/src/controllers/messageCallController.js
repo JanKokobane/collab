@@ -434,55 +434,84 @@ const inviteCallParticipants = async (req, res) => {
 
 const joinInvitedCall = async (req, res) => {
     const callId = req.params.callId;
-    if (!callIdPattern.test(callId || '')) {
+    const conversationId = req.params.conversationId;
+    if (!callIdPattern.test(callId || '') || !callIdPattern.test(conversationId || '')) {
         return res.status(400).json({
             success: false, code: 'INVALID_CALL_ID', message: 'The call identifier is not valid.'
         });
     }
+    let client;
     try {
-        const result = await query(
-            `UPDATE message_call_participants participant
-             SET status = 'accepted', accepted_at = COALESCE(accepted_at, NOW()), left_at = NULL
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const callResult = await client.query(
+            `SELECT call.call_id, call.conversation_id::text AS conversation_id,
+                    call.caller_uid, call.caller_name, call.callee_uid, call.callee_name,
+                    call.call_type, call.status, call.ring_expires_at,
+                    participant.display_name
              FROM message_calls call
-             WHERE participant.call_id = $1::uuid
-               AND participant.firebase_uid = $2
+             JOIN message_call_participants participant
+               ON participant.call_id = call.call_id
+             WHERE call.call_id = $1::uuid
+               AND call.conversation_id = $2::uuid
+               AND participant.firebase_uid = $3
                AND participant.status IN ('ringing', 'accepted')
-               AND call.call_id = participant.call_id
                AND call.status IN ('ringing', 'accepted')
                AND call.expires_at > NOW()
                AND (call.status <> 'ringing' OR call.ring_expires_at > NOW())
-             RETURNING call.call_id, call.conversation_id::text AS conversation_id,
-                       call.caller_uid, call.caller_name, call.callee_uid, call.callee_name,
-                       call.call_type, call.status, call.ring_expires_at,
-                       participant.display_name` ,
-            [callId, req.firebaseUid]
+             FOR UPDATE OF call, participant`,
+            [callId, conversationId, req.firebaseUid]
         );
-        const call = result.rows[0];
+        const call = callResult.rows[0];
         if (!call) {
+            await client.query('ROLLBACK');
             return res.status(404).json({
                 success: false, code: 'CALL_INVITE_NOT_FOUND',
                 message: 'This call invitation is no longer available.'
             });
         }
-        await query(
+        await client.query(
+            `UPDATE message_call_participants
+             SET status = 'accepted', accepted_at = COALESCE(accepted_at, NOW()), left_at = NULL
+             WHERE call_id = $1::uuid AND firebase_uid = $2`,
+            [callId, req.firebaseUid]
+        );
+        await client.query(
             `UPDATE message_calls
              SET status = 'accepted', accepted_at = COALESCE(accepted_at, NOW())
              WHERE call_id = $1::uuid AND status = 'ringing'`,
             [callId]
         );
-        const participants = await getCallParticipants(callId);
+        const participants = await client.query(
+            `SELECT firebase_uid, display_name, status, invited_at, accepted_at, left_at
+             FROM message_call_participants
+             WHERE call_id = $1::uuid
+             ORDER BY invited_at, display_name`,
+            [callId]
+        );
+        await client.query('COMMIT');
         const acceptedCall = { ...call, status: 'accepted' };
-        await emitCallParticipantsUpdate(callId);
+        const participantUpdate = {
+            call_id: callId,
+            call_status: 'accepted',
+            participants: participants.rows
+        };
+        participants.rows.forEach(participant =>
+            emitToUser(participant.firebase_uid, 'call:participant-updated', participantUpdate)
+        );
         return res.json({
             success: true,
             data: {
                 call: acceptedCall,
-                participants,
+                participants: participants.rows,
                 ice_servers: await getMessageCallIceServers(req.firebaseUid)
             }
         });
     } catch (error) {
+        await client?.query('ROLLBACK').catch(() => {});
         return responseError(res, error, 'Join invited call');
+    } finally {
+        client?.release();
     }
 };
 
