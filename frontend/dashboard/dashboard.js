@@ -304,7 +304,7 @@ async function refreshDashboardDataInBackground() {
 
     await loadProjectMeetings({ shouldApply: canApplySync })
     if (!canApplySync()) return null
-    if (activeView === 'Calendar') renderCalendarPanel()
+    if (activeView === 'Meetings') renderCalendarPanel()
 
     lastDashboardSyncAt = Date.now()
     dashboardSyncDelay = 60_000

@@ -23,6 +23,7 @@ import { renderProjectStickyNotes } from './projectStickyNotes.js'
 // ============================================================
 
 export function switchView(viewName) {
+  if (viewName === 'Calendar') viewName = 'Meetings'
   setActiveView(viewName)
   setActiveSprintFilter('all')
   document.querySelectorAll('.primary-nav .nav-item, .sidebar-bottom .nav-item').forEach(el => {
@@ -76,17 +77,11 @@ export function switchView(viewName) {
   if (workspaceHubContainer) workspaceHubContainer.style.display = 'none'
   if (projectSprintsStrip) projectSprintsStrip.style.display = 'none'
 
-  if (activeView === 'Calendar') {
-    if (calendarContainer) calendarContainer.style.display = 'flex'
-    if (statsStrip) statsStrip.style.display = 'none'
-    if (pageHeadingSubtitle) {
-      pageHeadingSubtitle.textContent = 'Interactive calendar with pinned team meetings, deliverable deadlines, and collaboration syncs.'
-    }
-    hub.renderCalendarPanel?.()
-  } else if (activeView === 'Meetings') {
+  if (activeView === 'Meetings') {
     if (meetingsPageContainer) meetingsPageContainer.style.display = 'flex'
     if (statsStrip) statsStrip.style.display = 'none'
     hub.renderMeetingsPage?.()
+    hub.renderCalendarPanel?.()
   } else if (activeView === 'Admin Console') {
     if (adminContainer) adminContainer.style.display = 'flex'
     if (statsStrip) statsStrip.style.display = 'none'
@@ -141,20 +136,20 @@ export function switchView(viewName) {
 
   renderProjectStickyNotes()
   enhanceInputsWithIcons(document)
-  if (['Calendar', 'Meetings', 'Workspace', 'Admin Console'].includes(viewName)) {
-    const dataLoad = viewName === 'Calendar'
+  if (['Meetings', 'Workspace', 'Admin Console'].includes(viewName)) {
+    const dataLoad = viewName === 'Meetings'
       ? Promise.all([loadProjectMeetings(), loadProjectCalendarData()])
-      : viewName === 'Meetings'
-        ? loadProjectMeetings()
-        : Promise.all([
+      : Promise.all([
             loadProjectMeetings(),
             ...(viewName === 'Workspace' || viewName === 'Admin Console' ? [loadProjectResources()] : []),
             ...(viewName === 'Workspace' ? [loadProjectScratchpad()] : [])
           ])
     dataLoad.then(() => {
       if (activeView !== viewName) return
-      if (viewName === 'Calendar') hub.renderCalendarPanel?.()
-      if (viewName === 'Meetings') hub.renderMeetingsPage?.()
+      if (viewName === 'Meetings') {
+        hub.renderMeetingsPage?.()
+        hub.renderCalendarPanel?.()
+      }
       if (viewName === 'Workspace') hub.renderWorkspaceHub?.()
       if (viewName === 'Admin Console') {
         hub.renderAdminMeetingsTable?.()

@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="./workspaceHub.css?v=20261022-call-modal-no-border" />
     <link rel="stylesheet" href="./meetingsPage.css?v=20261022-meetings-page" />
     <link rel="stylesheet" href="./meteredMeetingModal.css?v=20261022-metered-meeting" />
+    <link rel="stylesheet" href="./jitsiMeetingModal.css?v=20261023-jitsi-meetings" />
 </head>
 
 <body>
@@ -35,17 +36,6 @@
                     </svg>
                     <span>Home</span>
                 </a>
-                <a class="nav-item" data-view="Calendar">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                        class="lucide lucide-calendar preview-icon">
-                        <path d="M8 2v3" />
-                        <path d="M16 2v3" />
-                        <rect x="3" y="3" width="18" height="18" rx="2" />
-                        <path d="M3 9h18" />
-                    </svg>
-                    <span>Calendar</span>
-                </a>
                 <a class="nav-item" data-view="Meetings" id="meetings-nav-item">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
                         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -55,14 +45,17 @@
                     </svg>
                     <span>Meetings</span>
                 </a>
-                <a class="nav-item admin-nav-link" data-view="Admin Console" id="admin-nav-item">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-                        <line x1="8" y1="21" x2="16" y2="21"></line>
-                        <line x1="12" y1="17" x2="12" y2="21"></line>
+                <a class="nav-item" data-view="Messages" id="messages-nav-item">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="lucide lucide-messages-square preview-icon">
+                        <path
+                            d="M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                        <path
+                            d="M20 9a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1" />
                     </svg>
-                    <span>Workspace</span>
+                    <span>Messages</span>
+                    <span class="messages-nav-badge" id="messages-nav-badge" hidden></span>
                 </a>
                 <a class="nav-item" data-view="Brainstorm" id="brainstorm-nav-item">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -77,17 +70,14 @@
                     </svg>
                     <span>Team Brainstorm</span>
                 </a>
-                <a class="nav-item" data-view="Messages" id="messages-nav-item">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                        class="lucide lucide-messages-square preview-icon">
-                        <path
-                            d="M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-                        <path
-                            d="M20 9a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1" />
+                <a class="nav-item admin-nav-link" data-view="Admin Console" id="admin-nav-item">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                        <line x1="8" y1="21" x2="16" y2="21"></line>
+                        <line x1="12" y1="17" x2="12" y2="21"></line>
                     </svg>
-                    <span>Messages</span>
-                    <span class="messages-nav-badge" id="messages-nav-badge" hidden></span>
+                    <span>Workspace</span>
                 </a>
             </nav>
 
@@ -750,31 +740,6 @@
 
                 <!-- Calendar Timeline & Collaboration Hub Panel -->
                 <div id="calendar-container" class="calendar-container" style="display: none;">
-                    <div class="calendar-header">
-                        <div>
-                            <p class="boldHeading">Team Collaboration Calendar & Schedules</p>
-                            <p>Interactive calendar with pinned meetings, collaboration syncs, reminders, and scheduled
-                                deliverables.</p>
-                        </div>
-                        <div class="page-heading-actions">
-                            <button type="button" class="primary-button gold" id="cal-schedule-meeting-btn">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2.5">
-                                    <path d="M12 2v20M2 12h20"></path>
-                                </svg>
-                                <span>+ Schedule Meeting (Pinned)</span>
-                            </button>
-                            <button type="button" class="outline-button-action" id="cal-add-reminder-btn">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                                    <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-                                </svg>
-                                <span>+ Add Reminder</span>
-                            </button>
-                        </div>
-                    </div>
-
                     <!-- Actual Interactive Calendar Grid Section -->
                     <div class="actual-calendar-card">
                         <div class="cal-controls-row">
@@ -807,7 +772,7 @@
                 </div>
 
                 <section id="meetings-page-container" class="meetings-page-container" style="display: none;"
-                    aria-labelledby="meetings-page-title"></section>
+                    aria-label="Meetings"></section>
 
                 <!-- Admin Console Workspace Management Panel -->
                 <div id="admin-container" class="admin-container" style="display: none;">

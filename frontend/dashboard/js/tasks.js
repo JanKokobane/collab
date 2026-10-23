@@ -381,7 +381,7 @@ export function renderTasks() {
   if (activeView === 'Overview') {
     hub.renderOverviewPanel?.()
   }
-  if (activeView === 'Calendar') {
+  if (activeView === 'Meetings') {
     hub.renderCalendarPanel?.()
   }
 }

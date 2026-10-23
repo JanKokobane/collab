@@ -1,9 +1,9 @@
-import { activeView, addAuditLog, hub, make, meetings, projects } from './state.js'
+import { activeView, addAuditLog, currentUser, hub, make, meetings, projects } from './state.js'
 import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
-import { openScheduleMeetingModal } from './calendar.js'
-import { formatRelativeDate, toLocalDateKey } from './dateUtils.js'
+import { openAddReminderModal, openScheduleMeetingModal } from './calendar.js'
+import { formatRelativeDate } from './dateUtils.js'
 import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
-import { isMeteredRoomUrl, openMeteredMeetingModal } from './meteredMeetingModal.js'
+import { getJitsiMeetingUrl, openJitsiMeetingModal } from './jitsiMeetingModal.js'
 
 const formatMeetingTime = time => {
   const [hours, minutes] = time.split(':').map(Number)
@@ -47,19 +47,14 @@ function createMeetingCard(meeting) {
   if (meeting.notes) details.append(make('p', 'meetings-page-notes', meeting.notes))
 
   const actions = make('div', 'meetings-page-actions')
-  const meetingUrl = getSafeMeetingUrl(meeting.meetingUrl || meeting.location)
-  if (meetingUrl && !isPast) {
-    const join = make('a', 'meetings-page-join', isLive ? 'Join meeting' : 'Open meeting link')
-    join.href = meetingUrl
-    join.target = '_blank'
-    join.rel = 'noopener noreferrer'
+  const meetingUrl = getJitsiMeetingUrl(meeting.projectId, meeting.id)
+  if (!isPast) {
+    const join = make('button', 'meetings-page-join', isLive ? 'Join meeting' : 'Open meeting')
+    join.type = 'button'
     join.setAttribute('aria-label', `${isLive ? 'Join' : 'Open'} meeting: ${meeting.title}`)
-    if (isMeteredRoomUrl(meetingUrl)) {
-      join.addEventListener('click', event => {
-        event.preventDefault()
-        openMeteredMeetingModal(meetingUrl, meeting.title)
-      })
-    }
+    join.addEventListener('click', () => {
+      openJitsiMeetingModal(meeting.projectId, meeting.id, meeting.title, currentUser.name)
+    })
     actions.append(join)
 
     const copy = make('button', 'meetings-page-copy', 'Copy link')
@@ -127,6 +122,9 @@ function renderMeetingGroup(container, title, items, emptyMessage) {
 export function renderMeetingsPage() {
   const container = document.querySelector('#meetings-page-container')
   if (!container || activeView !== 'Meetings') return
+  const calendarContainer = document.querySelector('#calendar-container')
+  calendarContainer?.querySelector('#cal-add-reminder-btn')?.remove()
+  calendarContainer?.remove()
   container.replaceChildren()
 
   const now = new Date()
@@ -135,42 +133,35 @@ export function renderMeetingsPage() {
   )
   const upcoming = ordered.filter(meeting => meetingEnd(meeting) >= now)
   const past = ordered.filter(meeting => meetingEnd(meeting) < now).reverse()
-  const todaysCount = upcoming.filter(meeting => meeting.date === toLocalDateKey(now)).length
 
   const header = make('header', 'meetings-page-header')
   const heading = make('div', 'meetings-page-heading')
   heading.append(
     make('p', 'meetings-page-eyebrow', 'TEAM SCHEDULE'),
-    make('h1', '', 'Meetings'),
     make('p', '', 'Plan team syncs, keep meeting details together, and open the shared meeting link.')
   )
-  heading.querySelector('h1').id = 'meetings-page-title'
-  const schedule = make('button', 'primary-button gold meetings-page-schedule', 'Schedule meeting')
+  const schedule = make('button', 'admin-tab-btn active', 'Schedule meeting')
   schedule.type = 'button'
   schedule.disabled = !projects.length
   schedule.addEventListener('click', () => openScheduleMeetingModal())
-  const instant = make('button', 'primary-button meetings-page-schedule', 'Start instant meeting')
+  const instant = make('button', 'admin-tab-btn', 'Start instant meeting')
   instant.type = 'button'
   instant.disabled = !projects.length
   instant.addEventListener('click', () => openScheduleMeetingModal(undefined, { instant: true }))
-  const actions = make('div', 'meetings-page-header-actions')
+  const addReminder = make('button', 'outline-button-action', '+ Add Reminder')
+  addReminder.type = 'button'
+  addReminder.id = 'cal-add-reminder-btn'
+  addReminder.addEventListener('click', () => openAddReminderModal())
+  const actions = make('div', 'meetings-page-header-actions admin-tabs-nav')
   actions.append(instant, schedule)
   header.append(heading, actions)
   container.append(header)
 
-  const summary = make('div', 'meetings-page-summary')
-  const upcomingMetric = make('div', 'meetings-page-metric')
-  upcomingMetric.append(make('span', '', 'Upcoming'), make('strong', '', String(upcoming.length)))
-  const todayMetric = make('div', 'meetings-page-metric')
-  todayMetric.append(make('span', '', 'Today'), make('strong', '', String(todaysCount)))
-  const nextMeeting = upcoming[0]
-  const nextMetric = make('div', 'meetings-page-metric meetings-page-next')
-  nextMetric.append(
-    make('span', '', 'Next meeting'),
-    make('strong', '', nextMeeting ? `${nextMeeting.title} - ${formatRelativeDate(nextMeeting.date)}` : 'Nothing scheduled')
-  )
-  summary.append(upcomingMetric, todayMetric, nextMetric)
-  container.append(summary)
+  if (calendarContainer) {
+    calendarContainer.style.display = 'flex'
+    calendarContainer.querySelector('#cal-filter-pills')?.append(addReminder)
+    container.append(calendarContainer)
+  }
 
   if (!meetings.length && !projects.length) {
     container.append(make('p', 'meetings-page-empty', 'Join or create a project to schedule a team meeting.'))

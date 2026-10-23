@@ -1,0 +1,72 @@
+.jitsi-meeting-overlay {
+    position: fixed;
+    z-index: 30000;
+    inset: 64px 0 0;
+    display: flex;
+    background: #0F172A;
+}
+
+body.jitsi-meeting-open {
+    overflow: hidden;
+}
+
+body.jitsi-meeting-open .sidebar {
+    display: none;
+}
+
+.jitsi-meeting-frame {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    flex: 1;
+    overflow: hidden;
+}
+
+.jitsi-meeting-frame iframe {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    border: 0;
+}
+
+.jitsi-meeting-loading {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: #0F172A;
+    color: #CBD5E1;
+    font-size: 13px;
+    text-align: center;
+}
+
+.jitsi-meeting-dismiss {
+    position: absolute;
+    z-index: 2;
+    top: 12px;
+    right: 16px;
+    padding: 8px 17px;
+    border: 1px solid #D4D4D8;
+    border-radius: 8px;
+    background: #FFFFFF;
+    color: #3F3F46;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.jitsi-meeting-dismiss:hover {
+    background: #F4F4F5;
+}
+
+@media (max-width: 640px) {
+    .jitsi-meeting-dismiss {
+        top: 8px;
+        right: 8px;
+    }
+}

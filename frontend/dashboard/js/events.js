@@ -15,7 +15,6 @@ import { openCreateProjectModal, openAddSprintModal, openInviteCollaboratorModal
 import { toLocalDateKey } from './dateUtils.js'
 import {
   openScheduleMeetingModal,
-  openAddReminderModal,
   calCurrentDate,
   setCalCurrentDate,
   setSelectedCalDate,
@@ -394,9 +393,6 @@ export function initEventListeners() {
   document.querySelector('#admin-schedule-meeting-btn')?.addEventListener('click', () => openScheduleMeetingModal())
   document.querySelector('#admin-add-meeting-quick-btn')?.addEventListener('click', () => openScheduleMeetingModal())
   document.querySelector('#admin-invite-btn')?.addEventListener('click', openInviteModal)
-  // Calendar buttons
-  document.querySelector('#cal-schedule-meeting-btn')?.addEventListener('click', () => openScheduleMeetingModal())
-  document.querySelector('#cal-add-reminder-btn')?.addEventListener('click', () => openAddReminderModal())
   document.querySelector('#cal-admin-manage-btn')?.addEventListener('click', () => {
     switchView('Admin Console')
     document.querySelector('#admin-tabs-nav button[data-tab="meetings"]')?.click()
