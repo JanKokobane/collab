@@ -15,7 +15,7 @@ let sdkLoadPromise
 let activeSession
 
 function loadZoomSdk() {
-  if (window.WebVideoSDK) return Promise.resolve()
+  if (window.WebVideoSDK?.default?.createClient) return Promise.resolve()
   if (sdkLoadPromise) return sdkLoadPromise
 
   sdkLoadPromise = new Promise((resolve, reject) => {
@@ -23,8 +23,8 @@ function loadZoomSdk() {
     script.src = SDK_URL
     script.async = true
     script.onload = () => {
-      if (window.WebVideoSDK) resolve()
-      else reject(new Error('The Zoom Video SDK did not initialize.'))
+      if (window.WebVideoSDK?.default?.createClient) resolve()
+      else reject(new Error('The Zoom Video SDK loaded without its client factory.'))
     }
     script.onerror = () => reject(new Error('The Zoom Video SDK could not be loaded.'))
     document.head.append(script)
@@ -542,7 +542,7 @@ export function openZoomMeetingModal(meeting) {
         throw new Error('The server did not return a valid Zoom meeting token.')
       }
 
-      const client = window.WebVideoSDK.createClient()
+      const client = window.WebVideoSDK.default.createClient()
       session.client = client
       await client.init('en-US', 'Global', { patchJsMedia: true })
       if (session.closing) return
