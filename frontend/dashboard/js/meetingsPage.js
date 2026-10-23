@@ -1,9 +1,9 @@
-import { activeView, addAuditLog, currentUser, hub, make, meetings, projects } from './state.js'
+import { activeView, addAuditLog, hub, make, meetings, projects } from './state.js'
 import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
 import { openAddReminderModal, openScheduleMeetingModal } from './calendar.js'
 import { formatRelativeDate } from './dateUtils.js'
 import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
-import { getJitsiMeetingUrl, openJitsiMeetingModal } from './jitsiMeetingModal.js'
+import { isMeteredRoomUrl, openMeteredMeetingModal } from './meteredMeetingModal.js'
 
 const formatMeetingTime = time => {
   const [hours, minutes] = time.split(':').map(Number)
@@ -47,14 +47,19 @@ function createMeetingCard(meeting) {
   if (meeting.notes) details.append(make('p', 'meetings-page-notes', meeting.notes))
 
   const actions = make('div', 'meetings-page-actions')
-  const meetingUrl = getJitsiMeetingUrl(meeting.projectId, meeting.id)
-  if (!isPast) {
-    const join = make('button', 'meetings-page-join', isLive ? 'Join meeting' : 'Open meeting')
-    join.type = 'button'
+  const meetingUrl = getSafeMeetingUrl(meeting.meetingUrl || meeting.location)
+  if (meetingUrl && !isPast) {
+    const join = make('a', 'meetings-page-join', isLive ? 'Join meeting' : 'Open meeting link')
+    join.href = meetingUrl
+    join.target = '_blank'
+    join.rel = 'noopener noreferrer'
     join.setAttribute('aria-label', `${isLive ? 'Join' : 'Open'} meeting: ${meeting.title}`)
-    join.addEventListener('click', () => {
-      openJitsiMeetingModal(meeting.projectId, meeting.id, meeting.title, currentUser.name)
-    })
+    if (isMeteredRoomUrl(meetingUrl)) {
+      join.addEventListener('click', event => {
+        event.preventDefault()
+        openMeteredMeetingModal(meetingUrl, meeting.title)
+      })
+    }
     actions.append(join)
 
     const copy = make('button', 'meetings-page-copy', 'Copy link')
