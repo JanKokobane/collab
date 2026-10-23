@@ -3,7 +3,7 @@ import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
 import { openAddReminderModal, openScheduleMeetingModal } from './calendar.js'
 import { formatRelativeDate } from './dateUtils.js'
 import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
-import { isMeteredRoomUrl, openMeteredMeetingModal } from './meteredMeetingModal.js'
+import { openZoomMeetingModal } from './zoomMeetingModal.js'
 
 const formatMeetingTime = time => {
   const [hours, minutes] = time.split(':').map(Number)
@@ -47,21 +47,20 @@ function createMeetingCard(meeting) {
   if (meeting.notes) details.append(make('p', 'meetings-page-notes', meeting.notes))
 
   const actions = make('div', 'meetings-page-actions')
+  if (!isPast) {
+    const join = make('button', 'meetings-page-join', isLive ? 'Join meeting' : 'Open meeting')
+    join.type = 'button'
+    join.setAttribute('aria-label', `${isLive ? 'Join' : 'Open'} meeting: ${meeting.title}`)
+    join.addEventListener('click', () => openZoomMeetingModal(meeting))
+    actions.append(join)
+  }
   const meetingUrl = getSafeMeetingUrl(meeting.meetingUrl || meeting.location)
   if (meetingUrl && !isPast) {
-    const join = make('a', 'meetings-page-join', isLive ? 'Join meeting' : 'Open meeting link')
-    join.href = meetingUrl
-    join.target = '_blank'
-    join.rel = 'noopener noreferrer'
-    join.setAttribute('aria-label', `${isLive ? 'Join' : 'Open'} meeting: ${meeting.title}`)
-    if (isMeteredRoomUrl(meetingUrl)) {
-      join.addEventListener('click', event => {
-        event.preventDefault()
-        openMeteredMeetingModal(meetingUrl, meeting.title)
-      })
-    }
-    actions.append(join)
-
+    const externalLink = make('a', 'meetings-page-join', 'Open external link')
+    externalLink.href = meetingUrl
+    externalLink.target = '_blank'
+    externalLink.rel = 'noopener noreferrer'
+    actions.append(externalLink)
     const copy = make('button', 'meetings-page-copy', 'Copy link')
     copy.type = 'button'
     copy.addEventListener('click', async () => {

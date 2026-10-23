@@ -16,7 +16,7 @@ import {
 import { createProjectMeeting, deleteProjectMeeting, getMeetingProjectMembers, getSafeMeetingUrl } from './meetings.js'
 import { createProjectReminder } from './calendarData.js'
 import { showDashboardToast } from './modalChrome.js'
-import { isMeteredRoomUrl, openMeteredMeetingModal } from './meteredMeetingModal.js'
+import { openZoomMeetingModal } from './zoomMeetingModal.js'
 import {
   addDaysToDateKey,
   formatRelativeDate,
@@ -126,20 +126,20 @@ export function renderPinnedMeetingsStrip() {
     })
     team.append(attendeeList)
     footer.append(team)
-    const meetingUrl = getSafeMeetingUrl(meet.meetingUrl || meet.location)
-    if (meetingUrl) {
-      const join = make('a', 'pinned-join-btn', 'Join Meeting')
-      join.href = meetingUrl
-      join.target = '_blank'
-      join.rel = 'noopener noreferrer'
-      join.setAttribute('aria-label', `Open meeting link for ${meet.title}`)
-      if (isMeteredRoomUrl(meetingUrl)) {
-        join.addEventListener('click', event => {
-          event.preventDefault()
-          openMeteredMeetingModal(meetingUrl, meet.title)
-        })
-      }
+    if (new Date(`${meet.date}T${meet.endTime}:00`) >= new Date()) {
+      const join = make('button', 'pinned-join-btn', 'Join Meeting')
+      join.type = 'button'
+      join.setAttribute('aria-label', `Join ${meet.title}`)
+      join.addEventListener('click', () => openZoomMeetingModal(meet))
       footer.append(join)
+    }
+    const meetingUrl = getSafeMeetingUrl(meet.location)
+    if (meetingUrl) {
+      const externalLink = make('a', 'pinned-join-btn', 'Open link')
+      externalLink.href = meetingUrl
+      externalLink.target = '_blank'
+      externalLink.rel = 'noopener noreferrer'
+      footer.append(externalLink)
     }
     if (meet.location && !getSafeMeetingUrl(meet.location)) {
       footer.append(make('span', 'meeting-location', meet.location))
@@ -341,19 +341,19 @@ export function openDayScheduleModal(dateStr) {
       details.style.fontSize = '11px'
       description.append(meetingTitle, details)
       row.append(description)
-      const meetingUrl = getSafeMeetingUrl(m.meetingUrl || m.location)
-      if (meetingUrl) {
-        const join = make('a', 'pinned-join-btn', 'Join Meeting')
-        join.href = meetingUrl
-        join.target = '_blank'
-        join.rel = 'noopener noreferrer'
-        if (isMeteredRoomUrl(meetingUrl)) {
-          join.addEventListener('click', event => {
-            event.preventDefault()
-            openMeteredMeetingModal(meetingUrl, m.title)
-          })
-        }
+      if (new Date(`${m.date}T${m.endTime}:00`) >= new Date()) {
+        const join = make('button', 'pinned-join-btn', 'Join Meeting')
+        join.type = 'button'
+        join.addEventListener('click', () => openZoomMeetingModal(m))
         row.append(join)
+      }
+      const meetingUrl = getSafeMeetingUrl(m.location)
+      if (meetingUrl) {
+        const externalLink = make('a', 'pinned-join-btn', 'Open link')
+        externalLink.href = meetingUrl
+        externalLink.target = '_blank'
+        externalLink.rel = 'noopener noreferrer'
+        row.append(externalLink)
       }
       if (m.location && !getSafeMeetingUrl(m.location)) {
         row.append(make('span', 'meeting-location', m.location))
@@ -835,7 +835,7 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
 
   const title = make('h2', '', instant ? 'Start Instant Meeting' : 'Schedule Team Meeting')
   const copy = make('p', 'modal-copy', instant
-    ? 'Create a Metered room and invite your project members to join now.'
+    ? 'Create a Zoom Video SDK room and invite your project members to join now.'
     : 'Schedule a meeting for a project you own or have joined.')
 
   const projectLabel = make('label', '', 'Project')
@@ -937,18 +937,6 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
   locInput.title = 'Enter an optional HTTPS or HTTP meeting link, or a physical location.'
   locLabel.append(locInput)
 
-  const meteredLabel = make('label', 'checkbox-label', '')
-  meteredLabel.style.display = 'flex'
-  meteredLabel.style.alignItems = 'center'
-  meteredLabel.style.gap = '8px'
-  meteredLabel.style.margin = '4px 0'
-  const meteredInput = document.createElement('input')
-  meteredInput.type = 'checkbox'
-  meteredInput.checked = true
-  meteredInput.disabled = instant
-  meteredLabel.append(meteredInput, make('span', '',
-    instant ? 'Metered room link will be generated' : 'Generate a Metered meeting link'))
-
   const notesLabel = make('label', 'no-input-icon', 'Agenda & Discussion Topics')
   const notesInput = document.createElement('textarea')
   notesInput.rows = 2
@@ -967,7 +955,7 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
   submit.replaceChildren(submitSpinner, submitLabel)
 
   if (instant) titleInput.value = 'Instant team meeting'
-  form.append(close, title, copy, projectLabel, attendeesFieldset, titleLabel, dateLabel, timeRange, pinLabel, meteredLabel, locLabel, notesLabel, submit)
+  form.append(close, title, copy, projectLabel, attendeesFieldset, titleLabel, dateLabel, timeRange, pinLabel, locLabel, notesLabel, submit)
   backdrop.append(form)
   root.replaceChildren(backdrop)
 
@@ -991,12 +979,10 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
         endTime: endTimeInput.value,
         pinned: pinInput.checked,
         location: locInput.value.trim(),
-        createMeteredRoom: instant || meteredInput.checked,
         notes: notesInput.value.trim(),
         attendeeFirebaseUids: [...attendeesList.querySelectorAll('input[name="meetingAttendee"]:checked')]
           .map(input => input.value)
       })
-      const meetingUrl = getSafeMeetingUrl(newMeet.meeting_url)
       closeModal()
       renderCalendarPanel()
       hub.renderMeetingsPage?.()
@@ -1004,11 +990,11 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
       hub.renderWorkspaceHub?.()
       addAuditLog('Project meeting scheduled', `${newMeet.title} scheduled for ${newMeet.meeting_date}.`, 'sync')
       if (instant) {
-        if (meetingUrl && isMeteredRoomUrl(meetingUrl)) {
-          openMeteredMeetingModal(meetingUrl, newMeet.title)
-        } else {
-          showDashboardToast('Meeting created, but its Metered room link is unavailable.', 'error')
-        }
+        openZoomMeetingModal({
+          id: newMeet.meeting_id,
+          projectId: newMeet.project_id,
+          title: newMeet.title
+        })
       } else {
         showDashboardToast('Meeting scheduled.')
       }

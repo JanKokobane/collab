@@ -1,6 +1,5 @@
-const { randomUUID } = require('node:crypto');
+const { randomUUID, createHmac } = require('node:crypto');
 const { pool, query } = require('../config/db');
-const { createMeteredRoom } = require('../services/meteredRoomService');
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
@@ -78,13 +77,103 @@ const getMeetings = async (req, res) => {
     }
 };
 
+const createZoomSignature = (sessionName, roleType) => {
+    const sdkKey = process.env.ZOOM_SDK_KEY?.trim();
+    const sdkSecret = process.env.ZOOM_SDK_SECRET?.trim();
+    if (!sdkKey || !sdkSecret) {
+        const error = new Error('Zoom Video SDK is not configured.');
+        error.code = 'ZOOM_SDK_NOT_CONFIGURED';
+        throw error;
+    }
+
+    const issuedAt = Math.floor(Date.now() / 1000) - 30;
+    const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const header = encode({ alg: 'HS256', typ: 'JWT' });
+    const payload = encode({
+        app_key: sdkKey,
+        tpc: sessionName,
+        role_type: roleType,
+        version: 1,
+        iat: issuedAt,
+        exp: issuedAt + 60 * 60 * 2
+    });
+    const unsignedToken = `${header}.${payload}`;
+    const signature = createHmac('sha256', sdkSecret)
+        .update(unsignedToken)
+        .digest('base64url');
+    return `${unsignedToken}.${signature}`;
+};
+
+const getZoomMeetingToken = async (req, res) => {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.meetingId)) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_MEETING_ID',
+            message: 'Provide a valid meeting ID.'
+        });
+    }
+
+    try {
+        const project = await getAccessibleProject(req.params.projectId, req.firebaseUid);
+        if (!project) {
+            return res.status(404).json({
+                success: false,
+                code: 'PROJECT_NOT_FOUND',
+                message: 'Project not found.'
+            });
+        }
+
+        const result = await query(
+            `
+                SELECT meeting_id, host_firebase_uid
+                FROM project_meetings
+                WHERE project_id = $1
+                  AND meeting_id = $2::uuid
+                  AND attendee_firebase_uids @> $3::jsonb
+                LIMIT 1
+            `,
+            [project.project_id, req.params.meetingId, JSON.stringify([req.firebaseUid])]
+        );
+        const meeting = result.rows[0];
+        if (!meeting) {
+            return res.status(404).json({
+                success: false,
+                code: 'MEETING_NOT_FOUND_OR_FORBIDDEN',
+                message: 'Meeting not found or you are not invited to it.'
+            });
+        }
+
+        const signature = createZoomSignature(
+            meeting.meeting_id,
+            meeting.host_firebase_uid === req.firebaseUid ? 1 : 0
+        );
+        return res.status(200).json({
+            success: true,
+            data: { signature, sessionName: meeting.meeting_id }
+        });
+    } catch (error) {
+        if (error.code === 'ZOOM_SDK_NOT_CONFIGURED') {
+            return res.status(503).json({
+                success: false,
+                code: error.code,
+                message: 'Zoom Video SDK is not configured. Set ZOOM_SDK_KEY and ZOOM_SDK_SECRET in the backend environment.'
+            });
+        }
+        console.error('Get Zoom meeting token error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'ZOOM_MEETING_TOKEN_FAILED',
+            message: 'A secure Zoom meeting token could not be generated.'
+        });
+    }
+};
+
 const createMeeting = async (req, res) => {
     const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
     const date = typeof req.body?.date === 'string' ? req.body.date : '';
     const startTime = typeof req.body?.startTime === 'string' ? req.body.startTime : '';
     const endTime = typeof req.body?.endTime === 'string' ? req.body.endTime : '';
     const location = typeof req.body?.location === 'string' ? req.body.location.trim() : '';
-    const createMeteredRoomRequested = req.body?.createMeteredRoom === true;
     const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
     const pinned = req.body?.pinned === undefined ? true : req.body.pinned;
     const attendeeUids = Array.isArray(req.body?.attendeeFirebaseUids)
@@ -169,10 +258,6 @@ const createMeeting = async (req, res) => {
             .join('')
             .slice(0, 2)
             .toUpperCase() || '📅';
-        const meetingUrl = createMeteredRoomRequested
-            ? await createMeteredRoom()
-            : '';
-
         const client = await pool.connect();
         let result;
         try {
@@ -221,7 +306,7 @@ const createMeeting = async (req, res) => {
                     endTime,
                     pinned,
                     location,
-                    meetingUrl,
+                    '',
                     notes,
                     req.firebaseUid,
                     hostName,
@@ -283,21 +368,6 @@ const createMeeting = async (req, res) => {
             code: error.code || null,
             message: error.message
         });
-        if (error.code === 'METERED_ROOM_NOT_CONFIGURED' ||
-            error.code === 'METERED_ROOM_CONFIGURATION_INVALID') {
-            return res.status(503).json({
-                success: false,
-                code: error.code,
-                message: 'Metered meeting rooms are not configured. Set METERED_APP_NAME and METERED_SECRET_KEY in the backend environment, then redeploy.'
-            });
-        }
-        if (typeof error.code === 'string' && error.code.startsWith('METERED_ROOM_')) {
-            return res.status(502).json({
-                success: false,
-                code: error.code,
-                message: 'A Metered room could not be created. Check the backend Metered configuration and try again.'
-            });
-        }
         return res.status(500).json({
             success: false,
             code: 'PROJECT_MEETING_CREATE_FAILED',
@@ -359,5 +429,6 @@ const deleteMeeting = async (req, res) => {
 module.exports = {
     createMeeting,
     deleteMeeting,
+    getZoomMeetingToken,
     getMeetings
 };

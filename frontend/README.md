@@ -87,7 +87,7 @@ frontend/
 │   ├── dashboard.js           Dashboard application entry point
 │   ├── dashboard.css          Shared shell and dashboard styles
 │   ├── meetingsPage.css       Dedicated team meetings view
-│   ├── meteredMeetingModal.css Metered meeting modal styling
+│   ├── zoomMeetingModal.css  Zoom Video SDK meeting modal styling
 │   ├── workspaceHub.css       Workspace, brainstorm, and messaging styles
 │   └── js/
 │       ├── admin.js           Administration tables and dialogs
@@ -103,7 +103,7 @@ frontend/
 │       ├── icons.js              Shared inline SVG icon generator
 │       ├── meetings.js           Project meeting API and normalization
 │       ├── meetingsPage.js       Meetings page rendering and actions
-│       ├── meteredMeetingModal.js Metered Embed SDK integration
+│       ├── zoomMeetingModal.js   Zoom Video SDK room and media rendering
 │       ├── messageCallUI.js      WebRTC call modal and controls
 │       ├── messages.js           Persistent messaging, signaling, and call lifecycle
 │       ├── modalChrome.js        Shared modal enhancement
@@ -125,11 +125,13 @@ frontend/
     └── legal.css              Shared legal-page styles
 ```
 
-Metered room links open in the dashboard's styled meeting dialog and use the
-official Metered Embed Frame SDK for the lobby, media permissions, camera and
-microphone controls, screen sharing, and in-room chat. The SDK loads from
-Metered's CDN when a room is opened; no Metered room secret is sent to the
-browser.
+Scheduled and instant project meetings join Zoom Video SDK sessions in the
+dashboard. The browser loads the SDK when a meeting is opened and requests a
+short-lived signature from the authenticated backend; Zoom credentials and
+signature generation remain server-side. Configure `ZOOM_SDK_KEY` and
+`ZOOM_SDK_SECRET` in the backend environment before joining meetings. The
+meeting view includes microphone and camera controls, browser screen sharing,
+a participant list, and Zoom's in-meeting group chat.
 
 ## State and persistence
 

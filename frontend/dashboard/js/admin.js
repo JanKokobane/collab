@@ -25,7 +25,7 @@ import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
 import { setDashboardButtonLoading, showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
-import { isMeteredRoomUrl, openMeteredMeetingModal } from './meteredMeetingModal.js'
+import { openZoomMeetingModal } from './zoomMeetingModal.js'
 
 // ============================================================
 // ADMIN CONSOLE TABLE & FUNCTIONS
@@ -1121,23 +1121,36 @@ export function renderAdminMeetingsTable() {
 
     const location = field('location')
     location.removeAttribute('href')
-    const meetingUrl = getSafeMeetingUrl(meet.meetingUrl || meet.location)
-    location.textContent = meetingUrl
-      ? meet.meetingUrl ? 'Open Metered room ↗' : 'Open meeting link ↗'
-      : meet.location || 'Location not set'
-    if (meetingUrl) {
-      location.href = meetingUrl
-      location.target = '_blank'
-      location.rel = 'noopener noreferrer'
-      location.addEventListener('click', event => {
+    location.textContent = 'Join meeting'
+    location.setAttribute('role', 'button')
+    location.tabIndex = 0
+    const join = location
+    const isJoinable = new Date(`${meet.date}T${meet.endTime}:00`) >= new Date()
+    if (isJoinable) {
+      join.addEventListener('click', event => {
         event.stopPropagation()
-        if (!isMeteredRoomUrl(meetingUrl)) return
-        event.preventDefault()
-        openMeteredMeetingModal(meetingUrl, meet.title)
+        openZoomMeetingModal(meet)
       })
+      join.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        openZoomMeetingModal(meet)
+      })
+    } else {
+      join.textContent = 'Meeting ended'
+      join.setAttribute('aria-disabled', 'true')
+      join.removeAttribute('role')
+      join.removeAttribute('tabindex')
     }
-    if (meet.meetingUrl && meet.location && !getSafeMeetingUrl(meet.location)) {
-      location.append(document.createTextNode(` · ${meet.location}`))
+    const meetingUrl = getSafeMeetingUrl(meet.location)
+    if (meetingUrl) {
+      const externalLink = make('a', '', 'Open external link ↗')
+      externalLink.href = meetingUrl
+      externalLink.target = '_blank'
+      externalLink.rel = 'noopener noreferrer'
+      join.after(externalLink)
+    } else if (meet.location) {
+      join.after(make('small', 'meeting-location-detail', meet.location))
     }
     const delBtn = field('delete')
     delBtn.style.display = meet.canCancel ? '' : 'none'

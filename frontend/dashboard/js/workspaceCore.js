@@ -4,7 +4,7 @@ import { renderScratchpad, renderHubResources, initWorkspaceResourceEvents } fro
 import { api } from './api.js'
 import { getSafeMeetingUrl } from './meetings.js'
 import { showDashboardToast } from './modalChrome.js'
-import { isMeteredRoomUrl, openMeteredMeetingModal } from './meteredMeetingModal.js'
+import { openZoomMeetingModal } from './zoomMeetingModal.js'
 
 // RENDER WORKSPACE HUB
 export function renderWorkspaceHub() {
@@ -202,24 +202,22 @@ export function renderUpcomingMeetings() {
     hostWrap.append(make('span', 'meeting-host-name', hostName))
     hostCell.append(hostWrap)
     const locationCell = make('td', 'meeting-location')
-    const meetingUrl = getSafeMeetingUrl(meeting.meetingUrl || meeting.location)
+    const join = make('button', 'pinned-join-btn', 'Join meeting')
+    join.type = 'button'
+    join.addEventListener('click', event => {
+      event.stopPropagation()
+      openZoomMeetingModal(meeting)
+    })
+    locationCell.append(join)
+    const meetingUrl = getSafeMeetingUrl(meeting.location)
     if (meetingUrl) {
-      const link = make('a', '', meeting.meetingUrl ? 'Open meeting room ↗' : meeting.location)
+      const link = make('a', '', 'Open external link ↗')
       link.href = meetingUrl
       link.target = '_blank'
       link.rel = 'noopener noreferrer'
-      link.addEventListener('click', event => {
-        event.stopPropagation()
-        if (!isMeteredRoomUrl(meetingUrl)) return
-        event.preventDefault()
-        openMeteredMeetingModal(meetingUrl, meeting.title)
-      })
       locationCell.append(link)
-      if (meeting.location && !getSafeMeetingUrl(meeting.location)) {
-        locationCell.append(make('small', 'meeting-location-detail', meeting.location))
-      }
-    } else {
-      locationCell.textContent = meeting.location || 'Location not set'
+    } else if (meeting.location) {
+      locationCell.append(make('small', 'meeting-location-detail', meeting.location))
     }
     const meetingCell = make('td', 'meeting-title-cell', meeting.title)
     const dateCell = make('td', '', formattedDate)

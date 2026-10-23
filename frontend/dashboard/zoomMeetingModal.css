@@ -1,0 +1,653 @@
+.zoom-meeting-overlay {
+    position: fixed;
+    z-index: 30000;
+    inset: 0;
+    display: flex;
+    background: #F8F8FA;
+    color: #1C1C1F;
+    font-family: 'DM Sans', sans-serif;
+}
+
+.zoom-meeting-overlay [hidden] {
+    display: none !important;
+}
+
+body.zoom-meeting-open {
+    overflow: hidden;
+}
+
+body.zoom-meeting-open .sidebar {
+    display: none;
+}
+
+.zoom-meeting-card {
+    display: flex;
+    width: 100%;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+    background: #F8F8FA;
+}
+
+.zoom-meeting-header {
+    display: grid;
+    min-height: 68px;
+    grid-template-columns: minmax(150px, 1fr) minmax(180px, 2fr) minmax(130px, 1fr);
+    align-items: center;
+    gap: 18px;
+    padding: 10px 22px;
+    border-bottom: 1px solid #E4E4E7;
+    background: #FFFFFF;
+}
+
+.zoom-meeting-brand,
+.zoom-meeting-info,
+.zoom-meeting-id {
+    display: flex;
+    align-items: center;
+}
+
+.zoom-meeting-brand {
+    min-width: 0;
+}
+
+.zoom-meeting-brand-logo {
+    display: block;
+    width: auto;
+    max-width: 145px;
+    height: 36px;
+    object-fit: contain;
+    object-position: left center;
+    mix-blend-mode: multiply;
+}
+
+.zoom-meeting-info {
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+}
+
+.zoom-meeting-header h2 {
+    max-width: 100%;
+    overflow: hidden;
+    margin: 0;
+    color: #1C1C1F;
+    font-size: 15px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.zoom-meeting-status {
+    margin: 0;
+    color: #71717A;
+    font-size: 11px;
+}
+
+.zoom-meeting-status.is-error {
+    color: #B91C1C;
+}
+
+.zoom-meeting-id {
+    justify-self: end;
+    max-width: 100%;
+    overflow: hidden;
+    padding: 7px 10px;
+    border: 1px solid #E4E4E7;
+    border-radius: 8px;
+    background: #FAFAFA;
+    color: #52525B;
+    font: inherit;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.zoom-meeting-content {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    gap: 14px;
+    padding: 16px;
+    background: #F8F8FA;
+}
+
+.zoom-meeting-stage {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+}
+
+.zoom-meeting-video-grid {
+    display: grid;
+    min-height: 0;
+    flex: 1;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+    align-content: center;
+    justify-items: center;
+    gap: 12px;
+    overflow: auto;
+}
+
+.zoom-meeting-tile {
+    position: relative;
+    width: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    border: 1px solid #292b30;
+    border-radius: 12px;
+    background: #1d2026;
+    aspect-ratio: 16 / 9;
+}
+
+.zoom-meeting-tile canvas {
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.zoom-meeting-avatar {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    width: 68px;
+    height: 68px;
+    margin: auto;
+    place-items: center;
+    border: 2px solid rgba(255, 255, 255, .15);
+    border-radius: 50%;
+    background: #315c58;
+    color: #f4f4f5;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.zoom-meeting-participant-name {
+    position: absolute;
+    z-index: 2;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    overflow: hidden;
+    padding: 22px 12px 10px;
+    background: linear-gradient(transparent, rgba(0, 0, 0, .68));
+    color: #fff;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.zoom-meeting-share-stage {
+    position: relative;
+    display: flex;
+    min-height: 120px;
+    max-height: min(58vh, 620px);
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border: 1px solid #303238;
+    border-radius: 12px;
+    background: #050506;
+}
+
+.zoom-meeting-share-label {
+    position: absolute;
+    z-index: 3;
+    top: 12px;
+    left: 14px;
+    padding: 6px 9px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, .62);
+    color: #f4f4f5;
+    font-size: 11px;
+}
+
+.zoom-meeting-share-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.zoom-meeting-side-panel {
+    display: flex;
+    width: min(330px, 32vw);
+    min-width: 260px;
+    min-height: 0;
+    flex: 0 0 auto;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid #E4E4E7;
+    border-radius: 12px;
+    background: #FFFFFF;
+}
+
+.zoom-meeting-panel-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 10px;
+    border-bottom: 1px solid #E4E4E7;
+}
+
+.zoom-meeting-panel-tabs button {
+    flex: 1;
+    padding: 9px 10px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #71717A;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.zoom-meeting-panel-tabs button.is-active {
+    background: #F5F5F4;
+    color: #1C1C1F;
+}
+
+.zoom-meeting-panel-pane {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 16px 14px;
+}
+
+.zoom-meeting-panel-pane h3 {
+    margin: 0 0 14px;
+    color: #1C1C1F;
+    font-size: 13px;
+}
+
+.zoom-meeting-participant-list {
+    display: grid;
+    align-content: start;
+    gap: 7px;
+    overflow: auto;
+}
+
+.zoom-meeting-person {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 4px;
+}
+
+.zoom-meeting-person-avatar {
+    display: grid;
+    width: 31px;
+    height: 31px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 50%;
+    background: #F5B800;
+    color: #212121;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.zoom-meeting-person-name {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    color: #1C1C1F;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.zoom-meeting-person small {
+    color: #71717A;
+    font-size: 10px;
+}
+
+.zoom-meeting-chat-messages {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    overflow: auto;
+}
+
+.zoom-meeting-chat-empty {
+    margin: auto 0;
+    color: #71717A;
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: center;
+}
+
+.zoom-meeting-chat-message {
+    padding: 9px 10px;
+    border-radius: 9px;
+    background: #F5F5F4;
+}
+
+.zoom-meeting-chat-message strong {
+    color: #8A6500;
+    font-size: 11px;
+}
+
+.zoom-meeting-chat-message p {
+    margin: 4px 0 0;
+    color: #1C1C1F;
+    font-size: 12px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.zoom-meeting-chat-form {
+    display: flex;
+    gap: 7px;
+    padding-top: 12px;
+}
+
+.zoom-meeting-chat-form input {
+    min-width: 0;
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #E4E4E7;
+    border-radius: 8px;
+    outline: none;
+    background: #FFFFFF;
+    color: #1C1C1F;
+    font: inherit;
+    font-size: 12px;
+}
+
+.zoom-meeting-chat-form input:focus {
+    border-color: #F5B800;
+}
+
+.zoom-meeting-chat-form button {
+    padding: 0 12px;
+    border: 0;
+    border-radius: 8px;
+    background: #F5B800;
+    color: #212121;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.zoom-meeting-chat-form button:disabled {
+    cursor: wait;
+    opacity: .6;
+}
+
+.zoom-meeting-footer {
+    position: relative;
+    display: flex;
+    min-height: 80px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 10px 20px;
+    border-top: 1px solid #E4E4E7;
+    background: #FFFFFF;
+}
+
+.zoom-meeting-footer-meta {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+    color: #71717A;
+    font-size: 11px;
+}
+
+.zoom-meeting-footer-meta time {
+    color: #1C1C1F;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+}
+
+.zoom-meeting-footer-meta span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.zoom-meeting-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.zoom-meeting-control {
+    display: flex;
+    min-width: 66px;
+    min-height: 54px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 6px 10px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: #52525B;
+    font: inherit;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+}
+
+.zoom-meeting-control:hover,
+.zoom-meeting-control.is-active {
+    border-color: #E4E4E7;
+    background: #F5F5F4;
+}
+
+.zoom-meeting-control.is-danger {
+    min-width: 78px;
+    background: #DC2626;
+    color: #fff;
+}
+
+.zoom-meeting-control.is-danger:hover {
+    background: #B91C1C;
+}
+
+.zoom-meeting-control:disabled {
+    cursor: wait;
+    opacity: .48;
+}
+
+.zoom-meeting-control:focus-visible,
+.zoom-meeting-id:focus-visible,
+.zoom-meeting-panel-tabs button:focus-visible,
+.zoom-meeting-chat-form button:focus-visible {
+    outline: 2px solid #F5B800;
+    outline-offset: 2px;
+}
+
+body.dark-mode .zoom-meeting-overlay,
+body.dark-mode .zoom-meeting-card,
+body.dark-mode .zoom-meeting-content {
+    background: #18181B;
+    color: #F4F4F5;
+}
+
+body.dark-mode .zoom-meeting-header,
+body.dark-mode .zoom-meeting-footer,
+body.dark-mode .zoom-meeting-side-panel {
+    border-color: #3F3F46;
+    background: #212121;
+}
+
+body.dark-mode .zoom-meeting-header h2,
+body.dark-mode .zoom-meeting-panel-pane h3,
+body.dark-mode .zoom-meeting-person-name,
+body.dark-mode .zoom-meeting-chat-message p {
+    color: #F4F4F5;
+}
+
+body.dark-mode .zoom-meeting-status,
+body.dark-mode .zoom-meeting-person small,
+body.dark-mode .zoom-meeting-footer-meta {
+    color: #A1A1AA;
+}
+
+body.dark-mode .zoom-meeting-id,
+body.dark-mode .zoom-meeting-chat-form input {
+    border-color: #3F3F46;
+    background: #292930;
+    color: #F4F4F5;
+}
+
+body.dark-mode .zoom-meeting-panel-tabs,
+body.dark-mode .zoom-meeting-panel-tabs button.is-active {
+    border-color: #3F3F46;
+}
+
+body.dark-mode .zoom-meeting-panel-tabs button.is-active,
+body.dark-mode .zoom-meeting-chat-message,
+body.dark-mode .zoom-meeting-control:hover,
+body.dark-mode .zoom-meeting-control.is-active {
+    background: #292930;
+}
+
+body.dark-mode .zoom-meeting-control {
+    color: #F4F4F5;
+}
+
+body.dark-mode .zoom-meeting-control.is-danger {
+    background: #DC2626;
+    color: #FFFFFF;
+}
+
+body.dark-mode .zoom-meeting-brand-logo {
+    mix-blend-mode: normal;
+}
+
+.zoom-meeting-control svg {
+    width: 20px;
+    height: 20px;
+}
+
+.zoom-meeting-control span {
+    font-size: 10px;
+    font-weight: 650;
+    white-space: nowrap;
+}
+
+@media (max-width: 860px) {
+    .zoom-meeting-header {
+        grid-template-columns: minmax(82px, .6fr) minmax(0, 2fr) auto;
+        gap: 10px;
+        padding: 10px 14px;
+    }
+
+    .zoom-meeting-id {
+        grid-column: 3;
+        grid-row: 1;
+    }
+
+    .zoom-meeting-info {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .zoom-meeting-brand-logo {
+        max-width: 110px;
+        height: 32px;
+    }
+
+    .zoom-meeting-side-panel {
+        position: absolute;
+        z-index: 5;
+        top: 82px;
+        right: 12px;
+        bottom: 88px;
+        width: min(340px, calc(100vw - 24px));
+        min-width: 0;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, .4);
+    }
+
+    .zoom-meeting-content {
+        padding: 10px;
+    }
+
+    .zoom-meeting-footer {
+        min-height: 72px;
+        justify-content: center;
+        padding: 8px;
+    }
+
+    .zoom-meeting-footer-meta {
+        display: none;
+    }
+
+    .zoom-meeting-controls {
+        gap: 4px;
+    }
+
+    .zoom-meeting-control {
+        min-width: 52px;
+        padding: 5px 6px;
+    }
+}
+
+@media (max-width: 520px) {
+    .zoom-meeting-header {
+        min-height: 60px;
+        padding: 8px 12px;
+    }
+
+    .zoom-meeting-header h2 {
+        font-size: 13px;
+    }
+
+    .zoom-meeting-status {
+        font-size: 10px;
+    }
+
+    .zoom-meeting-id {
+        max-width: 92px;
+        font-size: 9px;
+    }
+
+    .zoom-meeting-brand-logo {
+        max-width: 78px;
+        height: 28px;
+    }
+
+    .zoom-meeting-video-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .zoom-meeting-control {
+        min-width: 46px;
+        min-height: 48px;
+        padding: 4px;
+    }
+
+    .zoom-meeting-control span {
+        font-size: 9px;
+    }
+
+    .zoom-meeting-control.is-danger {
+        min-width: 58px;
+    }
+}

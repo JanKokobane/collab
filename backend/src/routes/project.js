@@ -24,7 +24,8 @@ const {
 const {
     createMeeting,
     deleteMeeting,
-    getMeetings
+    getMeetings,
+    getZoomMeetingToken
 } = require('../controllers/meetingController');
 const {
     createProjectReminder,
@@ -88,6 +89,7 @@ router.put('/:projectId/tasks/:taskId', updateProjectTask);
 router.delete('/:projectId/tasks/:taskId', deleteProjectTask);
 router.get('/:projectId/meetings', getMeetings);
 router.post('/:projectId/meetings', createMeeting);
+router.post('/:projectId/meetings/:meetingId/token', getZoomMeetingToken);
 router.delete('/:projectId/meetings/:meetingId', deleteMeeting);
 router.get('/:projectId/reminders', getProjectReminders);
 router.post('/:projectId/reminders', createProjectReminder);
