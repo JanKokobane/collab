@@ -4,7 +4,7 @@ import { renderScratchpad, renderHubResources, initWorkspaceResourceEvents } fro
 import { api } from './api.js'
 import { getSafeMeetingUrl } from './meetings.js'
 import { showDashboardToast } from './modalChrome.js'
-import { openZoomMeetingModal } from './zoomMeetingModal.js'
+import { openMeteredMeetingModal } from './meteredMeetingModal.js'
 
 // RENDER WORKSPACE HUB
 export function renderWorkspaceHub() {
@@ -206,7 +206,7 @@ export function renderUpcomingMeetings() {
     join.type = 'button'
     join.addEventListener('click', event => {
       event.stopPropagation()
-      openZoomMeetingModal(meeting)
+      openMeteredMeetingModal(meeting)
     })
     locationCell.append(join)
     const meetingUrl = getSafeMeetingUrl(meeting.location)

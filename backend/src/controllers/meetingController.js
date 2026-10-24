@@ -1,4 +1,4 @@
-const { randomUUID, createHmac } = require('node:crypto');
+const { randomUUID } = require('node:crypto');
 const { pool, query } = require('../config/db');
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -77,34 +77,83 @@ const getMeetings = async (req, res) => {
     }
 };
 
-const createZoomSignature = (sessionName, roleType) => {
-    const sdkKey = process.env.ZOOM_SDK_KEY?.trim();
-    const sdkSecret = process.env.ZOOM_SDK_SECRET?.trim();
-    if (!sdkKey || !sdkSecret) {
-        const error = new Error('Zoom Video SDK is not configured.');
-        error.code = 'ZOOM_SDK_NOT_CONFIGURED';
+const getMeteredApiConfig = () => {
+    const appName = process.env.METERED_APP_NAME?.trim()
+        ?.replace(/^https?:\/\//i, '')
+        .replace(/\.metered\.live\/?$/i, '');
+    const secretKey = process.env.METERED_API_KEY?.trim();
+    if (!appName || !/^[a-z0-9-]+$/i.test(appName) || !secretKey) {
+        const error = new Error('Metered Video is not configured.');
+        error.code = 'METERED_VIDEO_NOT_CONFIGURED';
         throw error;
     }
-
-    const issuedAt = Math.floor(Date.now() / 1000) - 30;
-    const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
-    const header = encode({ alg: 'HS256', typ: 'JWT' });
-    const payload = encode({
-        app_key: sdkKey,
-        tpc: sessionName,
-        role_type: roleType,
-        version: 1,
-        iat: issuedAt,
-        exp: issuedAt + 60 * 60 * 2
-    });
-    const unsignedToken = `${header}.${payload}`;
-    const signature = createHmac('sha256', sdkSecret)
-        .update(unsignedToken)
-        .digest('base64url');
-    return `${unsignedToken}.${signature}`;
+    return { appName, secretKey };
 };
 
-const getZoomMeetingToken = async (req, res) => {
+const requestMetered = async (config, path, method = 'GET', body) => {
+    const endpoint = new URL(
+        `https://${config.appName}.metered.live/api/v1/${path}`
+    );
+    endpoint.searchParams.set('secretKey', config.secretKey);
+    const response = await fetch(endpoint, {
+        method,
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+        signal: AbortSignal.timeout(8000)
+    });
+    let payload;
+    try {
+        payload = await response.json();
+    } catch (error) {
+        if (response.ok) throw error;
+    }
+    if (!response.ok) {
+        const error = new Error(`Metered API returned HTTP ${response.status}.`);
+        error.code = 'METERED_API_REQUEST_FAILED';
+        error.status = response.status;
+        throw error;
+    }
+    return payload;
+};
+
+const getOrCreateMeteredRoom = async (config, roomName) => {
+    let room;
+    try {
+        room = await requestMetered(config, `room/${encodeURIComponent(roomName)}`);
+    } catch (error) {
+        if (error.status !== 404) throw error;
+    }
+
+    if (!room) {
+        try {
+            room = await requestMetered(config, 'room', 'POST', {
+                roomName,
+                privacy: 'private',
+                enableRequestToJoin: false,
+                enableChat: true,
+                enableScreenSharing: true
+            });
+        } catch (createError) {
+            // Another attendee may have provisioned the room at the same time.
+            try {
+                room = await requestMetered(
+                    config,
+                    `room/${encodeURIComponent(roomName)}`
+                );
+            } catch {
+                throw createError;
+            }
+        }
+    }
+
+    if (room?.privacy !== 'private') {
+        const error = new Error('The Metered room is not private.');
+        error.code = 'METERED_ROOM_NOT_PRIVATE';
+        throw error;
+    }
+};
+
+const getMeteredMeetingToken = async (req, res) => {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.meetingId)) {
         return res.status(400).json({
             success: false,
@@ -143,27 +192,58 @@ const getZoomMeetingToken = async (req, res) => {
             });
         }
 
-        const signature = createZoomSignature(
-            meeting.meeting_id,
-            meeting.host_firebase_uid === req.firebaseUid ? 1 : 0
-        );
+        const config = getMeteredApiConfig();
+        await getOrCreateMeteredRoom(config, meeting.meeting_id);
+        const tokenResponse = await requestMetered(config, 'token', 'POST', {
+            roomName: meeting.meeting_id,
+            isAdmin: false,
+            name: req.firebaseUser?.name ||
+                req.firebaseUser?.displayName ||
+                req.firebaseEmail ||
+                'Project member',
+            email: req.firebaseEmail,
+            externalUserId: req.firebaseUid,
+            expireUnixSec: Math.floor(Date.now() / 1000) + 6 * 60 * 60
+        });
+        if (typeof tokenResponse?.token !== 'string' || !tokenResponse.token) {
+            throw new Error('Metered did not return a meeting access token.');
+        }
         return res.status(200).json({
             success: true,
-            data: { signature, sessionName: meeting.meeting_id }
+            data: {
+                accessToken: tokenResponse.token,
+                roomName: meeting.meeting_id,
+                roomURL: `${config.appName}.metered.live/${meeting.meeting_id}`
+            }
         });
     } catch (error) {
-        if (error.code === 'ZOOM_SDK_NOT_CONFIGURED') {
+        if (error.code === 'METERED_VIDEO_NOT_CONFIGURED') {
             return res.status(503).json({
                 success: false,
                 code: error.code,
-                message: 'Zoom Video SDK is not configured. Set ZOOM_SDK_KEY and ZOOM_SDK_SECRET in the backend environment.'
+                message: 'Metered Video is not configured. Set METERED_APP_NAME and METERED_API_KEY in the backend environment.'
             });
         }
-        console.error('Get Zoom meeting token error:', error);
+        if (error.code === 'METERED_ROOM_NOT_PRIVATE') {
+            return res.status(503).json({
+                success: false,
+                code: error.code,
+                message: 'The Metered room is not private and cannot be joined safely.'
+            });
+        }
+        if (error.code === 'METERED_API_REQUEST_FAILED') {
+            console.error('Metered meeting setup error:', error.message);
+            return res.status(502).json({
+                success: false,
+                code: error.code,
+                message: 'The Metered meeting room or access token could not be prepared.'
+            });
+        }
+        console.error('Get Metered meeting token error:', error);
         return res.status(500).json({
             success: false,
-            code: 'ZOOM_MEETING_TOKEN_FAILED',
-            message: 'A secure Zoom meeting token could not be generated.'
+            code: 'METERED_MEETING_TOKEN_FAILED',
+            message: 'A secure Metered meeting token could not be generated.'
         });
     }
 };
@@ -429,6 +509,6 @@ const deleteMeeting = async (req, res) => {
 module.exports = {
     createMeeting,
     deleteMeeting,
-    getZoomMeetingToken,
+    getMeteredMeetingToken,
     getMeetings
 };

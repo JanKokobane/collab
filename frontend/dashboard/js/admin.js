@@ -25,7 +25,7 @@ import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
 import { setDashboardButtonLoading, showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
-import { openZoomMeetingModal } from './zoomMeetingModal.js'
+import { openMeteredMeetingModal } from './meteredMeetingModal.js'
 
 // ============================================================
 // ADMIN CONSOLE TABLE & FUNCTIONS
@@ -1129,12 +1129,12 @@ export function renderAdminMeetingsTable() {
     if (isJoinable) {
       join.addEventListener('click', event => {
         event.stopPropagation()
-        openZoomMeetingModal(meet)
+        openMeteredMeetingModal(meet)
       })
       join.addEventListener('keydown', event => {
         if (event.key !== 'Enter' && event.key !== ' ') return
         event.preventDefault()
-        openZoomMeetingModal(meet)
+        openMeteredMeetingModal(meet)
       })
     } else {
       join.textContent = 'Meeting ended'

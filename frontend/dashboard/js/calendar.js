@@ -16,14 +16,15 @@ import {
 import { createProjectMeeting, deleteProjectMeeting, getMeetingProjectMembers, getSafeMeetingUrl } from './meetings.js'
 import { createProjectReminder } from './calendarData.js'
 import { showDashboardToast } from './modalChrome.js'
-import { openZoomMeetingModal } from './zoomMeetingModal.js'
+import { openMeteredMeetingModal } from './meteredMeetingModal.js'
 import {
   addDaysToDateKey,
   formatRelativeDate,
   getDateDayOffset,
   parseLocalDate,
   toLocalDateKey,
-  notBeforeTodayDateKey
+  notBeforeTodayDateKey,
+  getEarliestDateTimeInput
 } from './dateUtils.js'
 
 // ============================================================
@@ -130,7 +131,7 @@ export function renderPinnedMeetingsStrip() {
       const join = make('button', 'pinned-join-btn', 'Join Meeting')
       join.type = 'button'
       join.setAttribute('aria-label', `Join ${meet.title}`)
-      join.addEventListener('click', () => openZoomMeetingModal(meet))
+      join.addEventListener('click', () => openMeteredMeetingModal(meet))
       footer.append(join)
     }
     const meetingUrl = getSafeMeetingUrl(meet.location)
@@ -344,7 +345,7 @@ export function openDayScheduleModal(dateStr) {
       if (new Date(`${m.date}T${m.endTime}:00`) >= new Date()) {
         const join = make('button', 'pinned-join-btn', 'Join Meeting')
         join.type = 'button'
-        join.addEventListener('click', () => openZoomMeetingModal(m))
+        join.addEventListener('click', () => openMeteredMeetingModal(m))
         row.append(join)
       }
       const meetingUrl = getSafeMeetingUrl(m.location)
@@ -816,6 +817,8 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
   instantStart.setSeconds(0, 0)
   if (instant) instantStart.setMinutes(instantStart.getMinutes() + 1)
   const instantEnd = new Date(instantStart.getTime() + 60 * 60 * 1000)
+  const timeStep = instant ? 60 : 900
+  const earliestTime = getEarliestDateTimeInput(timeStep)
   if (instant && toLocalDateKey(instantEnd) !== toLocalDateKey(instantStart)) {
     instantEnd.setTime(instantStart.getTime())
     instantEnd.setHours(23, 59, 0, 0)
@@ -835,7 +838,7 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
 
   const title = make('h2', '', instant ? 'Start Instant Meeting' : 'Schedule Team Meeting')
   const copy = make('p', 'modal-copy', instant
-    ? 'Create a Zoom Video SDK room and invite your project members to join now.'
+    ? 'Create a video meeting room and invite your project members to join now.'
     : 'Schedule a meeting for a project you own or have joined.')
 
   const projectLabel = make('label', '', 'Project')
@@ -887,8 +890,10 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
   const dateLabel = make('label', '', 'Date')
   const dateInput = make('input')
   dateInput.type = 'date'
-  dateInput.min = toLocalDateKey()
-  dateInput.value = notBeforeTodayDateKey(instant ? toLocalDateKey(instantStart) : prefilledDate)
+  dateInput.value = notBeforeTodayDateKey(
+    instant ? toLocalDateKey(instantStart) : prefilledDate,
+    earliestTime.date
+  )
   dateInput.required = true
   dateLabel.append(dateInput)
 
@@ -897,7 +902,10 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
   const startTimeInput = make('input')
   startTimeInput.type = 'time'
   startTimeInput.value = instant ? formatInputTime(instantStart) : '10:00'
-  startTimeInput.step = instant ? '60' : '900'
+  startTimeInput.step = String(timeStep)
+  if (dateInput.value === earliestTime.date && startTimeInput.value < earliestTime.time) {
+    startTimeInput.value = earliestTime.time
+  }
   startTimeInput.required = true
   startTimeLabel.append(startTimeInput)
 
@@ -905,18 +913,54 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
   const endTimeInput = make('input')
   endTimeInput.type = 'time'
   endTimeInput.value = instant ? formatInputTime(instantEnd) : '11:00'
-  endTimeInput.step = instant ? '60' : '900'
+  endTimeInput.step = String(timeStep)
+  if (dateInput.value === earliestTime.date && endTimeInput.value <= startTimeInput.value) {
+    const adjustedEnd = new Date(`2000-01-01T${startTimeInput.value}:00`)
+    adjustedEnd.setMinutes(adjustedEnd.getMinutes() + (instant ? 60 : 15))
+    endTimeInput.value = formatInputTime(adjustedEnd)
+  }
   endTimeInput.required = true
   endTimeLabel.append(endTimeInput)
+  const updateMeetingTimeLimits = () => {
+    const earliest = getEarliestDateTimeInput(timeStep)
+    dateInput.min = earliest.date
+    startTimeInput.min = dateInput.value === earliest.date ? earliest.time : ''
+    endTimeInput.min = dateInput.value === earliest.date ? earliest.time : ''
+    if (startTimeInput.min && startTimeInput.value < startTimeInput.min) {
+      startTimeInput.value = startTimeInput.min
+    }
+    if (endTimeInput.min && endTimeInput.value < endTimeInput.min) {
+      endTimeInput.value = endTimeInput.min
+    }
+  }
+  const toSelectedDateTime = time => {
+    if (!dateInput.value || !time) return null
+    const selected = new Date(`${dateInput.value}T${time}:00`)
+    return Number.isNaN(selected.getTime()) ? null : selected
+  }
   const validateMeetingTime = () => {
-    endTimeInput.setCustomValidity(
-      endTimeInput.value && startTimeInput.value && endTimeInput.value <= startTimeInput.value
-        ? 'End time must be later than start time.'
+    updateMeetingTimeLimits()
+    const now = new Date()
+    const selectedStart = toSelectedDateTime(startTimeInput.value)
+    const selectedEnd = toSelectedDateTime(endTimeInput.value)
+    startTimeInput.setCustomValidity(
+      selectedStart && selectedStart <= now
+        ? 'Start time must be in the future.'
         : ''
     )
+    endTimeInput.setCustomValidity(
+      selectedEnd && selectedEnd <= now
+        ? 'End time must be in the future.'
+        : selectedEnd && selectedStart && selectedEnd <= selectedStart
+          ? 'End time must be later than start time.'
+          : ''
+    )
   }
+  updateMeetingTimeLimits()
   startTimeInput.addEventListener('input', validateMeetingTime)
   endTimeInput.addEventListener('input', validateMeetingTime)
+  dateInput.addEventListener('input', validateMeetingTime)
+  dateInput.addEventListener('change', validateMeetingTime)
   timeRange.append(startTimeLabel, endTimeLabel)
 
   const pinLabel = make('label', 'checkbox-label', '')
@@ -990,7 +1034,7 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
       hub.renderWorkspaceHub?.()
       addAuditLog('Project meeting scheduled', `${newMeet.title} scheduled for ${newMeet.meeting_date}.`, 'sync')
       if (instant) {
-        openZoomMeetingModal({
+        openMeteredMeetingModal({
           id: newMeet.meeting_id,
           projectId: newMeet.project_id,
           title: newMeet.title
@@ -1044,8 +1088,8 @@ export function openAddReminderModal(prefilledDate = toLocalDateKey()) {
   const dateLabel = make('label', '', 'Date')
   const dateInput = make('input')
   dateInput.type = 'date'
-  dateInput.min = toLocalDateKey()
-  dateInput.value = notBeforeTodayDateKey(prefilledDate)
+  const earliestTime = getEarliestDateTimeInput(900)
+  dateInput.value = notBeforeTodayDateKey(prefilledDate, earliestTime.date)
   dateInput.required = true
   dateLabel.append(dateInput)
 
@@ -1054,8 +1098,34 @@ export function openAddReminderModal(prefilledDate = toLocalDateKey()) {
   timeInput.type = 'time'
   timeInput.value = '09:00'
   timeInput.step = '900'
+  if (dateInput.value === earliestTime.date && timeInput.value < earliestTime.time) {
+    timeInput.value = earliestTime.time
+  }
   timeInput.required = true
   timeLabel.append(timeInput)
+  const validateReminderTime = () => {
+    const earliest = getEarliestDateTimeInput(900)
+    dateInput.min = earliest.date
+    timeInput.min = dateInput.value === earliest.date ? earliest.time : ''
+    if (timeInput.min && timeInput.value < timeInput.min) {
+      timeInput.value = timeInput.min
+    }
+    if (!dateInput.value || !timeInput.value) {
+      timeInput.setCustomValidity('')
+      return
+    }
+    const selected = new Date(`${dateInput.value}T${timeInput.value}:00`)
+    timeInput.setCustomValidity(
+      !Number.isNaN(selected.getTime()) && selected <= new Date()
+        ? 'Reminder time must be in the future.'
+        : ''
+    )
+  }
+  validateReminderTime()
+  dateInput.addEventListener('input', validateReminderTime)
+  dateInput.addEventListener('change', validateReminderTime)
+  timeInput.addEventListener('input', validateReminderTime)
+  timeInput.addEventListener('change', validateReminderTime)
 
   const prioLabel = make('label', '', 'Priority')
   const prioSelect = document.createElement('select')
@@ -1080,6 +1150,7 @@ export function openAddReminderModal(prefilledDate = toLocalDateKey()) {
 
   form.addEventListener('submit', async e => {
     e.preventDefault()
+    validateReminderTime()
     if (!form.reportValidity()) return
     if (!projectSelect.value) {
       showDashboardToast('Choose a project before adding a reminder.', 'error')

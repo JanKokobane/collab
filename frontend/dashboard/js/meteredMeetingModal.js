@@ -1,7 +1,7 @@
 import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
 
-const SDK_URL = 'https://source.zoom.us/videosdk/zoom-video-2.3.0.min.js'
+const SDK_URL = 'https://cdn.metered.ca/sdk/video/1.4.6/sdk.min.js'
 const iconPaths = {
   mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/>',
   camera: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3z"/>',
@@ -14,8 +14,8 @@ const iconPaths = {
 let sdkLoadPromise
 let activeSession
 
-function loadZoomSdk() {
-  if (window.WebVideoSDK?.default?.createClient) return Promise.resolve()
+function loadMeteredSdk() {
+  if (window.Metered?.Meeting) return Promise.resolve()
   if (sdkLoadPromise) return sdkLoadPromise
 
   sdkLoadPromise = new Promise((resolve, reject) => {
@@ -23,10 +23,10 @@ function loadZoomSdk() {
     script.src = SDK_URL
     script.async = true
     script.onload = () => {
-      if (window.WebVideoSDK?.default?.createClient) resolve()
-      else reject(new Error('The Zoom Video SDK loaded without its client factory.'))
+      if (window.Metered?.Meeting) resolve()
+      else reject(new Error('The Metered Video SDK loaded without its meeting client.'))
     }
-    script.onerror = () => reject(new Error('The Zoom Video SDK could not be loaded.'))
+    script.onerror = () => reject(new Error('The Metered Video SDK could not be loaded.'))
     document.head.append(script)
   }).catch(error => {
     sdkLoadPromise = undefined
@@ -63,13 +63,30 @@ function createControl(name, label, onClick, danger = false) {
   return button
 }
 
+function detachMeetingListeners(session) {
+  for (const [eventName, handler] of session.listeners) {
+    if (typeof session.meeting?.off === 'function') {
+      session.meeting.off(eventName, handler)
+    } else if (typeof session.meeting?.removeListener === 'function') {
+      session.meeting.removeListener(eventName, handler)
+    }
+  }
+  session.listeners = []
+}
+
 function finishSession(session) {
   if (session.disposed) return
   session.disposed = true
   if (session.timer) window.clearInterval(session.timer)
-  for (const [eventName, handler] of session.listeners) {
-    session.client?.off?.(eventName, handler)
+  detachMeetingListeners(session)
+  for (const tile of session.tiles.values()) {
+    tile.video.pause()
+    tile.audio.pause()
+    tile.video.srcObject = null
+    tile.audio.srcObject = null
   }
+  session.shareVideo.pause()
+  session.shareVideo.srcObject = null
   session.cleanup?.()
   session.overlay.remove()
   if (activeSession === session) {
@@ -81,18 +98,11 @@ function finishSession(session) {
 async function closeSession(session = activeSession) {
   if (!session || session.closing) return
   session.closing = true
-  if (session.client && session.joined) {
-    if (session.sharing) {
-      try {
-        await session.stream.stopShareScreen()
-      } catch (error) {
-        console.error('Unable to stop Zoom screen sharing:', error)
-      }
-    }
+  if (session.meeting && session.joined) {
     try {
-      await session.client.leave()
+      await session.meeting.leaveMeeting()
     } catch (error) {
-      console.error('Unable to leave Zoom meeting cleanly:', error)
+      console.error('Unable to leave Metered meeting cleanly:', error)
     }
   }
   finishSession(session)
@@ -103,76 +113,146 @@ function createVideoTile(session, userId, userName, isLocal = false) {
   if (session.tiles.has(key)) return session.tiles.get(key)
   const tile = document.createElement('article')
   tile.className = `zoom-meeting-tile${isLocal ? ' is-local' : ''}`
-  const canvas = document.createElement('canvas')
-  canvas.width = 640
-  canvas.height = 360
-  canvas.setAttribute('aria-label', `${userName || 'Participant'} video`)
+  const video = document.createElement('video')
+  video.autoplay = true
+  video.playsInline = true
+  video.muted = isLocal
+  video.hidden = true
+  video.style.cssText = 'position:relative;z-index:1;display:block;width:100%;height:100%;object-fit:cover'
+  video.setAttribute('aria-label', `${userName || 'Participant'} video`)
+  const audio = document.createElement('audio')
+  audio.autoplay = true
+  audio.hidden = true
   const avatar = document.createElement('div')
   avatar.className = 'zoom-meeting-avatar'
   avatar.textContent = (userName || 'P').trim().slice(0, 1).toUpperCase()
   const label = document.createElement('span')
   label.className = 'zoom-meeting-participant-name'
   label.textContent = userName || (isLocal ? 'You' : 'Project member')
-  tile.append(canvas, avatar, label)
+  tile.append(video, audio, avatar, label)
   session.videoGrid.append(tile)
-  const videoTile = { canvas, avatar, tile, userId }
+  const videoTile = {
+    audio,
+    audioTracks: new Map(),
+    avatar,
+    isLocal,
+    tile,
+    userId,
+    video,
+    videoTracks: new Map()
+  }
   session.tiles.set(key, videoTile)
   return videoTile
 }
 
-async function renderParticipant(session, participant) {
-  const stream = session.stream
-  if (!stream || !participant ||
-      String(participant.userId) === String(session.localUserId)) return
-  const key = String(participant.userId)
-  const tile = createVideoTile(session, participant.userId, participant.displayName)
-  if (session.renderedUsers.has(key)) return
-  session.renderedUsers.add(key)
-  try {
-    await stream.renderVideo(tile.canvas, participant.userId, 640, 360, 0, 0, 3)
-    tile.canvas.hidden = false
-    tile.avatar.hidden = true
-  } catch (error) {
-    session.renderedUsers.delete(key)
-    console.error('Unable to render Zoom participant video:', error)
+function renderVideoTracks(tile) {
+  const tracks = [...tile.videoTracks.values()]
+  if (!tracks.length) {
+    tile.video.pause()
+    tile.video.srcObject = null
+    tile.video.hidden = true
+    tile.avatar.hidden = false
+    return
+  }
+  tile.video.srcObject = new MediaStream(tracks)
+  tile.video.hidden = false
+  tile.avatar.hidden = true
+  void tile.video.play().catch(error => {
+    console.warn('Unable to play meeting video:', error.message)
+  })
+}
+
+function renderAudioTracks(tile) {
+  const tracks = [...tile.audioTracks.values()]
+  tile.audio.srcObject = tracks.length ? new MediaStream(tracks) : null
+  if (tracks.length) {
+    void tile.audio.play().catch(error => {
+      console.warn('Unable to play meeting audio:', error.message)
+    })
   }
 }
 
-function stopRenderingParticipant(session, userId) {
-  const key = String(userId)
-  const tile = session.tiles.get(key)
-  if (!tile || !session.renderedUsers.has(key)) return
-  session.stream?.stopRenderVideo(tile.canvas, userId)
-  session.renderedUsers.delete(key)
-  tile.canvas.hidden = true
-  tile.avatar.hidden = false
+function attachLocalTrack(session, item) {
+  if (!item?.track || session.disposed) return
+  if (item.type === 'audio') return
+  const localTile = createVideoTile(
+    session,
+    session.localUserId,
+    `${session.userName} (You)`,
+    true
+  )
+  if (session.sharing) {
+    session.shareVideo.srcObject = new MediaStream([item.track])
+    session.shareVideo.hidden = false
+    void session.shareVideo.play().catch(error => {
+      console.warn('Unable to play the shared screen:', error.message)
+    })
+    localTile.videoTracks.clear()
+    renderVideoTracks(localTile)
+  } else {
+    localTile.videoTracks.set(item.streamId, item.track)
+    renderVideoTracks(localTile)
+  }
 }
 
-function removeParticipant(session, userId) {
-  const key = String(userId)
-  const tile = session.tiles.get(key)
+function detachLocalTrack(session, item) {
+  if (item?.type === 'audio') {
+    return
+  }
+  const localTile = session.tiles.get(String(session.localUserId))
+  if (localTile && item?.streamId) {
+    localTile.videoTracks.delete(item.streamId)
+    renderVideoTracks(localTile)
+  }
+  if (session.sharing) {
+    session.shareVideo.pause()
+    session.shareVideo.srcObject = null
+    session.shareVideo.hidden = true
+    session.sharing = false
+    session.shareStage.hidden = true
+    session.syncMediaControls?.()
+  }
+}
+
+function attachRemoteTrack(session, item) {
+  if (!item?.track || !item.participantSessionId || session.disposed) return
+  const tile = createVideoTile(session, item.participantSessionId, item.name)
+  if (item.type === 'audio') {
+    tile.audioTracks.set(item.streamId, item.track)
+    renderAudioTracks(tile)
+  } else {
+    tile.videoTracks.set(item.streamId, item.track)
+    renderVideoTracks(tile)
+  }
+}
+
+function detachRemoteTrack(session, item) {
+  if (!item?.participantSessionId) return
+  const tile = session.tiles.get(String(item.participantSessionId))
   if (!tile) return
-  stopRenderingParticipant(session, userId)
-  tile.tile.remove()
-  session.tiles.delete(key)
+  if (item.type === 'audio') {
+    tile.audioTracks.delete(item.streamId)
+    renderAudioTracks(tile)
+  } else {
+    tile.videoTracks.delete(item.streamId)
+    renderVideoTracks(tile)
+  }
 }
 
-function renderParticipants(session) {
-  const participants = session.client?.getAllUser?.() || []
-  const heading = session.participantHeading
-  heading.textContent = `People (${participants.length})`
+function renderParticipants(session, participants = session.meeting?.getOnlineParticipants?.() || []) {
+  session.participantHeading.textContent = `People (${participants.length})`
   session.participantList.replaceChildren()
   participants.forEach(person => {
     const row = document.createElement('div')
     row.className = 'zoom-meeting-person'
     const avatar = document.createElement('span')
     avatar.className = 'zoom-meeting-person-avatar'
-    avatar.textContent = (person.displayName || 'P').trim().slice(0, 1).toUpperCase()
+    avatar.textContent = (person.name || 'P').trim().slice(0, 1).toUpperCase()
     const name = document.createElement('span')
     name.className = 'zoom-meeting-person-name'
-    name.textContent = person.displayName || 'Project member'
+    name.textContent = person.name || 'Project member'
     const state = document.createElement('small')
-    state.textContent = person.muted ? 'Muted' : person.audio ? 'Audio on' : 'In meeting'
+    state.textContent = String(person._id) === String(session.localUserId) ? 'You' : 'In meeting'
     row.append(avatar, name, state)
     session.participantList.append(row)
   })
@@ -180,24 +260,24 @@ function renderParticipants(session) {
 
 function renderChatMessage(session, message) {
   if (!message || !session.chatMessages) return
-  const id = message.id || `${message.sender?.userId || ''}:${message.timestamp || ''}:${message.message}`
+  const id = message._id || `${message.senderParticipantSessionId || ''}:${message.created || ''}:${message.content}`
   if (session.chatIds.has(id)) return
   session.chatIds.add(id)
   session.chatMessages.querySelector('.zoom-meeting-chat-empty')?.remove()
   const item = document.createElement('article')
   item.className = 'zoom-meeting-chat-message'
   const author = document.createElement('strong')
-  author.textContent = message.sender?.name ||
-    (message.sender?.userId === session.localUserId ? 'You' : 'Participant')
+  author.textContent = message.senderName ||
+    (message.senderParticipantSessionId === session.localUserId ? 'You' : 'Participant')
   const body = document.createElement('p')
-  body.textContent = message.message || ''
+  body.textContent = message.content || ''
   item.append(author, body)
   session.chatMessages.append(item)
   session.chatMessages.scrollTop = session.chatMessages.scrollHeight
 }
 
 function showSessionError(session, error) {
-  console.error('Zoom meeting action failed:', error)
+  console.error('Metered meeting action failed:', error)
   session.status.textContent = error.message || 'That meeting action could not be completed.'
   session.status.classList.add('is-error')
   window.setTimeout(() => {
@@ -214,11 +294,6 @@ function formatDuration(milliseconds) {
   const minutes = Math.floor((totalSeconds % 3600) / 60)
   const seconds = totalSeconds % 60
   return [hours, minutes, seconds].map(value => String(value).padStart(2, '0')).join(':')
-}
-
-function appendChatHistory(session, messages) {
-  if (!Array.isArray(messages)) return
-  messages.forEach(message => renderChatMessage(session, message))
 }
 
 function createMeetingPanel() {
@@ -283,7 +358,7 @@ function createMeetingPanel() {
   }
 }
 
-export function openZoomMeetingModal(meeting) {
+export function openMeteredMeetingModal(meeting) {
   if (!meeting?.projectId || !meeting?.id) {
     throw new Error('This meeting is missing its project or meeting ID.')
   }
@@ -293,7 +368,7 @@ export function openZoomMeetingModal(meeting) {
   overlay.className = 'zoom-meeting-overlay'
   overlay.setAttribute('role', 'dialog')
   overlay.setAttribute('aria-modal', 'true')
-  overlay.setAttribute('aria-label', meeting.title || 'Zoom meeting')
+  overlay.setAttribute('aria-label', meeting.title || 'Project meeting')
 
   const card = document.createElement('section')
   card.className = 'zoom-meeting-card'
@@ -312,7 +387,7 @@ export function openZoomMeetingModal(meeting) {
   title.textContent = meeting.title || 'Project meeting'
   const status = document.createElement('p')
   status.className = 'zoom-meeting-status'
-  status.textContent = 'Connecting to Zoom…'
+  status.textContent = 'Connecting to meeting…'
   meetingInfo.append(title, status)
   const info = document.createElement('button')
   info.type = 'button'
@@ -340,11 +415,12 @@ export function openZoomMeetingModal(meeting) {
   const shareLabel = document.createElement('span')
   shareLabel.className = 'zoom-meeting-share-label'
   shareLabel.textContent = 'Screen sharing'
-  const shareCanvas = document.createElement('canvas')
-  shareCanvas.width = 1280
-  shareCanvas.height = 720
-  shareCanvas.className = 'zoom-meeting-share-canvas'
-  shareStage.append(shareLabel, shareCanvas)
+  const shareVideo = document.createElement('video')
+  shareVideo.autoplay = true
+  shareVideo.playsInline = true
+  shareVideo.muted = true
+  shareVideo.className = 'zoom-meeting-share-canvas'
+  shareStage.append(shareLabel, shareVideo)
   const videoGrid = document.createElement('div')
   videoGrid.className = 'zoom-meeting-video-grid'
   stage.append(shareStage, videoGrid)
@@ -377,9 +453,8 @@ export function openZoomMeetingModal(meeting) {
     videoGrid,
     shareStage,
     shareLabel,
-    shareCanvas,
+    shareVideo,
     tiles: new Map(),
-    renderedUsers: new Set(),
     chatIds: new Set(),
     listeners: [],
     participantHeading: panelParts.participantHeading,
@@ -392,7 +467,6 @@ export function openZoomMeetingModal(meeting) {
     joined: false,
     closing: false,
     disposed: false,
-    audioJoined: false,
     muted: false,
     cameraOn: false,
     sharing: false,
@@ -402,12 +476,11 @@ export function openZoomMeetingModal(meeting) {
   panelParts.chatForm.addEventListener('submit', async event => {
     event.preventDefault()
     const text = panelParts.chatInput.value.trim()
-    if (!text || !session.chatClient || session.chatSending) return
+    if (!text || !session.meeting || session.chatSending) return
     session.chatSending = true
     panelParts.sendButton.disabled = true
     try {
-      const sent = await session.chatClient.sendToAll(text)
-      renderChatMessage(session, sent)
+      await session.meeting.sendChatMessage(text)
       panelParts.chatInput.value = ''
     } catch (error) {
       showSessionError(session, error)
@@ -419,6 +492,7 @@ export function openZoomMeetingModal(meeting) {
 
   const addListener = (eventName, handler) => {
     session.listeners.push([eventName, handler])
+    session.meeting.on(eventName, handler)
   }
   const setControlState = (button, active, text, label) => {
     button.classList.toggle('is-active', active)
@@ -443,15 +517,11 @@ export function openZoomMeetingModal(meeting) {
 
   const micButton = createControl('mic', 'Mute', async () => {
     try {
-      if (!session.audioJoined) {
-        await session.stream.startAudio()
-        session.audioJoined = true
-        session.muted = false
-      } else if (session.muted) {
-        await session.stream.unmuteAudio()
+      if (session.muted) {
+        await session.meeting.startAudio()
         session.muted = false
       } else {
-        await session.stream.muteAudio()
+        await session.meeting.stopAudio()
         session.muted = true
       }
       setControlState(micButton, session.muted, session.muted ? 'Unmute' : 'Mute',
@@ -463,26 +533,19 @@ export function openZoomMeetingModal(meeting) {
   const cameraButton = createControl('camera', 'Turn off camera', async () => {
     try {
       if (session.cameraOn) {
-        await session.stream.stopVideo()
+        await session.meeting.stopVideo()
         session.cameraOn = false
-        const localTile = session.tiles.get(String(session.localUserId))
-        if (localTile) {
-          if (session.renderedUsers.has(String(session.localUserId))) {
-            session.stream.stopRenderVideo(localTile.canvas, session.localUserId)
-            session.renderedUsers.delete(String(session.localUserId))
-          }
-          localTile.canvas.hidden = true
-          localTile.avatar.hidden = false
-        }
       } else {
-        await session.stream.startVideo()
+        if (session.sharing) {
+          await session.meeting.stopVideo()
+          session.sharing = false
+          session.shareStage.hidden = true
+          session.shareVideo.pause()
+          session.shareVideo.srcObject = null
+          session.syncMediaControls()
+        }
+        await session.meeting.startVideo()
         session.cameraOn = true
-        const localUser = session.client.getCurrentUserInfo()
-        const localTile = createVideoTile(session, session.localUserId, `${localUser.displayName || 'You'} (You)`, true)
-        await session.stream.renderVideo(localTile.canvas, session.localUserId, 640, 360, 0, 0, 3)
-        session.renderedUsers.add(String(session.localUserId))
-        localTile.canvas.hidden = false
-        localTile.avatar.hidden = true
       }
       setControlState(cameraButton, !session.cameraOn,
         session.cameraOn ? 'Camera' : 'Camera off',
@@ -494,25 +557,44 @@ export function openZoomMeetingModal(meeting) {
   const shareButton = createControl('share', 'Share screen', async () => {
     try {
       if (session.sharing) {
-        await session.stream.stopShareScreen()
+        await session.meeting.stopVideo()
         session.sharing = false
+        session.cameraOn = false
         session.shareStage.hidden = true
+        session.shareVideo.pause()
+        session.shareVideo.srcObject = null
       } else {
+        const cameraWasOn = session.cameraOn
         session.shareLabel.textContent = 'You are sharing your screen'
         session.shareStage.hidden = false
-        await session.stream.startShareScreen(session.shareCanvas)
         session.sharing = true
+        session.cameraOn = false
+        try {
+          await session.meeting.startScreenShare()
+        } catch (error) {
+          session.sharing = false
+          session.cameraOn = cameraWasOn
+          session.shareStage.hidden = true
+          session.shareVideo.pause()
+          session.shareVideo.srcObject = null
+          throw error
+        }
       }
-      setControlState(shareButton, session.sharing,
-        session.sharing ? 'Stop sharing' : 'Share screen',
-        session.sharing ? 'Stop screen sharing' : 'Share screen')
+      session.syncMediaControls()
     } catch (error) {
-      session.sharing = false
-      session.shareStage.hidden = true
-      setControlState(shareButton, false, 'Share screen', 'Share screen')
       showSessionError(session, error)
     }
   })
+  session.shareButton = shareButton
+  session.cameraButton = cameraButton
+  session.syncMediaControls = () => {
+    setControlState(shareButton, session.sharing,
+      session.sharing ? 'Stop sharing' : 'Share screen',
+      session.sharing ? 'Stop screen sharing' : 'Share screen')
+    setControlState(cameraButton, !session.cameraOn,
+      session.cameraOn ? 'Camera' : 'Camera off',
+      session.cameraOn ? 'Turn off camera' : 'Turn on camera')
+  }
   const peopleButton = createControl('people', 'People', () => togglePanel(panelParts.peopleTab))
   const chatButton = createControl('chat', 'Chat', () => togglePanel(panelParts.chatTab))
   const leaveButton = createControl('leave', 'Leave', () => void closeSession(session), true)
@@ -530,107 +612,104 @@ export function openZoomMeetingModal(meeting) {
 
   const initialize = async () => {
     try {
-      await loadZoomSdk()
+      await loadMeteredSdk()
       if (session.closing || !overlay.isConnected) return
       const tokenResponse = await api.post(
         `/projects/${encodeURIComponent(meeting.projectId)}/meetings/${encodeURIComponent(meeting.id)}/token`,
         {}
       )
       if (session.closing) return
-      const { signature, sessionName } = tokenResponse?.data || {}
-      if (!signature || !sessionName) {
-        throw new Error('The server did not return a valid Zoom meeting token.')
+      const { accessToken, roomURL } = tokenResponse?.data || {}
+      if (!accessToken || !roomURL) {
+        throw new Error('The server did not return a valid Metered meeting token.')
       }
 
-      const client = window.WebVideoSDK.default.createClient()
-      session.client = client
-      await client.init('en-US', 'Global', { patchJsMedia: true })
-      if (session.closing) return
-
-      const onUserAdded = users => {
-        ;(Array.isArray(users) ? users : [users]).forEach(user => void renderParticipant(session, user))
-        renderParticipants(session)
-      }
-      const onUserRemoved = users => {
-        ;(Array.isArray(users) ? users : [users]).forEach(user => removeParticipant(session, user.userId))
-        renderParticipants(session)
-      }
-      const onVideoChange = payload => {
-        const userId = payload.userId
-        if (payload.action === 'Start') {
-          const user = client.getAllUser().find(person => String(person.userId) === String(userId))
-          if (user) void renderParticipant(session, user)
-        } else if (payload.action === 'Stop') {
-          stopRenderingParticipant(session, userId)
-        }
-      }
-      const onShareChange = async payload => {
-        if (payload.state === 'Active' && String(payload.userId) !== String(session.localUserId)) {
-          session.shareLabel.textContent = `${payload.userName || 'A participant'} is sharing their screen`
-          session.shareStage.hidden = false
-          try {
-            await session.stream.startShareView(session.shareCanvas, payload.userId)
-          } catch (error) {
-            showSessionError(session, error)
-          }
-        } else if (payload.state === 'Inactive') {
-          try {
-            await session.stream.stopShareView()
-          } catch (error) {
-            console.error('Unable to stop rendering Zoom screen share:', error)
-          }
-          if (!session.sharing) {
-            session.shareStage.hidden = true
-          }
-        }
-      }
-      const onChatMessage = message => renderChatMessage(session, message)
-      addListener('user-added', onUserAdded)
-      addListener('user-removed', onUserRemoved)
-      addListener('peer-video-state-change', onVideoChange)
-      addListener('active-share-change', onShareChange)
-      addListener('chat-on-message', onChatMessage)
-      client.on('user-added', onUserAdded)
-      client.on('user-removed', onUserRemoved)
-      client.on('peer-video-state-change', onVideoChange)
-      client.on('active-share-change', onShareChange)
-      client.on('chat-on-message', onChatMessage)
-
+      const meetingClient = new window.Metered.Meeting()
+      session.meeting = meetingClient
       const currentUser = firebaseAuth.currentUser
-      const userName = currentUser?.displayName ||
+      session.userName = currentUser?.displayName ||
         currentUser?.email?.split('@')[0] ||
         'Project member'
-      await client.join(sessionName, signature, userName)
+      const onLocalTrackStarted = item => attachLocalTrack(session, item)
+      const onLocalTrackStopped = item => detachLocalTrack(session, item)
+      const onLocalTrackUpdated = item => attachLocalTrack(session, item)
+      const onRemoteTrackStarted = item => attachRemoteTrack(session, item)
+      const onRemoteTrackStopped = item => detachRemoteTrack(session, item)
+      const onParticipantJoined = participant => {
+        if (participant?._id) createVideoTile(session, participant._id, participant.name)
+        renderParticipants(session)
+      }
+      const onParticipantLeft = participant => {
+        const tile = session.tiles.get(String(participant?._id))
+        if (tile) {
+          tile.video.pause()
+          tile.audio.pause()
+          tile.video.srcObject = null
+          tile.audio.srcObject = null
+          tile.tile.remove()
+          session.tiles.delete(String(participant._id))
+        }
+        renderParticipants(session)
+      }
+      const onOnlineParticipants = participants => renderParticipants(session, participants)
+      const onChatMessage = message => renderChatMessage(session, message)
+      const onChatHistory = history => {
+        if (Array.isArray(history?.messages)) {
+          history.messages.forEach(message => renderChatMessage(session, message))
+        }
+      }
+      const onStateChanged = state => {
+        if (state === 'network_connection_lost') {
+          status.textContent = 'Connection interrupted. Reconnecting…'
+        } else if (state === 'network_connection_restored' || state === 'reconnect_success') {
+          status.textContent = 'Connection restored'
+        }
+      }
+      const onMeetingEnded = () => void closeSession(session)
+      const onMeetingLeft = () => {
+        if (!session.closing) finishSession(session)
+      }
+      addListener('localTrackStarted', onLocalTrackStarted)
+      addListener('localTrackStopped', onLocalTrackStopped)
+      addListener('localTrackUpdated', onLocalTrackUpdated)
+      addListener('remoteTrackStarted', onRemoteTrackStarted)
+      addListener('remoteTrackStopped', onRemoteTrackStopped)
+      addListener('participantJoined', onParticipantJoined)
+      addListener('participantLeft', onParticipantLeft)
+      addListener('onlineParticipants', onOnlineParticipants)
+      addListener('chatMessageReceived', onChatMessage)
+      addListener('chatHistory', onChatHistory)
+      addListener('stateChanged', onStateChanged)
+      addListener('meetingEnded', onMeetingEnded)
+      addListener('meetingLeft', onMeetingLeft)
+
+      const meetingInfo = await meetingClient.join({
+        roomURL,
+        name: session.userName,
+        accessToken
+      })
       session.joined = true
       if (session.closing) {
-        await client.leave()
+        await meetingClient.leaveMeeting()
         finishSession(session)
         return
       }
-      session.localUserId = client.getCurrentUserInfo().userId
-      session.stream = client.getMediaStream()
+      session.localUserId = meetingInfo?.participantSessionId
+      renderParticipants(session, meetingInfo?.onlineParticipants || [])
       const mediaErrors = []
       try {
-        await session.stream.startAudio()
-        session.audioJoined = true
+        await meetingClient.startAudio()
       } catch (error) {
-        console.error('Unable to start Zoom meeting audio:', error)
+        console.error('Unable to start Metered meeting audio:', error)
+        session.muted = true
         mediaErrors.push('microphone unavailable')
       }
       if (session.closing) return
       try {
-        await session.stream.startVideo()
+        await meetingClient.startVideo()
         session.cameraOn = true
-        const localTile = createVideoTile(
-          session,
-          session.localUserId,
-          `${client.getCurrentUserInfo().displayName || userName} (You)`,
-          true
-        )
-        await session.stream.renderVideo(localTile.canvas, session.localUserId, 640, 360, 0, 0, 3)
-        session.renderedUsers.add(String(session.localUserId))
       } catch (error) {
-        console.error('Unable to start Zoom meeting video:', error)
+        console.error('Unable to start Metered meeting video:', error)
         mediaErrors.push('camera unavailable')
       }
       if (session.closing) return
@@ -648,16 +727,17 @@ export function openZoomMeetingModal(meeting) {
       session.timer = window.setInterval(() => {
         duration.textContent = formatDuration(Date.now() - session.startedAt)
       }, 1000)
-      session.chatClient = client.getChatClient()
-      appendChatHistory(session, session.chatClient.getHistory())
-      renderParticipants(session)
-      client.getAllUser().forEach(user => void renderParticipant(session, user))
       meetingControls.forEach(button => { button.disabled = false })
       panelParts.sendButton.disabled = false
+      try {
+        meetingClient.getChatHistory()
+      } catch (error) {
+        console.error('Unable to load Metered meeting chat history:', error)
+      }
     } catch (error) {
       if (session.closing || session.disposed) return
-      console.error('Unable to join Zoom meeting:', error)
-      status.textContent = error.message || 'The Zoom meeting could not be joined.'
+      console.error('Unable to join Metered meeting:', error)
+      status.textContent = error.message || 'The Metered meeting could not be joined.'
       status.classList.add('is-error')
     }
   }

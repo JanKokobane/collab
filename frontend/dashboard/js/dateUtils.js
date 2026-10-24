@@ -5,6 +5,19 @@ export function toLocalDateKey(date = new Date()) {
   return `${year}-${month}-${day}`
 }
 
+export function getEarliestDateTimeInput(stepSeconds = 60, now = new Date()) {
+  const stepMinutes = Math.max(1, Math.ceil(stepSeconds / 60))
+  const roundedNow = new Date(now)
+  const currentMinute = roundedNow.getHours() * 60 + roundedNow.getMinutes()
+  const nextStepMinute = (Math.floor(currentMinute / stepMinutes) + 1) * stepMinutes
+  roundedNow.setHours(0, 0, 0, 0)
+  roundedNow.setMinutes(nextStepMinute)
+  return {
+    date: toLocalDateKey(roundedNow),
+    time: `${String(roundedNow.getHours()).padStart(2, '0')}:${String(roundedNow.getMinutes()).padStart(2, '0')}`
+  }
+}
+
 export function notBeforeTodayDateKey(dateKey, todayKey = toLocalDateKey()) {
   if (typeof dateKey !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
     return todayKey

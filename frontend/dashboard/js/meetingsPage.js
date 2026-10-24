@@ -3,7 +3,7 @@ import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
 import { openAddReminderModal, openScheduleMeetingModal } from './calendar.js'
 import { formatRelativeDate } from './dateUtils.js'
 import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
-import { openZoomMeetingModal } from './zoomMeetingModal.js'
+import { openMeteredMeetingModal } from './meteredMeetingModal.js'
 
 const formatMeetingTime = time => {
   const [hours, minutes] = time.split(':').map(Number)
@@ -51,7 +51,7 @@ function createMeetingCard(meeting) {
     const join = make('button', 'meetings-page-join', isLive ? 'Join meeting' : 'Open meeting')
     join.type = 'button'
     join.setAttribute('aria-label', `${isLive ? 'Join' : 'Open'} meeting: ${meeting.title}`)
-    join.addEventListener('click', () => openZoomMeetingModal(meeting))
+    join.addEventListener('click', () => openMeteredMeetingModal(meeting))
     actions.append(join)
   }
   const meetingUrl = getSafeMeetingUrl(meeting.meetingUrl || meeting.location)
