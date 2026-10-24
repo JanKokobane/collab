@@ -81,7 +81,10 @@ const getMeteredApiConfig = () => {
     const appName = process.env.METERED_APP_NAME?.trim()
         ?.replace(/^https?:\/\//i, '')
         .replace(/\.metered\.live\/?$/i, '');
-    const secretKey = process.env.METERED_API_KEY?.trim();
+    const secretKey = (
+        process.env.METERED_VIDEO_SECRET_KEY ||
+        process.env.METERED_API_KEY
+    )?.trim();
     if (!appName || !/^[a-z0-9-]+$/i.test(appName) || !secretKey) {
         const error = new Error('Metered Video is not configured.');
         error.code = 'METERED_VIDEO_NOT_CONFIGURED';
@@ -108,9 +111,17 @@ const requestMetered = async (config, path, method = 'GET', body) => {
         if (response.ok) throw error;
     }
     if (!response.ok) {
-        const error = new Error(`Metered API returned HTTP ${response.status}.`);
+        const detail = typeof payload?.message === 'string'
+            ? payload.message
+            : typeof payload?.reason === 'string'
+                ? payload.reason
+                : '';
+        const error = new Error(
+            `Metered API returned HTTP ${response.status}${detail ? `: ${detail}` : '.'}`
+        );
         error.code = 'METERED_API_REQUEST_FAILED';
         error.status = response.status;
+        error.detail = detail;
         throw error;
     }
     return payload;
@@ -119,9 +130,14 @@ const requestMetered = async (config, path, method = 'GET', body) => {
 const getOrCreateMeteredRoom = async (config, roomName) => {
     let room;
     try {
-        room = await requestMetered(config, `room/${encodeURIComponent(roomName)}`);
+        room = await requestMetered(
+            config,
+            `room/${encodeURIComponent(roomName)}`
+        );
     } catch (error) {
-        if (error.status !== 404) throw error;
+        // Metered's room lookup can report a missing room as HTTP 400.
+        const roomNotFound = error.status === 400 || error.status === 404;
+        if (!roomNotFound) throw error;
     }
 
     if (!room) {
@@ -221,7 +237,7 @@ const getMeteredMeetingToken = async (req, res) => {
             return res.status(503).json({
                 success: false,
                 code: error.code,
-                message: 'Metered Video is not configured. Set METERED_APP_NAME and METERED_API_KEY in the backend environment.'
+                message: 'Metered Video is not configured. Set METERED_APP_NAME and METERED_VIDEO_SECRET_KEY in the backend environment.'
             });
         }
         if (error.code === 'METERED_ROOM_NOT_PRIVATE') {
@@ -232,11 +248,16 @@ const getMeteredMeetingToken = async (req, res) => {
             });
         }
         if (error.code === 'METERED_API_REQUEST_FAILED') {
-            console.error('Metered meeting setup error:', error.message);
+            console.error('Metered meeting setup error:', {
+                status: error.status,
+                detail: error.detail || error.message
+            });
             return res.status(502).json({
                 success: false,
                 code: error.code,
-                message: 'The Metered meeting room or access token could not be prepared.'
+                message: error.status === 401 || error.status === 403
+                    ? 'Metered rejected the Video API credentials. Verify METERED_APP_NAME and METERED_VIDEO_SECRET_KEY in the backend environment.'
+                    : 'Metered could not prepare the meeting room or access token. Check the backend logs for the Metered response.'
             });
         }
         console.error('Get Metered meeting token error:', error);
