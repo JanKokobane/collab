@@ -8,6 +8,7 @@ const notificationRouter = require('./src/routes/notification');
 const invitationRouter = require('./src/routes/invitation');
 const userRouter = require('./src/routes/user');
 const messagesRouter = require('./src/routes/messages');
+const aiRouter = require('./src/routes/ai');
 
 const { pool } = require('./src/config/db');
 const { getCorsOrigin, isOriginAllowed } = require('./src/config/cors');
@@ -102,6 +103,7 @@ app.use('/api/notifications', notificationRouter);
 app.use('/api/invitations', invitationRouter);
 app.use('/api/users', userRouter);
 app.use('/api/messages', messagesRouter);
+app.use('/api/ai', aiRouter);
 
 app.use((req, res) => {
     res.status(404).json({

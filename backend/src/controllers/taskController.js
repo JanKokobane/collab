@@ -2,6 +2,7 @@ const { randomUUID } = require('node:crypto');
 const { pool, query } = require('../config/db');
 
 const allowedStatuses = new Set(['Backlog', 'To do', 'In progress', 'Blocked', 'Done']);
+const allowedPriorities = new Set(['low', 'medium', 'high']);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const maxTaskAttachmentBytes = 8 * 1024 * 1024;
 const attachmentDataUrlPattern = /^data:[^;,]+(?:;codecs=[^;,]+)?;base64,([a-zA-Z0-9+/=]+)$/i;
@@ -58,6 +59,9 @@ const normalizeTaskInput = body => {
         ? body.assigneeFirebaseUid.trim()
         : '';
     const status = typeof body?.status === 'string' ? body.status.trim() : 'To do';
+    const priority = typeof body?.priority === 'string'
+        ? body.priority.trim().toLowerCase()
+        : 'medium';
     const startDate = body?.startDate || null;
     const dueDate = body?.dueDate || null;
     const chatMessageId = body?.chatMessageId || null;
@@ -81,6 +85,9 @@ const normalizeTaskInput = body => {
     if (!allowedStatuses.has(status)) {
         return { error: 'Choose a valid task status.' };
     }
+    if (!allowedPriorities.has(priority)) {
+        return { error: 'Choose a valid task priority.' };
+    }
     if (chatMessageId !== null && !uuidPattern.test(chatMessageId)) {
         return { error: 'The discussion message reference is invalid.' };
     }
@@ -103,6 +110,7 @@ const normalizeTaskInput = body => {
             sprintName,
             assigneeFirebaseUid,
             status,
+            priority,
             startDate,
             dueDate,
             chatMessageId,
@@ -285,6 +293,7 @@ const getProjectTasks = async (req, res) => {
                     i.invited_email AS assignee_email,
                     up.profile_image AS assignee_profile_image,
                     t.status,
+                    t.priority,
                     COALESCE(dependencies.items, '[]'::jsonb) AS dependencies,
                     COALESCE(dependencies.has_warning, FALSE) AS has_dependency_warning,
                     t.start_date,
@@ -385,7 +394,7 @@ const getProjectTaskDetails = async (req, res) => {
         const result = await query(
             `SELECT task.task_id, task.project_id, task.title, task.description,
                     task.category, task.sprint_name, task.assignee_firebase_uid,
-                    task.status, task.start_date, task.due_date,
+                    task.status, task.priority, task.start_date, task.due_date,
                     task.chat_message_id::text AS chat_message_id,
                     message.conversation_id::text AS chat_conversation_id,
                     task.description_attachments, task.created_at, task.updated_at
@@ -633,9 +642,10 @@ const createProjectTask = async (req, res) => {
                 INSERT INTO project_tasks (
                     task_id, project_id, title, description, category, sprint_name,
                     assignee_firebase_uid, status, start_date, due_date,
-                    created_by_firebase_uid, chat_message_id, description_attachments
+                    created_by_firebase_uid, chat_message_id, description_attachments,
+                    priority
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::uuid, $13::jsonb)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::uuid, $13::jsonb, $14)
                 RETURNING task_id
             `,
             [
@@ -651,7 +661,8 @@ const createProjectTask = async (req, res) => {
                 normalized.value.dueDate,
                 req.firebaseUid,
                 normalized.value.chatMessageId,
-                JSON.stringify(normalized.value.descriptionAttachments)
+                JSON.stringify(normalized.value.descriptionAttachments),
+                normalized.value.priority
             ]
         );
 
@@ -741,13 +752,14 @@ const updateProjectTask = async (req, res) => {
                     sprint_name = $4,
                     assignee_firebase_uid = $5,
                     status = $6,
-                    start_date = $7,
-                    due_date = $8,
-                    chat_message_id = $9::uuid,
-                    description_attachments = $10::jsonb,
+                    priority = $7,
+                    start_date = $8,
+                    due_date = $9,
+                    chat_message_id = $10::uuid,
+                    description_attachments = $11::jsonb,
                     updated_at = NOW()
-                                WHERE project_id = $11
-                                    AND task_id = $12::uuid
+                                WHERE project_id = $12
+                                    AND task_id = $13::uuid
                 RETURNING task_id
             `,
             [
@@ -757,6 +769,7 @@ const updateProjectTask = async (req, res) => {
                 normalized.value.sprintName,
                 normalized.value.assigneeFirebaseUid,
                 normalized.value.status,
+                normalized.value.priority,
                 normalized.value.startDate,
                 normalized.value.dueDate,
                 normalized.value.chatMessageId,

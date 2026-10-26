@@ -81,6 +81,13 @@ Run `npm run migrate` to apply the numbered SQL files in `db/migrations/`.
 Startup also applies pending migrations before the HTTP server listens.
 Migrations run transactionally and use a PostgreSQL advisory lock so multiple
 server instances do not apply the same migration simultaneously.
+Set `GEMINI_API_KEY` in the backend environment to enable the authenticated
+`POST /api/ai/parse-task`, `POST /api/ai/summarize-meeting`, and
+`POST /api/ai/summarize-chat` endpoints. These use Google's `@google/genai`
+SDK with `gemini-2.5-flash`; the key must remain server-side and is never sent
+to the browser. AI endpoints validate request sizes and apply a rate limit.
+Migration `025_project_task_priority.sql` adds persisted low/medium/high task
+priority for AI-parsed tasks and manually edited project tasks.
 
 ## Messaging (PostgreSQL + Socket.IO)
 
