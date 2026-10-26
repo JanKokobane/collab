@@ -583,7 +583,8 @@ const createMessage = async (req, res) => {
             item.mediaType.length > 128 || typeof item.data !== 'string' ||
             !Number.isSafeInteger(item.size) || item.size < 0 ||
             (item.is_voice_note && (
-                !/^audio\/(?:ogg|webm);codecs=opus$/i.test(item.mediaType) ||
+                !/^audio\/(?:ogg|webm)(?:;codecs=opus)?$/i.test(item.mediaType) &&
+                !/^audio\/mp4(?:;codecs=mp4a\.40\.2)?$/i.test(item.mediaType) ||
                 !Number.isSafeInteger(item.duration_seconds) ||
                 item.duration_seconds < 1 || item.duration_seconds > 3600 ||
                 !Array.isArray(item.waveform_peaks) ||

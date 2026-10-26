@@ -22,8 +22,10 @@ const {
     updateProjectTaskStatus
 } = require('../controllers/taskController');
 const {
+    createMeetingChatMessage,
     createMeeting,
     deleteMeeting,
+    getMeetingChatMessages,
     getMeetings,
     getMeteredMeetingToken
 } = require('../controllers/meetingController');
@@ -90,6 +92,8 @@ router.delete('/:projectId/tasks/:taskId', deleteProjectTask);
 router.get('/:projectId/meetings', getMeetings);
 router.post('/:projectId/meetings', createMeeting);
 router.post('/:projectId/meetings/:meetingId/token', getMeteredMeetingToken);
+router.get('/:projectId/meetings/:meetingId/messages', getMeetingChatMessages);
+router.post('/:projectId/meetings/:meetingId/messages', createMeetingChatMessage);
 router.delete('/:projectId/meetings/:meetingId', deleteMeeting);
 router.get('/:projectId/reminders', getProjectReminders);
 router.post('/:projectId/reminders', createProjectReminder);

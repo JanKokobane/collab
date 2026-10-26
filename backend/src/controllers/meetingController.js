@@ -3,6 +3,7 @@ const { pool, query } = require('../config/db');
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+const meetingIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const getAccessibleProject = async (projectId, firebaseUid) => {
     const result = await query(
@@ -25,6 +26,120 @@ const getAccessibleProject = async (projectId, firebaseUid) => {
         [projectId, firebaseUid]
     );
     return result.rows[0] || null;
+};
+
+const getMeetingForAttendee = async (projectId, meetingId, firebaseUid) => {
+    const result = await query(
+        `
+            SELECT meeting_id
+            FROM project_meetings
+            WHERE project_id = $1
+              AND meeting_id = $2::uuid
+              AND attendee_firebase_uids @> $3::jsonb
+            LIMIT 1
+        `,
+        [projectId, meetingId, JSON.stringify([firebaseUid])]
+    );
+    return result.rows[0] || null;
+};
+
+const getMeetingChatMessages = async (req, res) => {
+    if (!meetingIdPattern.test(req.params.meetingId)) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_MEETING_ID',
+            message: 'Provide a valid meeting ID.'
+        });
+    }
+
+    try {
+        const project = await getAccessibleProject(req.params.projectId, req.firebaseUid);
+        if (!project || !await getMeetingForAttendee(
+            project.project_id,
+            req.params.meetingId,
+            req.firebaseUid
+        )) {
+            return res.status(404).json({
+                success: false,
+                code: 'MEETING_NOT_FOUND_OR_FORBIDDEN',
+                message: 'Meeting not found or you are not invited to it.'
+            });
+        }
+
+        const result = await query(
+            `
+                SELECT message_id, sender_firebase_uid, sender_name, content, created_at
+                FROM project_meeting_messages
+                WHERE meeting_id = $1::uuid
+                ORDER BY created_at DESC, message_id DESC
+                LIMIT 100
+            `,
+            [req.params.meetingId]
+        );
+        return res.status(200).json({
+            success: true,
+            data: { messages: result.rows.reverse() }
+        });
+    } catch (error) {
+        console.error('Get project meeting chat error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'PROJECT_MEETING_CHAT_FETCH_FAILED',
+            message: 'Meeting messages could not be retrieved.'
+        });
+    }
+};
+
+const createMeetingChatMessage = async (req, res) => {
+    const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+    if (!meetingIdPattern.test(req.params.meetingId) || !content || content.length > 1000) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_MEETING_MESSAGE',
+            message: 'Enter a message between 1 and 1000 characters.'
+        });
+    }
+
+    try {
+        const project = await getAccessibleProject(req.params.projectId, req.firebaseUid);
+        if (!project || !await getMeetingForAttendee(
+            project.project_id,
+            req.params.meetingId,
+            req.firebaseUid
+        )) {
+            return res.status(404).json({
+                success: false,
+                code: 'MEETING_NOT_FOUND_OR_FORBIDDEN',
+                message: 'Meeting not found or you are not invited to it.'
+            });
+        }
+
+        const senderName = req.firebaseUser?.name ||
+            req.firebaseUser?.displayName ||
+            req.firebaseEmail ||
+            'Project member';
+        const result = await query(
+            `
+                INSERT INTO project_meeting_messages (
+                    meeting_id, sender_firebase_uid, sender_name, content
+                )
+                VALUES ($1::uuid, $2, $3, $4)
+                RETURNING message_id, sender_firebase_uid, sender_name, content, created_at
+            `,
+            [req.params.meetingId, req.firebaseUid, senderName, content]
+        );
+        return res.status(201).json({
+            success: true,
+            data: { message: result.rows[0] }
+        });
+    } catch (error) {
+        console.error('Create project meeting chat message error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'PROJECT_MEETING_CHAT_SEND_FAILED',
+            message: 'The meeting message could not be sent.'
+        });
+    }
 };
 
 const getMeetings = async (req, res) => {
@@ -528,8 +643,10 @@ const deleteMeeting = async (req, res) => {
 };
 
 module.exports = {
+    createMeetingChatMessage,
     createMeeting,
     deleteMeeting,
+    getMeetingChatMessages,
     getMeteredMeetingToken,
     getMeetings
 };

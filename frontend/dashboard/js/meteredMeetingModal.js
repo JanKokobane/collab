@@ -4,7 +4,9 @@ import { firebaseAuth } from '../../firebase.js'
 const SDK_URL = 'https://cdn.metered.ca/sdk/video/1.4.6/sdk.min.js'
 const iconPaths = {
   mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/>',
+  micOff: '<path d="M9 9v3a3 3 0 0 0 5.1 2.1M15 9V5a3 3 0 0 0-5.8-1.2M5 10v2a7 7 0 0 0 12 5M19 10v2a7 7 0 0 1-.6 2.8M12 19v3m-4 0h8M2 2l20 20"/>',
   camera: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3z"/>',
+  cameraOff: '<path d="M3 7a2 2 0 0 1 2-1h8a2 2 0 0 1 2 2v1l6-4v14l-6-4v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM2 2l20 20"/>',
   share: '<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 22h8m-4-4v4m0-9V7m-3 3 3-3 3 3"/>',
   people: '<path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
   chat: '<path d="M14.5 4.5h.7a6.3 6.3 0 0 1 0 12.6h-1.5l-3.2 2.2v-3.1a6.3 6.3 0 0 1 4-11.7z" fill="currentColor" opacity=".22" stroke="none"/><path d="M10.6 7.2h-.8a6.3 6.3 0 0 0 0 12.6h1.5l3.2 2.2v-3.2a6.3 6.3 0 0 0-3.9-11.6z"/><path d="M8.2 12h5m-5 3h3"/>',
@@ -78,6 +80,7 @@ function finishSession(session) {
   if (session.disposed) return
   session.disposed = true
   if (session.timer) window.clearInterval(session.timer)
+  if (session.chatPollTimer) window.clearInterval(session.chatPollTimer)
   detachMeetingListeners(session)
   for (const tile of session.tiles.values()) {
     tile.video.pause()
@@ -126,23 +129,77 @@ function createVideoTile(session, userId, userName, isLocal = false) {
   const avatar = document.createElement('div')
   avatar.className = 'zoom-meeting-avatar'
   avatar.textContent = (userName || 'P').trim().slice(0, 1).toUpperCase()
+  const mediaIndicators = document.createElement('div')
+  mediaIndicators.className = 'zoom-meeting-media-indicators'
+  mediaIndicators.setAttribute('aria-live', 'polite')
   const label = document.createElement('span')
   label.className = 'zoom-meeting-participant-name'
   label.textContent = userName || (isLocal ? 'You' : 'Project member')
-  tile.append(video, audio, avatar, label)
+  tile.append(video, audio, avatar, mediaIndicators, label)
   session.videoGrid.append(tile)
   const videoTile = {
     audio,
     audioTracks: new Map(),
     avatar,
     isLocal,
+    mediaIndicators,
     tile,
     userId,
     video,
     videoTracks: new Map()
   }
   session.tiles.set(key, videoTile)
+  renderParticipantMediaIndicators(session, key)
   return videoTile
+}
+
+function renderParticipantMediaIndicators(session, userId) {
+  const tile = session.tiles.get(String(userId))
+  const state = session.mediaStateByUserId.get(String(userId))
+  if (!tile || !state) return
+  tile.mediaIndicators.replaceChildren()
+  if (state.muted) {
+    const microphone = makeIcon('micOff')
+    microphone.setAttribute('aria-hidden', 'true')
+    const indicator = document.createElement('span')
+    indicator.className = 'zoom-meeting-media-indicator'
+    indicator.setAttribute('aria-label', 'Microphone muted')
+    indicator.title = 'Microphone muted'
+    indicator.append(microphone)
+    tile.mediaIndicators.append(indicator)
+  }
+  if (state.cameraOff) {
+    const camera = makeIcon('cameraOff')
+    camera.setAttribute('aria-hidden', 'true')
+    const indicator = document.createElement('span')
+    indicator.className = 'zoom-meeting-media-indicator'
+    indicator.setAttribute('aria-label', 'Camera off')
+    indicator.title = 'Camera off'
+    indicator.append(camera)
+    tile.mediaIndicators.append(indicator)
+  }
+}
+
+function updateParticipantMediaState(session, userId, updates) {
+  if (userId === undefined || userId === null) return
+  const key = String(userId)
+  const state = session.mediaStateByUserId.get(key) || {}
+  Object.assign(state, updates)
+  session.mediaStateByUserId.set(key, state)
+  renderParticipantMediaIndicators(session, key)
+}
+
+function updateParticipantFromMetered(session, participant) {
+  const userId = participant?.participantSessionId || participant?._id
+  if (!userId) return
+  const updates = {}
+  if (typeof participant.sharingAudio === 'boolean') {
+    updates.muted = !participant.sharingAudio
+  }
+  if (typeof participant.sharingVideo === 'boolean') {
+    updates.cameraOff = !participant.sharingVideo
+  }
+  if (Object.keys(updates).length) updateParticipantMediaState(session, userId, updates)
 }
 
 function renderVideoTracks(tile) {
@@ -243,6 +300,15 @@ function renderParticipants(session, participants = session.meeting?.getOnlinePa
   session.participantHeading.textContent = `People (${participants.length})`
   session.participantList.replaceChildren()
   participants.forEach(person => {
+    updateParticipantFromMetered(session, person)
+    if (person._id) {
+      createVideoTile(
+        session,
+        person._id,
+        person.name,
+        String(person._id) === String(session.localUserId)
+      )
+    }
     const row = document.createElement('div')
     row.className = 'zoom-meeting-person'
     const avatar = document.createElement('span')
@@ -260,20 +326,29 @@ function renderParticipants(session, participants = session.meeting?.getOnlinePa
 
 function renderChatMessage(session, message) {
   if (!message || !session.chatMessages) return
-  const id = message._id || `${message.senderParticipantSessionId || ''}:${message.created || ''}:${message.content}`
+  const id = message.message_id || message._id ||
+    `${message.senderParticipantSessionId || message.sender_firebase_uid || ''}:${message.created_at || message.created || ''}:${message.content || message.message || ''}`
   if (session.chatIds.has(id)) return
   session.chatIds.add(id)
   session.chatMessages.querySelector('.zoom-meeting-chat-empty')?.remove()
   const item = document.createElement('article')
   item.className = 'zoom-meeting-chat-message'
   const author = document.createElement('strong')
-  author.textContent = message.senderName ||
-    (message.senderParticipantSessionId === session.localUserId ? 'You' : 'Participant')
+  author.textContent = message.sender_name || message.senderName ||
+    (message.sender_firebase_uid === session.firebaseUid ||
+      message.senderParticipantSessionId === session.localUserId ? 'You' : 'Participant')
   const body = document.createElement('p')
-  body.textContent = message.content || ''
+  body.textContent = message.content || message.message || ''
   item.append(author, body)
   session.chatMessages.append(item)
   session.chatMessages.scrollTop = session.chatMessages.scrollHeight
+}
+
+async function syncMeetingChat(session) {
+  const response = await api.get(
+    `/projects/${encodeURIComponent(session.meeting.projectId)}/meetings/${encodeURIComponent(session.meeting.id)}/messages`
+  )
+  response?.data?.messages?.forEach(message => renderChatMessage(session, message))
 }
 
 function showSessionError(session, error) {
@@ -456,6 +531,7 @@ export function openMeteredMeetingModal(meeting) {
     shareVideo,
     tiles: new Map(),
     chatIds: new Set(),
+    mediaStateByUserId: new Map(),
     listeners: [],
     participantHeading: panelParts.participantHeading,
     participantList: panelParts.participantList,
@@ -480,7 +556,11 @@ export function openMeteredMeetingModal(meeting) {
     session.chatSending = true
     panelParts.sendButton.disabled = true
     try {
-      await session.meeting.sendChatMessage(text)
+      const response = await api.post(
+        `/projects/${encodeURIComponent(meeting.projectId)}/meetings/${encodeURIComponent(meeting.id)}/messages`,
+        { content: text }
+      )
+      renderChatMessage(session, response?.data?.message)
       panelParts.chatInput.value = ''
     } catch (error) {
       showSessionError(session, error)
@@ -526,6 +606,7 @@ export function openMeteredMeetingModal(meeting) {
       }
       setControlState(micButton, session.muted, session.muted ? 'Unmute' : 'Mute',
         session.muted ? 'Unmute microphone' : 'Mute microphone')
+      updateParticipantMediaState(session, session.localUserId, { muted: session.muted })
     } catch (error) {
       showSessionError(session, error)
     }
@@ -594,6 +675,9 @@ export function openMeteredMeetingModal(meeting) {
     setControlState(cameraButton, !session.cameraOn,
       session.cameraOn ? 'Camera' : 'Camera off',
       session.cameraOn ? 'Turn off camera' : 'Turn on camera')
+    updateParticipantMediaState(session, session.localUserId, {
+      cameraOff: !session.cameraOn
+    })
   }
   const peopleButton = createControl('people', 'People', () => togglePanel(panelParts.peopleTab))
   const chatButton = createControl('chat', 'Chat', () => togglePanel(panelParts.chatTab))
@@ -652,11 +736,12 @@ export function openMeteredMeetingModal(meeting) {
         renderParticipants(session)
       }
       const onOnlineParticipants = participants => renderParticipants(session, participants)
-      const onChatMessage = message => renderChatMessage(session, message)
-      const onChatHistory = history => {
-        if (Array.isArray(history?.messages)) {
-          history.messages.forEach(message => renderChatMessage(session, message))
-        }
+      const onParticipantSharingStateUpdated = update => {
+        if (!update?.participantSessionId) return
+        updateParticipantMediaState(session, update.participantSessionId, {
+          ...(typeof update.sharingAudio === 'boolean' ? { muted: !update.sharingAudio } : {}),
+          ...(typeof update.sharingVideo === 'boolean' ? { cameraOff: !update.sharingVideo } : {})
+        })
       }
       const onStateChanged = state => {
         if (state === 'network_connection_lost') {
@@ -677,8 +762,7 @@ export function openMeteredMeetingModal(meeting) {
       addListener('participantJoined', onParticipantJoined)
       addListener('participantLeft', onParticipantLeft)
       addListener('onlineParticipants', onOnlineParticipants)
-      addListener('chatMessageReceived', onChatMessage)
-      addListener('chatHistory', onChatHistory)
+      addListener('participantSharingStateUpdated', onParticipantSharingStateUpdated)
       addListener('stateChanged', onStateChanged)
       addListener('meetingEnded', onMeetingEnded)
       addListener('meetingLeft', onMeetingLeft)
@@ -695,6 +779,7 @@ export function openMeteredMeetingModal(meeting) {
         return
       }
       session.localUserId = meetingInfo?.participantSessionId
+      session.firebaseUid = firebaseAuth.currentUser?.uid || null
       renderParticipants(session, meetingInfo?.onlineParticipants || [])
       const mediaErrors = []
       try {
@@ -719,6 +804,10 @@ export function openMeteredMeetingModal(meeting) {
       setControlState(cameraButton, !session.cameraOn,
         session.cameraOn ? 'Camera' : 'Camera off',
         session.cameraOn ? 'Turn off camera' : 'Turn on camera')
+      updateParticipantMediaState(session, session.localUserId, {
+        muted: session.muted,
+        cameraOff: !session.cameraOn
+      })
       status.textContent = mediaErrors.length
         ? `Joined; ${mediaErrors.join(' and ')}. Check browser permissions.`
         : 'You’re in the meeting'
@@ -729,10 +818,20 @@ export function openMeteredMeetingModal(meeting) {
       }, 1000)
       meetingControls.forEach(button => { button.disabled = false })
       panelParts.sendButton.disabled = false
-      try {
-        meetingClient.getChatHistory()
-      } catch (error) {
-        console.error('Unable to load Metered meeting chat history:', error)
+      void syncMeetingChat(session).catch(error => {
+        console.warn('Unable to load meeting chat messages:', error)
+      })
+      session.chatPollTimer = window.setInterval(() => {
+        void syncMeetingChat(session).catch(error => {
+          console.warn('Unable to refresh meeting chat messages:', error)
+        })
+      }, 3000)
+      if (typeof meetingClient.getChatHistory === 'function') {
+        try {
+          meetingClient.getChatHistory()
+        } catch (error) {
+          console.error('Unable to load Metered meeting chat history:', error)
+        }
       }
     } catch (error) {
       if (session.closing || session.disposed) return

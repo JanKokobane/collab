@@ -3167,31 +3167,54 @@ async function startVoiceRecording() {
       return
     }
     const AudioContextConstructor = window.AudioContext || window.webkitAudioContext
-    if (!AudioContextConstructor) {
-      throw new Error('Live voice-note waveform visualization is not supported in this browser.')
+    if (AudioContextConstructor) {
+      try {
+        voiceRecordingAudioContext = new AudioContextConstructor()
+        await voiceRecordingAudioContext.resume()
+        voiceRecordingAnalyser = voiceRecordingAudioContext.createAnalyser()
+        voiceRecordingAnalyser.fftSize = 1024
+        voiceRecordingSource = voiceRecordingAudioContext.createMediaStreamSource(mediaStream)
+        voiceRecordingSource.connect(voiceRecordingAnalyser)
+      } catch (error) {
+        console.warn('[messages] Live voice-note waveform is unavailable; recording will continue.', error)
+        releaseVoiceRecordingAudioGraph()
+      }
     }
-    voiceRecordingAudioContext = new AudioContextConstructor()
-    await voiceRecordingAudioContext.resume()
-    voiceRecordingAnalyser = voiceRecordingAudioContext.createAnalyser()
-    voiceRecordingAnalyser.fftSize = 1024
-    voiceRecordingSource = voiceRecordingAudioContext.createMediaStreamSource(mediaStream)
-    voiceRecordingSource.connect(voiceRecordingAnalyser)
 
     const preferredMimeTypes = [
       'audio/ogg;codecs=opus',
-      'audio/webm;codecs=opus'
+      'audio/webm;codecs=opus',
+      'audio/mp4;codecs=mp4a.40.2',
+      'audio/mp4'
     ]
-    const mimeType = preferredMimeTypes.find(type =>
-      typeof MediaRecorder.isTypeSupported === 'function' &&
-      MediaRecorder.isTypeSupported(type)
-    )
-    if (!mimeType) {
-      throw new Error('This browser cannot record Opus audio in OGG or WebM format.')
+    const supportedMimeTypes = typeof MediaRecorder.isTypeSupported === 'function'
+      ? preferredMimeTypes.filter(type => MediaRecorder.isTypeSupported(type))
+      : []
+    let selectedRecorder
+    let recorderError
+    for (const mimeType of supportedMimeTypes) {
+      try {
+        selectedRecorder = new MediaRecorder(mediaStream, {
+          mimeType,
+          audioBitsPerSecond: 24_000
+        })
+        break
+      } catch (error) {
+        if (error.name !== 'NotSupportedError') throw error
+        recorderError = error
+      }
     }
-    mediaRecorder = new MediaRecorder(mediaStream, {
-      mimeType,
-      audioBitsPerSecond: 24_000
-    })
+    if (!selectedRecorder) {
+      try {
+        selectedRecorder = new MediaRecorder(mediaStream, { audioBitsPerSecond: 24_000 })
+      } catch (error) {
+        if (error.name !== 'NotSupportedError' || !supportedMimeTypes.length) throw error
+        throw new Error('This browser cannot record audio in a format supported by Collab.', {
+          cause: recorderError || error
+        })
+      }
+    }
+    mediaRecorder = selectedRecorder
     voiceRecordingChunks = []
     voiceRecordingSamples = []
     voiceRecordingSampledAt = 0

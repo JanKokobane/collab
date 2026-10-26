@@ -171,6 +171,31 @@ body.zoom-meeting-open .sidebar {
     font-weight: 700;
 }
 
+.zoom-meeting-media-indicators {
+    position: absolute;
+    z-index: 3;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    gap: 6px;
+}
+
+.zoom-meeting-media-indicator {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, .22);
+    border-radius: 50%;
+    background: rgba(185, 28, 28, .92);
+    color: #FFFFFF;
+}
+
+.zoom-meeting-media-indicator svg {
+    width: 16px;
+    height: 16px;
+}
+
 .zoom-meeting-participant-name {
     position: absolute;
     z-index: 2;
