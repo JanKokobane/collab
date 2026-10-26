@@ -346,7 +346,7 @@ function renderChatMessage(session, message) {
 
 async function syncMeetingChat(session) {
   const response = await api.get(
-    `/projects/${encodeURIComponent(session.meeting.projectId)}/meetings/${encodeURIComponent(session.meeting.id)}/messages`
+    `/projects/${encodeURIComponent(session.projectId)}/meetings/${encodeURIComponent(session.meetingId)}/messages`
   )
   response?.data?.messages?.forEach(message => renderChatMessage(session, message))
 }
@@ -523,6 +523,8 @@ export function openMeteredMeetingModal(meeting) {
   document.body.classList.add('zoom-meeting-open')
 
   const session = {
+    projectId: meeting.projectId,
+    meetingId: meeting.id,
     overlay,
     status,
     videoGrid,
