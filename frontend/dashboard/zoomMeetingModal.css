@@ -461,6 +461,7 @@ body.zoom-meeting-open .sidebar {
 }
 
 .zoom-meeting-control {
+    position: relative;
     display: flex;
     min-width: 66px;
     min-height: 54px;
@@ -476,6 +477,24 @@ body.zoom-meeting-open .sidebar {
     font: inherit;
     cursor: pointer;
     transition: background .15s ease, border-color .15s ease;
+}
+
+.zoom-meeting-chat-count {
+    position: absolute;
+    top: 1px;
+    right: 3px;
+    display: grid;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    place-items: center;
+    border: 1px solid #FFFFFF;
+    border-radius: 9px;
+    background: #DC2626;
+    color: #FFFFFF;
+    font-size: 9px !important;
+    font-weight: 700;
+    line-height: 1;
 }
 
 .zoom-meeting-control:hover,

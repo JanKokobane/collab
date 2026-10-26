@@ -324,12 +324,20 @@ function renderParticipants(session, participants = session.meeting?.getOnlinePa
   })
 }
 
-function renderChatMessage(session, message) {
+function isMeetingChatOpen(session) {
+  return !session.panel.hidden && !session.chatPane.hidden
+}
+
+function renderChatMessage(session, message, { countAsUnread = true } = {}) {
   if (!message || !session.chatMessages) return
   const id = message.message_id || message._id ||
     `${message.senderParticipantSessionId || message.sender_firebase_uid || ''}:${message.created_at || message.created || ''}:${message.content || message.message || ''}`
   if (session.chatIds.has(id)) return
   session.chatIds.add(id)
+  if (countAsUnread && !isMeetingChatOpen(session)) {
+    session.unreadMessageCount += 1
+  }
+  session.updateChatCount?.()
   session.chatMessages.querySelector('.zoom-meeting-chat-empty')?.remove()
   const item = document.createElement('article')
   item.className = 'zoom-meeting-chat-message'
@@ -348,7 +356,10 @@ async function syncMeetingChat(session) {
   const response = await api.get(
     `/projects/${encodeURIComponent(session.projectId)}/meetings/${encodeURIComponent(session.meetingId)}/messages`
   )
-  response?.data?.messages?.forEach(message => renderChatMessage(session, message))
+  response?.data?.messages?.forEach(message => renderChatMessage(session, message, {
+    countAsUnread: session.chatInitialized
+  }))
+  session.chatInitialized = true
 }
 
 function showSessionError(session, error) {
@@ -533,6 +544,8 @@ export function openMeteredMeetingModal(meeting) {
     shareVideo,
     tiles: new Map(),
     chatIds: new Set(),
+    unreadMessageCount: 0,
+    chatInitialized: false,
     mediaStateByUserId: new Map(),
     listeners: [],
     participantHeading: panelParts.participantHeading,
@@ -682,14 +695,39 @@ export function openMeteredMeetingModal(meeting) {
     })
   }
   const peopleButton = createControl('people', 'People', () => togglePanel(panelParts.peopleTab))
-  const chatButton = createControl('chat', 'Chat', () => togglePanel(panelParts.chatTab))
+  const chatButton = createControl('chat', 'Chat', () => {
+    togglePanel(panelParts.chatTab)
+    if (isMeetingChatOpen(session)) {
+      session.unreadMessageCount = 0
+      session.updateChatCount()
+    }
+  })
+  const chatCountBadge = document.createElement('span')
+  chatCountBadge.className = 'zoom-meeting-chat-count'
+  chatCountBadge.hidden = true
+  chatCountBadge.setAttribute('aria-hidden', 'true')
+  chatButton.append(chatCountBadge)
+  session.updateChatCount = () => {
+    const count = session.unreadMessageCount
+    chatCountBadge.hidden = count === 0
+    chatCountBadge.textContent = count > 99 ? '99+' : String(count)
+    const label = count ? `Chat, ${count} messages` : 'Chat'
+    chatButton.setAttribute('aria-label', label)
+    chatButton.title = label
+  }
   const leaveButton = createControl('leave', 'Leave', () => void closeSession(session), true)
   controls.append(micButton, cameraButton, shareButton, peopleButton, chatButton, leaveButton)
   const meetingControls = [micButton, cameraButton, shareButton, peopleButton, chatButton]
   meetingControls.forEach(button => { button.disabled = true })
   panelParts.sendButton.disabled = true
   panelParts.peopleTab.addEventListener('click', () => togglePanel(panelParts.peopleTab))
-  panelParts.chatTab.addEventListener('click', () => togglePanel(panelParts.chatTab))
+  panelParts.chatTab.addEventListener('click', () => {
+    togglePanel(panelParts.chatTab)
+    if (isMeetingChatOpen(session)) {
+      session.unreadMessageCount = 0
+      session.updateChatCount()
+    }
+  })
   session.cleanup = () => document.removeEventListener('keydown', session.onEscape)
   session.onEscape = event => {
     if (event.key === 'Escape') void closeSession(session)

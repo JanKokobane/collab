@@ -1956,6 +1956,8 @@ function renderAttachment(attachment, container) {
       'messages-voice-time',
       storedDuration ? `00:00 / ${formatVoiceDuration(storedDuration)}` : 'Unavailable'
     )
+    const visualizer = make('div', 'messages-voice-note-visualizer')
+    visualizer.append(waveform, timeLabel)
     const speedButton = make('button', 'messages-voice-speed', '1x')
     speedButton.type = 'button'
     speedButton.setAttribute('aria-label', 'Playback speed 1x')
@@ -2017,7 +2019,7 @@ function renderAttachment(attachment, container) {
       })
       showError(new Error('This voice note could not be played. Please try downloading or resending it.'), 'load voice note')
     })
-    playerUi.append(playButton, waveform, timeLabel, speedButton)
+    playerUi.append(playButton, visualizer, speedButton)
     container.append(player, playerUi)
     updateVoicePlayerProgress(player, waveform, timeLabel, playButton, storedDuration)
     return
@@ -3153,12 +3155,13 @@ async function startVoiceRecording() {
   const targetConversationId = selectedConversationId
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
+      video: false,
       audio: {
         channelCount: { ideal: 1 },
         sampleRate: { ideal: 48_000 },
         echoCancellation: { ideal: true },
         noiseSuppression: { ideal: true },
-        autoGainControl: { ideal: false }
+        autoGainControl: { ideal: true }
       }
     })
     if (!firebaseAuth.currentUser || targetConversationId !== selectedConversationId) {

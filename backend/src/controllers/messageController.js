@@ -5,6 +5,7 @@ const { emitToConversation, emitToUser, setPresence } = require('../realtime/mes
 const allowedReactions = new Set(['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']);
 const maxAttachments = 10;
 const maxAttachmentBytes = 512 * 1024;
+const attachmentDataUrlPattern = /^data:[^;,]+(?:;codecs=[^;,]+)?;base64,[a-zA-Z0-9+/=]+$/i;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const timestamp = value => value ? new Date(value).toISOString() : null;
 
@@ -593,7 +594,7 @@ const createMessage = async (req, res) => {
                     typeof peak !== 'number' || !Number.isFinite(peak) || peak < 0 || peak > 1
                 )
             )) ||
-            !/^data:[^;,]+;base64,[a-zA-Z0-9+/=]+$/.test(item.data)) ||
+            !attachmentDataUrlPattern.test(item.data)) ||
         attachmentBytes > maxAttachmentBytes || (!body && attachments.length === 0) ||
         !uuidPattern.test(messageId) ||
         (clientMessageId !== null && !uuidPattern.test(clientMessageId)) ||
