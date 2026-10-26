@@ -8,6 +8,7 @@ import {
   activeView,
   activeFilter,
   activeSprintFilter,
+  loadNotificationsFromAPI,
   make,
   closeModal,
   root,
@@ -55,6 +56,8 @@ export function getFilteredTasks() {
     list = list.filter(t => t.status === 'To do')
   } else if (activeFilter === 'progress') {
     list = list.filter(t => t.status === 'In progress')
+  } else if (activeFilter === 'blocked') {
+    list = list.filter(t => t.status === 'Blocked')
   } else if (activeFilter === 'done') {
     list = list.filter(t => t.status === 'Done')
   }
@@ -66,16 +69,19 @@ export function updateTaskCounts(filtered) {
   const backlogCount = filtered.filter(t => t.status === 'Backlog').length
   const todoCount = filtered.filter(t => t.status === 'To do').length
   const progressCount = filtered.filter(t => t.status === 'In progress').length
+  const blockedCount = filtered.filter(t => t.status === 'Blocked').length
   const doneCount = filtered.filter(t => t.status === 'Done').length
 
   const countBacklog = document.querySelector('#count-backlog')
   const countTodo = document.querySelector('#count-todo')
   const countProgress = document.querySelector('#count-progress')
+  const countBlocked = document.querySelector('#count-blocked')
   const countDone = document.querySelector('#count-done')
 
   if (countBacklog) countBacklog.textContent = backlogCount
   if (countTodo) countTodo.textContent = todoCount
   if (countProgress) countProgress.textContent = progressCount
+  if (countBlocked) countBlocked.textContent = blockedCount
   if (countDone) countDone.textContent = doneCount
 
   const workspaceNavBadge = document.querySelector('#workspace-tasks-nav-count') || document.querySelector('#my-tasks-nav-count')
@@ -159,7 +165,12 @@ export async function moveTaskStatus(taskId, newStatus) {
   hub.renderWorkspaceSummary?.()
 
   if (task.backendPersistent) {
-    hub.renderAdminTasksTable?.()
+    await hub.renderAdminTasksTable?.()
+    try {
+      await loadNotificationsFromAPI()
+    } catch (error) {
+      console.warn('Unable to refresh task dependency notifications:', error)
+    }
   }
 
   addAuditLog('Task status updated', `"${task.title}" moved from ${oldStatus} to ${newStatus}.`, newStatus === 'Done' ? 'check' : 'sync')
@@ -170,6 +181,9 @@ export async function moveTaskStatus(taskId, newStatus) {
 export function taskCard(task) {
   const card = make('article', 'task-card')
   card.dataset.id = String(task.id)
+  if (task.hasDependencyWarning || task.dependencies?.some(dependency => dependency.warning_reason)) {
+    card.classList.add('has-dependency-warning')
+  }
   const project = task.backendPersistent
     ? projects.find(item => item.projectId === task.projectId)
     : null
@@ -201,12 +215,24 @@ export function taskCard(task) {
   top.append(tagWrap, moreBtn)
 
   const title = make('h4', '', task.title)
-  if (task.backendPersistent && task.status === 'In progress' && project) {
+  let discussionButton = null
+  if (task.backendPersistent && task.chatMessageId && task.chatConversationId) {
+    discussionButton = make('button', 'task-discussion-link', 'View discussion')
+    discussionButton.type = 'button'
+    discussionButton.addEventListener('click', event => {
+      event.stopPropagation()
+      hub.openMessageContext?.({
+        conversationId: task.chatConversationId,
+        messageId: task.chatMessageId
+      })
+    })
+  }
+  if (task.backendPersistent && project) {
     card.classList.add('task-card-has-project-details')
     card.tabIndex = 0
     card.setAttribute('aria-label', `Open project details for ${task.title}`)
     card.addEventListener('click', event => {
-      if (!event.target.closest('button, a, input, select, textarea')) {
+      if (!event.target.closest('button, a, input, select, textarea, audio, video')) {
         openProjectProgressAside(task)
       }
     })
@@ -227,6 +253,11 @@ export function taskCard(task) {
     const commentSpan = make('span', 'meta-comment-span')
     commentSpan.innerHTML = `${getSvg('message', 'meta-icon', 12, 12)} <span>${task.commentsList.length}</span>`
     meta.append(commentSpan)
+  }
+  if (task.hasDependencyWarning || task.dependencies?.some(dependency => dependency.warning_reason)) {
+    const warning = make('span', 'task-dependency-warning', 'Dependency risk')
+    warning.title = 'A predecessor task is blocked or its due date moved later.'
+    meta.append(warning)
   }
 
   if (task.status === 'Done') {
@@ -312,6 +343,16 @@ export function taskCard(task) {
     btnProg.addEventListener('click', e => { e.stopPropagation(); moveTaskStatus(task.id, 'In progress') })
     moveRow.append(btnProg)
   }
+  if (!task.statusUpdating && canMoveTask && task.status !== 'Blocked') {
+    const btnBlocked = make('button', 'card-move-btn task-move-blocked')
+    btnBlocked.type = 'button'
+    btnBlocked.textContent = 'Blocked'
+    btnBlocked.addEventListener('click', event => {
+      event.stopPropagation()
+      moveTaskStatus(task.id, 'Blocked')
+    })
+    moveRow.append(btnBlocked)
+  }
   if (!task.statusUpdating && canMoveTask && task.status !== 'Done') {
     const btnDone = make('button', 'card-move-btn')
     btnDone.type = 'button'
@@ -320,7 +361,14 @@ export function taskCard(task) {
     moveRow.append(btnDone)
   }
 
-  card.append(top, title, meta, footer, moveRow)
+  card.append(
+    top,
+    title,
+    ...(discussionButton ? [discussionButton] : []),
+    meta,
+    footer,
+    moveRow
+  )
   return card
 }
 
@@ -359,6 +407,7 @@ export function renderTasks() {
     Backlog: document.querySelector('#backlog-list'),
     'To do': document.querySelector('#todo-list'),
     'In progress': document.querySelector('#progress-list'),
+    Blocked: document.querySelector('#blocked-list'),
     Done: document.querySelector('#done-list')
   }
 

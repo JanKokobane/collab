@@ -1034,10 +1034,13 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
       hub.renderWorkspaceHub?.()
       addAuditLog('Project meeting scheduled', `${newMeet.title} scheduled for ${newMeet.meeting_date}.`, 'sync')
       if (instant) {
+        const attendeeUids = new Set(newMeet.attendee_firebase_uids || [])
         openMeteredMeetingModal({
           id: newMeet.meeting_id,
           projectId: newMeet.project_id,
-          title: newMeet.title
+          title: newMeet.title,
+          attendees: getMeetingProjectMembers(projectSelect.value)
+            .filter(member => attendeeUids.has(member.firebaseUid))
         })
       } else {
         showDashboardToast('Meeting scheduled.')

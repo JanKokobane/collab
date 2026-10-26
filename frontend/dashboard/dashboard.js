@@ -75,6 +75,7 @@ import {
   renderAdminMeetingsTable,
   renderAuditLogs,
   openAdminTaskModal,
+  openProjectTaskModal,
   openAdminEditTaskModal,
   openInviteModal
 } from './js/admin.js'
@@ -108,7 +109,8 @@ import {
   renderNotifications,
   initWorkspaceHubEvents
 } from './js/workspaceHub.js'
-import { initMessages, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261022-shared-recipient-modal'
+import { openProjectTaskDetails } from './js/projectProgressAside.js'
+import { initMessages, openMessageContext, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261026-collaboration-context'
 import { renderMeetingsPage } from './js/meetingsPage.js'
 import { initProjectStickyNotes } from './js/projectStickyNotes.js'
 import { initProfileOnboarding } from './js/profileOnboarding.js'
@@ -397,6 +399,10 @@ registerHub({
   switchView,
   openDayScheduleModal,
   openAdminTaskModal,
+  openProjectTaskModal,
+  openProjectTaskDetails,
+  openMessageContext,
+  refreshMessagesForCurrentUser,
   openCreateProjectModal,
   openEditProjectModal,
   openInviteCollaboratorModal,

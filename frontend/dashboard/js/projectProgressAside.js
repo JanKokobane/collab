@@ -1,6 +1,7 @@
 import { currentUser, make, projects, tasks, root, addAuditLog, hub, renderAvatarElement } from './state.js'
 import { api } from './api.js'
 import { openProjectTaskModal } from './admin.js'
+import { createTaskMediaEditor, renderTaskMediaAttachments } from './taskMedia.js'
 import {
   showDashboardConfirmation,
   showDashboardToast,
@@ -99,6 +100,40 @@ function closeAsideAndReopen(task) {
   openProjectProgressAside(task)
 }
 
+async function loadTaskComments(project, task, container) {
+  try {
+    const response = await api.get(
+      `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(task.taskId)}/comments`
+    )
+    const comments = response?.data?.comments || []
+      task.commentsList = comments
+      task.comments = comments.length
+    container.replaceChildren()
+    if (!comments.length) {
+      container.append(make('p', 'project-progress-aside-empty', 'No task comments yet.'))
+      return comments
+    }
+    comments.forEach(comment => {
+      const row = make('article', 'task-comment-item')
+      const header = make('div', 'task-comment-header')
+      header.append(
+        make('strong', '', comment.author_name || 'Project member'),
+        make('time', '', new Date(comment.created_at).toLocaleString(undefined, {
+          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+        }))
+      )
+      row.append(header)
+      if (comment.body) row.append(make('p', 'task-comment-body', comment.body))
+      row.append(renderTaskMediaAttachments(comment.attachments || []))
+      container.append(row)
+    })
+    return comments
+  } catch (error) {
+    container.replaceChildren(make('p', 'task-media-status is-error', error.message || 'Task comments could not be loaded.'))
+    return []
+  }
+}
+
 export function openProjectProgressAside(task) {
   const project = projects.find(candidate => candidate.projectId === task.projectId)
   if (!project) {
@@ -144,6 +179,134 @@ export function openProjectProgressAside(task) {
   })
   const content = make('div', 'project-progress-aside-content')
   content.append(summary)
+
+  const focusSection = make('section', 'project-progress-aside-section project-progress-aside-focus')
+  const descriptionMediaContainer = make('div', 'task-media-player-list')
+  focusSection.append(make('div', 'project-progress-aside-section-heading', 'Task context'))
+  if (task.chatMessageId && task.chatConversationId) {
+    const discussionButton = make('button', 'project-progress-aside-context-link', 'View Discussion Context')
+    discussionButton.type = 'button'
+    discussionButton.addEventListener('click', () => {
+      close()
+      hub.openMessageContext?.({
+        conversationId: task.chatConversationId,
+        messageId: task.chatMessageId
+      })
+    })
+    focusSection.append(discussionButton)
+  }
+  if (task.hasDependencyWarning) {
+    focusSection.append(make('p', 'task-dependency-warning', 'A predecessor task is blocked or its due date moved later.'))
+  }
+  focusSection.append(descriptionMediaContainer)
+  content.append(focusSection)
+  if (task.descriptionAttachments?.length) {
+    descriptionMediaContainer.append(make('p', 'project-progress-aside-empty', 'Loading task media…'))
+  }
+  void api.get(
+    `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(task.taskId)}`
+  ).then(response => {
+    const detail = response?.data?.task
+    if (!detail || !aside.isConnected) return
+    task.descriptionAttachments = detail.description_attachments || []
+    task.chatMessageId = detail.chat_message_id || task.chatMessageId
+    task.chatConversationId = detail.chat_conversation_id || task.chatConversationId
+    descriptionMediaContainer.replaceChildren(renderTaskMediaAttachments(task.descriptionAttachments))
+  }).catch(error => {
+    if (aside.isConnected && task.descriptionAttachments?.length) {
+      descriptionMediaContainer.replaceChildren(
+        make('p', 'project-progress-aside-empty', error.message || 'Task media could not be loaded.')
+      )
+    }
+  })
+
+  const dependencySection = make('section', 'project-progress-aside-section')
+  const dependencyHeading = make('div', 'project-progress-aside-section-heading')
+  dependencyHeading.append(make('h3', '', 'Dependencies'))
+  dependencySection.append(dependencyHeading)
+  const dependencySelect = document.createElement('select')
+  dependencySelect.multiple = true
+  dependencySelect.size = 5
+  dependencySelect.setAttribute('aria-label', 'Predecessor tasks across accessible projects')
+  tasks.filter(candidate => candidate.backendPersistent && candidate.taskId !== task.taskId)
+    .forEach(candidate => {
+      const option = make('option', '', `${candidate.project} · ${candidate.title} · ${candidate.status}`)
+      option.value = candidate.taskId
+      option.selected = (task.dependencies || []).some(dependency => dependency.task_id === candidate.taskId)
+      dependencySelect.append(option)
+    })
+  const dependencyHelp = make('small', 'project-progress-aside-help', 'Select tasks that must finish first. Select multiple with Ctrl or Command.')
+  const dependencySave = make('button', 'project-progress-aside-context-link', 'Save Dependencies')
+  dependencySave.type = 'button'
+  dependencySave.addEventListener('click', async () => {
+    const restoreButton = setDashboardButtonLoading(dependencySave, 'Saving…')
+    try {
+      const predecessorTaskIds = [...dependencySelect.selectedOptions].map(option => option.value)
+      await api.put(
+        `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(task.taskId)}/dependencies`,
+        { predecessorTaskIds }
+      )
+      task.dependencies = predecessorTaskIds.map(id => {
+        const predecessor = tasks.find(candidate => candidate.taskId === id)
+        return {
+          task_id: id,
+          project_id: predecessor?.projectId,
+          title: predecessor?.title,
+          status: predecessor?.status
+        }
+      })
+      await hub.renderAdminTasksTable?.({ silent: true })
+      showDashboardToast('Task dependencies saved.', 'success')
+      closeAsideAndReopen(task)
+    } catch (error) {
+      restoreButton()
+      showDashboardToast(error.message || 'Task dependencies could not be saved.', 'error')
+    }
+  })
+  dependencySection.append(dependencySelect, dependencyHelp, dependencySave)
+  content.append(dependencySection)
+
+  const commentsSection = make('section', 'project-progress-aside-section')
+  const commentsHeading = make('div', 'project-progress-aside-section-heading')
+  commentsHeading.append(make('h3', '', 'Comments and media'))
+  const commentsList = make('div', 'task-comment-list')
+  commentsSection.append(commentsHeading, commentsList)
+  const commentForm = document.createElement('form')
+  commentForm.className = 'task-comment-form'
+  const commentInput = document.createElement('textarea')
+  commentInput.maxLength = 5000
+  commentInput.rows = 2
+  commentInput.placeholder = 'Add a comment…'
+  commentInput.setAttribute('aria-label', 'Task comment')
+  const commentMedia = createTaskMediaEditor({ label: 'Comment media' })
+  const commentSubmit = make('button', 'project-progress-aside-context-link', 'Post Comment')
+  commentSubmit.type = 'submit'
+  commentForm.append(commentInput, commentMedia.element, commentSubmit)
+  commentForm.addEventListener('submit', async event => {
+    event.preventDefault()
+    const text = commentInput.value.trim()
+    if (!text && !commentMedia.hasAttachments()) {
+      commentInput.focus()
+      return
+    }
+    const restoreButton = setDashboardButtonLoading(commentSubmit, 'Posting…')
+    try {
+      const attachments = await commentMedia.getAttachments()
+      await api.post(
+        `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(task.taskId)}/comments`,
+        { text, attachments }
+      )
+      commentInput.value = ''
+      commentMedia.clear()
+      await loadTaskComments(project, task, commentsList)
+    } catch (error) {
+      restoreButton()
+      showDashboardToast(error.message || 'The comment could not be posted.', 'error')
+    }
+  })
+  commentsSection.append(commentForm)
+  content.append(commentsSection)
+  void loadTaskComments(project, task, commentsList)
 
   const sprintSection = make('section', 'project-progress-aside-section')
   sprintSection.setAttribute('aria-labelledby', 'project-progress-aside-sprints-title')
@@ -291,6 +454,7 @@ export function openProjectProgressAside(task) {
             hub.renderTasks?.()
             hub.renderWorkspaceSummary?.()
             await hub.renderAdminTasksTable?.()
+              await hub.renderTasks?.()
             showDashboardToast('Project task deleted.', 'success')
             close()
             openProjectProgressAside(task)
@@ -341,6 +505,7 @@ export function openProjectProgressAside(task) {
   const trigger = document.activeElement
   const close = () => {
     document.removeEventListener('keydown', onKeyDown)
+    commentMedia.dispose()
     backdrop.remove()
     trigger?.focus?.()
   }
@@ -355,4 +520,15 @@ export function openProjectProgressAside(task) {
   backdrop.append(aside)
   root.replaceChildren(backdrop)
   closeButton.focus()
+}
+
+export function openProjectTaskDetails(taskId) {
+  const task = tasks.find(candidate =>
+    candidate.backendPersistent && candidate.taskId === taskId
+  )
+  if (!task) {
+    showDashboardToast('The linked task could not be found on your project boards.', 'error')
+    return
+  }
+  openProjectProgressAside(task)
 }

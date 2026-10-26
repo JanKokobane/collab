@@ -5111,6 +5111,38 @@ body.dark-mode .hub-res-logo {
     white-space: nowrap;
 }
 
+.message-decision-label,
+.message-linked-task-badge {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    margin: 0 0 5px;
+    padding: 4px 7px;
+    border: 1px solid #CFE5D8;
+    border-radius: 999px;
+    background: #EAF5EE;
+    color: #205E43;
+    font: 700 9px 'DM Sans', sans-serif;
+}
+
+.message-linked-task-badge {
+    cursor: pointer;
+}
+
+.message-linked-task-badge:hover {
+    background: #D9EEE1;
+}
+
+.message-row.is-context-target .message-bubble {
+    outline: 3px solid rgba(245, 184, 0, .72);
+    outline-offset: 3px;
+    animation: message-context-pulse 1.1s ease-in-out 2;
+}
+
+@keyframes message-context-pulse {
+    50% { outline-color: rgba(245, 184, 0, .16); }
+}
+
 .message-text {
     margin: 0;
     color: #27272A;

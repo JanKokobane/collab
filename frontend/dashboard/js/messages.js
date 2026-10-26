@@ -1,4 +1,4 @@
-import { activeView, currentUser, getAccessibleMembers, getAvatarSource, make, projects, renderAvatarElement } from './state.js'
+import { activeView, currentUser, getAccessibleMembers, getAvatarSource, hub, make, projects, renderAvatarElement } from './state.js'
 import { firebaseAuth } from '../../firebase.js'
 import { api, apiBaseUrl } from './api.js'
 import {
@@ -8,7 +8,7 @@ import {
 } from './messageCallUI.js?v=20261022-call-timer-answer'
 
 const maxAttachmentBytes = 512 * 1024
-const messagesBuildId = '20261022-shared-recipient-modal'
+const messagesBuildId = '20261026-collaboration-context'
 const presenceHeartbeatMs = 25000
 const incomingCallRingDurationMs = 45000
 const callSocketConnectTimeoutMs = 15000
@@ -245,6 +245,10 @@ function normalizeMessage(row) {
     replyToSenderName: row.reply_to_sender_name ?? row.replyToSenderName ?? null,
     forwardedFrom: row.forwarded_from ?? row.forwardedFrom ?? null,
     pinned: row.is_pinned ?? row.pinned ?? false,
+    isDecision: row.is_decision ?? row.isDecision ?? false,
+    linkedTaskId: row.linked_task_id || row.linkedTaskId || null,
+    linkedTaskTitle: row.linked_task_title || row.linkedTaskTitle || '',
+    linkedTaskProjectId: row.linked_task_project_id || row.linkedTaskProjectId || null,
     isDeleted: Boolean(row.is_deleted ?? row.isDeleted),
     editedAt: row.edited_at ?? row.editedAt ?? null,
     createdAt: row.created_at || row.createdAt,
@@ -1776,6 +1780,28 @@ async function selectConversation(conversationId) {
   renderMessages()
 }
 
+export async function openMessageContext({ conversationId, messageId } = {}) {
+  if (!conversationId || !messageId) return
+  if (activeView !== 'Messages') hub.switchView?.('Messages')
+  await refreshFromServer()
+  if (!messageState.conversations.some(conversation => conversation.id === conversationId)) {
+    showError(new Error('The discussion is not available to your account.'))
+    return
+  }
+  await selectConversation(conversationId)
+  window.requestAnimationFrame(() => {
+    const target = [...(getElements().feed?.querySelectorAll('.message-row[data-message-id]') || [])]
+      .find(row => row.dataset.messageId === messageId)
+    if (!target) {
+      showError(new Error('The linked message is not available in this conversation.'))
+      return
+    }
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    target.classList.add('is-context-target')
+    window.setTimeout(() => target.classList.remove('is-context-target'), 2200)
+  })
+}
+
 function formatMessageTime(value) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(date)
@@ -2103,6 +2129,10 @@ function renderMessageActions(message, container) {
        ...(message.senderUid === currentUid()
          ? [{ label: 'Edit', action: () => startEdit(message) }]
          : []),
+       ...(message.linkedTaskId
+         ? [{ label: 'Open linked task', action: () => hub.openProjectTaskDetails?.(message.linkedTaskId) }]
+         : [{ label: 'Convert to Task', action: () => convertMessageToTask(message) }]),
+       { label: message.isDecision ? 'Unpin Decision' : 'Pin as Decision', action: () => mutateMessage(message, 'decision') },
        { label: 'Forward', action: () => openForwardModal(message) },
        { label: message.pinned ? 'Unpin' : 'Pin', action: () => mutateMessage(message, 'pin') },
        { label: 'Delete for me', action: () => deleteMessage(message, 'me'), destructive: true },
@@ -2120,6 +2150,29 @@ function renderMessageActions(message, container) {
   trigger.addEventListener('click', () => { menu.hidden = !menu.hidden })
   actions.append(trigger, menu)
   container.append(actions)
+}
+
+function convertMessageToTask(message) {
+  const conversation = messageState.conversations.find(item => item.id === message.conversationId)
+  const project = projects.find(item => item.projectId === conversation?.projectId)
+  if (!project) {
+    showError(new Error('The project for this discussion could not be found.'))
+    return
+  }
+  const transcript = (message.attachments || []).find(attachment =>
+    attachment.transcript || attachment.transcription
+  )
+  const content = message.body || transcript?.transcript || transcript?.transcription ||
+    (message.attachments?.some(attachment => attachment.is_voice_note) ? 'Voice note from discussion' : 'Follow up from discussion')
+  const title = content.split(/\r?\n/)[0].trim().slice(0, 255) || 'Follow up from discussion'
+  hub.openProjectTaskModal?.(project, null, {
+    title,
+    description: content.slice(0, 10000),
+    chatMessageId: message.id,
+    descriptionAttachments: (message.attachments || []).filter(attachment =>
+      attachment.is_voice_note || attachment.isVoiceNote
+    )
+  })
 }
 
 function renderCallRecord(call) {
@@ -2176,9 +2229,17 @@ function renderMessagesList() {
     }
     const own = message.senderUid === currentUid()
     const row = make('article', `message-row${own ? ' own message-row-sent' : ' message-row-received'}`)
+    row.dataset.messageId = message.id
     const body = make('div', `message-content${own ? ' message-content-sent' : ' message-content-received'}`)
     const bubble = make('div', `message-bubble${own ? ' message-bubble-sent' : ''}`)
     if (message.pinned) bubble.append(make('div', 'message-pinned-label', '📌 Pinned'))
+    if (message.isDecision) bubble.append(make('div', 'message-decision-label', 'Decision'))
+    if (message.linkedTaskId) {
+      const linkedTask = make('button', 'message-linked-task-badge', message.linkedTaskTitle || 'View linked task')
+      linkedTask.type = 'button'
+      linkedTask.addEventListener('click', () => hub.openProjectTaskDetails?.(message.linkedTaskId))
+      bubble.append(linkedTask)
+    }
     if (!own) bubble.append(make('div', 'message-meta', message.senderName))
     if (message.forwardedFrom?.senderName) bubble.append(make('div', 'message-forwarded-label', `↪ Forwarded from ${message.forwardedFrom.senderName}`))
     if (message.replyToId) {

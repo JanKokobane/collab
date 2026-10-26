@@ -691,6 +691,14 @@ export function replaceProjectTasksFromBackend(projectTaskGroups = []) {
         progress: task.status === 'Done' ? 100 : task.status === 'In progress' ? 50 : 0,
         sprint: task.sprint_name,
         sprint_name: task.sprint_name,
+        chatMessageId: task.chat_message_id || task.chatMessageId || null,
+        chat_message_id: task.chat_message_id || task.chatMessageId || null,
+        chatConversationId: task.chat_conversation_id || task.chatConversationId || null,
+        descriptionAttachments: Array.isArray(task.description_attachments)
+          ? task.description_attachments
+          : Array.isArray(task.descriptionAttachments) ? task.descriptionAttachments : [],
+        dependencies: Array.isArray(task.dependencies) ? task.dependencies : [],
+        hasDependencyWarning: Boolean(task.has_dependency_warning || task.hasDependencyWarning),
         approvalStatus: 'none',
         comments: 0,
         commentsList: []
@@ -1036,8 +1044,12 @@ export const hub = {
   loadProjectMembers: () => {},
   renderAuditLogs: () => {},
   renderMessages: () => {},
+  refreshMessagesForCurrentUser: async () => {},
   switchView: () => {},
   openAdminTaskModal: () => {},
+  openProjectTaskModal: () => {},
+  openProjectTaskDetails: () => {},
+  openMessageContext: () => {},
   openCreateProjectModal: () => {},
   openEditProjectModal: () => {},
   openInviteCollaboratorModal: () => {},
@@ -1108,6 +1120,7 @@ function normalizeNotification(notification) {
     title: notification.title,
     detail: notification.detail,
     boardId: notification.brainstorm_board_id || null,
+    relatedTaskId: notification.related_task_id || null,
     avatar: notification.avatar || '•',
     toneClass: notification.tone_class || 'coral-bg',
     invitationId: notification.invitation_id || null,
@@ -1134,10 +1147,24 @@ export async function loadNotificationsFromAPI({
   const cached = storageKey
     ? JSON.parse(localStorage.getItem(storageKey) || '[]')
     : []
+  const existingNotificationIds = new Set(notifications.map(notification => notification.id))
+  const hasNewDependencyWarning = records.some(notification =>
+    notification.type === 'task_dependency_warning' &&
+    !notification.is_read &&
+    !existingNotificationIds.has(String(notification.id))
+  )
   notifications = [
     ...records.map(normalizeNotification),
     ...(Array.isArray(cached) ? cached : [])
   ]
+  if (hasNewDependencyWarning) {
+    try {
+      await hub.renderAdminTasksTable?.()
+      hub.renderTasks?.()
+    } catch (error) {
+      console.warn('Unable to refresh boards after a dependency warning:', error)
+    }
+  }
   updateNotifCount()
   hub.renderNotifications?.()
   hub.renderWorkspaceSummary?.()

@@ -137,7 +137,9 @@ view access only; project writes remain restricted to the creator.
 
 Project sprints are persisted in the existing `projects.sprints` JSONB field.
 Migration `005_project_tasks.sql` adds PostgreSQL-backed, project-scoped tasks;
-`006_project_task_comments.sql` adds persistent comments for those tasks.
+`006_project_task_comments.sql` adds persistent comments for those tasks;
+`024_collaboration_context_features.sql` adds chat backlinks/decision flags,
+task media attachments, cross-project dependencies, and meeting notes/action items.
 Authenticated project owners can create, edit, and delete tasks; project owners
 and accepted project invitees can read them. A task must reference a sprint on
 its project and an invitee whose invitation has been accepted. Pending invitees
@@ -158,7 +160,19 @@ accepted invitee when edited.
 - `DELETE /api/projects/:projectId/tasks/:taskId`: delete a task as its project
   creator.
 - `GET|POST /api/projects/:projectId/tasks/:taskId/comments`: read or add task
-  comments as the project creator or an accepted invitee.
+  comments as the project creator or an accepted invitee. Comments may include
+  up to 8 MB of validated media attachments.
+- `GET /api/projects/:projectId/tasks/:taskId`: retrieve task detail, including
+  description media and discussion backlink.
+- `GET|PUT /api/projects/:projectId/tasks/:taskId/dependencies`: read or replace
+  predecessor links. Every predecessor must belong to a project accessible to
+  the caller; cycles are rejected.
+- Task description and comment attachments are JSON data URLs, limited to ten
+  attachments and 8 MB total per task field/comment. Screen clips are captured
+  in the browser and capped at 90 seconds.
+- Task creation may include `chatMessageId`; the API verifies that the referenced
+  message belongs to an accessible conversation in the same project. Message
+  decision markers are persisted on the message record.
   Task start and due dates must be today or later; this is validated by the
   API as well as the dashboard date picker.
 - `GET|POST /api/projects/:projectId/meetings` and
@@ -169,6 +183,12 @@ accepted invitee when edited.
   invitation notifications for selected attendees other than the host in the
   same database transaction as the meeting. Meeting dates must be today or
   later.
+- `GET|PUT /api/projects/:projectId/meetings/:meetingId/notes` persists meeting
+  notes for invited attendees.
+- `GET|POST /api/projects/:projectId/meetings/:meetingId/action-items` manages
+  action bullets. `POST /api/projects/:projectId/meetings/:meetingId/action-items/:actionItemId/dispatch`
+  creates a task for a meeting attendee and links the task back to its action
+  item; assignees must still satisfy the project sprint-lead rule.
 - `GET|POST /api/projects/:projectId/reminders`: list and create reminders for
   a project the caller owns or has joined. Reminder dates must be today or
   later, and priorities are limited to Normal, High, and Urgent.

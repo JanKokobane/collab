@@ -11,10 +11,10 @@
     <meta property="og:description"
         content="Collab brings your projects, tasks, and team conversations into one calm, focused workspace." />
     <link rel="icon" type="image/png" href="../images/favicon.png" />
-    <link rel="stylesheet" href="./dashboard.css?v=20261019-1724" />
-    <link rel="stylesheet" href="./workspaceHub.css?v=20261022-call-modal-no-border" />
+    <link rel="stylesheet" href="./dashboard.css?v=20261026-collaboration-context" />
+    <link rel="stylesheet" href="./workspaceHub.css?v=20261026-collaboration-context" />
     <link rel="stylesheet" href="./meetingsPage.css?v=20261022-meetings-page" />
-    <link rel="stylesheet" href="./zoomMeetingModal.css?v=20261023-zoom-video" />
+    <link rel="stylesheet" href="./zoomMeetingModal.css?v=20261026-collaboration-context" />
 </head>
 
 <body>
@@ -660,6 +660,7 @@
                                     <button type="button" class="filter-item" data-filter="todo">To do</button>
                                     <button type="button" class="filter-item" data-filter="progress">In
                                         progress</button>
+                                    <button type="button" class="filter-item" data-filter="blocked">Blocked</button>
                                     <button type="button" class="filter-item" data-filter="done">Completed
                                         (Done)</button>
                                 </div>
@@ -695,6 +696,14 @@
                                         <h3>In progress</h3><span class="count" id="count-progress">2</span>
                                     </div>
                                     <div class="task-list" id="progress-list"></div>
+                                </div>
+
+                                <div class="column" data-status="Blocked">
+                                    <div class="column-header">
+                                        <span class="status-dot coral"></span>
+                                        <h3>Blocked</h3><span class="count" id="count-blocked">0</span>
+                                    </div>
+                                    <div class="task-list" id="blocked-list"></div>
                                 </div>
 
                                 <div class="column" data-status="Done">
@@ -1630,7 +1639,7 @@
 
     <div id="messages-call-root" class="collab-call-portal" hidden aria-live="polite"></div>
 
-    <script type="module" src="./dashboard.js?v=20261023-zoom-video"></script>
+    <script type="module" src="./dashboard.js?v=20261026-collaboration-context"></script>
 </body>
 
 </html>

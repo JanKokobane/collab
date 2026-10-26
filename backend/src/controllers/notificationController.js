@@ -7,6 +7,7 @@ const getNotifications = async (req, res) => {
                 SELECT
                     n.id,
                     n.project_id,
+                    n.related_task_id::text AS related_task_id,
                     n.brainstorm_board_id,
                     n.invitation_id,
                     pi.status AS invitation_status,

@@ -1,5 +1,6 @@
 import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
+import { projects } from './state.js'
 
 const SDK_URL = 'https://cdn.metered.ca/sdk/video/1.4.6/sdk.min.js'
 const iconPaths = {
@@ -81,6 +82,7 @@ function finishSession(session) {
   session.disposed = true
   if (session.timer) window.clearInterval(session.timer)
   if (session.chatPollTimer) window.clearInterval(session.chatPollTimer)
+  if (session.meetingInfoPollTimer) window.clearInterval(session.meetingInfoPollTimer)
   detachMeetingListeners(session)
   for (const tile of session.tiles.values()) {
     tile.video.pause()
@@ -395,7 +397,13 @@ function createMeetingPanel() {
   const chatTab = document.createElement('button')
   chatTab.type = 'button'
   chatTab.textContent = 'Chat'
-  tabs.append(peopleTab, chatTab)
+  const notesTab = document.createElement('button')
+  notesTab.type = 'button'
+  notesTab.textContent = 'Notes'
+  const actionsTab = document.createElement('button')
+  actionsTab.type = 'button'
+  actionsTab.textContent = 'Actions'
+  tabs.append(peopleTab, chatTab, notesTab, actionsTab)
 
   const peoplePane = document.createElement('section')
   peoplePane.className = 'zoom-meeting-panel-pane'
@@ -428,19 +436,71 @@ function createMeetingPanel() {
   sendButton.textContent = 'Send'
   chatForm.append(chatInput, sendButton)
   chatPane.append(chatHeading, chatMessages, chatForm)
-  panel.append(tabs, peoplePane, chatPane)
+
+  const notesPane = document.createElement('section')
+  notesPane.className = 'zoom-meeting-panel-pane zoom-meeting-notes-pane'
+  notesPane.hidden = true
+  const notesHeading = document.createElement('h3')
+  notesHeading.textContent = 'Meeting notes'
+  const notesForm = document.createElement('form')
+  notesForm.className = 'zoom-meeting-notes-form'
+  const notesInput = document.createElement('textarea')
+  notesInput.maxLength = 20000
+  notesInput.placeholder = 'Capture decisions, context, and follow-ups…'
+  notesInput.setAttribute('aria-label', 'Meeting notes')
+  const notesStatus = document.createElement('small')
+  notesStatus.className = 'zoom-meeting-notes-status'
+  const saveNotesButton = document.createElement('button')
+  saveNotesButton.type = 'submit'
+  saveNotesButton.textContent = 'Save notes'
+  notesForm.append(notesInput, notesStatus, saveNotesButton)
+  notesPane.append(notesHeading, notesForm)
+
+  const actionsPane = document.createElement('section')
+  actionsPane.className = 'zoom-meeting-panel-pane zoom-meeting-actions-pane'
+  actionsPane.hidden = true
+  const actionsHeading = document.createElement('h3')
+  actionsHeading.textContent = 'Action items'
+  const actionItemList = document.createElement('div')
+  actionItemList.className = 'zoom-meeting-action-list'
+  const actionItemForm = document.createElement('form')
+  actionItemForm.className = 'zoom-meeting-action-form'
+  const actionItemInput = document.createElement('input')
+  actionItemInput.type = 'text'
+  actionItemInput.maxLength = 500
+  actionItemInput.placeholder = 'Add an action item…'
+  actionItemInput.setAttribute('aria-label', 'New meeting action item')
+  const addActionItemButton = document.createElement('button')
+  addActionItemButton.type = 'submit'
+  addActionItemButton.textContent = 'Add'
+  actionItemForm.append(actionItemInput, addActionItemButton)
+  actionsPane.append(actionsHeading, actionItemList, actionItemForm)
+
+  panel.append(tabs, peoplePane, chatPane, notesPane, actionsPane)
 
   return {
     panel,
     peopleTab,
     chatTab,
+    notesTab,
+    actionsTab,
     participantHeading,
     participantList,
     chatPane,
     chatMessages,
     chatForm,
     chatInput,
-    sendButton
+    sendButton,
+    notesPane,
+    notesForm,
+    notesInput,
+    notesStatus,
+    saveNotesButton,
+    actionsPane,
+    actionItemList,
+    actionItemForm,
+    actionItemInput,
+    addActionItemButton
   }
 }
 
@@ -553,8 +613,18 @@ export function openMeteredMeetingModal(meeting) {
     panel: panelParts.panel,
     peopleTab: panelParts.peopleTab,
     chatTab: panelParts.chatTab,
+    notesTab: panelParts.notesTab,
+    actionsTab: panelParts.actionsTab,
     chatPane: panelParts.chatPane,
     chatMessages: panelParts.chatMessages,
+    notesPane: panelParts.notesPane,
+    notesInput: panelParts.notesInput,
+    notesStatus: panelParts.notesStatus,
+    saveNotesButton: panelParts.saveNotesButton,
+    actionItemList: panelParts.actionItemList,
+    actionItemInput: panelParts.actionItemInput,
+    addActionItemButton: panelParts.addActionItemButton,
+    projectRecord: projects.find(project => project.projectId === meeting.projectId),
     joined: false,
     closing: false,
     disposed: false,
@@ -599,16 +669,162 @@ export function openMeteredMeetingModal(meeting) {
   const togglePanel = tab => {
     const isOpen = !panelParts.panel.hidden && tab.classList.contains('is-active')
     panelParts.panel.hidden = isOpen
+    const tabs = [panelParts.peopleTab, panelParts.chatTab, panelParts.notesTab, panelParts.actionsTab]
+    const panes = [
+      panelParts.participantList.parentElement,
+      panelParts.chatPane,
+      panelParts.notesPane,
+      panelParts.actionsPane
+    ]
     if (isOpen) {
-      panelParts.peopleTab.classList.remove('is-active')
-      panelParts.chatTab.classList.remove('is-active')
+      tabs.forEach(item => item.classList.remove('is-active'))
     } else {
-      panelParts.peopleTab.classList.toggle('is-active', tab === panelParts.peopleTab)
-      panelParts.chatTab.classList.toggle('is-active', tab === panelParts.chatTab)
-      panelParts.participantList.parentElement.hidden = tab !== panelParts.peopleTab
-      panelParts.chatPane.hidden = tab !== panelParts.chatTab
+      tabs.forEach(item => item.classList.toggle('is-active', item === tab))
+      panes.forEach((pane, index) => { pane.hidden = tabs[index] !== tab })
     }
   }
+
+  const meetingApiPath = suffix =>
+    `/projects/${encodeURIComponent(session.projectId)}/meetings/${encodeURIComponent(session.meetingId)}${suffix}`
+  const meetingAttendeeUids = () => (meeting.attendees || [])
+    .map(attendee => attendee.firebaseUid)
+    .filter(Boolean)
+  const renderActionItems = items => {
+    panelParts.actionItemList.replaceChildren()
+    if (!items.length) {
+      panelParts.actionItemList.append(element('p', 'zoom-meeting-chat-empty', 'No action items yet.'))
+      return
+    }
+    items.forEach(item => {
+      const row = element('article', 'zoom-meeting-action-item')
+      const copy = element('p', 'zoom-meeting-action-copy', item.content)
+      row.append(copy)
+      if (item.task_id) {
+        row.append(element('span', 'zoom-meeting-action-dispatched', 'Added to task board'))
+      } else {
+        const dispatchForm = element('form', 'zoom-meeting-action-dispatch')
+        const attendeeSelect = document.createElement('select')
+        attendeeSelect.required = true
+        attendeeSelect.setAttribute('aria-label', 'Assign action item to an invited attendee')
+        const attendeePlaceholder = element('option', '', 'Assign attendee')
+        attendeePlaceholder.value = ''
+        attendeeSelect.append(attendeePlaceholder)
+        ;(meeting.attendees || []).forEach(attendee => {
+          const option = element('option', '', attendee.name || attendee.email || 'Project attendee')
+          option.value = attendee.firebaseUid
+          attendeeSelect.append(option)
+        })
+        const sprintSelect = document.createElement('select')
+        sprintSelect.required = true
+        sprintSelect.setAttribute('aria-label', 'Project sprint')
+        const sprintPlaceholder = element('option', '', 'Choose sprint')
+        sprintPlaceholder.value = ''
+        sprintSelect.append(sprintPlaceholder)
+        const noSprintMessage = element('small', 'zoom-meeting-action-hint', '')
+        const updateSprintChoices = () => {
+          sprintSelect.replaceChildren(sprintPlaceholder)
+          const eligibleSprints = (session.projectRecord?.sprints || []).filter(sprint =>
+            sprint.assigneeFirebaseUid === attendeeSelect.value
+          )
+          eligibleSprints.forEach(sprint => {
+            const option = element('option', '', sprint.name)
+            option.value = sprint.name
+            sprintSelect.append(option)
+          })
+          noSprintMessage.textContent = attendeeSelect.value && !eligibleSprints.length
+            ? 'This attendee does not lead a project sprint yet.'
+            : ''
+          dispatch.disabled = !attendeeSelect.value || !eligibleSprints.length
+        }
+        attendeeSelect.addEventListener('change', updateSprintChoices)
+        const dueDate = document.createElement('input')
+        dueDate.type = 'date'
+        dueDate.required = true
+        dueDate.setAttribute('aria-label', 'Action item due date')
+        dueDate.min = new Date().toISOString().slice(0, 10)
+        const dispatch = element('button', 'zoom-meeting-action-dispatch-button', 'Dispatch to Board')
+        dispatch.type = 'submit'
+        dispatch.disabled = true
+        dispatchForm.append(attendeeSelect, sprintSelect, dueDate, noSprintMessage, dispatch)
+        dispatchForm.addEventListener('submit', async event => {
+          event.preventDefault()
+          if (!attendeeSelect.value || !sprintSelect.value || !dueDate.value) return
+          dispatch.disabled = true
+          try {
+            const response = await api.post(
+              `${meetingApiPath(`/action-items/${encodeURIComponent(item.action_item_id)}/dispatch`)}`,
+              {
+                assigneeFirebaseUid: attendeeSelect.value,
+                sprintName: sprintSelect.value,
+                dueDate: dueDate.value
+              }
+            )
+            const taskId = response?.data?.taskId
+            item.task_id = taskId
+            row.replaceChildren(copy, element('span', 'zoom-meeting-action-dispatched', 'Added to task board'))
+            await hub.renderAdminTasksTable?.({ silent: true })
+            hub.renderTasks?.()
+          } catch (error) {
+            dispatch.disabled = false
+            showSessionError(session, error)
+          }
+        })
+        row.append(dispatchForm)
+      }
+      panelParts.actionItemList.append(row)
+    })
+  }
+  const loadMeetingNotes = async () => {
+    if (session.notesDirty || document.activeElement === panelParts.notesInput) return
+    const response = await api.get(meetingApiPath('/notes'))
+    panelParts.notesInput.value = response?.data?.notes?.body || ''
+  }
+  panelParts.notesInput.addEventListener('input', () => {
+    session.notesDirty = true
+    panelParts.notesStatus.textContent = 'Unsaved changes'
+  })
+  const saveMeetingNotes = async event => {
+    event.preventDefault()
+    if (session.notesSaving) return
+    session.notesSaving = true
+    panelParts.saveNotesButton.disabled = true
+    panelParts.notesStatus.textContent = 'Saving…'
+    try {
+      await api.put(meetingApiPath('/notes'), { body: panelParts.notesInput.value })
+      session.notesDirty = false
+      panelParts.notesStatus.textContent = 'Saved'
+      panelParts.notesStatus.classList.remove('is-error')
+    } catch (error) {
+      panelParts.notesStatus.textContent = error.message || 'Could not save notes.'
+      panelParts.notesStatus.classList.add('is-error')
+    } finally {
+      session.notesSaving = false
+      panelParts.saveNotesButton.disabled = false
+    }
+  }
+  const loadMeetingActionItems = async () => {
+    const response = await api.get(meetingApiPath('/action-items'))
+    renderActionItems(response?.data?.actionItems || [])
+  }
+  panelParts.notesForm.addEventListener('submit', saveMeetingNotes)
+  panelParts.actionItemForm.addEventListener('submit', async event => {
+    event.preventDefault()
+    const content = panelParts.actionItemInput.value.trim()
+    if (!content || session.actionItemSaving) return
+    session.actionItemSaving = true
+    panelParts.addActionItemButton.disabled = true
+    try {
+      const response = await api.post(meetingApiPath('/action-items'), { content })
+      panelParts.actionItemInput.value = ''
+      const items = await api.get(meetingApiPath('/action-items'))
+      renderActionItems(items?.data?.actionItems || [response?.data?.actionItem].filter(Boolean))
+    } catch (error) {
+      showSessionError(session, error)
+    } finally {
+      session.actionItemSaving = false
+      panelParts.addActionItemButton.disabled = false
+    }
+  })
 
   const micButton = createControl('mic', 'Mute', async () => {
     try {
@@ -721,6 +937,8 @@ export function openMeteredMeetingModal(meeting) {
   meetingControls.forEach(button => { button.disabled = true })
   panelParts.sendButton.disabled = true
   panelParts.peopleTab.addEventListener('click', () => togglePanel(panelParts.peopleTab))
+  panelParts.notesTab.addEventListener('click', () => togglePanel(panelParts.notesTab))
+  panelParts.actionsTab.addEventListener('click', () => togglePanel(panelParts.actionsTab))
   panelParts.chatTab.addEventListener('click', () => {
     togglePanel(panelParts.chatTab)
     if (isMeetingChatOpen(session)) {
@@ -728,6 +946,12 @@ export function openMeteredMeetingModal(meeting) {
       session.updateChatCount()
     }
   })
+  ;[
+    panelParts.peopleTab,
+    panelParts.chatTab,
+    panelParts.notesTab,
+    panelParts.actionsTab
+  ].forEach(tab => { tab.disabled = true })
   session.cleanup = () => document.removeEventListener('keydown', session.onEscape)
   session.onEscape = event => {
     if (event.key === 'Escape') void closeSession(session)
@@ -790,9 +1014,16 @@ export function openMeteredMeetingModal(meeting) {
           status.textContent = 'Connection restored'
         }
       }
-      const onMeetingEnded = () => void closeSession(session)
+      const onMeetingEnded = () => {
+        status.textContent = 'Meeting ended · Notes and action items are still available'
+        meetingControls.forEach(button => { button.disabled = true })
+        panelParts.sendButton.disabled = true
+      }
       const onMeetingLeft = () => {
-        if (!session.closing) finishSession(session)
+        if (session.closing) return
+        status.textContent = 'You left the meeting · Notes and action items are still available'
+        meetingControls.forEach(button => { button.disabled = true })
+        panelParts.sendButton.disabled = true
       }
       addListener('localTrackStarted', onLocalTrackStarted)
       addListener('localTrackStopped', onLocalTrackStopped)
@@ -812,6 +1043,7 @@ export function openMeteredMeetingModal(meeting) {
         name: session.userName,
         accessToken
       })
+      session.meetingInfo = meetingInfo
       session.joined = true
       if (session.closing) {
         await meetingClient.leaveMeeting()
@@ -858,6 +1090,21 @@ export function openMeteredMeetingModal(meeting) {
       }, 1000)
       meetingControls.forEach(button => { button.disabled = false })
       panelParts.sendButton.disabled = false
+      ;[
+        panelParts.peopleTab,
+        panelParts.chatTab,
+        panelParts.notesTab,
+        panelParts.actionsTab
+      ].forEach(tab => { tab.disabled = false })
+      void loadMeetingNotes().catch(error => {
+        panelParts.notesStatus.textContent = error.message || 'Meeting notes could not be loaded.'
+        panelParts.notesStatus.classList.add('is-error')
+      })
+      void loadMeetingActionItems().catch(error => {
+        panelParts.actionItemList.replaceChildren(
+          element('p', 'zoom-meeting-chat-empty', error.message || 'Action items could not be loaded.')
+        )
+      })
       void syncMeetingChat(session).catch(error => {
         console.warn('Unable to load meeting chat messages:', error)
       })
@@ -866,6 +1113,16 @@ export function openMeteredMeetingModal(meeting) {
           console.warn('Unable to refresh meeting chat messages:', error)
         })
       }, 3000)
+      session.meetingInfoPollTimer = window.setInterval(() => {
+        void loadMeetingNotes().catch(error => {
+          console.warn('Unable to refresh meeting notes:', error)
+        })
+        if (!panelParts.actionsPane.contains(document.activeElement)) {
+          void loadMeetingActionItems().catch(error => {
+            console.warn('Unable to refresh meeting action items:', error)
+          })
+        }
+      }, 5000)
       if (typeof meetingClient.getChatHistory === 'function') {
         try {
           meetingClient.getChatHistory()

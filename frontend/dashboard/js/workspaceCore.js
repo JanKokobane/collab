@@ -376,6 +376,17 @@ export function renderNotifications() {
       })
       actionButtons.append(openBoardButton)
       actionCell.append(actionButtons)
+    } else if (notification.relatedTaskId) {
+      const openTaskButton = make('button', 'action-btn primary gold', 'Open task')
+      openTaskButton.type = 'button'
+      openTaskButton.addEventListener('click', () => {
+        hub.openProjectTaskDetails?.(notification.relatedTaskId)
+        if (notification.unread) markNotificationRead(notification.id).catch(error => {
+          console.error('Unable to mark task dependency notification as read:', error)
+        })
+      })
+      actionButtons.append(openTaskButton)
+      actionCell.append(actionButtons)
     } else if (notification.unread) {
       const readButton = make('button', 'action-btn', 'Mark read')
       readButton.type = 'button'

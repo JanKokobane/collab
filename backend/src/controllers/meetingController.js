@@ -31,7 +31,7 @@ const getAccessibleProject = async (projectId, firebaseUid) => {
 const getMeetingForAttendee = async (projectId, meetingId, firebaseUid) => {
     const result = await query(
         `
-            SELECT meeting_id
+            SELECT meeting_id, attendee_firebase_uids
             FROM project_meetings
             WHERE project_id = $1
               AND meeting_id = $2::uuid
@@ -41,6 +41,235 @@ const getMeetingForAttendee = async (projectId, meetingId, firebaseUid) => {
         [projectId, meetingId, JSON.stringify([firebaseUid])]
     );
     return result.rows[0] || null;
+};
+
+const getMeetingContext = async (projectId, meetingId, firebaseUid) => {
+    const result = await query(
+        `
+            SELECT meeting.meeting_id, meeting.attendee_firebase_uids,
+                   project.project_id, project.name AS project_name,
+                   project.creator_firebase_uid, project.sprints
+            FROM project_meetings meeting
+            JOIN projects project ON project.project_id = meeting.project_id
+            WHERE meeting.project_id = $1
+              AND meeting.meeting_id = $2::uuid
+              AND meeting.attendee_firebase_uids @> $3::jsonb
+              AND (
+                  project.creator_firebase_uid = $4
+                  OR EXISTS (
+                      SELECT 1 FROM project_invitations invitation
+                      WHERE invitation.project_id = project.project_id
+                        AND invitation.invited_firebase_uid = $4
+                        AND invitation.status = 'accepted'
+                  )
+              )
+            LIMIT 1
+        `,
+        [projectId, meetingId, JSON.stringify([firebaseUid]), firebaseUid]
+    );
+    return result.rows[0] || null;
+};
+
+const getProjectMeetingNotes = async (req, res) => {
+    if (!meetingIdPattern.test(req.params.meetingId)) {
+        return res.status(400).json({ success: false, code: 'INVALID_MEETING_ID', message: 'Meeting ID is invalid.' });
+    }
+    try {
+        const meeting = await getMeetingContext(req.params.projectId, req.params.meetingId, req.firebaseUid);
+        if (!meeting) return res.status(404).json({
+            success: false, code: 'MEETING_NOT_FOUND_OR_FORBIDDEN', message: 'Meeting not found or you are not invited to it.'
+        });
+        const result = await query(
+            `SELECT body, updated_by_firebase_uid, updated_at
+             FROM project_meeting_notes WHERE meeting_id = $1::uuid`,
+            [meeting.meeting_id]
+        );
+        return res.status(200).json({
+            success: true,
+            data: { notes: result.rows[0] || { body: '', updated_by_firebase_uid: null, updated_at: null } }
+        });
+    } catch (error) {
+        console.error('Get project meeting notes error:', error);
+        return res.status(500).json({ success: false, code: 'MEETING_NOTES_FETCH_FAILED', message: 'Meeting notes could not be retrieved.' });
+    }
+};
+
+const saveProjectMeetingNotes = async (req, res) => {
+    const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+    if (!meetingIdPattern.test(req.params.meetingId) || body.length > 20000) {
+        return res.status(400).json({ success: false, code: 'INVALID_MEETING_NOTES', message: 'Meeting notes cannot exceed 20,000 characters.' });
+    }
+    try {
+        const meeting = await getMeetingContext(req.params.projectId, req.params.meetingId, req.firebaseUid);
+        if (!meeting) return res.status(404).json({
+            success: false, code: 'MEETING_NOT_FOUND_OR_FORBIDDEN', message: 'Meeting not found or you are not invited to it.'
+        });
+        const result = await query(
+            `INSERT INTO project_meeting_notes (meeting_id, body, updated_by_firebase_uid)
+             VALUES ($1::uuid, $2, $3)
+             ON CONFLICT (meeting_id) DO UPDATE
+             SET body = EXCLUDED.body,
+                 updated_by_firebase_uid = EXCLUDED.updated_by_firebase_uid,
+                 updated_at = NOW()
+             RETURNING body, updated_by_firebase_uid, updated_at`,
+            [meeting.meeting_id, body, req.firebaseUid]
+        );
+        return res.status(200).json({ success: true, data: { notes: result.rows[0] } });
+    } catch (error) {
+        console.error('Save project meeting notes error:', error);
+        return res.status(500).json({ success: false, code: 'MEETING_NOTES_SAVE_FAILED', message: 'Meeting notes could not be saved.' });
+    }
+};
+
+const getProjectMeetingActionItems = async (req, res) => {
+    if (!meetingIdPattern.test(req.params.meetingId)) {
+        return res.status(400).json({ success: false, code: 'INVALID_MEETING_ID', message: 'Meeting ID is invalid.' });
+    }
+    try {
+        const meeting = await getMeetingContext(req.params.projectId, req.params.meetingId, req.firebaseUid);
+        if (!meeting) return res.status(404).json({
+            success: false, code: 'MEETING_NOT_FOUND_OR_FORBIDDEN', message: 'Meeting not found or you are not invited to it.'
+        });
+        const result = await query(
+            `SELECT action.action_item_id, action.content, action.assignee_firebase_uid,
+                    action.due_date, action.task_id::text AS task_id, action.created_by_firebase_uid,
+                                        action.created_at,
+                                        COALESCE(member.invited_name, project.creator_name, 'Project member') AS assignee_name
+             FROM project_meeting_action_items action
+                         JOIN projects project ON project.project_id = $2
+                         LEFT JOIN project_invitations member ON member.project_id = project.project_id
+                             AND member.invited_firebase_uid = action.assignee_firebase_uid
+             WHERE action.meeting_id = $1::uuid
+             ORDER BY action.created_at, action.action_item_id`,
+            [meeting.meeting_id, meeting.project_id]
+        );
+        return res.status(200).json({ success: true, data: { actionItems: result.rows } });
+    } catch (error) {
+        console.error('Get project meeting action items error:', error);
+        return res.status(500).json({ success: false, code: 'MEETING_ACTION_ITEMS_FETCH_FAILED', message: 'Meeting action items could not be retrieved.' });
+    }
+};
+
+const createProjectMeetingActionItem = async (req, res) => {
+    const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+    if (!meetingIdPattern.test(req.params.meetingId) || !content || content.length > 500) {
+        return res.status(400).json({ success: false, code: 'INVALID_MEETING_ACTION_ITEM', message: 'Enter an action item between 1 and 500 characters.' });
+    }
+    try {
+        const meeting = await getMeetingContext(req.params.projectId, req.params.meetingId, req.firebaseUid);
+        if (!meeting) return res.status(404).json({
+            success: false, code: 'MEETING_NOT_FOUND_OR_FORBIDDEN', message: 'Meeting not found or you are not invited to it.'
+        });
+        const result = await query(
+            `INSERT INTO project_meeting_action_items (
+                 meeting_id, content, assignee_firebase_uid, created_by_firebase_uid
+             ) VALUES ($1::uuid, $2, $3, $3)
+             RETURNING action_item_id, content, assignee_firebase_uid, due_date,
+                       task_id::text AS task_id, created_by_firebase_uid, created_at`,
+            [meeting.meeting_id, content, req.firebaseUid]
+        );
+        return res.status(201).json({ success: true, data: { actionItem: result.rows[0] } });
+    } catch (error) {
+        console.error('Create project meeting action item error:', error);
+        return res.status(500).json({ success: false, code: 'MEETING_ACTION_ITEM_CREATE_FAILED', message: 'The action item could not be saved.' });
+    }
+};
+
+const dispatchProjectMeetingActionItem = async (req, res) => {
+    const { projectId, meetingId, actionItemId } = req.params;
+    const assigneeUid = typeof req.body?.assigneeFirebaseUid === 'string'
+        ? req.body.assigneeFirebaseUid.trim()
+        : '';
+    const sprintName = typeof req.body?.sprintName === 'string' ? req.body.sprintName.trim() : '';
+    const dueDate = typeof req.body?.dueDate === 'string' ? req.body.dueDate : '';
+    if (!meetingIdPattern.test(meetingId) || !meetingIdPattern.test(actionItemId) ||
+        !assigneeUid || !sprintName || !datePattern.test(dueDate)) {
+        return res.status(400).json({ success: false, code: 'INVALID_ACTION_ITEM_DISPATCH', message: 'Choose an attendee, sprint, and valid due date.' });
+    }
+    const [year, month, day] = dueDate.split('-').map(Number);
+    const parsedDueDate = new Date(Date.UTC(year, month - 1, day));
+    if (parsedDueDate.getUTCFullYear() !== year || parsedDueDate.getUTCMonth() !== month - 1 ||
+        parsedDueDate.getUTCDate() !== day || dueDate < new Date().toISOString().slice(0, 10)) {
+        return res.status(400).json({ success: false, code: 'INVALID_ACTION_ITEM_DUE_DATE', message: 'Choose a valid due date that is today or later.' });
+    }
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const meetingResult = await client.query(
+            `SELECT meeting.meeting_id, meeting.attendee_firebase_uids,
+                    project.project_id, project.sprints, project.creator_firebase_uid
+             FROM project_meetings meeting
+             JOIN projects project ON project.project_id = meeting.project_id
+             WHERE meeting.project_id = $1 AND meeting.meeting_id = $2::uuid
+               AND meeting.attendee_firebase_uids @> $3::jsonb
+               AND (project.creator_firebase_uid = $4 OR EXISTS (
+                   SELECT 1 FROM project_invitations invitation
+                   WHERE invitation.project_id = project.project_id
+                     AND invitation.invited_firebase_uid = $4
+                     AND invitation.status = 'accepted'
+               ))
+             FOR UPDATE OF meeting`,
+            [projectId, meetingId, JSON.stringify([req.firebaseUid]), req.firebaseUid]
+        );
+        const meeting = meetingResult.rows[0];
+        if (!meeting) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, code: 'MEETING_NOT_FOUND_OR_FORBIDDEN', message: 'Meeting not found or you are not invited to it.' });
+        }
+        const itemResult = await client.query(
+            `SELECT content, task_id FROM project_meeting_action_items
+             WHERE meeting_id = $1::uuid AND action_item_id = $2::uuid FOR UPDATE`,
+            [meetingId, actionItemId]
+        );
+        const actionItem = itemResult.rows[0];
+        if (!actionItem) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, code: 'MEETING_ACTION_ITEM_NOT_FOUND', message: 'Action item not found.' });
+        }
+        if (actionItem.task_id) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, code: 'MEETING_ACTION_ITEM_ALREADY_DISPATCHED', message: 'This action item is already on the task board.' });
+        }
+        const attendees = Array.isArray(meeting.attendee_firebase_uids) ? meeting.attendee_firebase_uids : [];
+        const sprint = (Array.isArray(meeting.sprints) ? meeting.sprints : [])
+            .find(item => item?.name === sprintName && item.assigneeFirebaseUid === assigneeUid);
+        const assigneeIsProjectMember = assigneeUid === meeting.creator_firebase_uid || attendees.includes(assigneeUid);
+        const acceptedAssignee = assigneeUid === meeting.creator_firebase_uid
+            ? { rowCount: 1 }
+            : await client.query(
+                `SELECT 1 FROM project_invitations
+                 WHERE project_id = $1 AND invited_firebase_uid = $2 AND status = 'accepted'
+                 LIMIT 1`,
+                [meeting.project_id, assigneeUid]
+            );
+        if (!sprint || !assigneeIsProjectMember || !attendees.includes(assigneeUid) || !acceptedAssignee.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, code: 'INVALID_ACTION_ITEM_ASSIGNEE', message: 'Choose a meeting attendee who leads the selected project sprint.' });
+        }
+        const taskId = randomUUID();
+        const title = actionItem.content.slice(0, 255);
+        await client.query(
+            `INSERT INTO project_tasks (
+                 task_id, project_id, title, description, category, sprint_name,
+                 assignee_firebase_uid, status, due_date, created_by_firebase_uid
+             ) VALUES ($1::uuid, $2, $3, $4, 'Product', $5, $6, 'To do', $7::date, $8)`,
+            [taskId, meeting.project_id, title, actionItem.content, sprintName, assigneeUid, dueDate, req.firebaseUid]
+        );
+        await client.query(
+            `UPDATE project_meeting_action_items
+             SET assignee_firebase_uid = $1, due_date = $2::date, task_id = $3::uuid
+             WHERE action_item_id = $4::uuid`,
+            [assigneeUid, dueDate, taskId, actionItemId]
+        );
+        await client.query('COMMIT');
+        return res.status(201).json({ success: true, data: { taskId } });
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Dispatch project meeting action item error:', error);
+        return res.status(500).json({ success: false, code: 'MEETING_ACTION_ITEM_DISPATCH_FAILED', message: 'The action item could not be dispatched to the task board.' });
+    } finally {
+        client.release();
+    }
 };
 
 const getMeetingChatMessages = async (req, res) => {
@@ -643,10 +872,15 @@ const deleteMeeting = async (req, res) => {
 };
 
 module.exports = {
+    createProjectMeetingActionItem,
     createMeetingChatMessage,
     createMeeting,
+    dispatchProjectMeetingActionItem,
     deleteMeeting,
+    getProjectMeetingActionItems,
+    getProjectMeetingNotes,
     getMeetingChatMessages,
     getMeteredMeetingToken,
+    saveProjectMeetingNotes,
     getMeetings
 };

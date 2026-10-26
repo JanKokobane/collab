@@ -114,6 +114,7 @@ frontend/
 │       ├── projects.js           Projects, sprints, collaborator management
 │       ├── state.js              Shared state, API loading, and hub
 │       ├── tasks.js              Task boards, lists, filtering, status workflow
+│       ├── taskMedia.js          Task comment audio/screen capture and media players
 │       ├── theme.js              Theme, accent, profile, settings
 │       ├── workspaceCore.js      Workspace views and summary rendering
 │       ├── workspaceHub.js       Workspace event wiring and notifications

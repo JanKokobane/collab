@@ -504,14 +504,23 @@ const getMessages = async (req, res) => {
                     msg.sender_firebase_uid, msg.sender_email, msg.sender_name,
                     msg.body, msg.reply_to_message_id::text AS reply_to_message_id,
                     msg.reply_to_body, msg.reply_to_sender_name,
-                    msg.attachments, msg.forwarded_from, msg.is_pinned,
+                    msg.attachments, msg.forwarded_from, msg.is_pinned, msg.is_decision,
                     msg.edited_at, msg.created_at, msg.deleted_at,
                     msg.client_message_id::text AS client_message_id,
+                    linked_task.task_id::text AS linked_task_id,
+                    linked_task.title AS linked_task_title,
+                    linked_task.project_id AS linked_task_project_id,
                     reads.read_at,
                     COALESCE(reactions.items, '[]'::jsonb) AS reactions
              FROM messages msg
              LEFT JOIN message_hidden_for hidden
                ON hidden.message_id = msg.message_id AND hidden.firebase_uid = $2
+                         LEFT JOIN LATERAL (
+                                 SELECT task_id, title, project_id
+                                 FROM project_tasks
+                                 WHERE chat_message_id = msg.message_id
+                                 LIMIT 1
+                         ) linked_task ON TRUE
              LEFT JOIN LATERAL (
                  SELECT MIN(read_at) AS read_at
                  FROM message_reads
@@ -740,6 +749,12 @@ const mutateMessage = async (req, res) => {
                      WHERE conversation_id = $1::uuid AND message_id = $2::uuid`,
                     [conversationId, messageId]
                 );
+            } else if (action === 'decision') {
+                await client.query(
+                    `UPDATE messages SET is_decision = NOT is_decision
+                     WHERE conversation_id = $1::uuid AND message_id = $2::uuid`,
+                    [conversationId, messageId]
+                );
             } else if (action === 'reaction') {
                 const emoji = req.body?.emoji;
                 if (!allowedReactions.has(emoji)) return {
@@ -769,8 +784,11 @@ const mutateMessage = async (req, res) => {
                         msg.sender_firebase_uid, msg.sender_email, msg.sender_name, msg.body,
                         msg.reply_to_message_id::text AS reply_to_message_id, msg.reply_to_body,
                         msg.reply_to_sender_name, msg.attachments, msg.forwarded_from,
-                        msg.is_pinned, msg.edited_at, msg.created_at, msg.deleted_at,
+                        msg.is_pinned, msg.is_decision, msg.edited_at, msg.created_at, msg.deleted_at,
                         msg.client_message_id::text AS client_message_id,
+                        linked_task.task_id::text AS linked_task_id,
+                        linked_task.title AS linked_task_title,
+                        linked_task.project_id AS linked_task_project_id,
                         COALESCE((
                             SELECT jsonb_agg(jsonb_build_object('emoji', grouped.emoji, 'users', grouped.users))
                             FROM (
@@ -783,6 +801,12 @@ const mutateMessage = async (req, res) => {
                             ) grouped
                         ), '[]'::jsonb) AS reactions
                  FROM messages msg
+                 LEFT JOIN LATERAL (
+                     SELECT task_id, title, project_id
+                     FROM project_tasks
+                     WHERE chat_message_id = msg.message_id
+                     LIMIT 1
+                 ) linked_task ON TRUE
                  WHERE msg.message_id = $1::uuid`,
                 [messageId]
             );

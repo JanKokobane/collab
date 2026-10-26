@@ -15,6 +15,7 @@ import {
   addAuditLog,
   pushNotification,
   hub,
+  loadNotificationsFromAPI,
   replaceProjectTasksFromBackend
 } from './state.js'
 import { getActiveProject } from './auth.js'
@@ -26,6 +27,7 @@ import { firebaseAuth } from '../../firebase.js'
 import { setDashboardButtonLoading, showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
 import { openMeteredMeetingModal } from './meteredMeetingModal.js'
+import { createTaskMediaEditor } from './taskMedia.js'
 
 // ============================================================
 // ADMIN CONSOLE TABLE & FUNCTIONS
@@ -625,7 +627,18 @@ export async function renderAdminTasksTable({ silent = false, canApply = () => t
   })
 }
 
-export function openProjectTaskModal(project, task = null, defaults = {}) {
+export async function openProjectTaskModal(project, task = null, defaults = {}) {
+  if (task?.task_id || task?.taskId) {
+    try {
+      const response = await api.get(
+        `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(task.task_id || task.taskId)}`
+      )
+      task = { ...task, ...(response?.data?.task || {}) }
+    } catch (error) {
+      showDashboardToast(error.message || 'Task details could not be loaded.', 'error')
+      return
+    }
+  }
   const isOwner = project.creatorFirebaseUid === firebaseAuth.currentUser?.uid
   if (task && !isOwner) {
     showDashboardToast('Only the project owner can edit project tasks.', 'error')
@@ -653,7 +666,10 @@ export function openProjectTaskModal(project, task = null, defaults = {}) {
   const form = make('form', 'modal project-task-parent-form')
   const close = make('button', 'close-modal', '×')
   close.type = 'button'
-  close.addEventListener('click', closeModal)
+  close.addEventListener('click', () => {
+    descriptionMedia.dispose()
+    closeModal()
+  })
   const heading = make('h2', '', task ? 'Edit Project Task' : 'Create Project Task')
   const copy = make('p', 'modal-copy', `Task assignments are available to the project owner and accepted invitees of ${project.name}.`)
 
@@ -661,7 +677,7 @@ export function openProjectTaskModal(project, task = null, defaults = {}) {
   const titleInput = make('input')
   titleInput.required = true
   titleInput.maxLength = 255
-  titleInput.value = task?.title || ''
+  titleInput.value = task?.title || defaults.title || ''
   titleInput.placeholder = 'e.g. Prepare project deliverables'
   titleLabel.append(titleInput)
 
@@ -669,9 +685,30 @@ export function openProjectTaskModal(project, task = null, defaults = {}) {
   const descriptionInput = document.createElement('textarea')
   descriptionInput.rows = 3
   descriptionInput.maxLength = 10000
-  descriptionInput.value = task?.description || ''
+  descriptionInput.value = task?.description || defaults.description || ''
   descriptionInput.placeholder = 'Add details or acceptance criteria'
   descriptionLabel.append(descriptionInput)
+  let chatMessageId = task?.chat_message_id || task?.chatMessageId || defaults.chatMessageId || null
+  let descriptionAttachments = Array.isArray(task?.description_attachments)
+    ? task.description_attachments
+    : Array.isArray(task?.descriptionAttachments)
+      ? task.descriptionAttachments
+      : Array.isArray(defaults.descriptionAttachments) ? defaults.descriptionAttachments : []
+  const descriptionMedia = createTaskMediaEditor({
+    initialAttachments: descriptionAttachments,
+    label: 'Description media'
+  })
+  const chatConversationId = task?.chat_conversation_id || task?.chatConversationId
+  let discussionButton = null
+  if (chatMessageId && chatConversationId) {
+    discussionButton = make('button', 'project-progress-aside-context-link', 'View Discussion Context')
+    discussionButton.type = 'button'
+    discussionButton.addEventListener('click', () => {
+      descriptionMedia.dispose()
+      closeModal()
+      hub.openMessageContext?.({ conversationId: chatConversationId, messageId: chatMessageId })
+    })
+  }
 
   const initialSprint = task
     ? sprints.find(sprint => sprint.name === task.sprint_name)
@@ -971,7 +1008,7 @@ export function openProjectTaskModal(project, task = null, defaults = {}) {
 
   const statusLabel = make('label', 'no-input-icon', 'Status')
   const statusSelect = document.createElement('select')
-  ;(task ? ['Backlog', 'To do', 'In progress', 'Done'] : ['To do']).forEach(status => {
+  ;(task ? ['Backlog', 'To do', 'In progress', 'Blocked', 'Done'] : ['To do']).forEach(status => {
     const option = make('option', '', status)
     option.value = status
     if (status === (task?.status || 'To do')) option.selected = true
@@ -998,6 +1035,8 @@ export function openProjectTaskModal(project, task = null, defaults = {}) {
     copy,
     titleLabel,
     descriptionLabel,
+    descriptionMedia.element,
+    ...(discussionButton ? [discussionButton] : []),
     assignmentRow,
     ...(isOwner ? [sprintCreatePanel, draftSprintList] : []),
     schedulePicker.element,
@@ -1018,10 +1057,13 @@ export function openProjectTaskModal(project, task = null, defaults = {}) {
       assigneeFirebaseUid: selectedAssigneeFirebaseUid,
       status: task ? statusSelect.value : 'To do',
       startDate: schedule.startDate || null,
-      dueDate: schedule.dueDate || null
+      dueDate: schedule.dueDate || null,
+      chatMessageId,
+      descriptionAttachments: []
     }
     const restoreSubmit = setDashboardButtonLoading(submit, task ? 'Saving task…' : 'Creating task…')
     try {
+      payload.descriptionAttachments = await descriptionMedia.getAttachments()
       const projectId = encodeURIComponent(project.projectId)
       if (draftSprints.length || selectedSprintNeedsOwnerAssignment) {
         const persistedDraftSprints = draftSprints.map((draft, index) => ({
@@ -1058,8 +1100,11 @@ export function openProjectTaskModal(project, task = null, defaults = {}) {
         await api.post(`/projects/${projectId}/tasks`, payload)
       }
       closeModal()
+      descriptionMedia.dispose()
       showDashboardToast(task ? 'Project task updated.' : 'Project task created.', 'success')
-      renderAdminTasksTable()
+      await renderAdminTasksTable()
+      if (task) await loadNotificationsFromAPI()
+      await hub.refreshMessagesForCurrentUser?.()
     } catch (error) {
       restoreSubmit()
       showDashboardToast(error.message || 'The project task could not be saved.', 'error')
@@ -1271,7 +1316,7 @@ export function openLegacyAdminTaskModal(prefilledStatus = 'To do', prefilledPro
 
   const statusLabel = make('label', '', 'Initial Status')
   const statusSelect = document.createElement('select')
-  ;['Backlog', 'To do', 'In progress', 'Done'].forEach(val => {
+  ;['Backlog', 'To do', 'In progress', 'Blocked', 'Done'].forEach(val => {
     const opt = make('option', '', val)
     opt.value = val
     if (val === prefilledStatus) opt.selected = true
@@ -1458,7 +1503,7 @@ export function openLegacyAdminEditTaskModal(task) {
 
   const statusLabel = make('label', '', 'Status')
   const statusSelect = document.createElement('select')
-  ;['Backlog', 'To do', 'In progress', 'Done'].forEach(s => {
+  ;['Backlog', 'To do', 'In progress', 'Blocked', 'Done'].forEach(s => {
     const opt = make('option', '', s)
     opt.value = s
     if (s === task.status) opt.selected = true
