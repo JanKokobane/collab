@@ -50,9 +50,14 @@ app.use(helmet());
 app.use(
     rateLimit({
         windowMs: 15 * 60 * 1000,
-        limit: 300,
+        limit: 2400,
         standardHeaders: 'draft-7',
-        legacyHeaders: false
+        legacyHeaders: false,
+        message: {
+            success: false,
+            code: 'API_RATE_LIMITED',
+            message: 'Too many requests. Please wait a moment and try again.'
+        }
     })
 );
 
