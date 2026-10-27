@@ -25,7 +25,6 @@ const createProject = async (req, res) => {
             time_span,
             description,
             color,
-            invited_members,
             sprints
         } = req.body;
 
@@ -79,10 +78,7 @@ const createProject = async (req, res) => {
                 ? color.trim()
                 : 'coral';
 
-        const invitedMembers =
-            Array.isArray(invited_members)
-                ? invited_members
-                : [];
+        const invitedMembers = [];
 
         const projectSprints =
             Array.isArray(sprints)
@@ -308,6 +304,12 @@ const getProjects = async (req, res) => {
                     WHERE firebase_uid = projects.creator_firebase_uid
                 ) AS creator_profile_image,
                 invited_members,
+                (
+                    SELECT COUNT(DISTINCT LOWER(invitation.invited_email))::int
+                    FROM project_invitations invitation
+                    WHERE invitation.project_id = projects.project_id
+                      AND invitation.status IN ('pending', 'accepted')
+                ) AS team_member_count,
                 COALESCE(
                     (
                         SELECT json_agg(json_build_object(
@@ -411,6 +413,12 @@ const getProject = async (req, res) => {
                     WHERE firebase_uid = projects.creator_firebase_uid
                 ) AS creator_profile_image,
                 invited_members,
+                (
+                    SELECT COUNT(DISTINCT LOWER(invitation.invited_email))::int
+                    FROM project_invitations invitation
+                    WHERE invitation.project_id = projects.project_id
+                      AND invitation.status IN ('pending', 'accepted')
+                ) AS team_member_count,
                 COALESCE(
                     (
                         SELECT json_agg(json_build_object(

@@ -293,7 +293,8 @@ export function openCreateProjectModal() {
       creatorEmail: currentUser?.email || 'admin@collab.io',
       creatorName: currentUser?.name || 'Alex Morgan',
       creatorInitials: currentUser?.initials || 'AM',
-      invitedMembers: members.map(member => ({ ...member })),
+      invitedMembers: [],
+      teamMemberCount: 0,
       sprints: [
         {
           id: `s_${timestamp}_1`,

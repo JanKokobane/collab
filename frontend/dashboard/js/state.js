@@ -105,6 +105,12 @@ function normalizeProject(project) {
   if (!project) return null
   const allowedColors = ['yellow', 'green', 'blue', 'purple', 'coral', 'orange', 'rose']
   const color = allowedColors.includes(project.color) ? project.color : 'yellow'
+  const acceptedMembers = Array.isArray(project.accepted_members)
+    ? project.accepted_members
+    : Array.isArray(project.acceptedMembers)
+      ? project.acceptedMembers
+      : []
+  const backendTeamMemberCount = Number(project.team_member_count ?? project.teamMemberCount)
 
   return {
     // Keep both because some existing frontend code uses id
@@ -161,11 +167,10 @@ function normalizeProject(project) {
         ? project.invitedMembers
         : [],
 
-    acceptedMembers: Array.isArray(project.accepted_members)
-      ? project.accepted_members
-      : Array.isArray(project.acceptedMembers)
-        ? project.acceptedMembers
-        : [],
+    acceptedMembers,
+    teamMemberCount: Number.isFinite(backendTeamMemberCount)
+      ? backendTeamMemberCount
+      : acceptedMembers.length,
 
     sprints: Array.isArray(project.sprints)
       ? project.sprints

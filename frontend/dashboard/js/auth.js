@@ -216,9 +216,11 @@ export function updateUserUI() {
   }
 
   const collabBtnCount = document.querySelector('#collab-btn-count')
-  if (collabBtnCount && proj) {
-    const list = proj.invitedMembers || members
-    collabBtnCount.textContent = `${list.length} Team Members`
+  if (collabBtnCount) {
+    const teamMemberCount = Number(proj?.teamMemberCount) || 0
+    collabBtnCount.textContent = teamMemberCount
+      ? `${teamMemberCount} Team Members`
+      : 'No team members invited'
   }
 
   updateCreatorControlStrip()

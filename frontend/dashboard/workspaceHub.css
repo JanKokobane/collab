@@ -3529,13 +3529,11 @@ body.dark-mode .workspace-updates-panel-header {
 }
 
 form.modal.project-invite-modal {
-    width: min(680px, calc(100vw - 32px));
-    max-width: 680px;
-    max-height: min(900px, calc(100vh - 32px), calc(100dvh - 32px));
+    width: min(440px, calc(100vw - 32px));
+    max-width: 440px;
+    max-height: none;
     gap: 14px;
-    overflow-x: hidden;
-    overflow-y: auto;
-    overscroll-behavior: contain;
+    overflow: visible;
 }
 
 .project-invite-modal .project-invite-header {
@@ -3592,11 +3590,9 @@ form.modal.project-invite-modal {
 
 .project-invite-modal .invite-user-search-results {
     display: grid;
-    min-height: 0;
-    max-height: min(320px, 35vh, 35dvh);
+    max-height: none;
     gap: 6px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
+    overflow: visible;
 }
 
 .project-invite-modal .invite-user-search-result {
@@ -3638,7 +3634,7 @@ form.modal.project-invite-modal {
 }
 
 .project-invite-search-status {
-    margin: -6px 0 0;
+    margin: 0;
     color: #71717A;
     font-size: 11px;
 }
@@ -3653,24 +3649,24 @@ form.modal.project-invite-modal {
     background: #F1F8F6;
 }
 
+.project-invite-modal .invite-selected-users {
+    max-height: none;
+    overflow: visible;
+}
+
 .project-invite-modal .messages-create-submit {
     min-height: 42px;
 }
 
 @media (max-width: 640px) {
     form.modal.project-invite-modal {
-        width: calc(100vw - 24px);
-        max-width: 680px;
-        max-height: calc(100dvh - 24px);
+        width: calc(100vw - 32px);
+        max-width: 440px;
         padding: 20px;
     }
 
     .project-invite-modal .project-invite-header {
         margin: -20px -20px 0;
-    }
-
-    .project-invite-modal .invite-user-search-results {
-        max-height: min(280px, 35dvh);
     }
 }
 
