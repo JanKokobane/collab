@@ -4329,6 +4329,62 @@ body.dark-mode .admin-table tr:hover td,
     padding-right: 34px;
 }
 
+.project-progress-aside-sprint {
+    width: 100%;
+    min-width: 0;
+    padding: 12px 38px 12px 12px;
+}
+
+.project-sprint-submission-note,
+.project-sprint-review-comment {
+    width: 100%;
+    margin: 4px 0 0;
+    color: var(--ink);
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.project-sprint-review-comment {
+    color: #8A510D;
+}
+
+.project-sprint-review-form {
+    display: grid;
+    width: 100%;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.project-sprint-review-form textarea {
+    width: 100%;
+    min-height: 62px;
+    resize: vertical;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: #FFFFFF;
+    color: var(--ink);
+    font: 12px/1.45 'DM Sans', sans-serif;
+}
+
+.project-sprint-review-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.project-sprint-request-changes {
+    padding: 8px 10px;
+    border: 1px solid #E8C9A0;
+    border-radius: 8px;
+    background: #FFF7E8;
+    color: #8A510D;
+    font: 700 11px 'DM Sans', sans-serif;
+    cursor: pointer;
+}
+
 .project-sprint-remove {
     position: absolute;
     top: 5px;
@@ -4708,6 +4764,20 @@ body.dark-mode .project-sprint-remove:focus-visible,
 [data-theme="dark"] .project-sprint-remove:focus-visible {
     background: #451A1A;
     color: #FCA5A5;
+}
+
+body.dark-mode .project-sprint-review-form textarea,
+[data-theme="dark"] .project-sprint-review-form textarea {
+    border-color: #3F3F46;
+    background: #24242F;
+    color: #E4E4E7;
+}
+
+body.dark-mode .project-sprint-request-changes,
+[data-theme="dark"] .project-sprint-request-changes {
+    border-color: #854D0E;
+    background: #422006;
+    color: #FDE68A;
 }
 
 body.dark-mode .project-task-create-sprint-panel h4,
@@ -8896,5 +8966,73 @@ body.dark-mode .admin-form-group label {
 
     .project-invite-modal {
         max-height: none;
+    }
+}
+
+#board-columns {
+    scrollbar-color: transparent transparent;
+    scrollbar-width: thin;
+}
+
+#board-columns::-webkit-scrollbar {
+    height: 8px;
+}
+
+#board-columns::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#board-columns::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: transparent;
+}
+
+#board-columns.is-scrolling {
+    scrollbar-color: #9A9A9A transparent;
+}
+
+#board-columns.is-scrolling::-webkit-scrollbar-thumb {
+    background: #9A9A9A;
+}
+
+@media (min-width: 1024px) and (max-width: 1536px) {
+    #board-columns {
+        min-width: 0;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: clamp(8px, .9vw, 12px);
+        overflow-x: auto;
+        padding-bottom: 4px;
+    }
+
+    #board-columns > .column {
+        min-width: 0;
+        padding: clamp(8px, .8vw, 11px);
+    }
+
+    #board-columns .column-header {
+        gap: 5px;
+    }
+
+    #board-columns .column-header h3 {
+        min-width: 0;
+        font-size: clamp(10px, .85vw, 12px);
+        overflow-wrap: anywhere;
+    }
+
+    #board-columns .task-card {
+        min-width: 0;
+        padding: clamp(8px, .8vw, 11px);
+    }
+
+    #board-columns .task-card h4,
+    #board-columns .task-card p,
+    #board-columns .task-card small {
+        overflow-wrap: anywhere;
+    }
+
+    #board-columns .task-meta,
+    #board-columns .card-footer {
+        flex-wrap: wrap;
+        gap: 6px;
     }
 }

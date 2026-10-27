@@ -75,29 +75,17 @@ export function renderWorkspaceSummary() {
     const dueDate = new Date(`${task.date}T00:00:00`)
     return !Number.isNaN(dueDate.getTime()) && dueDate >= weekStart && dueDate <= weekEnd
   })
-  const projectMembers = activeProject
-    ? [
-      ...(activeProject.creatorEmail || activeProject.creatorFirebaseUid
-        ? [{
-          firebaseUid: activeProject.creatorFirebaseUid,
-          email: activeProject.creatorEmail,
-          name: activeProject.creatorName,
-          initials: activeProject.creatorInitials,
-          tone: activeProject.creatorTone,
-          profileImage: activeProject.creatorProfileImage ||
-            (activeProject.creatorFirebaseUid === currentUser.uid
-              ? currentUser.profileImage || currentUser.photoURL || ''
-              : '')
-        }]
-        : []),
-      ...(activeProject.acceptedMembers || [])
-    ]
-    : accessibleMembers
   const statsMembers = activeProject
-    ? [...new Map(projectMembers
-      .filter(member => member.email || member.firebaseUid)
+    ? [...new Map((activeProject.acceptedMembers || [])
+      .filter(member => {
+        const isProjectOwner = Boolean(
+          (activeProject.creatorFirebaseUid && member.firebaseUid === activeProject.creatorFirebaseUid) ||
+          (activeProject.creatorEmail && member.email?.trim().toLowerCase() === activeProject.creatorEmail.trim().toLowerCase())
+        )
+        return !isProjectOwner && (member.email || member.firebaseUid)
+      })
       .map(member => [
-        member.firebaseUid || member.email.trim().toLowerCase(),
+        member.email?.trim().toLowerCase() || member.firebaseUid,
         member
       ])).values()]
     : accessibleMembers

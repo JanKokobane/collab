@@ -318,12 +318,18 @@ export function openProjectProgressAside(task) {
   const sprintList = make('div', 'project-sprint-list project-progress-aside-sprints')
   sprints.forEach(sprint => {
     const sprintStatus = sprint.status || 'Upcoming'
-    const row = make('span', 'project-sprint-chip')
+    const row = make('div', 'project-sprint-chip project-progress-aside-sprint')
     row.append(
       make('strong', '', sprint.name || 'Untitled sprint'),
       make('small', '', sprintStatus),
       make('small', 'project-sprint-assignee', `Assigned to ${sprintLeadName(project, sprint)}`)
     )
+    if (sprint.submissionNote) {
+      row.append(make('p', 'project-sprint-submission-note', sprint.submissionNote))
+    }
+    if (sprint.reviewComment) {
+      row.append(make('p', 'project-sprint-review-comment', `Owner feedback: ${sprint.reviewComment}`))
+    }
     if (isProjectOwner) {
       const removeButton = make('button', 'project-sprint-remove', '×')
       removeButton.type = 'button'
@@ -332,35 +338,130 @@ export function openProjectProgressAside(task) {
       removeButton.addEventListener('click', () => removeProjectSprint(project, sprint, task, removeButton))
       row.append(removeButton)
     }
-    if (
-      currentUid &&
-      sprint.assigneeFirebaseUid === currentUid &&
-      sprint.status !== 'Completed'
-    ) {
-      const completeButton = make('button', 'project-progress-aside-complete', 'Complete sprint')
-      completeButton.type = 'button'
-      completeButton.addEventListener('click', async () => {
-        const restoreButton = setDashboardButtonLoading(completeButton, 'Saving…')
+
+    if (currentUid && sprint.assigneeFirebaseUid === currentUid &&
+      !['Completed', 'Pending Review'].includes(sprint.status)) {
+      const submissionForm = document.createElement('form')
+      submissionForm.className = 'project-sprint-review-form'
+      const submissionInput = document.createElement('textarea')
+      submissionInput.rows = 3
+      submissionInput.maxLength = 5000
+      submissionInput.required = true
+      submissionInput.placeholder = sprint.status === 'Changes Requested'
+        ? 'Describe your updates before resubmitting…'
+        : 'Summarize the completed sprint work for the project owner…'
+      submissionInput.setAttribute('aria-label', `Submission note for ${sprint.name}`)
+      const submitButton = make(
+        'button',
+        'project-progress-aside-complete',
+        isProjectOwner
+          ? 'Complete sprint'
+          : sprint.status === 'Changes Requested'
+            ? 'Resubmit for review'
+            : 'Submit for review'
+      )
+      submitButton.type = 'submit'
+      submissionForm.append(submissionInput, submitButton)
+      submissionForm.addEventListener('submit', async event => {
+        event.preventDefault()
+        const submissionNote = submissionInput.value.trim()
+        if (!submissionNote) {
+          submissionInput.focus()
+          return
+        }
+        const restoreButton = setDashboardButtonLoading(submitButton, 'Submitting…')
         try {
           const response = await api.post(
-            `/projects/${encodeURIComponent(project.projectId)}/sprints/${encodeURIComponent(sprint.name)}/complete`
+            `/projects/${encodeURIComponent(project.projectId)}/sprints/${encodeURIComponent(sprint.name)}/submit`,
+            { submissionNote }
           )
           const savedProject = response?.data?.project
           if (!Array.isArray(savedProject?.sprints)) {
-            throw new Error('The server did not confirm completing this sprint.')
+            throw new Error('The server did not confirm the sprint submission.')
           }
           project.sprints = savedProject.sprints
           hub.renderTasks?.()
-          addAuditLog('Sprint completed', `${currentUser.name} completed "${sprint.name}" in ${project.name}.`, 'check')
-          showDashboardToast(`"${sprint.name}" marked as completed.`, 'success')
+          addAuditLog(
+            isProjectOwner ? 'Sprint completed' : 'Sprint submitted for review',
+            `${currentUser.name} ${isProjectOwner ? 'completed' : 'submitted'} "${sprint.name}" in ${project.name}.`,
+            isProjectOwner ? 'check' : 'send'
+          )
+          showDashboardToast(
+            isProjectOwner
+              ? `"${sprint.name}" completed.`
+              : `"${sprint.name}" submitted to the project owner for review.`,
+            'success'
+          )
           close()
           openProjectProgressAside(task)
         } catch (error) {
           restoreButton()
-          showDashboardToast(error.message || 'The sprint could not be completed.', 'error')
+          showDashboardToast(error.message || 'The sprint could not be submitted.', 'error')
         }
       })
-      row.append(completeButton)
+      row.append(submissionForm)
+    }
+
+    if (isProjectOwner && sprint.status === 'Pending Review') {
+      const reviewForm = document.createElement('form')
+      reviewForm.className = 'project-sprint-review-form'
+      const reviewInput = document.createElement('textarea')
+      reviewInput.rows = 3
+      reviewInput.maxLength = 5000
+      reviewInput.placeholder = 'Add optional feedback for the sprint lead…'
+      reviewInput.setAttribute('aria-label', `Review comment for ${sprint.name}`)
+      const actions = make('div', 'project-sprint-review-actions')
+      const acceptButton = make('button', 'project-progress-aside-complete', 'Accept submission')
+      acceptButton.type = 'button'
+      const changesButton = make('button', 'project-sprint-request-changes', 'Request changes')
+      changesButton.type = 'submit'
+      actions.append(acceptButton, changesButton)
+      reviewForm.append(reviewInput, actions)
+
+      const submitReview = async (decision, button) => {
+        const comment = reviewInput.value.trim()
+        if (decision === 'request_changes' && !comment) {
+          reviewInput.required = true
+          reviewInput.placeholder = 'Explain what needs to change before returning the sprint…'
+          reviewInput.focus()
+          return
+        }
+        reviewInput.required = false
+        const restoreButton = setDashboardButtonLoading(button, decision === 'accept' ? 'Accepting…' : 'Sending…')
+        try {
+          const response = await api.post(
+            `/projects/${encodeURIComponent(project.projectId)}/sprints/${encodeURIComponent(sprint.name)}/review`,
+            { decision, comment }
+          )
+          const savedProject = response?.data?.project
+          if (!Array.isArray(savedProject?.sprints)) {
+            throw new Error('The server did not confirm the sprint review.')
+          }
+          project.sprints = savedProject.sprints
+          hub.renderTasks?.()
+          addAuditLog(
+            decision === 'accept' ? 'Sprint submission accepted' : 'Sprint changes requested',
+            `${currentUser.name} ${decision === 'accept' ? 'accepted' : 'requested changes to'} "${sprint.name}" in ${project.name}.${comment ? ` ${comment}` : ''}`,
+            decision === 'accept' ? 'check' : 'comment'
+          )
+          showDashboardToast(
+            decision === 'accept' ? `"${sprint.name}" accepted and completed.` : `Changes requested for "${sprint.name}".`,
+            'success'
+          )
+          close()
+          openProjectProgressAside(task)
+        } catch (error) {
+          restoreButton()
+          showDashboardToast(error.message || 'The sprint review could not be saved.', 'error')
+        }
+      }
+
+      acceptButton.addEventListener('click', () => submitReview('accept', acceptButton))
+      reviewForm.addEventListener('submit', event => {
+        event.preventDefault()
+        void submitReview('request_changes', changesButton)
+      })
+      row.append(reviewForm)
     }
     sprintList.append(row)
   })

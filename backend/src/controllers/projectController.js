@@ -309,6 +309,11 @@ const getProjects = async (req, res) => {
                     FROM project_invitations invitation
                     WHERE invitation.project_id = projects.project_id
                       AND invitation.status = 'accepted'
+                      AND (
+                            invitation.invited_firebase_uid IS NULL
+                            OR invitation.invited_firebase_uid <> projects.creator_firebase_uid
+                      )
+                      AND LOWER(invitation.invited_email) <> LOWER(COALESCE(projects.creator_email, ''))
                 ) AS team_member_count,
                 COALESCE(
                     (
@@ -418,6 +423,11 @@ const getProject = async (req, res) => {
                     FROM project_invitations invitation
                     WHERE invitation.project_id = projects.project_id
                       AND invitation.status = 'accepted'
+                      AND (
+                            invitation.invited_firebase_uid IS NULL
+                            OR invitation.invited_firebase_uid <> projects.creator_firebase_uid
+                      )
+                      AND LOWER(invitation.invited_email) <> LOWER(COALESCE(projects.creator_email, ''))
                 ) AS team_member_count,
                 COALESCE(
                     (
@@ -901,12 +911,16 @@ const updateProject = async (req, res) => {
 
 
 /**
- * POST /api/projects/:projectId/sprints/:sprintName/complete
+ * POST /api/projects/:projectId/sprints/:sprintName/submit
  */
-const completeProjectSprint = async (req, res) => {
+const submitProjectSprint = async (req, res) => {
+    let client;
     try {
         const { projectId, sprintName } = req.params;
         const firebaseUid = req.firebaseUid;
+        const submissionNote = typeof req.body?.submissionNote === 'string'
+            ? req.body.submissionNote.trim()
+            : '';
 
         if (!projectId || !sprintName?.trim()) {
             return res.status(400).json({
@@ -915,83 +929,250 @@ const completeProjectSprint = async (req, res) => {
                 message: 'Project and sprint are required.'
             });
         }
-
-        const result = await query(
-            `
-                UPDATE projects AS project
-                SET
-                    sprints = (
-                        SELECT jsonb_agg(
-                            CASE
-                                WHEN sprint_row.sprint->>'name' = $2
-                                    THEN jsonb_set(
-                                        sprint_row.sprint,
-                                        '{status}',
-                                        '"Completed"'::jsonb,
-                                        true
-                                    )
-                                ELSE sprint_row.sprint
-                            END
-                            ORDER BY sprint_row.ordinality
-                        )
-                        FROM jsonb_array_elements(COALESCE(project.sprints, '[]'::jsonb))
-                            WITH ORDINALITY AS sprint_row(sprint, ordinality)
-                    ),
-                    updated_at = NOW()
-                WHERE project.project_id = $1
-                  AND EXISTS (
-                      SELECT 1
-                      FROM jsonb_array_elements(COALESCE(project.sprints, '[]'::jsonb)) AS sprint_row(sprint)
-                      WHERE sprint_row.sprint->>'name' = $2
-                        AND sprint_row.sprint->>'assigneeFirebaseUid' = $3
-                  )
-                RETURNING project.project_id, project.sprints
-            `,
-            [projectId, sprintName.trim(), firebaseUid]
-        );
-
-        if (!result.rowCount) {
-            const projectResult = await query(
-                'SELECT sprints FROM projects WHERE project_id = $1',
-                [projectId]
-            );
-            if (!projectResult.rowCount) {
-                return res.status(404).json({
-                    success: false,
-                    code: 'PROJECT_NOT_FOUND',
-                    message: 'Project not found.'
-                });
-            }
-
-            const sprints = Array.isArray(projectResult.rows[0].sprints)
-                ? projectResult.rows[0].sprints
-                : [];
-            if (!sprints.some(sprint => sprint?.name === sprintName.trim())) {
-                return res.status(404).json({
-                    success: false,
-                    code: 'SPRINT_NOT_FOUND',
-                    message: 'Sprint not found.'
-                });
-            }
-            return res.status(403).json({
+        if (!submissionNote || submissionNote.length > 5000) {
+            return res.status(400).json({
                 success: false,
-                code: 'SPRINT_COMPLETION_FORBIDDEN',
-                message: 'Only the assigned sprint lead can complete this sprint.'
+                code: 'SPRINT_SUBMISSION_NOTE_REQUIRED',
+                message: 'Add a submission note of up to 5,000 characters.'
             });
         }
 
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const projectResult = await client.query(
+            `SELECT project_id, name, creator_firebase_uid, creator_initials, sprints
+             FROM projects
+             WHERE project_id = $1
+             FOR UPDATE`,
+            [projectId]
+        );
+        if (!projectResult.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                success: false,
+                code: 'PROJECT_NOT_FOUND',
+                message: 'Project not found.'
+            });
+        }
+
+        const project = projectResult.rows[0];
+        const sprints = Array.isArray(project.sprints) ? project.sprints : [];
+        const sprintIndex = sprints.findIndex(sprint => sprint?.name === sprintName.trim());
+        if (sprintIndex < 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                success: false,
+                code: 'SPRINT_NOT_FOUND',
+                message: 'Sprint not found.'
+            });
+        }
+
+        const sprint = sprints[sprintIndex];
+        if (sprint.assigneeFirebaseUid !== firebaseUid) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({
+                success: false,
+                code: 'SPRINT_COMPLETION_FORBIDDEN',
+                message: 'Only the assigned sprint lead can submit this sprint for review.'
+            });
+        }
+        if (sprint.status === 'Completed' || sprint.status === 'Pending Review') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'SPRINT_NOT_SUBMITTABLE',
+                message: sprint.status === 'Completed'
+                    ? 'This sprint has already been accepted.'
+                    : 'This sprint is already awaiting review.'
+            });
+        }
+
+        const submittedByName = req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'Sprint lead';
+        const submittedAt = new Date().toISOString();
+        sprints[sprintIndex] = {
+            ...sprint,
+            status: project.creator_firebase_uid === firebaseUid ? 'Completed' : 'Pending Review',
+            submissionNote,
+            submittedByFirebaseUid: firebaseUid,
+            submittedByName,
+            submittedAt,
+            reviewComment: ''
+        };
+        const saved = await client.query(
+            `UPDATE projects
+             SET sprints = $1::jsonb, updated_at = NOW()
+             WHERE project_id = $2
+             RETURNING project_id, sprints`,
+            [JSON.stringify(sprints), projectId]
+        );
+
+        if (project.creator_firebase_uid !== firebaseUid) {
+            await client.query(
+                `INSERT INTO notifications (
+                    recipient_firebase_uid, project_id, type, title, detail, avatar, tone_class
+                 )
+                 VALUES ($1, $2, 'sprint_submitted_for_review', $3, $4, $5, 'orange-bg')`,
+                [
+                    project.creator_firebase_uid,
+                    projectId,
+                    'Sprint ready for review',
+                    `${submittedByName} submitted "${sprint.name}" in "${project.name}" for your review.`,
+                    project.creator_initials || '•'
+                ]
+            );
+        }
+        await client.query('COMMIT');
+
         return res.status(200).json({
             success: true,
-            message: 'Sprint completed successfully.',
-            data: { project: result.rows[0] }
+            message: project.creator_firebase_uid === firebaseUid
+                ? 'Sprint completed successfully.'
+                : 'Sprint submitted for owner review.',
+            data: { project: saved.rows[0] }
         });
     } catch (error) {
-        console.error('Complete project sprint error:', error);
+        await client?.query('ROLLBACK').catch(rollbackError => {
+            console.error('Sprint submission rollback error:', rollbackError);
+        });
+        console.error('Submit project sprint error:', error);
         return res.status(500).json({
             success: false,
-            code: 'SPRINT_COMPLETION_FAILED',
-            message: 'The sprint could not be completed.'
+            code: 'SPRINT_SUBMISSION_FAILED',
+            message: 'The sprint could not be submitted for review.'
         });
+    } finally {
+        client?.release();
+    }
+};
+
+const reviewProjectSprint = async (req, res) => {
+    let client;
+    try {
+        const { projectId, sprintName } = req.params;
+        const firebaseUid = req.firebaseUid;
+        const decision = typeof req.body?.decision === 'string' ? req.body.decision.trim() : '';
+        const comment = typeof req.body?.comment === 'string' ? req.body.comment.trim() : '';
+
+        if (!projectId || !sprintName?.trim() || !['accept', 'request_changes'].includes(decision)) {
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_SPRINT_REVIEW',
+                message: 'Choose whether to accept the sprint or request changes.'
+            });
+        }
+        if (comment.length > 5000 || (decision === 'request_changes' && !comment)) {
+            return res.status(400).json({
+                success: false,
+                code: 'SPRINT_REVIEW_COMMENT_REQUIRED',
+                message: decision === 'request_changes'
+                    ? 'Add a comment explaining the requested changes (up to 5,000 characters).'
+                    : 'The review comment cannot exceed 5,000 characters.'
+            });
+        }
+
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const projectResult = await client.query(
+            `SELECT project_id, name, creator_firebase_uid, creator_initials, sprints
+             FROM projects
+             WHERE project_id = $1
+             FOR UPDATE`,
+            [projectId]
+        );
+        if (!projectResult.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                success: false,
+                code: 'PROJECT_NOT_FOUND',
+                message: 'Project not found.'
+            });
+        }
+
+        const project = projectResult.rows[0];
+        if (project.creator_firebase_uid !== firebaseUid) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({
+                success: false,
+                code: 'SPRINT_REVIEW_FORBIDDEN',
+                message: 'Only the project owner can review sprint submissions.'
+            });
+        }
+        const sprints = Array.isArray(project.sprints) ? project.sprints : [];
+        const sprintIndex = sprints.findIndex(sprint => sprint?.name === sprintName.trim());
+        if (sprintIndex < 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                success: false,
+                code: 'SPRINT_NOT_FOUND',
+                message: 'Sprint not found.'
+            });
+        }
+
+        const sprint = sprints[sprintIndex];
+        if (sprint.status !== 'Pending Review') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'SPRINT_NOT_AWAITING_REVIEW',
+                message: 'This sprint is not awaiting review.'
+            });
+        }
+
+        const reviewedAt = new Date().toISOString();
+        const reviewerName = req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'Project owner';
+        sprints[sprintIndex] = {
+            ...sprint,
+            status: decision === 'accept' ? 'Completed' : 'Changes Requested',
+            reviewComment: comment,
+            reviewedByFirebaseUid: firebaseUid,
+            reviewedByName: reviewerName,
+            reviewedAt
+        };
+        const saved = await client.query(
+            `UPDATE projects
+             SET sprints = $1::jsonb, updated_at = NOW()
+             WHERE project_id = $2
+             RETURNING project_id, sprints`,
+            [JSON.stringify(sprints), projectId]
+        );
+        if (sprint.assigneeFirebaseUid && sprint.assigneeFirebaseUid !== firebaseUid) {
+            await client.query(
+                `INSERT INTO notifications (
+                    recipient_firebase_uid, project_id, type, title, detail, avatar, tone_class
+                 )
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [
+                    sprint.assigneeFirebaseUid,
+                    projectId,
+                    decision === 'accept' ? 'sprint_submission_accepted' : 'sprint_changes_requested',
+                    decision === 'accept' ? 'Sprint submission accepted' : 'Changes requested on sprint',
+                    decision === 'accept'
+                        ? `Your submission for "${sprint.name}" in "${project.name}" was accepted.`
+                        : `The project owner requested changes to "${sprint.name}" in "${project.name}": ${comment}`,
+                    project.creator_initials || '•',
+                    decision === 'accept' ? 'green-bg' : 'orange-bg'
+                ]
+            );
+        }
+        await client.query('COMMIT');
+
+        return res.status(200).json({
+            success: true,
+            message: decision === 'accept' ? 'Sprint submission accepted.' : 'Changes requested on sprint.',
+            data: { project: saved.rows[0] }
+        });
+    } catch (error) {
+        await client?.query('ROLLBACK').catch(rollbackError => {
+            console.error('Sprint review rollback error:', rollbackError);
+        });
+        console.error('Review project sprint error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'SPRINT_REVIEW_FAILED',
+            message: 'The sprint submission could not be reviewed.'
+        });
+    } finally {
+        client?.release();
     }
 };
 
@@ -1075,6 +1256,7 @@ module.exports = {
     getProjects,
     getProject,
     updateProject,
-    completeProjectSprint,
+    submitProjectSprint,
+    reviewProjectSprint,
     deleteProject
 };

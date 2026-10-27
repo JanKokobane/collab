@@ -10,7 +10,7 @@ import {
   setActiveFilter,
   setActiveDisplayMode
 } from './state.js'
-import { renderTasks, renderListView, getFilteredTasks } from './tasks.js'
+import { renderTasks, renderListView, getFilteredTasks } from './tasks.js?v=20261027-sprint-review'
 import { openCreateProjectModal, openAddSprintModal, openInviteCollaboratorModal, openManageCollaboratorsModal } from './projects.js'
 import { toLocalDateKey } from './dateUtils.js'
 import {
@@ -194,6 +194,15 @@ export function initEventListeners() {
   const viewListBtn = document.querySelector('#view-list-btn')
   const boardColumns = document.querySelector('#board-columns')
   const listViewContainer = document.querySelector('#list-view-container')
+  let boardScrollTimer
+
+  boardColumns?.addEventListener('scroll', () => {
+    boardColumns.classList.add('is-scrolling')
+    clearTimeout(boardScrollTimer)
+    boardScrollTimer = window.setTimeout(() => {
+      boardColumns.classList.remove('is-scrolling')
+    }, 850)
+  }, { passive: true })
 
   viewBoardBtn?.addEventListener('click', () => {
     setActiveDisplayMode('board')

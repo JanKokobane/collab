@@ -22,7 +22,7 @@ import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } f
 import { createScheduleCalendarPicker } from './calendar.js'
 import { api } from './api.js'
 import { setDashboardButtonLoading, showDashboardToast } from './modalChrome.js'
-import { openProjectProgressAside } from './projectProgressAside.js'
+import { openProjectProgressAside } from './projectProgressAside.js?v=20261027-sprint-review'
 
 // ============================================================
 // TASKS & BOARD MANAGEMENT
@@ -321,60 +321,12 @@ export function taskCard(task) {
     footer.append(progress)
   }
 
-  const moveRow = make('div', 'card-move-row')
-  if (task.statusUpdating) {
-    const loading = make('span', 'task-status-loading')
-    const spinner = make('span', 'form-submit-spinner')
-    spinner.setAttribute('aria-hidden', 'true')
-    loading.append(spinner, make('span', '', 'Updating…'))
-    loading.setAttribute('role', 'status')
-    moveRow.append(loading)
-  } else if (canMoveTask && task.status !== 'Backlog') {
-    const btnBacklog = make('button', 'card-move-btn')
-    btnBacklog.type = 'button'
-    btnBacklog.innerHTML = `${getSvg('arrowLeft', 'arrow-svg', 11, 11)} <span>Backlog</span>`
-    btnBacklog.addEventListener('click', e => { e.stopPropagation(); moveTaskStatus(task.id, 'Backlog') })
-    moveRow.append(btnBacklog)
-  }
-  if (!task.statusUpdating && canMoveTask && task.status !== 'To do') {
-    const btnTodo = make('button', 'card-move-btn')
-    btnTodo.type = 'button'
-    btnTodo.innerHTML = `${getSvg('arrowLeft', 'arrow-svg', 11, 11)} <span>To do</span>`
-    btnTodo.addEventListener('click', e => { e.stopPropagation(); moveTaskStatus(task.id, 'To do') })
-    moveRow.append(btnTodo)
-  }
-  if (!task.statusUpdating && canMoveTask && task.status !== 'In progress') {
-    const btnProg = make('button', 'card-move-btn')
-    btnProg.type = 'button'
-    btnProg.innerHTML = `<span>In prog</span> ${getSvg('arrowRight', 'arrow-svg', 11, 11)}`
-    btnProg.addEventListener('click', e => { e.stopPropagation(); moveTaskStatus(task.id, 'In progress') })
-    moveRow.append(btnProg)
-  }
-  if (!task.statusUpdating && canMoveTask && task.status !== 'Blocked') {
-    const btnBlocked = make('button', 'card-move-btn task-move-blocked')
-    btnBlocked.type = 'button'
-    btnBlocked.textContent = 'Blocked'
-    btnBlocked.addEventListener('click', event => {
-      event.stopPropagation()
-      moveTaskStatus(task.id, 'Blocked')
-    })
-    moveRow.append(btnBlocked)
-  }
-  if (!task.statusUpdating && canMoveTask && task.status !== 'Done') {
-    const btnDone = make('button', 'card-move-btn')
-    btnDone.type = 'button'
-    btnDone.innerHTML = `${getSvg('check', 'check-svg', 11, 11)} <span>Done</span>`
-    btnDone.addEventListener('click', e => { e.stopPropagation(); moveTaskStatus(task.id, 'Done') })
-    moveRow.append(btnDone)
-  }
-
   card.append(
     top,
     title,
     ...(discussionButton ? [discussionButton] : []),
     meta,
-    footer,
-    moveRow
+    footer
   )
   return card
 }
