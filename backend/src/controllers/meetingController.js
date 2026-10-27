@@ -70,6 +70,202 @@ const getMeetingContext = async (projectId, meetingId, firebaseUid) => {
     return result.rows[0] || null;
 };
 
+const getProjectMeetingLiveStatus = async (req, res) => {
+    const { projectId, meetingId } = req.params;
+    if (!meetingIdPattern.test(meetingId || '')) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_MEETING_ID',
+            message: 'Meeting ID is invalid.'
+        });
+    }
+    try {
+        const meeting = await getMeetingContext(projectId, meetingId, req.firebaseUid);
+        if (!meeting) return res.status(404).json({
+            success: false,
+            code: 'MEETING_NOT_FOUND_OR_FORBIDDEN',
+            message: 'Meeting not found or you are not invited to it.'
+        });
+        const result = await query(
+            `SELECT meeting.ended_at, meeting.host_firebase_uid,
+                    project.creator_firebase_uid,
+                    share.firebase_uid AS screen_sharer_firebase_uid,
+                    share.participant_session_id AS screen_sharer_session_id,
+                    share.lease_expires_at AS screen_share_lease_expires_at
+             FROM project_meetings meeting
+             JOIN projects project ON project.project_id = meeting.project_id
+             LEFT JOIN project_meeting_screen_shares share
+               ON share.meeting_id = meeting.meeting_id
+              AND share.lease_expires_at > NOW()
+             WHERE meeting.project_id = $1
+               AND meeting.meeting_id = $2::uuid`,
+            [projectId, meetingId]
+        );
+        const record = result.rows[0];
+        return res.status(200).json({
+            success: true,
+            data: {
+                endedAt: record.ended_at,
+                canEnd: record.host_firebase_uid === req.firebaseUid ||
+                    record.creator_firebase_uid === req.firebaseUid,
+                screenShare: record.screen_sharer_firebase_uid
+                    ? {
+                        firebaseUid: record.screen_sharer_firebase_uid,
+                        participantSessionId: record.screen_sharer_session_id,
+                        leaseExpiresAt: record.screen_share_lease_expires_at
+                    }
+                    : null
+            }
+        });
+    } catch (error) {
+        console.error('Get project meeting live status error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'PROJECT_MEETING_STATUS_FAILED',
+            message: 'Meeting status could not be retrieved.'
+        });
+    }
+};
+
+const updateProjectMeetingScreenShare = async (req, res) => {
+    const { projectId, meetingId } = req.params;
+    const action = req.body?.action;
+    const participantSessionId = typeof req.body?.participantSessionId === 'string'
+        ? req.body.participantSessionId.trim()
+        : '';
+    if (!meetingIdPattern.test(meetingId || '') ||
+        !['claim', 'heartbeat', 'release'].includes(action) ||
+        !participantSessionId || participantSessionId.length > 200) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_SCREEN_SHARE_REQUEST',
+            message: 'A valid meeting, action, and participant session are required.'
+        });
+    }
+    try {
+        const meeting = await getMeetingContext(projectId, meetingId, req.firebaseUid);
+        if (!meeting) return res.status(404).json({
+            success: false,
+            code: 'MEETING_NOT_FOUND_OR_FORBIDDEN',
+            message: 'Meeting not found or you are not invited to it.'
+        });
+        const activeMeeting = await query(
+            `SELECT ended_at FROM project_meetings
+             WHERE project_id = $1 AND meeting_id = $2::uuid`,
+            [projectId, meetingId]
+        );
+        if (!activeMeeting.rowCount || activeMeeting.rows[0].ended_at) {
+            return res.status(410).json({
+                success: false,
+                code: 'MEETING_ENDED',
+                message: 'This meeting has ended.'
+            });
+        }
+
+        if (action === 'release') {
+            await query(
+                `DELETE FROM project_meeting_screen_shares
+                 WHERE meeting_id = $1::uuid
+                   AND firebase_uid = $2
+                   AND participant_session_id = $3`,
+                [meetingId, req.firebaseUid, participantSessionId]
+            );
+            return res.status(200).json({ success: true, data: { screenShare: null } });
+        }
+
+        const result = await query(
+            `INSERT INTO project_meeting_screen_shares (
+                 meeting_id, firebase_uid, participant_session_id, lease_expires_at
+             )
+             VALUES ($1::uuid, $2, $3, NOW() + INTERVAL '15 seconds')
+             ON CONFLICT (meeting_id) DO UPDATE
+             SET firebase_uid = EXCLUDED.firebase_uid,
+                 participant_session_id = EXCLUDED.participant_session_id,
+                 lease_expires_at = EXCLUDED.lease_expires_at,
+                 updated_at = NOW()
+             WHERE project_meeting_screen_shares.lease_expires_at <= NOW()
+                OR (
+                    project_meeting_screen_shares.firebase_uid = EXCLUDED.firebase_uid
+                    AND project_meeting_screen_shares.participant_session_id = EXCLUDED.participant_session_id
+                )
+             RETURNING firebase_uid, participant_session_id, lease_expires_at`,
+            [meetingId, req.firebaseUid, participantSessionId]
+        );
+        if (!result.rowCount) {
+            return res.status(409).json({
+                success: false,
+                code: 'SCREEN_SHARE_IN_USE',
+                message: 'Someone else is already sharing their screen.'
+            });
+        }
+        return res.status(200).json({
+            success: true,
+            data: {
+                screenShare: {
+                    firebaseUid: result.rows[0].firebase_uid,
+                    participantSessionId: result.rows[0].participant_session_id,
+                    leaseExpiresAt: result.rows[0].lease_expires_at
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Update project meeting screen share error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'PROJECT_MEETING_SCREEN_SHARE_FAILED',
+            message: 'Screen sharing status could not be updated.'
+        });
+    }
+};
+
+const endProjectMeeting = async (req, res) => {
+    const { projectId, meetingId } = req.params;
+    if (!meetingIdPattern.test(meetingId || '')) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_MEETING_ID',
+            message: 'Meeting ID is invalid.'
+        });
+    }
+    try {
+        const result = await query(
+            `UPDATE project_meetings meeting
+             SET ended_at = COALESCE(meeting.ended_at, NOW()),
+                 ended_by_firebase_uid = COALESCE(meeting.ended_by_firebase_uid, $3)
+             FROM projects project
+             WHERE meeting.project_id = $1
+               AND meeting.meeting_id = $2::uuid
+               AND project.project_id = meeting.project_id
+               AND (
+                   meeting.host_firebase_uid = $3
+                   OR project.creator_firebase_uid = $3
+               )
+             RETURNING meeting.meeting_id, meeting.ended_at`,
+            [projectId, meetingId, req.firebaseUid]
+        );
+        if (!result.rowCount) return res.status(404).json({
+            success: false,
+            code: 'MEETING_NOT_FOUND_OR_FORBIDDEN',
+            message: 'Only the meeting host or project owner can end this meeting for everyone.'
+        });
+        await query(
+            'DELETE FROM project_meeting_screen_shares WHERE meeting_id = $1::uuid',
+            [meetingId]
+        );
+        return res.status(200).json({
+            success: true,
+            data: { meetingId: result.rows[0].meeting_id, endedAt: result.rows[0].ended_at }
+        });
+    } catch (error) {
+        console.error('End project meeting error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'PROJECT_MEETING_END_FAILED',
+            message: 'The meeting could not be ended.'
+        });
+    }
+};
+
 const getProjectMeetingNotes = async (req, res) => {
     if (!meetingIdPattern.test(req.params.meetingId)) {
         return res.status(400).json({ success: false, code: 'INVALID_MEETING_ID', message: 'Meeting ID is invalid.' });
@@ -352,11 +548,22 @@ const createMeetingChatMessage = async (req, res) => {
                 INSERT INTO project_meeting_messages (
                     meeting_id, sender_firebase_uid, sender_name, content
                 )
-                VALUES ($1::uuid, $2, $3, $4)
+                SELECT meeting.meeting_id, $2, $3, $4
+                FROM project_meetings meeting
+                WHERE meeting.project_id = $5
+                  AND meeting.meeting_id = $1::uuid
+                  AND meeting.ended_at IS NULL
                 RETURNING message_id, sender_firebase_uid, sender_name, content, created_at
             `,
-            [req.params.meetingId, req.firebaseUid, senderName, content]
+            [req.params.meetingId, req.firebaseUid, senderName, content, project.project_id]
         );
+        if (!result.rowCount) {
+            return res.status(410).json({
+                success: false,
+                code: 'MEETING_ENDED',
+                message: 'This meeting has ended.'
+            });
+        }
         return res.status(201).json({
             success: true,
             data: { message: result.rows[0] }
@@ -399,6 +606,7 @@ const getMeetings = async (req, res) => {
                     host_firebase_uid,
                     host_name,
                     attendee_firebase_uids,
+                    ended_at,
                     created_at,
                     updated_at
                 FROM project_meetings
@@ -534,7 +742,7 @@ const getMeteredMeetingToken = async (req, res) => {
 
         const result = await query(
             `
-                SELECT meeting_id, host_firebase_uid
+                SELECT meeting_id, host_firebase_uid, ended_at
                 FROM project_meetings
                 WHERE project_id = $1
                   AND meeting_id = $2::uuid
@@ -549,6 +757,13 @@ const getMeteredMeetingToken = async (req, res) => {
                 success: false,
                 code: 'MEETING_NOT_FOUND_OR_FORBIDDEN',
                 message: 'Meeting not found or you are not invited to it.'
+            });
+        }
+        if (meeting.ended_at) {
+            return res.status(410).json({
+                success: false,
+                code: 'MEETING_ENDED',
+                message: 'This meeting has ended.'
             });
         }
 
@@ -877,10 +1092,13 @@ module.exports = {
     createMeeting,
     dispatchProjectMeetingActionItem,
     deleteMeeting,
+    endProjectMeeting,
     getProjectMeetingActionItems,
+    getProjectMeetingLiveStatus,
     getProjectMeetingNotes,
     getMeetingChatMessages,
     getMeteredMeetingToken,
     saveProjectMeetingNotes,
+    updateProjectMeetingScreenShare,
     getMeetings
 };

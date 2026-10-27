@@ -30,12 +30,15 @@ const {
     createMeeting,
     dispatchProjectMeetingActionItem,
     deleteMeeting,
+    endProjectMeeting,
     getProjectMeetingActionItems,
+    getProjectMeetingLiveStatus,
     getProjectMeetingNotes,
     getMeetingChatMessages,
     getMeetings,
     getMeteredMeetingToken,
-    saveProjectMeetingNotes
+    saveProjectMeetingNotes,
+    updateProjectMeetingScreenShare
 } = require('../controllers/meetingController');
 const {
     createProjectReminder,
@@ -103,6 +106,9 @@ router.delete('/:projectId/tasks/:taskId', deleteProjectTask);
 router.get('/:projectId/meetings', getMeetings);
 router.post('/:projectId/meetings', createMeeting);
 router.post('/:projectId/meetings/:meetingId/token', getMeteredMeetingToken);
+router.get('/:projectId/meetings/:meetingId/live-status', getProjectMeetingLiveStatus);
+router.post('/:projectId/meetings/:meetingId/screen-share', updateProjectMeetingScreenShare);
+router.post('/:projectId/meetings/:meetingId/end', endProjectMeeting);
 router.get('/:projectId/meetings/:meetingId/messages', getMeetingChatMessages);
 router.post('/:projectId/meetings/:meetingId/messages', createMeetingChatMessage);
 router.get('/:projectId/meetings/:meetingId/notes', getProjectMeetingNotes);
