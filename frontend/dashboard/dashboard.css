@@ -4027,6 +4027,69 @@ body.dark-mode .admin-project-action-option:focus-visible,
     vertical-align: middle;
 }
 
+@media (min-width: 1101px) {
+    .admin-projects-card .admin-table {
+        width: 100%;
+        min-width: 0;
+        table-layout: fixed;
+    }
+
+    .admin-projects-card .admin-table th,
+    .admin-projects-card .admin-table td {
+        min-width: 0;
+        padding-inline: 10px;
+    }
+
+    .admin-projects-card .admin-table th:nth-child(1),
+    .admin-projects-card .admin-table td:nth-child(1) {
+        width: 25%;
+    }
+
+    .admin-projects-card .admin-table th:nth-child(2),
+    .admin-projects-card .admin-table td:nth-child(2) {
+        width: 18%;
+    }
+
+    .admin-projects-card .admin-table th:nth-child(3),
+    .admin-projects-card .admin-table td:nth-child(3) {
+        width: 10%;
+    }
+
+    .admin-projects-card .admin-table th:nth-child(4),
+    .admin-projects-card .admin-table td:nth-child(4) {
+        width: 22%;
+    }
+
+    .admin-projects-card .admin-table th:nth-child(5),
+    .admin-projects-card .admin-table td:nth-child(5) {
+        width: 15%;
+    }
+
+    .admin-projects-card .admin-table th:nth-child(6),
+    .admin-projects-card .admin-table td:nth-child(6) {
+        width: 10%;
+    }
+
+    .admin-projects-card .project-cell,
+    .admin-projects-card .member-cell,
+    .admin-projects-card .member-info {
+        min-width: 0;
+    }
+
+    .admin-projects-card .project-info strong,
+    .admin-projects-card .member-info strong,
+    .admin-projects-card .member-info small {
+        overflow-wrap: anywhere;
+    }
+
+    .admin-projects-card .collab-type-badge,
+    .admin-projects-card .status-badge {
+        max-width: 100%;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+}
+
 .admin-members-card .admin-table th:nth-child(3),
 .admin-members-card .admin-table td:nth-child(3) {
     width: 130px;
@@ -8781,6 +8844,44 @@ body.dark-mode .admin-form-group label {
 
     .admin-card {
         padding: 18px;
+    }
+
+    .board {
+        min-width: 0;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 12px;
+        overflow-x: hidden;
+    }
+
+    .board .column {
+        min-width: 0;
+        padding: 10px;
+    }
+
+    .board .column-header {
+        gap: 6px;
+    }
+
+    .board .column-header h3 {
+        min-width: 0;
+        font-size: 12px;
+    }
+
+    .board .task-card {
+        min-width: 0;
+        padding: 10px;
+    }
+
+    .board .task-card h4,
+    .board .task-card p,
+    .board .task-card small {
+        overflow-wrap: anywhere;
+    }
+
+    .board .task-meta,
+    .board .card-footer {
+        flex-wrap: wrap;
+        gap: 7px;
     }
 }
 
