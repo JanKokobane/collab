@@ -8737,3 +8737,63 @@ body.dark-mode .admin-form-group label {
 .boldHeading {
     font-weight: 900;
 }
+
+@media (min-width: 1025px) {
+    .sidebar {
+        width: clamp(210px, 16.3vw, 250px);
+        flex-basis: clamp(210px, 16.3vw, 250px);
+    }
+
+    .topbar {
+        height: clamp(56px, 4.2vw, 64px);
+        padding-inline: clamp(16px, 2.1vw, 32px);
+    }
+
+    .workspace {
+        min-width: 0;
+        padding: clamp(16px, 2.1vw, 32px);
+    }
+
+    .page-heading h1 {
+        font-size: clamp(22px, 1.9vw, 28px);
+    }
+
+    .board {
+        grid-template-columns: repeat(5, minmax(clamp(190px, 15vw, 260px), 1fr));
+    }
+}
+
+@media (min-width: 1025px) and (max-width: 1366px) {
+    .stats {
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+
+    .stat-card {
+        min-width: 0;
+        gap: 10px;
+        padding: 14px;
+    }
+
+    .stat-card strong {
+        font-size: 18px;
+    }
+
+    .admin-card {
+        padding: 18px;
+    }
+}
+
+@media (max-height: 800px) {
+    .modal-backdrop {
+        padding-block: 12px;
+    }
+
+    .modal {
+        max-height: min(780px, calc(100vh - 24px), calc(100dvh - 24px));
+    }
+
+    .project-invite-modal {
+        max-height: none;
+    }
+}

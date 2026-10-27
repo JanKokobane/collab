@@ -308,7 +308,7 @@ const getProjects = async (req, res) => {
                     SELECT COUNT(DISTINCT LOWER(invitation.invited_email))::int
                     FROM project_invitations invitation
                     WHERE invitation.project_id = projects.project_id
-                      AND invitation.status IN ('pending', 'accepted')
+                      AND invitation.status = 'accepted'
                 ) AS team_member_count,
                 COALESCE(
                     (
@@ -417,7 +417,7 @@ const getProject = async (req, res) => {
                     SELECT COUNT(DISTINCT LOWER(invitation.invited_email))::int
                     FROM project_invitations invitation
                     WHERE invitation.project_id = projects.project_id
-                      AND invitation.status IN ('pending', 'accepted')
+                      AND invitation.status = 'accepted'
                 ) AS team_member_count,
                 COALESCE(
                     (
