@@ -1,6 +1,6 @@
 import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
-import { projects } from './state.js'
+import { hub, projects } from './state.js'
 
 const SDK_URL = 'https://cdn.metered.ca/sdk/video/1.4.6/sdk.min.js'
 const iconPaths = {
@@ -16,6 +16,15 @@ const iconPaths = {
 
 let sdkLoadPromise
 let activeSession
+
+const meetingReactions = ['👍', '❤️', '😂', '👏', '🎉', '🤔']
+
+function element(tagName, className = '', text = '') {
+  const node = document.createElement(tagName)
+  if (className) node.className = className
+  if (text) node.textContent = text
+  return node
+}
 
 function loadMeteredSdk() {
   if (window.Metered?.Meeting) return Promise.resolve()
@@ -83,6 +92,8 @@ function finishSession(session) {
   if (session.timer) window.clearInterval(session.timer)
   if (session.chatPollTimer) window.clearInterval(session.chatPollTimer)
   if (session.meetingInfoPollTimer) window.clearInterval(session.meetingInfoPollTimer)
+  if (session.actionItemsPollTimer) window.clearInterval(session.actionItemsPollTimer)
+  if (session.screenShareHeartbeatTimer) window.clearInterval(session.screenShareHeartbeatTimer)
   detachMeetingListeners(session)
   for (const tile of session.tiles.values()) {
     tile.video.pause()
@@ -92,6 +103,7 @@ function finishSession(session) {
   }
   session.shareVideo.pause()
   session.shareVideo.srcObject = null
+  session.displayedScreenTrack = null
   session.cleanup?.()
   session.overlay.remove()
   if (activeSession === session) {
@@ -103,6 +115,11 @@ function finishSession(session) {
 async function closeSession(session = activeSession) {
   if (!session || session.closing) return
   session.closing = true
+  if (session.sharing && session.localUserId) {
+    await updateScreenShareLease(session, 'release').catch(error => {
+      console.warn('Unable to release the screen-share lock:', error)
+    })
+  }
   if (session.meeting && session.joined) {
     try {
       await session.meeting.leaveMeeting()
@@ -189,12 +206,18 @@ function updateParticipantMediaState(session, userId, updates) {
   Object.assign(state, updates)
   session.mediaStateByUserId.set(key, state)
   renderParticipantMediaIndicators(session, key)
+  if (typeof updates.sharingScreen === 'boolean') {
+    updateScreenShareFromParticipants(session)
+  }
 }
 
 function updateParticipantFromMetered(session, participant) {
   const userId = participant?.participantSessionId || participant?._id
   if (!userId) return
   const updates = {}
+  if (typeof participant.sharingScreen === 'boolean') {
+    updates.sharingScreen = participant.sharingScreen
+  }
   if (typeof participant.sharingAudio === 'boolean') {
     updates.muted = !participant.sharingAudio
   }
@@ -231,6 +254,15 @@ function renderAudioTracks(tile) {
   }
 }
 
+function playSharedScreen(session) {
+  session.shareVideo.hidden = false
+  void session.shareVideo.play().catch(error => {
+    if (error?.name !== 'AbortError' && !session.closing && !session.disposed) {
+      console.warn('Unable to play the shared screen:', error.message)
+    }
+  })
+}
+
 function attachLocalTrack(session, item) {
   if (!item?.track || session.disposed) return
   if (item.type === 'audio') return
@@ -241,13 +273,26 @@ function attachLocalTrack(session, item) {
     true
   )
   if (session.sharing) {
+    if (session.displayedScreenTrack === item.track &&
+        session.shareVideo.srcObject?.getVideoTracks?.()[0] === item.track) {
+      setScreenSharePresentation(session, {
+        participantSessionId: session.localUserId,
+        name: `${session.userName} (You)`,
+        isLocal: true
+      })
+      return
+    }
+    session.displayedScreenTrack = item.track
+    session.displayedScreenStreamId = item.streamId
     session.shareVideo.srcObject = new MediaStream([item.track])
-    session.shareVideo.hidden = false
-    void session.shareVideo.play().catch(error => {
-      console.warn('Unable to play the shared screen:', error.message)
-    })
+    playSharedScreen(session)
     localTile.videoTracks.clear()
     renderVideoTracks(localTile)
+    setScreenSharePresentation(session, {
+      participantSessionId: session.localUserId,
+      name: `${session.userName} (You)`,
+      isLocal: true
+    })
   } else {
     localTile.videoTracks.set(item.streamId, item.track)
     renderVideoTracks(localTile)
@@ -263,12 +308,23 @@ function detachLocalTrack(session, item) {
     localTile.videoTracks.delete(item.streamId)
     renderVideoTracks(localTile)
   }
-  if (session.sharing) {
+  const stoppedScreenTrack = item?.track === session.displayedScreenTrack ||
+    (item?.streamId && item.streamId === session.displayedScreenStreamId)
+  if (session.sharing && stoppedScreenTrack) {
+    void updateScreenShareLease(session, 'release').catch(error => {
+      console.warn('Unable to release the screen-share lock:', error)
+    })
+    if (session.screenShareHeartbeatTimer) {
+      window.clearInterval(session.screenShareHeartbeatTimer)
+      session.screenShareHeartbeatTimer = null
+    }
     session.shareVideo.pause()
     session.shareVideo.srcObject = null
     session.shareVideo.hidden = true
+    session.displayedScreenTrack = null
+    session.displayedScreenStreamId = null
     session.sharing = false
-    session.shareStage.hidden = true
+    setScreenSharePresentation(session, null)
     session.syncMediaControls?.()
   }
 }
@@ -281,7 +337,12 @@ function attachRemoteTrack(session, item) {
     renderAudioTracks(tile)
   } else {
     tile.videoTracks.set(item.streamId, item.track)
+    tile.latestVideoTrack = item.track
+    tile.latestVideoStreamId = item.streamId
     renderVideoTracks(tile)
+    if (session.mediaStateByUserId.get(String(item.participantSessionId))?.sharingScreen) {
+      showRemoteScreenTrack(session, item.participantSessionId, item.track)
+    }
   }
 }
 
@@ -294,21 +355,123 @@ function detachRemoteTrack(session, item) {
     renderAudioTracks(tile)
   } else {
     tile.videoTracks.delete(item.streamId)
+    if (tile.latestVideoStreamId === item.streamId) {
+      const tracks = [...tile.videoTracks.values()]
+      const streamIds = [...tile.videoTracks.keys()]
+      tile.latestVideoTrack = tracks[tracks.length - 1] || null
+      tile.latestVideoStreamId = streamIds[streamIds.length - 1] || null
+    }
     renderVideoTracks(tile)
+    if (session.screenShareOwnerId === String(item.participantSessionId) &&
+        (!tile.latestVideoTrack || tile.latestVideoTrack === item.track)) {
+      setScreenSharePresentation(session, null)
+    }
+  }
+}
+
+function setScreenSharePresentation(session, share) {
+  const isSharing = Boolean(share)
+  const previousOwnerId = session.screenShareOwnerId
+  session.screenShareOwnerId = share ? String(share.participantSessionId) : null
+  session.shareStage.hidden = !isSharing
+  session.videoGrid.hidden = isSharing
+  session.content?.classList.toggle('has-screen-share', isSharing)
+  session.panel?.classList.toggle('is-screen-sharing', isSharing)
+  if (!isSharing) {
+    session.shareVideo.pause()
+    session.shareVideo.srcObject = null
+    session.displayedScreenTrack = null
+    session.displayedScreenStreamId = null
+    const tabs = [session.peopleTab, session.chatTab, session.notesTab, session.actionsTab]
+    const panes = [session.participantList.parentElement, session.chatPane, session.notesPane, session.actionsPane]
+    const previousTab = session.panelTabBeforeScreenShare || session.peopleTab
+    tabs.forEach(tab => tab.classList.toggle('is-active', tab === previousTab))
+    panes.forEach((pane, index) => { pane.hidden = tabs[index] !== previousTab })
+    session.panel.hidden = Boolean(session.panelWasHiddenBeforeScreenShare)
+    session.content?.classList.remove('has-screen-share-panel')
+    session.panelWasHiddenBeforeScreenShare = false
+    session.panelTabBeforeScreenShare = null
+    return
+  }
+  if (!previousOwnerId || previousOwnerId !== session.screenShareOwnerId) {
+    session.panelWasHiddenBeforeScreenShare = session.panel.hidden
+    session.panelTabBeforeScreenShare = [session.peopleTab, session.chatTab, session.notesTab, session.actionsTab]
+      .find(tab => tab.classList.contains('is-active')) || session.peopleTab
+  }
+  session.panel.hidden = true
+  session.content?.classList.remove('has-screen-share-panel')
+  session.shareLabel.textContent = `${share.name || 'A participant'} is sharing their screen`
+  const tabs = [session.peopleTab, session.chatTab, session.notesTab, session.actionsTab]
+  const panes = [session.participantList.parentElement, session.chatPane, session.notesPane, session.actionsPane]
+  tabs.forEach(tab => tab.classList.toggle('is-active', tab === session.peopleTab))
+  panes.forEach((pane, index) => { pane.hidden = tabs[index] !== session.peopleTab })
+  session.shareVideo.hidden = false
+}
+
+function showRemoteScreenTrack(session, participantSessionId, track) {
+  if (session.screenShareOwnerId === String(participantSessionId) &&
+      session.displayedScreenTrack === track) {
+    return
+  }
+  const person = session.onlineParticipants?.find(participant =>
+    String(participant._id || participant.participantSessionId) === String(participantSessionId)
+  )
+  session.shareVideo.srcObject = new MediaStream([track])
+  session.displayedScreenTrack = track
+  session.displayedScreenStreamId = null
+  playSharedScreen(session)
+  setScreenSharePresentation(session, {
+    participantSessionId,
+    name: person?.name || 'A participant'
+  })
+}
+
+function updateScreenShareFromParticipants(session) {
+  const sharer = [...session.mediaStateByUserId.entries()]
+    .find(([, state]) => state.sharingScreen)
+  if (!sharer) {
+    if (session.screenShareOwnerId && !session.sharing) {
+      const ownerTile = session.tiles.get(session.screenShareOwnerId)
+      if (!ownerTile?.latestVideoTrack) setScreenSharePresentation(session, null)
+    }
+    return
+  }
+  const [participantSessionId] = sharer
+  const tile = session.tiles.get(participantSessionId)
+  const person = session.onlineParticipants?.find(participant =>
+    String(participant._id || participant.participantSessionId) === participantSessionId
+  )
+  if (participantSessionId === String(session.localUserId)) {
+    setScreenSharePresentation(session, {
+      participantSessionId,
+      name: `${session.userName} (You)`,
+      isLocal: true
+    })
+  } else if (tile?.latestVideoTrack &&
+      (session.screenShareOwnerId !== participantSessionId ||
+       session.displayedScreenTrack !== tile.latestVideoTrack)) {
+    showRemoteScreenTrack(session, participantSessionId, tile.latestVideoTrack)
+  } else {
+    setScreenSharePresentation(session, {
+      participantSessionId,
+      name: person?.name || 'A participant'
+    })
   }
 }
 
 function renderParticipants(session, participants = session.meeting?.getOnlineParticipants?.() || []) {
+  session.onlineParticipants = participants
   session.participantHeading.textContent = `People (${participants.length})`
   session.participantList.replaceChildren()
   participants.forEach(person => {
     updateParticipantFromMetered(session, person)
-    if (person._id) {
+    const userId = person.participantSessionId || person._id
+    if (userId) {
       createVideoTile(
         session,
-        person._id,
+        userId,
         person.name,
-        String(person._id) === String(session.localUserId)
+        String(userId) === String(session.localUserId)
       )
     }
     const row = document.createElement('div')
@@ -320,7 +483,10 @@ function renderParticipants(session, participants = session.meeting?.getOnlinePa
     name.className = 'zoom-meeting-person-name'
     name.textContent = person.name || 'Project member'
     const state = document.createElement('small')
-    state.textContent = String(person._id) === String(session.localUserId) ? 'You' : 'In meeting'
+    const participantState = session.mediaStateByUserId.get(String(userId))
+    state.textContent = participantState?.sharingScreen
+      ? 'Sharing screen'
+      : String(userId) === String(session.localUserId) ? 'You' : 'In meeting'
     row.append(avatar, name, state)
     session.participantList.append(row)
   })
@@ -332,10 +498,16 @@ function isMeetingChatOpen(session) {
 
 function renderChatMessage(session, message, { countAsUnread = true } = {}) {
   if (!message || !session.chatMessages) return
+  const content = message.content || message.message || ''
   const id = message.message_id || message._id ||
-    `${message.senderParticipantSessionId || message.sender_firebase_uid || ''}:${message.created_at || message.created || ''}:${message.content || message.message || ''}`
+    `${message.senderParticipantSessionId || message.sender_firebase_uid || ''}:${message.created_at || message.created || ''}:${content}`
   if (session.chatIds.has(id)) return
   session.chatIds.add(id)
+  const reactionMatch = /^\[\[collab-reaction:(.+)\]\]$/.exec(content)
+  if (reactionMatch && meetingReactions.includes(reactionMatch[1])) {
+    showMeetingReaction(session, reactionMatch[1])
+    return
+  }
   if (countAsUnread && !isMeetingChatOpen(session)) {
     session.unreadMessageCount += 1
   }
@@ -348,20 +520,72 @@ function renderChatMessage(session, message, { countAsUnread = true } = {}) {
     (message.sender_firebase_uid === session.firebaseUid ||
       message.senderParticipantSessionId === session.localUserId ? 'You' : 'Participant')
   const body = document.createElement('p')
-  body.textContent = message.content || message.message || ''
+  body.textContent = content
   item.append(author, body)
   session.chatMessages.append(item)
   session.chatMessages.scrollTop = session.chatMessages.scrollHeight
 }
 
+function showMeetingReaction(session, reaction) {
+  const now = Date.now()
+  const laneCount = 6
+  const lanes = session.reactionLaneNextAt ||= Array(laneCount).fill(0)
+  let lane = session.nextReactionLane || 0
+  let startDelay = 0
+  for (let offset = 0; offset < laneCount; offset += 1) {
+    const candidate = (lane + offset) % laneCount
+    if (lanes[candidate] <= now) {
+      lane = candidate
+      break
+    }
+    if (lanes[candidate] < lanes[lane]) lane = candidate
+  }
+  startDelay = Math.max(0, lanes[lane] - now)
+  lanes[lane] = now + startDelay + 2800
+  session.nextReactionLane = (lane + 1) % laneCount
+  const bubble = element('span', 'zoom-meeting-reaction-float', reaction)
+  bubble.style.setProperty('--reaction-x', `${[8, 25, 42, 58, 75, 92][lane]}%`)
+  bubble.style.animationDelay = `${startDelay}ms`
+  bubble.setAttribute('aria-label', `Meeting reaction ${reaction}`)
+  session.reactionLayer.append(bubble)
+  window.setTimeout(() => bubble.remove(), startDelay + 2800)
+}
+
 async function syncMeetingChat(session) {
-  const response = await api.get(
-    `/projects/${encodeURIComponent(session.projectId)}/meetings/${encodeURIComponent(session.meetingId)}/messages`
-  )
-  response?.data?.messages?.forEach(message => renderChatMessage(session, message, {
-    countAsUnread: session.chatInitialized
-  }))
-  session.chatInitialized = true
+  if (session.chatPolling || session.closing || session.disposed ||
+      isPollBackedOff(session, 'chat')) return
+  session.chatPolling = true
+  try {
+    const response = await api.get(
+      `/projects/${encodeURIComponent(session.projectId)}/meetings/${encodeURIComponent(session.meetingId)}/messages`
+    )
+    response?.data?.messages?.forEach(message => renderChatMessage(session, message, {
+      countAsUnread: session.chatInitialized
+    }))
+    session.chatInitialized = true
+    clearPollBackoff(session, 'chat')
+  } catch (error) {
+    recordPollFailure(session, 'chat', error)
+    throw error
+  } finally {
+    session.chatPolling = false
+  }
+}
+
+function isPollBackedOff(session, name) {
+  return Date.now() < (session[`${name}RetryAt`] || 0)
+}
+
+function clearPollBackoff(session, name) {
+  session[`${name}RetryAt`] = 0
+  session[`${name}RetryDelay`] = 30_000
+}
+
+function recordPollFailure(session, name, error) {
+  if (error?.status !== 429) return
+  const delay = session[`${name}RetryDelay`] || 30_000
+  session[`${name}RetryAt`] = Date.now() + delay
+  session[`${name}RetryDelay`] = Math.min(delay * 2, 300_000)
 }
 
 function showSessionError(session, error) {
@@ -374,6 +598,99 @@ function showSessionError(session, error) {
       session.status.classList.remove('is-error')
     }
   }, 5000)
+}
+
+async function updateScreenShareLease(session, action) {
+  return api.post(
+    `/projects/${encodeURIComponent(session.projectId)}/meetings/${encodeURIComponent(session.meetingId)}/screen-share`,
+    { action, participantSessionId: String(session.localUserId) }
+  )
+}
+
+async function pollMeetingLiveStatus(session) {
+  if (session.liveStatusPolling || session.closing || session.disposed || !session.localUserId ||
+      isPollBackedOff(session, 'liveStatus')) return
+  session.liveStatusPolling = true
+  try {
+    const response = await api.get(
+      `/projects/${encodeURIComponent(session.projectId)}/meetings/${encodeURIComponent(session.meetingId)}/live-status`
+    )
+    clearPollBackoff(session, 'liveStatus')
+    const data = response?.data
+    if (data?.endedAt) {
+      session.meetingRecord.endedAt = data.endedAt
+      session.meetingRecord.isEnded = true
+      session.status.textContent = 'The host ended this meeting for everyone.'
+      session.closing = true
+      if (session.meeting && typeof session.meeting.leaveMeeting === 'function') {
+        await session.meeting.leaveMeeting().catch(error => {
+          console.warn('Unable to leave the ended meeting cleanly:', error)
+        })
+      }
+      finishSession(session)
+      return
+    }
+    session.canEndMeeting = Boolean(data?.canEnd)
+    if (session.leaveButton && !session.ending) {
+      session.leaveButton.classList.toggle('is-danger', session.canEndMeeting)
+      session.leaveButton.querySelector('span').textContent =
+        session.canEndMeeting ? 'End meeting' : 'Leave'
+      session.leaveButton.setAttribute('aria-label',
+        session.canEndMeeting ? 'End meeting for everyone' : 'Leave meeting')
+      session.leaveButton.title =
+        session.canEndMeeting ? 'End meeting for everyone' : 'Leave meeting'
+    }
+    const screenShare = data?.screenShare
+    session.screenShareHeldByOther = Boolean(screenShare &&
+      !(screenShare.firebaseUid === session.firebaseUid &&
+        String(screenShare.participantSessionId) === String(session.localUserId)))
+    updateShareControl(session)
+    if (screenShare) {
+      const ownerId = String(screenShare.participantSessionId)
+      const participant = session.onlineParticipants?.find(person =>
+        String(person._id || person.participantSessionId) === ownerId
+      )
+      const tile = session.tiles.get(ownerId)
+      if (ownerId === String(session.localUserId)) {
+        setScreenSharePresentation(session, {
+          participantSessionId: ownerId,
+          name: `${session.userName} (You)`,
+          isLocal: true
+        })
+      } else if (ownerId !== session.screenShareOwnerId && tile?.latestVideoTrack) {
+        showRemoteScreenTrack(session, ownerId, tile.latestVideoTrack)
+      } else if (ownerId !== session.screenShareOwnerId) {
+        setScreenSharePresentation(session, {
+          participantSessionId: ownerId,
+          name: participant?.name || 'A participant'
+        })
+      } else if (!session.shareVideo.srcObject && tile?.latestVideoTrack) {
+        showRemoteScreenTrack(session, ownerId, tile.latestVideoTrack)
+      }
+    } else if (session.screenShareOwnerId && !session.sharing) {
+      setScreenSharePresentation(session, null)
+    }
+  } catch (error) {
+    recordPollFailure(session, 'liveStatus', error)
+    if (!session.closing && !session.disposed) {
+      console.warn('Unable to refresh meeting controls:', error)
+    }
+  } finally {
+    session.liveStatusPolling = false
+  }
+}
+
+function updateShareControl(session) {
+  const button = session.shareButton
+  if (!button) return
+  const blocked = session.screenShareHeldByOther && !session.sharing
+  button.disabled = blocked
+  const label = blocked ? 'Screen share in use'
+    : session.sharing ? 'Stop sharing' : 'Share screen'
+  button.querySelector('span').textContent = label
+  button.setAttribute('aria-label', blocked ? 'Another participant is sharing their screen' : label)
+  button.title = blocked ? 'Another participant is sharing their screen' : label
+  button.classList.toggle('is-active', session.sharing)
 }
 
 function formatDuration(milliseconds) {
@@ -454,7 +771,11 @@ function createMeetingPanel() {
   saveNotesButton.type = 'submit'
   saveNotesButton.textContent = 'Save notes'
   notesForm.append(notesInput, notesStatus, saveNotesButton)
-  notesPane.append(notesHeading, notesForm)
+  const aiMeetingButton = element('button', 'zoom-meeting-ai-button', '✨ Extract action items with AI')
+  aiMeetingButton.type = 'button'
+  const aiMeetingResults = element('div', 'zoom-meeting-ai-results')
+  aiMeetingResults.setAttribute('aria-live', 'polite')
+  notesPane.append(notesHeading, notesForm, aiMeetingButton, aiMeetingResults)
 
   const actionsPane = document.createElement('section')
   actionsPane.className = 'zoom-meeting-panel-pane zoom-meeting-actions-pane'
@@ -496,6 +817,8 @@ function createMeetingPanel() {
     notesInput,
     notesStatus,
     saveNotesButton,
+    aiMeetingButton,
+    aiMeetingResults,
     actionsPane,
     actionItemList,
     actionItemForm,
@@ -508,6 +831,7 @@ export function openMeteredMeetingModal(meeting) {
   if (!meeting?.projectId || !meeting?.id) {
     throw new Error('This meeting is missing its project or meeting ID.')
   }
+  if (meeting.isEnded || meeting.endedAt) return
   if (activeSession) void closeSession(activeSession)
 
   const overlay = document.createElement('div')
@@ -599,9 +923,11 @@ export function openMeteredMeetingModal(meeting) {
     overlay,
     status,
     videoGrid,
+    content,
     shareStage,
     shareLabel,
     shareVideo,
+    reactionLayer: element('div', 'zoom-meeting-reaction-layer'),
     tiles: new Map(),
     chatIds: new Set(),
     unreadMessageCount: 0,
@@ -618,6 +944,7 @@ export function openMeteredMeetingModal(meeting) {
     chatPane: panelParts.chatPane,
     chatMessages: panelParts.chatMessages,
     notesPane: panelParts.notesPane,
+    actionsPane: panelParts.actionsPane,
     notesInput: panelParts.notesInput,
     notesStatus: panelParts.notesStatus,
     saveNotesButton: panelParts.saveNotesButton,
@@ -625,14 +952,19 @@ export function openMeteredMeetingModal(meeting) {
     actionItemInput: panelParts.actionItemInput,
     addActionItemButton: panelParts.addActionItemButton,
     projectRecord: projects.find(project => project.projectId === meeting.projectId),
+    canEndMeeting: meeting.hostFirebaseUid === firebaseAuth.currentUser?.uid ||
+      projects.find(project => project.projectId === meeting.projectId)?.creatorFirebaseUid === firebaseAuth.currentUser?.uid,
     joined: false,
     closing: false,
     disposed: false,
     muted: false,
     cameraOn: false,
     sharing: false,
+    screenShareHeldByOther: false,
+    meetingRecord: meeting,
     startedAt: 0
   }
+  content.append(session.reactionLayer)
   activeSession = session
   panelParts.chatForm.addEventListener('submit', async event => {
     event.preventDefault()
@@ -667,6 +999,35 @@ export function openMeteredMeetingModal(meeting) {
     button.querySelector('span').textContent = text
   }
   const togglePanel = tab => {
+    if (session.screenShareOwnerId) {
+      const currentPane = [panelParts.peopleTab, panelParts.chatTab, panelParts.notesTab, panelParts.actionsTab]
+        .find((item, index) => ![
+          panelParts.participantList.parentElement,
+          panelParts.chatPane,
+          panelParts.notesPane,
+          panelParts.actionsPane
+        ][index].hidden)
+      const closePanel = tab === panelParts.peopleTab &&
+        !session.panel.hidden && currentPane === panelParts.peopleTab
+      session.panel.hidden = closePanel
+      session.content.classList.toggle('has-screen-share-panel', !closePanel)
+      if (!closePanel) {
+        const tabs = [panelParts.peopleTab, panelParts.chatTab, panelParts.notesTab, panelParts.actionsTab]
+        const panes = [
+          panelParts.participantList.parentElement,
+          panelParts.chatPane,
+          panelParts.notesPane,
+          panelParts.actionsPane
+        ]
+        tabs.forEach(item => item.classList.toggle('is-active', item === tab))
+        panes.forEach((pane, index) => { pane.hidden = tabs[index] !== tab })
+        if (tab === panelParts.chatTab) {
+          session.unreadMessageCount = 0
+          session.updateChatCount?.()
+        }
+      }
+      return
+    }
     const isOpen = !panelParts.panel.hidden && tab.classList.contains('is-active')
     panelParts.panel.hidden = isOpen
     const tabs = [panelParts.peopleTab, panelParts.chatTab, panelParts.notesTab, panelParts.actionsTab]
@@ -681,6 +1042,9 @@ export function openMeteredMeetingModal(meeting) {
     } else {
       tabs.forEach(item => item.classList.toggle('is-active', item === tab))
       panes.forEach((pane, index) => { pane.hidden = tabs[index] !== tab })
+      session.panelTabBeforeScreenShare = tab
+      if (tab === panelParts.notesTab) void session.refreshMeetingNotes?.()
+      if (tab === panelParts.actionsTab) void session.refreshActionItems?.()
     }
   }
 
@@ -775,9 +1139,17 @@ export function openMeteredMeetingModal(meeting) {
     })
   }
   const loadMeetingNotes = async () => {
-    if (session.notesDirty || document.activeElement === panelParts.notesInput) return
-    const response = await api.get(meetingApiPath('/notes'))
-    panelParts.notesInput.value = response?.data?.notes?.body || ''
+    if (session.notesDirty || document.activeElement === panelParts.notesInput ||
+        session.notesLoading || session.closing) return
+    session.notesLoading = true
+    try {
+      const response = await api.get(meetingApiPath('/notes'))
+      if (!session.notesDirty && document.activeElement !== panelParts.notesInput) {
+        panelParts.notesInput.value = response?.data?.notes?.body || ''
+      }
+    } finally {
+      session.notesLoading = false
+    }
   }
   panelParts.notesInput.addEventListener('input', () => {
     session.notesDirty = true
@@ -803,9 +1175,89 @@ export function openMeteredMeetingModal(meeting) {
     }
   }
   const loadMeetingActionItems = async () => {
-    const response = await api.get(meetingApiPath('/action-items'))
-    renderActionItems(response?.data?.actionItems || [])
+    if (session.actionItemsLoading || session.closing ||
+        isPollBackedOff(session, 'actionItems')) return
+    session.actionItemsLoading = true
+    try {
+      const response = await api.get(meetingApiPath('/action-items'))
+      renderActionItems(response?.data?.actionItems || [])
+      clearPollBackoff(session, 'actionItems')
+    } catch (error) {
+      recordPollFailure(session, 'actionItems', error)
+      throw error
+    } finally {
+      session.actionItemsLoading = false
+    }
   }
+  session.refreshMeetingNotes = loadMeetingNotes
+  session.refreshActionItems = loadMeetingActionItems
+  panelParts.aiMeetingButton.addEventListener('click', async () => {
+    const meetingNotes = panelParts.notesInput.value.trim()
+    if (!meetingNotes) {
+      panelParts.notesStatus.textContent = 'Add meeting notes before extracting action items.'
+      panelParts.notesStatus.classList.add('is-error')
+      panelParts.notesInput.focus()
+      return
+    }
+    panelParts.aiMeetingButton.disabled = true
+    panelParts.aiMeetingButton.textContent = 'Analyzing notes…'
+    panelParts.aiMeetingResults.replaceChildren()
+    try {
+      const response = await api.post('/ai/summarize-meeting', { meetingNotes })
+      const summary = response?.summary
+      if (!response?.success || !Array.isArray(summary?.decisions) ||
+          !Array.isArray(summary?.actionItems)) {
+        throw new Error('The AI service returned an invalid meeting summary.')
+      }
+      const decisions = element('section', 'zoom-meeting-ai-section')
+      decisions.append(element('h4', '', 'Decisions'))
+      if (summary.decisions.length) {
+        const list = document.createElement('ul')
+        summary.decisions.forEach(decision => list.append(element('li', '', decision)))
+        decisions.append(list)
+      } else {
+        decisions.append(element('p', 'zoom-meeting-chat-empty', 'No explicit decisions found.'))
+      }
+      panelParts.aiMeetingResults.append(decisions)
+      const actionSection = element('section', 'zoom-meeting-ai-section')
+      actionSection.append(element('h4', '', 'Action items'))
+      if (summary.actionItems.length) {
+        summary.actionItems.forEach(item => {
+          const row = element('article', 'zoom-meeting-ai-action')
+          row.append(element('span', '', item.taskTitle))
+          if (item.suggestedAssignee) {
+            row.append(element('small', '', `Suggested: ${item.suggestedAssignee}`))
+          }
+          const add = element('button', 'zoom-meeting-ai-add-button', 'Add to action pad')
+          add.type = 'button'
+          add.addEventListener('click', async () => {
+            add.disabled = true
+            try {
+              await api.post(meetingApiPath('/action-items'), { content: item.taskTitle })
+              add.textContent = 'Added'
+              await loadMeetingActionItems()
+            } catch (error) {
+              add.disabled = false
+              showSessionError(session, error)
+            }
+          })
+          row.append(add)
+          actionSection.append(row)
+        })
+      } else {
+        actionSection.append(element('p', 'zoom-meeting-chat-empty', 'No action items found.'))
+      }
+      panelParts.aiMeetingResults.append(actionSection)
+      panelParts.notesStatus.textContent = 'AI suggestions are ready. Review them before adding.'
+      panelParts.notesStatus.classList.remove('is-error')
+    } catch (error) {
+      panelParts.notesStatus.textContent = error.message || 'Meeting notes could not be analyzed.'
+      panelParts.notesStatus.classList.add('is-error')
+    } finally {
+      panelParts.aiMeetingButton.disabled = false
+      panelParts.aiMeetingButton.textContent = '✨ Extract action items with AI'
+    }
+  })
   panelParts.notesForm.addEventListener('submit', saveMeetingNotes)
   panelParts.actionItemForm.addEventListener('submit', async event => {
     event.preventDefault()
@@ -851,9 +1303,14 @@ export function openMeteredMeetingModal(meeting) {
         if (session.sharing) {
           await session.meeting.stopVideo()
           session.sharing = false
-          session.shareStage.hidden = true
-          session.shareVideo.pause()
-          session.shareVideo.srcObject = null
+          if (session.screenShareHeartbeatTimer) {
+            window.clearInterval(session.screenShareHeartbeatTimer)
+            session.screenShareHeartbeatTimer = null
+          }
+          void updateScreenShareLease(session, 'release').catch(error => {
+            console.warn('Unable to release the screen-share lock:', error)
+          })
+          setScreenSharePresentation(session, null)
           session.syncMediaControls()
         }
         await session.meeting.startVideo()
@@ -872,10 +1329,14 @@ export function openMeteredMeetingModal(meeting) {
         await session.meeting.stopVideo()
         session.sharing = false
         session.cameraOn = false
-        session.shareStage.hidden = true
-        session.shareVideo.pause()
-        session.shareVideo.srcObject = null
+        if (session.screenShareHeartbeatTimer) {
+          window.clearInterval(session.screenShareHeartbeatTimer)
+          session.screenShareHeartbeatTimer = null
+        }
+        await updateScreenShareLease(session, 'release')
+        setScreenSharePresentation(session, null)
       } else {
+        await updateScreenShareLease(session, 'claim')
         const cameraWasOn = session.cameraOn
         session.shareLabel.textContent = 'You are sharing your screen'
         session.shareStage.hidden = false
@@ -883,16 +1344,41 @@ export function openMeteredMeetingModal(meeting) {
         session.cameraOn = false
         try {
           await session.meeting.startScreenShare()
+          setScreenSharePresentation(session, {
+            participantSessionId: session.localUserId,
+            name: `${session.userName} (You)`,
+            isLocal: true
+          })
+          session.screenShareHeartbeatTimer = window.setInterval(() => {
+            void updateScreenShareLease(session, 'heartbeat').catch(async error => {
+              console.warn('Screen-share lock heartbeat failed:', error)
+              if (!session.closing && session.sharing) {
+                try {
+                  await session.meeting.stopVideo()
+                } catch (stopError) {
+                  console.warn('Unable to stop sharing after losing the lock:', stopError)
+                }
+                session.sharing = false
+                session.screenShareHeartbeatTimer && window.clearInterval(session.screenShareHeartbeatTimer)
+                session.screenShareHeartbeatTimer = null
+                setScreenSharePresentation(session, null)
+                showSessionError(session, new Error('The screen-share lock was lost. Screen sharing has stopped.'))
+                session.syncMediaControls()
+              }
+            })
+          }, 5000)
         } catch (error) {
           session.sharing = false
           session.cameraOn = cameraWasOn
-          session.shareStage.hidden = true
-          session.shareVideo.pause()
-          session.shareVideo.srcObject = null
+          await updateScreenShareLease(session, 'release').catch(releaseError => {
+            console.warn('Unable to release a canceled screen-share lock:', releaseError)
+          })
+          setScreenSharePresentation(session, null)
           throw error
         }
       }
       session.syncMediaControls()
+      updateShareControl(session)
     } catch (error) {
       showSessionError(session, error)
     }
@@ -900,9 +1386,7 @@ export function openMeteredMeetingModal(meeting) {
   session.shareButton = shareButton
   session.cameraButton = cameraButton
   session.syncMediaControls = () => {
-    setControlState(shareButton, session.sharing,
-      session.sharing ? 'Stop sharing' : 'Share screen',
-      session.sharing ? 'Stop screen sharing' : 'Share screen')
+    updateShareControl(session)
     setControlState(cameraButton, !session.cameraOn,
       session.cameraOn ? 'Camera' : 'Camera off',
       session.cameraOn ? 'Turn off camera' : 'Turn on camera')
@@ -931,9 +1415,68 @@ export function openMeteredMeetingModal(meeting) {
     chatButton.setAttribute('aria-label', label)
     chatButton.title = label
   }
-  const leaveButton = createControl('leave', 'Leave', () => void closeSession(session), true)
+  const leaveButton = createControl('leave', session.canEndMeeting ? 'End meeting' : 'Leave', async () => {
+    if (!session.canEndMeeting) {
+      await closeSession(session)
+      return
+    }
+    if (!window.confirm('End this meeting for everyone?')) return
+    session.ending = true
+    leaveButton.disabled = true
+    try {
+      const response = await api.post(meetingApiPath('/end'), {})
+      meeting.endedAt = response?.data?.endedAt || new Date().toISOString()
+      meeting.isEnded = true
+      session.status.textContent = 'Meeting ended for everyone.'
+      hub.renderCalendarPanel?.()
+      hub.renderMeetingsPage?.()
+      hub.renderAdminMeetingsTable?.()
+      hub.renderWorkspaceHub?.()
+      session.sharing = false
+      if (session.screenShareHeartbeatTimer) {
+        window.clearInterval(session.screenShareHeartbeatTimer)
+        session.screenShareHeartbeatTimer = null
+      }
+      await closeSession(session)
+    } catch (error) {
+      session.ending = false
+      leaveButton.disabled = false
+      showSessionError(session, error)
+    }
+  }, session.canEndMeeting)
+  session.leaveButton = leaveButton
   controls.append(micButton, cameraButton, shareButton, peopleButton, chatButton, leaveButton)
-  const meetingControls = [micButton, cameraButton, shareButton, peopleButton, chatButton]
+  const reactionButton = element('button', 'zoom-meeting-reaction-button', '😊')
+  reactionButton.type = 'button'
+  reactionButton.setAttribute('aria-label', 'Send a meeting reaction')
+  reactionButton.title = 'Send a meeting reaction'
+  const reactionPicker = element('div', 'zoom-meeting-reaction-picker')
+  reactionPicker.hidden = true
+  meetingReactions.forEach(reaction => {
+    const option = element('button', '', reaction)
+    option.type = 'button'
+    option.setAttribute('aria-label', `Send ${reaction} reaction`)
+    option.addEventListener('click', async () => {
+      option.disabled = true
+      try {
+        const content = `[[collab-reaction:${reaction}]]`
+        const response = await api.post(meetingApiPath('/messages'), { content })
+        renderChatMessage(session, response?.data?.message || { content })
+      } catch (error) {
+        showSessionError(session, error)
+      } finally {
+        option.disabled = false
+        reactionPicker.hidden = true
+      }
+    })
+    reactionPicker.append(option)
+  })
+  reactionButton.addEventListener('click', () => {
+    reactionPicker.hidden = !reactionPicker.hidden
+  })
+  reactionButton.disabled = true
+  controls.append(reactionButton, reactionPicker)
+  const meetingControls = [micButton, cameraButton, shareButton, peopleButton, chatButton, reactionButton]
   meetingControls.forEach(button => { button.disabled = true })
   panelParts.sendButton.disabled = true
   panelParts.peopleTab.addEventListener('click', () => togglePanel(panelParts.peopleTab))
@@ -984,18 +1527,25 @@ export function openMeteredMeetingModal(meeting) {
       const onRemoteTrackStarted = item => attachRemoteTrack(session, item)
       const onRemoteTrackStopped = item => detachRemoteTrack(session, item)
       const onParticipantJoined = participant => {
-        if (participant?._id) createVideoTile(session, participant._id, participant.name)
+        const participantId = participant?.participantSessionId || participant?._id
+        if (participantId) createVideoTile(session, participantId, participant.name)
         renderParticipants(session)
       }
       const onParticipantLeft = participant => {
-        const tile = session.tiles.get(String(participant?._id))
+        const participantId = participant?.participantSessionId || participant?._id
+        const participantKey = String(participantId)
+        const tile = session.tiles.get(participantKey)
         if (tile) {
           tile.video.pause()
           tile.audio.pause()
           tile.video.srcObject = null
           tile.audio.srcObject = null
           tile.tile.remove()
-          session.tiles.delete(String(participant._id))
+          session.tiles.delete(participantKey)
+        }
+        session.mediaStateByUserId.delete(participantKey)
+        if (session.screenShareOwnerId === participantKey) {
+          setScreenSharePresentation(session, null)
         }
         renderParticipants(session)
       }
@@ -1004,7 +1554,8 @@ export function openMeteredMeetingModal(meeting) {
         if (!update?.participantSessionId) return
         updateParticipantMediaState(session, update.participantSessionId, {
           ...(typeof update.sharingAudio === 'boolean' ? { muted: !update.sharingAudio } : {}),
-          ...(typeof update.sharingVideo === 'boolean' ? { cameraOff: !update.sharingVideo } : {})
+          ...(typeof update.sharingVideo === 'boolean' ? { cameraOff: !update.sharingVideo } : {}),
+          ...(typeof update.sharingScreen === 'boolean' ? { sharingScreen: update.sharingScreen } : {})
         })
       }
       const onStateChanged = state => {
@@ -1089,6 +1640,7 @@ export function openMeteredMeetingModal(meeting) {
         duration.textContent = formatDuration(Date.now() - session.startedAt)
       }, 1000)
       meetingControls.forEach(button => { button.disabled = false })
+      reactionButton.disabled = false
       panelParts.sendButton.disabled = false
       ;[
         panelParts.peopleTab,
@@ -1096,15 +1648,6 @@ export function openMeteredMeetingModal(meeting) {
         panelParts.notesTab,
         panelParts.actionsTab
       ].forEach(tab => { tab.disabled = false })
-      void loadMeetingNotes().catch(error => {
-        panelParts.notesStatus.textContent = error.message || 'Meeting notes could not be loaded.'
-        panelParts.notesStatus.classList.add('is-error')
-      })
-      void loadMeetingActionItems().catch(error => {
-        panelParts.actionItemList.replaceChildren(
-          element('p', 'zoom-meeting-chat-empty', error.message || 'Action items could not be loaded.')
-        )
-      })
       void syncMeetingChat(session).catch(error => {
         console.warn('Unable to load meeting chat messages:', error)
       })
@@ -1112,17 +1655,19 @@ export function openMeteredMeetingModal(meeting) {
         void syncMeetingChat(session).catch(error => {
           console.warn('Unable to refresh meeting chat messages:', error)
         })
-      }, 3000)
+      }, 8000)
       session.meetingInfoPollTimer = window.setInterval(() => {
-        void loadMeetingNotes().catch(error => {
-          console.warn('Unable to refresh meeting notes:', error)
-        })
-        if (!panelParts.actionsPane.contains(document.activeElement)) {
+        void pollMeetingLiveStatus(session)
+      }, 5000)
+      session.actionItemsPollTimer = window.setInterval(() => {
+        if (!panelParts.panel.hidden && !panelParts.actionsPane.hidden &&
+            !panelParts.actionsPane.contains(document.activeElement)) {
           void loadMeetingActionItems().catch(error => {
             console.warn('Unable to refresh meeting action items:', error)
           })
         }
-      }, 5000)
+      }, 30000)
+      void pollMeetingLiveStatus(session)
       if (typeof meetingClient.getChatHistory === 'function') {
         try {
           meetingClient.getChatHistory()

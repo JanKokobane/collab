@@ -687,6 +687,7 @@ export function replaceProjectTasksFromBackend(projectTaskGroups = []) {
         assigneeProfileImage: task.assignee_profile_image || '',
         assigneeTone: 'teal',
         status: task.status || 'To do',
+        priority: task.priority || 'medium',
         done: task.status === 'Done',
         progress: task.status === 'Done' ? 100 : task.status === 'In progress' ? 50 : 0,
         sprint: task.sprint_name,

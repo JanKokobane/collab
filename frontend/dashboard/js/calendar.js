@@ -127,15 +127,17 @@ export function renderPinnedMeetingsStrip() {
     })
     team.append(attendeeList)
     footer.append(team)
-    if (new Date(`${meet.date}T${meet.endTime}:00`) >= new Date()) {
+    if (!meet.isEnded && new Date(`${meet.date}T${meet.endTime}:00`) >= new Date()) {
       const join = make('button', 'pinned-join-btn', 'Join Meeting')
       join.type = 'button'
       join.setAttribute('aria-label', `Join ${meet.title}`)
       join.addEventListener('click', () => openMeteredMeetingModal(meet))
       footer.append(join)
+    } else if (meet.isEnded) {
+      footer.append(make('span', 'meeting-ended-label', 'Meeting ended'))
     }
     const meetingUrl = getSafeMeetingUrl(meet.location)
-    if (meetingUrl) {
+    if (meetingUrl && !meet.isEnded) {
       const externalLink = make('a', 'pinned-join-btn', 'Open link')
       externalLink.href = meetingUrl
       externalLink.target = '_blank'
@@ -342,14 +344,16 @@ export function openDayScheduleModal(dateStr) {
       details.style.fontSize = '11px'
       description.append(meetingTitle, details)
       row.append(description)
-      if (new Date(`${m.date}T${m.endTime}:00`) >= new Date()) {
+      if (!m.isEnded && new Date(`${m.date}T${m.endTime}:00`) >= new Date()) {
         const join = make('button', 'pinned-join-btn', 'Join Meeting')
         join.type = 'button'
         join.addEventListener('click', () => openMeteredMeetingModal(m))
         row.append(join)
+      } else if (m.isEnded) {
+        row.append(make('span', 'meeting-ended-label', 'Meeting ended'))
       }
       const meetingUrl = getSafeMeetingUrl(m.location)
-      if (meetingUrl) {
+      if (meetingUrl && !m.isEnded) {
         const externalLink = make('a', 'pinned-join-btn', 'Open link')
         externalLink.href = meetingUrl
         externalLink.target = '_blank'
@@ -991,7 +995,7 @@ export function openScheduleMeetingModal(prefilledDate = toLocalDateKey(), { ins
   const submit = make('button', 'primary-button gold', 'Schedule & Pin Meeting')
   submit.type = 'submit'
   submit.disabled = projects.length === 0
-  const submitText = instant ? 'Create Room & Join' : 'Schedule & Pin Meeting'
+  const submitText = instant ? 'Create meeting' : 'Schedule & Pin Meeting'
   const submitLabel = make('span', '', submitText)
   const submitSpinner = make('span', 'form-submit-spinner')
   submitSpinner.setAttribute('aria-hidden', 'true')

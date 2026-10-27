@@ -1016,6 +1016,16 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   })
   statusLabel.append(statusSelect)
 
+  const priorityLabel = make('label', 'no-input-icon', 'Priority')
+  const prioritySelect = document.createElement('select')
+  ;['low', 'medium', 'high'].forEach(priority => {
+    const option = make('option', '', priority[0].toUpperCase() + priority.slice(1))
+    option.value = priority
+    if (priority === (task?.priority || defaults.priority || 'medium')) option.selected = true
+    prioritySelect.append(option)
+  })
+  priorityLabel.append(prioritySelect)
+
   const initialDueDate = task?.due_date
     ? String(task.due_date).slice(0, 10)
     : (defaults.dueDate || toLocalDateKey())
@@ -1026,6 +1036,8 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
 
   const assignmentRow = make('div', 'form-row project-task-assignment-row')
   assignmentRow.append(sprintSection, categoryLabel, statusLabel)
+  const priorityRow = make('div', 'form-row project-task-priority-row')
+  priorityRow.append(priorityLabel)
   const submit = make('button', 'primary-button full gold', task ? 'Save Task' : 'Create Task')
   submit.type = 'submit'
   submit.disabled = !selectedSprintIsInProject || !selectedSprintName || !selectedAssigneeFirebaseUid
@@ -1038,6 +1050,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     descriptionMedia.element,
     ...(discussionButton ? [discussionButton] : []),
     assignmentRow,
+    priorityRow,
     ...(isOwner ? [sprintCreatePanel, draftSprintList] : []),
     schedulePicker.element,
     submit
@@ -1056,6 +1069,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
       sprintName: selectedSprintName,
       assigneeFirebaseUid: selectedAssigneeFirebaseUid,
       status: task ? statusSelect.value : 'To do',
+      priority: prioritySelect.value,
       startDate: schedule.startDate || null,
       dueDate: schedule.dueDate || null,
       chatMessageId,
@@ -1170,7 +1184,7 @@ export function renderAdminMeetingsTable() {
     location.setAttribute('role', 'button')
     location.tabIndex = 0
     const join = location
-    const isJoinable = new Date(`${meet.date}T${meet.endTime}:00`) >= new Date()
+    const isJoinable = !meet.isEnded && new Date(`${meet.date}T${meet.endTime}:00`) >= new Date()
     if (isJoinable) {
       join.addEventListener('click', event => {
         event.stopPropagation()
@@ -1188,7 +1202,7 @@ export function renderAdminMeetingsTable() {
       join.removeAttribute('tabindex')
     }
     const meetingUrl = getSafeMeetingUrl(meet.location)
-    if (meetingUrl) {
+    if (meetingUrl && !meet.isEnded) {
       const externalLink = make('a', '', 'Open external link ↗')
       externalLink.href = meetingUrl
       externalLink.target = '_blank'

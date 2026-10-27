@@ -1018,17 +1018,22 @@ export function openInviteCollaboratorModal(
           throw new Error('The server returned an invalid user search response.')
         }
         searchResults.replaceChildren()
-        if (!users.length) {
+        const validUsers = users
+          .map(user => {
+            const firebaseUid = user?.firebaseUid || user?.firebase_uid || user?.uid
+            const email = user?.email
+            const name = user?.name || user?.displayName || user?.display_name || email
+            return firebaseUid && email && name ? { firebaseUid, email, name } : null
+          })
+          .filter(Boolean)
+
+        if (!validUsers.length) {
           searchStatus.textContent = 'No users found.'
           return
         }
 
-        users.forEach(user => {
-          const firebaseUid = user?.firebaseUid || user?.firebase_uid || user?.uid
-          const email = user?.email
-          const name = user?.name || user?.displayName || user?.display_name || email
-          if (!firebaseUid || !email || !name) return
-          const selectedUser = { firebaseUid, email, name }
+        validUsers.forEach(selectedUser => {
+          const { firebaseUid, email, name } = selectedUser
           const resultButton = make('button', 'invite-user-search-result')
           resultButton.type = 'button'
           resultButton.disabled = selectedUsers.has(firebaseUid)
@@ -1048,7 +1053,7 @@ export function openInviteCollaboratorModal(
           })
           searchResults.append(resultButton)
         })
-        searchStatus.textContent = `${users.length} user${users.length === 1 ? '' : 's'} found. Select one to invite.`
+        searchStatus.textContent = `${validUsers.length} user${validUsers.length === 1 ? '' : 's'} found. Select one to invite.`
       } catch (error) {
         if (requestSequence !== searchSequence) return
         searchStatus.textContent = error.message || 'User search failed. Please try again.'

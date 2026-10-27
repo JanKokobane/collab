@@ -268,7 +268,9 @@ document.addEventListener('visibilitychange', () => {
 
 function canApplyBackgroundRefresh() {
   if (!firebaseAuth.currentUser || document.visibilityState !== 'visible') return false
-  if (document.querySelector('#modal-root > *, .project-progress-aside-backdrop')) return false
+  if (document.querySelector(
+    '#modal-root > *, .project-progress-aside-backdrop, .zoom-meeting-overlay'
+  )) return false
   if (tasks.some(task => task.statusUpdating)) return false
 
   const activeElement = document.activeElement

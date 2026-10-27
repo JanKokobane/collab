@@ -2175,6 +2175,70 @@ function convertMessageToTask(message) {
   })
 }
 
+function showChatBriefing(summary) {
+  const backdrop = make('div', 'modal-backdrop')
+  const dialog = make('section', 'modal messages-create-modal ai-briefing-modal')
+  dialog.setAttribute('role', 'dialog')
+  dialog.setAttribute('aria-modal', 'true')
+  dialog.setAttribute('aria-labelledby', 'ai-chat-briefing-title')
+  const close = make('button', 'close-modal', '×')
+  close.type = 'button'
+  close.setAttribute('aria-label', 'Close chat briefing')
+  const title = make('h2', '', 'Chat briefing')
+  title.id = 'ai-chat-briefing-title'
+  const content = make('p', 'ai-briefing-copy', summary)
+  const closeDialog = () => backdrop.remove()
+  close.addEventListener('click', closeDialog)
+  backdrop.addEventListener('click', event => {
+    if (event.target === backdrop) closeDialog()
+  })
+  dialog.append(close, title, content)
+  backdrop.append(dialog)
+  document.querySelector('#modal-root')?.append(backdrop)
+  close.focus()
+}
+
+async function summarizeActiveConversation(button) {
+  const messages = getConversationTimeline(selectedConversationId)
+    .filter(message => !message.callId && !message.isDeleted)
+    .slice(-100)
+    .map(message => {
+      const transcript = (message.attachments || []).find(attachment =>
+        attachment.transcript || attachment.transcription
+      )
+      const body = message.body || transcript?.transcript || transcript?.transcription ||
+        (message.attachments?.length ? '[Attachment]' : '')
+      return body ? `${message.senderName}: ${body.slice(0, 1800)}` : ''
+    })
+    .filter(Boolean)
+  const boundedMessages = []
+  let totalCharacters = 0
+  for (const message of messages.reverse()) {
+    if (totalCharacters + message.length > 20000) continue
+    boundedMessages.unshift(message)
+    totalCharacters += message.length
+  }
+  if (!boundedMessages.length) {
+    showError(new Error('There are no readable messages to summarize.'), 'summarize conversation')
+    return
+  }
+
+  button.disabled = true
+  button.textContent = 'Summarizing…'
+  try {
+    const response = await api.post('/ai/summarize-chat', { messages: boundedMessages })
+    if (!response?.success || typeof response.summary !== 'string' || !response.summary.trim()) {
+      throw new Error('The AI service did not return a chat summary.')
+    }
+    showChatBriefing(response.summary)
+  } catch (error) {
+    showError(error, 'summarize conversation')
+  } finally {
+    button.disabled = false
+    button.textContent = '⚡ Catch Me Up'
+  }
+}
+
 function renderCallRecord(call) {
   const isCaller = call.callerUid === currentUid()
   const callType = call.callType === 'video' ? 'Video' : 'Voice'
@@ -2421,6 +2485,12 @@ function renderMessagesView() {
       createCallLaunchButton(conversation, 'audio'),
       createCallLaunchButton(conversation, 'video')
     )
+  }
+  if (conversation.type === 'channel') {
+    const catchUp = make('button', 'catch-up-ai-btn', '⚡ Catch Me Up')
+    catchUp.type = 'button'
+    catchUp.addEventListener('click', () => summarizeActiveConversation(catchUp))
+    actions.append(catchUp)
   }
   const trigger = make('button', 'message-actions-trigger messages-thread-actions-trigger', '⋮')
   trigger.type = 'button'

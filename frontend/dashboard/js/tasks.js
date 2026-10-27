@@ -208,11 +208,18 @@ export function taskCard(task) {
 
   const top = make('div', 'task-top')
   const tagWrap = make('span', `tag ${task.tagTone || 'blue'}`, task.tag)
+  const priorityLabel = (task.priority || 'medium')[0].toUpperCase() +
+    (task.priority || 'medium').slice(1)
+  const priority = make(
+    'span',
+    `task-priority-badge is-${task.priority || 'medium'}`,
+    `${priorityLabel} priority`
+  )
   const moreBtn = make('button', 'card-more-btn')
   moreBtn.type = 'button'
   moreBtn.innerHTML = getSvg('dots', 'dots-svg', 14, 14)
   moreBtn.title = 'Task actions'
-  top.append(tagWrap, moreBtn)
+  top.append(tagWrap, ...(task.backendPersistent ? [priority] : []), moreBtn)
 
   const title = make('h4', '', task.title)
   let discussionButton = null

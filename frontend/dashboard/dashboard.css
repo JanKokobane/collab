@@ -2204,7 +2204,7 @@ body.dark-mode .project-progress-aside-empty,
     margin: auto 0;
     display: flex;
     flex-direction: column;
-    max-height: min(780px, calc(100vh - 32px));
+    max-height: min(780px, calc(100vh - 32px), calc(100dvh - 32px));
     overflow: hidden;
     overflow-x: hidden;
     scrollbar-width: thin;
@@ -2328,6 +2328,14 @@ body.dark-mode .project-progress-aside-empty,
 form.modal {
     width: min(440px, calc(100vw - 32px));
     max-width: 440px;
+    min-width: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.modal :is(input, select, textarea, button) {
+    box-sizing: border-box;
+    max-width: 100%;
 }
 
 .dashboard-modal-header {
@@ -2801,9 +2809,93 @@ form.modal .brainstorm-board-member-option input[type="checkbox"] {
     gap: 8px;
 }
 
+.project-task-priority-row {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.task-priority-badge {
+    align-self: center;
+    padding: 4px 7px;
+    border-radius: 999px;
+    background: #F4F4F5;
+    color: #52525B;
+    font-size: 9px;
+    font-weight: 750;
+    white-space: nowrap;
+}
+
+.task-priority-badge.is-low {
+    background: #DCFCE7;
+    color: #166534;
+}
+
+.task-priority-badge.is-high {
+    background: #FEE2E2;
+    color: #991B1B;
+}
+
 .project-task-assignment-row .project-task-sprint-field {
     align-self: end;
     min-width: 0;
+}
+
+.catch-up-ai-btn,
+.zoom-meeting-ai-button,
+.zoom-meeting-ai-add-button {
+    min-height: 34px;
+    padding: 7px 10px;
+    border: 1px solid rgba(40, 123, 103, .24);
+    border-radius: 8px;
+    background: rgba(40, 123, 103, .08);
+    color: #216b5a;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.catch-up-ai-btn:disabled,
+.zoom-meeting-ai-button:disabled,
+.zoom-meeting-ai-add-button:disabled {
+    cursor: wait;
+    opacity: .6;
+}
+
+.ai-briefing-modal {
+    position: relative;
+}
+
+.ai-briefing-modal h2 {
+    margin: 0 38px 12px 0;
+}
+
+.ai-briefing-copy {
+    margin: 0;
+    white-space: pre-wrap;
+    line-height: 1.6;
+}
+
+body.dark-mode .catch-up-ai-btn,
+body.dark-mode .zoom-meeting-ai-button,
+body.dark-mode .zoom-meeting-ai-add-button {
+    border-color: rgba(115, 190, 168, .32);
+    background: rgba(115, 190, 168, .12);
+    color: #a5e1cc;
+}
+
+body.dark-mode .task-priority-badge {
+    background: #3F3F46;
+    color: #E4E4E7;
+}
+
+body.dark-mode .task-priority-badge.is-low {
+    background: #14532D;
+    color: #BBF7D0;
+}
+
+body.dark-mode .task-priority-badge.is-high {
+    background: #7F1D1D;
+    color: #FECACA;
 }
 
 .project-task-assignment-row .project-task-create-sprint-toggle {
@@ -6600,6 +6692,18 @@ body.dark-mode .input-with-icon:focus-within .input-icon-svg,
 
 .pinned-join-btn:hover {
     background: #000000;
+}
+
+.meeting-ended-label {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 9px;
+    border: 1px solid #E4E4E7;
+    border-radius: 6px;
+    background: #F4F4F5;
+    color: #52525B;
+    font-size: 11px;
+    font-weight: 650;
 }
 
 /* ============================================================

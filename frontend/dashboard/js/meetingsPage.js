@@ -19,7 +19,7 @@ function createMeetingCard(meeting) {
   const now = new Date()
   const start = meetingStart(meeting)
   const end = meetingEnd(meeting)
-  const isLive = start <= now && end >= now
+  const isLive = !meeting.isEnded && start <= now && end >= now
   const isPast = end < now
   const card = make('article', `meetings-page-card${isLive ? ' is-live' : ''}`)
   const date = new Date(`${meeting.date}T12:00:00`)
@@ -32,7 +32,7 @@ function createMeetingCard(meeting) {
 
   const details = make('div', 'meetings-page-details')
   const status = make('span', `meetings-page-status${isLive ? ' is-live' : ''}`,
-    isLive ? 'In progress' : isPast ? 'Past meeting' : formatRelativeDate(meeting.date))
+    meeting.isEnded ? 'Meeting ended' : isLive ? 'In progress' : isPast ? 'Past meeting' : formatRelativeDate(meeting.date))
   const title = make('h3', '', meeting.title)
   const meta = make('div', 'meetings-page-meta')
   meta.append(
@@ -47,7 +47,7 @@ function createMeetingCard(meeting) {
   if (meeting.notes) details.append(make('p', 'meetings-page-notes', meeting.notes))
 
   const actions = make('div', 'meetings-page-actions')
-  if (!isPast) {
+  if (!isPast && !meeting.isEnded) {
     const join = make('button', 'meetings-page-join', isLive ? 'Join meeting' : 'Open meeting')
     join.type = 'button'
     join.setAttribute('aria-label', `${isLive ? 'Join' : 'Open'} meeting: ${meeting.title}`)
@@ -55,7 +55,7 @@ function createMeetingCard(meeting) {
     actions.append(join)
   }
   const meetingUrl = getSafeMeetingUrl(meeting.meetingUrl || meeting.location)
-  if (meetingUrl && !isPast) {
+  if (meetingUrl && !isPast && !meeting.isEnded) {
     const externalLink = make('a', 'meetings-page-join', 'Open external link')
     externalLink.href = meetingUrl
     externalLink.target = '_blank'

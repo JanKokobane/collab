@@ -28,6 +28,7 @@ import {
   getSelectedMembersProject,
   loadProjectMembers,
   openAdminTaskModal,
+  openProjectTaskModal,
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   openInviteModal
@@ -45,6 +46,7 @@ import { signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-aut
 import { firebaseAuth, markCurrentUserOffline } from '../../firebase.js'
 import { loadProjectMeetings } from './meetings.js'
 import { showDashboardToast } from './modalChrome.js'
+import { api } from './api.js'
 
 // ============================================================
 // SIMULATE REAL-TIME COLLABORATION EVENT
@@ -548,4 +550,53 @@ export function initEventListeners() {
       if (!searchContainer.contains(event.target)) closeResults()
     })
   }
+  setupAICommandBar()
+}
+
+export function setupAICommandBar() {
+  const searchInput = document.querySelector('#search')
+  if (!searchInput || searchInput.dataset.aiCommandReady === 'true') return
+  searchInput.dataset.aiCommandReady = 'true'
+  searchInput.addEventListener('keydown', async event => {
+    const promptText = searchInput.value.trim()
+    if (event.key !== 'Enter' || !/^create task\b/i.test(promptText)) return
+    event.preventDefault()
+    if (searchInput.dataset.aiBusy === 'true') return
+    searchInput.dataset.aiBusy = 'true'
+    searchInput.disabled = true
+    let taskModalOpened = false
+    try {
+      const response = await api.post('/ai/parse-task', { promptText })
+      if (!response?.success || !response.task) {
+        throw new Error('The AI service did not return task details.')
+      }
+      const activeProjectName = document.querySelector('.project-nav .nav-item.active')?.dataset.view
+      const project = projects.find(item => item.name === activeProjectName) ||
+        projects.find(item => Array.isArray(item.sprints) && item.sprints.some(sprint => sprint.assigneeFirebaseUid)) ||
+        projects[0]
+      if (!project) throw new Error('Create or join a project before creating a task.')
+      const dueDate = response.task.dueDate &&
+        response.task.dueDate >= new Date().toISOString().slice(0, 10)
+        ? response.task.dueDate
+        : undefined
+      searchInput.value = ''
+      const searchResults = document.querySelector('#dashboard-search-results')
+      if (searchResults) searchResults.hidden = true
+      searchInput.setAttribute('aria-expanded', 'false')
+      taskModalOpened = true
+      await openProjectTaskModal(project, null, {
+        title: response.task.title,
+        description: response.task.description,
+        priority: response.task.priority,
+        dueDate
+      })
+    } catch (error) {
+      console.error('AI task creation failed:', error)
+      showDashboardToast(error.message || 'The task request could not be parsed.', 'error')
+    } finally {
+      searchInput.disabled = false
+      delete searchInput.dataset.aiBusy
+      if (!taskModalOpened) searchInput.focus()
+    }
+  })
 }

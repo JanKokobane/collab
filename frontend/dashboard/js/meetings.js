@@ -49,6 +49,7 @@ function normalizeMeeting(record, project) {
     : String(record.meeting_date || '').slice(0, 10)
   const hostUid = record.host_firebase_uid
   const host = attendeeByUid.get(hostUid)
+  const endedAt = record.ended_at || record.endedAt || null
 
   return {
     id: record.meeting_id,
@@ -64,6 +65,8 @@ function normalizeMeeting(record, project) {
     meetingUrl: record.meeting_url || record.meetingUrl || '',
     notes: record.notes || '',
     hostFirebaseUid: hostUid,
+    endedAt,
+    isEnded: Boolean(endedAt),
     host: host?.name || record.host_name || 'Project member',
     hostProfileImage: host?.profileImage || '',
     attendees: attendeeUids.map(uid => attendeeByUid.get(uid) || {

@@ -202,15 +202,19 @@ export function renderUpcomingMeetings() {
     hostWrap.append(make('span', 'meeting-host-name', hostName))
     hostCell.append(hostWrap)
     const locationCell = make('td', 'meeting-location')
-    const join = make('button', 'pinned-join-btn', 'Join meeting')
-    join.type = 'button'
-    join.addEventListener('click', event => {
-      event.stopPropagation()
-      openMeteredMeetingModal(meeting)
-    })
-    locationCell.append(join)
+    if (meeting.isEnded) {
+      locationCell.append(make('span', 'meeting-ended-label', 'Meeting ended'))
+    } else {
+      const join = make('button', 'pinned-join-btn', 'Join meeting')
+      join.type = 'button'
+      join.addEventListener('click', event => {
+        event.stopPropagation()
+        openMeteredMeetingModal(meeting)
+      })
+      locationCell.append(join)
+    }
     const meetingUrl = getSafeMeetingUrl(meeting.location)
-    if (meetingUrl) {
+    if (meetingUrl && !meeting.isEnded) {
       const link = make('a', '', 'Open external link ↗')
       link.href = meetingUrl
       link.target = '_blank'
