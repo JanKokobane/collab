@@ -1,6 +1,6 @@
 import { currentUser, make, projects, tasks, root, addAuditLog, hub, renderAvatarElement } from './state.js'
 import { api } from './api.js'
-import { openProjectTaskModal } from './admin.js'
+import { openProjectTaskModal } from './admin.js?v=20261028-project-overview'
 import { createTaskMediaEditor, renderTaskMediaAttachments } from './taskMedia.js'
 import {
   showDashboardConfirmation,
@@ -14,6 +14,144 @@ function displayDate(value) {
   return Number.isNaN(date.getTime())
     ? '—'
     : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function getProductionAnalysis(projectTasks, sprints) {
+  const activeTasks = projectTasks.filter(task => task.status !== 'Done')
+  const completed = projectTasks.length - activeTasks.length
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const dateKey = date => [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ].join('-')
+  const todayKey = dateKey(today)
+  const weekEnd = new Date(today)
+  weekEnd.setDate(weekEnd.getDate() + 7)
+  const weekEndKey = dateKey(weekEnd)
+  const overdue = activeTasks.filter(task => {
+    const dueDate = task.due_date ? String(task.due_date).slice(0, 10) : ''
+    return dueDate && dueDate < todayKey
+  }).length
+  const dueSoon = activeTasks.filter(task => {
+    const dueDate = task.due_date ? String(task.due_date).slice(0, 10) : ''
+    return dueDate && dueDate >= todayKey && dueDate <= weekEndKey
+  }).length
+  const blocked = activeTasks.filter(task => task.status === 'Blocked').length
+  const dependencyRisks = activeTasks.filter(task =>
+    task.hasDependencyWarning ||
+    task.dependencies?.some(dependency => dependency.warning_reason)
+  ).length
+  const pendingReview = sprints.filter(sprint => sprint.status === 'Pending Review').length
+  const taskStatusBreakdown = [
+    { label: 'To do', count: projectTasks.filter(task => task.status === 'To do').length, tone: 'is-todo' },
+    { label: 'In progress', count: projectTasks.filter(task => task.status === 'In progress').length, tone: 'is-progress' },
+    { label: 'Blocked', count: blocked, tone: 'is-blocked' },
+    { label: 'Done', count: completed, tone: 'is-done' },
+    { label: 'Backlog', count: projectTasks.filter(task => task.status === 'Backlog').length, tone: 'is-backlog' }
+  ]
+  const sprintStatusBreakdown = [
+    { label: 'Completed', count: sprints.filter(sprint => sprint.status === 'Completed').length, tone: 'is-done' },
+    { label: 'Active', count: sprints.filter(sprint => sprint.status === 'Active').length, tone: 'is-progress' },
+    { label: 'Pending review', count: pendingReview, tone: 'is-review' },
+    { label: 'Changes requested', count: sprints.filter(sprint => sprint.status === 'Changes Requested').length, tone: 'is-blocked' },
+    { label: 'Upcoming', count: sprints.filter(sprint => !sprint.status || sprint.status === 'Upcoming').length, tone: 'is-backlog' }
+  ]
+  const scheduleBreakdown = [
+    { label: 'Overdue', count: overdue, tone: 'is-blocked' },
+    { label: 'Due in 7 days', count: dueSoon, tone: 'is-upcoming' },
+    {
+      label: 'Due later',
+      count: activeTasks.filter(task => {
+        const dueDate = task.due_date ? String(task.due_date).slice(0, 10) : ''
+        return dueDate > weekEndKey
+      }).length,
+      tone: 'is-progress'
+    },
+    {
+      label: 'No due date',
+      count: activeTasks.filter(task => !task.due_date).length,
+      tone: 'is-backlog'
+    }
+  ]
+  const unassigned = activeTasks.filter(task =>
+    !task.assigneeFirebaseUid && !task.assignee_email && !task.assigneeName
+  ).length
+  const completion = projectTasks.length
+    ? Math.round((completed / projectTasks.length) * 100)
+    : 0
+
+  let recommendation = 'Add tasks and due dates to track delivery progress.'
+  let tone = 'is-neutral'
+  if (overdue || blocked || dependencyRisks) {
+    recommendation = [
+      overdue ? `${overdue} overdue ${overdue === 1 ? 'task needs' : 'tasks need'} a date or delivery update` : '',
+      blocked ? `${blocked} blocked ${blocked === 1 ? 'task needs' : 'tasks need'} an unblock plan` : '',
+      dependencyRisks
+        ? `${dependencyRisks} ${dependencyRisks === 1 ? 'task has' : 'tasks have'} a dependency warning`
+        : ''
+    ].filter(Boolean).join(' · ')
+    tone = 'is-attention'
+  } else if (dueSoon) {
+    recommendation = `${dueSoon} ${dueSoon === 1 ? 'task is' : 'tasks are'} due within 7 days; confirm owners and next steps.`
+    tone = 'is-upcoming'
+  } else if (unassigned) {
+    recommendation = `Assign an owner to ${unassigned} open ${unassigned === 1 ? 'task' : 'tasks'} to keep work moving.`
+    tone = 'is-upcoming'
+  } else if (pendingReview) {
+    recommendation = `${pendingReview} ${pendingReview === 1 ? 'sprint is' : 'sprints are'} waiting for owner review.`
+    tone = 'is-upcoming'
+  } else if (projectTasks.length) {
+    recommendation = 'No overdue or blocked work. Keep task owners and due dates current.'
+    tone = 'is-positive'
+  }
+
+  return {
+    completed,
+    blocked,
+    dependencyRisks,
+    overdue,
+    dueSoon,
+    pendingReview,
+    completion,
+    taskStatusBreakdown,
+    sprintStatusBreakdown,
+    scheduleBreakdown,
+    recommendation,
+    tone
+  }
+}
+
+function renderAnalysisChart(title, items, className) {
+  const chart = make('div', `project-progress-chart ${className}`)
+  chart.append(make('h4', '', title))
+  const total = items.reduce((sum, item) => sum + item.count, 0)
+  if (!total) {
+    chart.append(make('p', 'project-progress-chart-empty', 'No data to display yet.'))
+    return chart
+  }
+
+  const rows = make('div', 'project-progress-chart-rows')
+  items.forEach(item => {
+    const row = make('div', 'project-progress-chart-row')
+    const rowHeader = make('div', 'project-progress-chart-row-header')
+    const share = Math.round((item.count / total) * 100)
+    rowHeader.append(
+      make('span', '', item.label),
+      make('strong', '', `${item.count} · ${share}%`)
+    )
+    const track = make('div', 'project-progress-chart-track')
+    track.setAttribute('role', 'img')
+    track.setAttribute('aria-label', `${item.label}: ${item.count}`)
+    const fill = make('span', `project-progress-chart-fill ${item.tone}`)
+    fill.style.width = `${share}%`
+    track.append(fill)
+    row.append(rowHeader, track)
+    rows.append(row)
+  })
+  chart.append(rows)
+  return chart
 }
 
 function sprintLeadName(project, sprint) {
@@ -146,6 +284,7 @@ export function openProjectProgressAside(task) {
   )
   const sprints = Array.isArray(project.sprints) ? project.sprints : []
   const acceptedMembers = Array.isArray(project.acceptedMembers) ? project.acceptedMembers : []
+  const projectSprints = Array.isArray(project.sprints) ? project.sprints : []
   const currentUid = currentUser.uid
   const isProjectOwner = Boolean(currentUid && project.creatorFirebaseUid === currentUid)
   const backdrop = make('div', 'project-progress-aside-backdrop')
@@ -166,7 +305,7 @@ export function openProjectProgressAside(task) {
   header.append(headerCopy, closeButton)
   aside.append(header)
 
-  const summary = make('div', 'project-progress-aside-summary')
+  const summary = make('div', 'project-progress-aside-summary is-overview')
   ;[
     ['Project type', project.projectType || 'Collaboration'],
     ['Duration', project.timeSpan || 'Ongoing'],
@@ -179,6 +318,46 @@ export function openProjectProgressAside(task) {
   })
   const content = make('div', 'project-progress-aside-content')
   content.append(summary)
+
+  const analysis = getProductionAnalysis(projectTasks, sprints)
+  const analysisSection = make('section', 'project-progress-aside-section project-progress-aside-analysis')
+  const analysisHeading = make('div', 'project-progress-aside-section-heading')
+  analysisHeading.append(make('h3', '', 'Production analysis'))
+  const analysisGrid = make('div', 'project-progress-analysis-grid')
+  ;[
+    ['Completion', `${analysis.completion}%`, `${analysis.completed} of ${projectTasks.length} tasks complete`],
+    ['Blocked', String(analysis.blocked), 'Open tasks marked blocked'],
+    ['Dependency risk', String(analysis.dependencyRisks), 'Open tasks with a predecessor warning'],
+    ['Overdue', String(analysis.overdue), 'Open tasks past their due date'],
+    ['Due in 7 days', String(analysis.dueSoon), 'Open tasks due this week'],
+    ['Awaiting review', String(analysis.pendingReview), 'Sprints submitted to the owner']
+  ].forEach(([label, value, detail]) => {
+    const metric = make('div', 'project-progress-analysis-metric')
+    metric.append(make('small', '', label), make('strong', '', value), make('span', '', detail))
+    analysisGrid.append(metric)
+  })
+  const progressTrack = make('div', 'project-progress-analysis-track')
+  progressTrack.setAttribute('role', 'progressbar')
+  progressTrack.setAttribute('aria-label', 'Project task completion')
+  progressTrack.setAttribute('aria-valuemin', '0')
+  progressTrack.setAttribute('aria-valuemax', '100')
+  progressTrack.setAttribute('aria-valuenow', String(analysis.completion))
+  const progressFill = make('span', 'project-progress-analysis-fill')
+  progressFill.style.width = `${analysis.completion}%`
+  progressTrack.append(progressFill)
+  const recommendation = make(
+    'p',
+    `project-progress-analysis-recommendation ${analysis.tone}`,
+    analysis.recommendation
+  )
+  const charts = make('div', 'project-progress-analysis-charts')
+  charts.append(
+    renderAnalysisChart('Task status mix', analysis.taskStatusBreakdown, 'is-task-status'),
+    renderAnalysisChart('Sprint delivery', analysis.sprintStatusBreakdown, 'is-sprint-status'),
+    renderAnalysisChart('Schedule outlook', analysis.scheduleBreakdown, 'is-schedule')
+  )
+  analysisSection.append(analysisHeading, analysisGrid, progressTrack, recommendation, charts)
+  content.append(analysisSection)
 
   const focusSection = make('section', 'project-progress-aside-section project-progress-aside-focus')
   const descriptionMediaContainer = make('div', 'task-media-player-list')
@@ -220,7 +399,7 @@ export function openProjectProgressAside(task) {
     }
   })
 
-  const dependencySection = make('section', 'project-progress-aside-section')
+  const dependencySection = make('section', 'project-progress-aside-section is-dependencies')
   const dependencyHeading = make('div', 'project-progress-aside-section-heading')
   dependencyHeading.append(make('h3', '', 'Dependencies'))
   dependencySection.append(dependencyHeading)
@@ -266,7 +445,7 @@ export function openProjectProgressAside(task) {
   dependencySection.append(dependencySelect, dependencyHelp, dependencySave)
   content.append(dependencySection)
 
-  const commentsSection = make('section', 'project-progress-aside-section')
+  const commentsSection = make('section', 'project-progress-aside-section is-comments')
   const commentsHeading = make('div', 'project-progress-aside-section-heading')
   commentsHeading.append(make('h3', '', 'Comments and media'))
   const commentsList = make('div', 'task-comment-list')
@@ -308,7 +487,7 @@ export function openProjectProgressAside(task) {
   content.append(commentsSection)
   void loadTaskComments(project, task, commentsList)
 
-  const sprintSection = make('section', 'project-progress-aside-section')
+  const sprintSection = make('section', 'project-progress-aside-section is-sprints')
   sprintSection.setAttribute('aria-labelledby', 'project-progress-aside-sprints-title')
   const sprintHeading = make('div', 'project-progress-aside-section-heading')
   const sprintHeadingTitle = make('h3', '', 'Project sprints')
@@ -469,7 +648,7 @@ export function openProjectProgressAside(task) {
   sprintSection.append(sprintList)
   content.append(sprintSection)
 
-  const memberSection = make('section', 'project-progress-aside-section')
+  const memberSection = make('section', 'project-progress-aside-section is-members')
   memberSection.setAttribute('aria-labelledby', 'project-progress-aside-members-title')
   const memberHeading = make('div', 'project-progress-aside-section-heading')
   const memberHeadingTitle = make('h3', '', 'Accepted project invitees')
@@ -499,7 +678,7 @@ export function openProjectProgressAside(task) {
   memberSection.append(memberList)
   content.append(memberSection)
 
-  const taskSection = make('section', 'project-progress-aside-section')
+  const taskSection = make('section', 'project-progress-aside-section is-tasks')
   taskSection.setAttribute('aria-labelledby', 'project-progress-aside-tasks-title')
   const taskHeading = make('div', 'project-progress-aside-section-heading')
   const taskHeadingTitle = make('h3', '', 'Tasks')
@@ -525,6 +704,16 @@ export function openProjectProgressAside(task) {
         make('span', '', `Due · ${displayDate(projectTask.due_date)}`)
       )
       taskRow.append(taskTop, taskMeta)
+      const canManageProjectTask = Boolean(
+        currentUid && (
+          isProjectOwner ||
+          projectTask.assigneeFirebaseUid === currentUid
+        )
+      )
+      const taskMovementLocked = projectTask.status === 'In progress' && (
+        !projectSprints.length ||
+        projectSprints.some(sprint => sprint.status !== 'Completed')
+      )
       if (isProjectOwner) {
         const actions = make('div', 'project-progress-aside-task-actions')
         const editButton = make('button', 'project-progress-aside-task-action', 'Edit')
@@ -568,13 +757,21 @@ export function openProjectProgressAside(task) {
         taskRow.append(actions)
       }
       if (
-        currentUid &&
-        projectTask.assigneeFirebaseUid === currentUid &&
+        canManageProjectTask &&
         projectTask.status !== 'Done'
       ) {
-        const completeTaskButton = make('button', 'project-progress-aside-task-complete', 'Complete task')
+        const completeTaskButton = make(
+          'button',
+          'project-progress-aside-task-complete',
+          taskMovementLocked ? 'Locked until sprints complete' : 'Complete task'
+        )
         completeTaskButton.type = 'button'
+        completeTaskButton.disabled = taskMovementLocked
+        if (taskMovementLocked) {
+          completeTaskButton.title = 'Complete every project sprint before moving this in-progress task.'
+        }
         completeTaskButton.addEventListener('click', async () => {
+          if (taskMovementLocked) return
           const restoreButton = setDashboardButtonLoading(completeTaskButton, 'Saving…')
           try {
             await api.patch(

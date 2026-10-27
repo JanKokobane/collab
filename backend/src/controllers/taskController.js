@@ -742,6 +742,19 @@ const updateProjectTask = async (req, res) => {
                 message: 'Task not found.'
             });
         }
+        if (
+            previousTask.rows[0].status === 'In progress' &&
+            normalized.value.status !== previousTask.rows[0].status
+        ) {
+            const sprints = Array.isArray(project.sprints) ? project.sprints : [];
+            if (!sprints.length || sprints.some(sprint => sprint.status !== 'Completed')) {
+                return res.status(409).json({
+                    success: false,
+                    code: 'PROJECT_SPRINTS_INCOMPLETE',
+                    message: 'This in-progress task cannot be moved until every project sprint is complete.'
+                });
+            }
+        }
 
         const result = await query(
             `
@@ -885,12 +898,28 @@ const updateProjectTaskStatus = async (req, res) => {
                 message: 'Task not found.'
             });
         }
-        if (existingTask.rows[0].assignee_firebase_uid !== req.firebaseUid) {
+        const isProjectOwner = project.creator_firebase_uid === req.firebaseUid;
+        const isAssignee = existingTask.rows[0].assignee_firebase_uid === req.firebaseUid;
+        if (!isProjectOwner && !isAssignee) {
             return res.status(403).json({
                 success: false,
                 code: 'TASK_STATUS_UPDATE_FORBIDDEN',
-                message: 'Only the assigned user can move this task.'
+                message: 'Only the project owner or assigned user can move this task.'
             });
+        }
+
+        if (
+            existingTask.rows[0].status === 'In progress' &&
+            status !== existingTask.rows[0].status
+        ) {
+            const sprints = Array.isArray(project.sprints) ? project.sprints : [];
+            if (!sprints.length || sprints.some(sprint => sprint.status !== 'Completed')) {
+                return res.status(409).json({
+                    success: false,
+                    code: 'PROJECT_SPRINTS_INCOMPLETE',
+                    message: 'This in-progress task cannot be moved until every project sprint is complete.'
+                });
+            }
         }
 
         const result = await query(
@@ -899,10 +928,9 @@ const updateProjectTaskStatus = async (req, res) => {
                 SET status = $1, updated_at = NOW()
                 WHERE project_id = $2
                   AND task_id = $3::uuid
-                  AND assignee_firebase_uid = $4
                 RETURNING task_id
             `,
-            [status, project.project_id, req.params.taskId, req.firebaseUid]
+            [status, project.project_id, req.params.taskId]
         );
         if (!result.rowCount) {
             return res.status(404).json({

@@ -11,7 +11,7 @@ import {
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   renderAuditLogs
-} from './admin.js'
+} from './admin.js?v=20261028-project-overview'
 import {
   currentTheme,
   currentAccent,
@@ -19,7 +19,7 @@ import {
   applyAccent,
   initSettingsControls
 } from './theme.js'
-import { initEventListeners } from './events.js'
+import { initEventListeners } from './events.js?v=20261028-project-overview'
 
 // Apply user theme and accent immediately
 applyTheme(currentTheme)

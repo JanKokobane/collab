@@ -54,7 +54,7 @@ import {
   moveTaskStatus,
   taskCard,
   setupDragAndDrop
-} from './js/tasks.js?v=20261027-sprint-review'
+} from './js/tasks.js?v=20261028-project-overview'
 
 import {
   renderCalendarPanel,
@@ -78,7 +78,7 @@ import {
   openProjectTaskModal,
   openAdminEditTaskModal,
   openInviteModal
-} from './js/admin.js'
+} from './js/admin.js?v=20261028-project-overview'
 
 import {
   switchView,
@@ -100,7 +100,7 @@ import { api } from './js/api.js'
 import {
   initEventListeners,
   simulateCollaborationEvent
-} from './js/events.js'
+} from './js/events.js?v=20261028-project-overview'
 import {
   renderWorkspaceHub,
   renderWorkspaceSummary,
@@ -109,7 +109,7 @@ import {
   renderNotifications,
   initWorkspaceHubEvents
 } from './js/workspaceHub.js'
-import { openProjectTaskDetails } from './js/projectProgressAside.js?v=20261027-sprint-review'
+import { openProjectTaskDetails } from './js/projectProgressAside.js?v=20261028-project-overview'
 import { initMessages, openMessageContext, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261026-collaboration-context'
 import { renderMeetingsPage } from './js/meetingsPage.js'
 import { initProjectStickyNotes } from './js/projectStickyNotes.js'

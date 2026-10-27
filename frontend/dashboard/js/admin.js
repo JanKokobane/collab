@@ -1014,7 +1014,18 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     if (status === (task?.status || 'To do')) option.selected = true
     statusSelect.append(option)
   })
+  const taskStatusLocked = task?.status === 'In progress' && (
+    !sprints.length || sprints.some(sprint => sprint.status !== 'Completed')
+  )
+  if (taskStatusLocked) statusSelect.disabled = true
   statusLabel.append(statusSelect)
+  if (taskStatusLocked) {
+    statusLabel.append(make(
+      'small',
+      'project-task-status-lock',
+      'Complete every project sprint before moving this task.'
+    ))
+  }
 
   const priorityLabel = make('label', 'no-input-icon', 'Priority')
   const prioritySelect = document.createElement('select')

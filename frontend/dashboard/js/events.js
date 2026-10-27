@@ -10,7 +10,7 @@ import {
   setActiveFilter,
   setActiveDisplayMode
 } from './state.js'
-import { renderTasks, renderListView, getFilteredTasks } from './tasks.js?v=20261027-sprint-review'
+import { renderTasks, renderListView, getFilteredTasks } from './tasks.js?v=20261028-project-overview'
 import { openCreateProjectModal, openAddSprintModal, openInviteCollaboratorModal, openManageCollaboratorsModal } from './projects.js'
 import { toLocalDateKey } from './dateUtils.js'
 import {
@@ -32,7 +32,7 @@ import {
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   openInviteModal
-} from './admin.js'
+} from './admin.js?v=20261028-project-overview'
 import {
   currentTheme,
   applyTheme,

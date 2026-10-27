@@ -22,7 +22,7 @@ import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } f
 import { createScheduleCalendarPicker } from './calendar.js'
 import { api } from './api.js'
 import { setDashboardButtonLoading, showDashboardToast } from './modalChrome.js'
-import { openProjectProgressAside } from './projectProgressAside.js?v=20261027-sprint-review'
+import { openProjectProgressAside } from './projectProgressAside.js?v=20261028-project-overview'
 
 // ============================================================
 // TASKS & BOARD MANAGEMENT
@@ -89,15 +89,43 @@ export function updateTaskCounts(filtered) {
 }
 
 function canCurrentUserMoveTask(task) {
-  return !task.backendPersistent ||
-    Boolean(currentUser.uid && task.assigneeFirebaseUid === currentUser.uid)
+  return !getTaskMoveRestriction(task)
+}
+
+function isTaskLockedUntilSprintsComplete(task) {
+  if (!task.backendPersistent || task.status !== 'In progress') return false
+  const project = projects.find(candidate => candidate.projectId === task.projectId)
+  const sprints = Array.isArray(project?.sprints) ? project.sprints : []
+  return !sprints.length || sprints.some(sprint => sprint.status !== 'Completed')
+}
+
+function getTaskMoveRestriction(task) {
+  if (!task.backendPersistent) return ''
+
+  const project = projects.find(candidate => candidate.projectId === task.projectId)
+  const isProjectOwner = Boolean(
+    currentUser.uid && project?.creatorFirebaseUid === currentUser.uid
+  )
+  const isAssignee = Boolean(
+    currentUser.uid && task.assigneeFirebaseUid === currentUser.uid
+  )
+  if (!isProjectOwner && !isAssignee) {
+    return 'Only the project owner or assigned user can move this project task.'
+  }
+
+  if (isTaskLockedUntilSprintsComplete(task)) {
+    return 'This in-progress task cannot be moved until every project sprint is complete.'
+  }
+
+  return ''
 }
 
 export async function moveTaskStatus(taskId, newStatus) {
   const task = tasks.find(t => t.id === taskId)
   if (!task || task.status === newStatus || task.statusUpdating) return
-  if (!canCurrentUserMoveTask(task)) {
-    showDashboardToast('Only the assigned user can move this project task.', 'error')
+  const moveRestriction = getTaskMoveRestriction(task)
+  if (moveRestriction) {
+    showDashboardToast(moveRestriction, 'error')
     return
   }
 
@@ -187,8 +215,15 @@ export function taskCard(task) {
   const project = task.backendPersistent
     ? projects.find(item => item.projectId === task.projectId)
     : null
-  const canMoveTask = canCurrentUserMoveTask(task) && !task.statusUpdating
+  const moveRestriction = getTaskMoveRestriction(task)
+  const canMoveTask = !moveRestriction && !task.statusUpdating
   card.setAttribute('draggable', String(canMoveTask))
+  if (isTaskLockedUntilSprintsComplete(task)) {
+    card.classList.add('is-sprint-locked')
+  }
+  if (!canMoveTask && task.backendPersistent) {
+    card.title = moveRestriction || 'This task is currently being updated.'
+  }
   if (task.statusUpdating) card.setAttribute('aria-busy', 'true')
 
   card.addEventListener('dragstart', e => {
@@ -265,6 +300,11 @@ export function taskCard(task) {
     const warning = make('span', 'task-dependency-warning', 'Dependency risk')
     warning.title = 'A predecessor task is blocked or its due date moved later.'
     meta.append(warning)
+  }
+  if (isTaskLockedUntilSprintsComplete(task)) {
+    const sprintLock = make('span', 'task-sprint-lock-badge', 'Sprint lock')
+    sprintLock.title = 'Complete every project sprint before moving this in-progress task.'
+    meta.append(sprintLock)
   }
 
   if (task.status === 'Done') {
@@ -407,7 +447,7 @@ export function renderListView(filtered) {
     checkBtn.type = 'button'
     checkBtn.disabled = !canCurrentUserMoveTask(task)
     if (checkBtn.disabled) {
-      checkBtn.title = 'Only the assigned user can complete this project task.'
+      checkBtn.title = getTaskMoveRestriction(task)
     }
     checkBtn.innerHTML = getSvg('check', 'check-icon', 12, 12)
     checkBtn.addEventListener('click', e => {
