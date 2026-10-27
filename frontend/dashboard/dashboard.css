@@ -6180,6 +6180,7 @@ body.dark-mode .input-with-icon:focus-within .input-icon-svg,
 /* Sprints Strip */
 .project-sprints-strip {
     display: flex;
+    min-width: 0;
     justify-content: space-between;
     align-items: center;
     background: #FFFFFF;
@@ -6193,6 +6194,8 @@ body.dark-mode .input-with-icon:focus-within .input-icon-svg,
 
 .sprints-strip-left {
     display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
@@ -6208,9 +6211,15 @@ body.dark-mode .input-with-icon:focus-within .input-icon-svg,
 
 .sprint-chips {
     display: flex;
+    min-width: 0;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+    scrollbar-width: none;
+}
+
+.sprint-chips::-webkit-scrollbar {
+    display: none;
 }
 
 .sprint-chip {
