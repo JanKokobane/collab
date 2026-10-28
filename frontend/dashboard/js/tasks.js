@@ -22,7 +22,7 @@ import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } f
 import { createScheduleCalendarPicker } from './calendar.js'
 import { api } from './api.js'
 import { setDashboardButtonLoading, showDashboardToast } from './modalChrome.js'
-import { openProjectProgressAside } from './projectProgressAside.js?v=20261028-project-media-preview'
+import { openProjectProgressAside } from './projectProgressAside.js?v=20261105-sprint-submission-media'
 
 // ============================================================
 // TASKS & BOARD MANAGEMENT
@@ -250,11 +250,64 @@ export function taskCard(task) {
     `task-priority-badge is-${task.priority || 'medium'}`,
     `${priorityLabel} priority`
   )
+  const actionMenu = make('div', 'task-card-action-menu')
   const moreBtn = make('button', 'card-more-btn')
   moreBtn.type = 'button'
   moreBtn.innerHTML = getSvg('dots', 'dots-svg', 14, 14)
   moreBtn.title = 'Task actions'
-  top.append(tagWrap, ...(task.backendPersistent ? [priority] : []), moreBtn)
+  moreBtn.setAttribute('aria-label', `Change status for ${task.title}`)
+  moreBtn.setAttribute('aria-expanded', 'false')
+  const statusMenu = make('div', 'task-card-status-menu')
+  statusMenu.hidden = true
+  statusMenu.setAttribute('role', 'group')
+  statusMenu.setAttribute('aria-label', `Move ${task.title} to a status`)
+  const closeStatusMenu = () => {
+    statusMenu.hidden = true
+    moreBtn.setAttribute('aria-expanded', 'false')
+    document.removeEventListener('click', closeWhenClickingOutside)
+  }
+  const closeWhenClickingOutside = event => {
+    if (!actionMenu.contains(event.target)) closeStatusMenu()
+  }
+  const moveRestrictionForMenu = getTaskMoveRestriction(task)
+  ;['To do', 'In progress', 'Done', 'Blocked', 'Backlog'].forEach(status => {
+    const statusButton = make(
+      'button',
+      `task-card-status-option${status === task.status ? ' is-current' : ''}`,
+      status
+    )
+    statusButton.type = 'button'
+    statusButton.disabled = Boolean(
+      task.statusUpdating ||
+      moveRestrictionForMenu ||
+      status === task.status
+    )
+    if (moveRestrictionForMenu) statusButton.title = moveRestrictionForMenu
+    statusButton.addEventListener('click', event => {
+      event.stopPropagation()
+      closeStatusMenu()
+      void moveTaskStatus(task.id, status)
+    })
+    statusMenu.append(statusButton)
+  })
+  moreBtn.addEventListener('click', event => {
+    event.stopPropagation()
+    if (statusMenu.hidden) {
+      statusMenu.hidden = false
+      moreBtn.setAttribute('aria-expanded', 'true')
+      document.addEventListener('click', closeWhenClickingOutside)
+    } else {
+      closeStatusMenu()
+    }
+  })
+  actionMenu.addEventListener('click', event => event.stopPropagation())
+  moreBtn.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      closeStatusMenu()
+    }
+  })
+  actionMenu.append(moreBtn, statusMenu)
+  top.append(tagWrap, ...(task.backendPersistent ? [priority] : []), actionMenu)
 
   const title = make('h4', '', task.title)
   let discussionButton = null

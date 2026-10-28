@@ -22,7 +22,12 @@ function fileToDataUrl(file) {
   })
 }
 
-export function createTaskMediaEditor({ initialAttachments = [], label = 'Media' } = {}) {
+export function createTaskMediaEditor({
+  initialAttachments = [],
+  label = 'Media',
+  allowScreenRecording = true,
+  maxAttachments = Infinity
+} = {}) {
   const root = make('section', 'task-media-editor')
   const heading = make('div', 'task-media-heading')
   heading.append(make('strong', '', label), make('small', '', 'Up to 8 MB total'))
@@ -39,6 +44,7 @@ export function createTaskMediaEditor({ initialAttachments = [], label = 'Media'
   audioButton.type = 'button'
   const screenButton = make('button', 'task-media-action', 'Record screen')
   screenButton.type = 'button'
+  screenButton.hidden = !allowScreenRecording
   const status = make('p', 'task-media-status')
   status.setAttribute('role', 'status')
   status.hidden = true
@@ -91,7 +97,9 @@ export function createTaskMediaEditor({ initialAttachments = [], label = 'Media'
 
   fileInput.addEventListener('change', () => {
     const incoming = [...fileInput.files]
-    if (totalBytes() + incoming.reduce((sum, file) => sum + file.size, 0) > maxTaskMediaBytes) {
+    if (items.length + incoming.length > maxAttachments) {
+      setStatus(`You can attach up to ${maxAttachments} files.`, true)
+    } else if (totalBytes() + incoming.reduce((sum, file) => sum + file.size, 0) > maxTaskMediaBytes) {
       setStatus('Task media must total 8 MB or less.', true)
     } else {
       items.push(...incoming)
@@ -118,6 +126,10 @@ export function createTaskMediaEditor({ initialAttachments = [], label = 'Media'
     screenButton.textContent = 'Record screen'
     if (cancelled || disposed || !capturedChunks.length) {
       cancelled = false
+      return
+    }
+    if (items.length >= maxAttachments) {
+      setStatus(`You can attach up to ${maxAttachments} files.`, true)
       return
     }
     const recorded = new Blob(capturedChunks, { type: capturedRecorder?.mimeType || capturedChunks[0].type })

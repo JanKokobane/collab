@@ -1358,47 +1358,43 @@ body.dark-mode .invite-user-search-result span,
 
 .project-progress-aside-header {
     position: relative;
+    display: grid;
+    grid-template-columns: minmax(120px, 1fr) minmax(0, 2fr) minmax(120px, 1fr);
     flex: 0 0 auto;
-    align-items: flex-start;
-    padding: 30px clamp(24px, 3vw, 48px) 25px;
-    border-bottom: 1px solid #E8E7DF;
-    background:
-        radial-gradient(ellipse at 82% 0%, rgba(16, 185, 129, .08), transparent 38%),
-        linear-gradient(115deg, #FBF7E9 0%, #FFFFFF 68%, #F4F8F5 100%);
-}
-
-.project-progress-aside-header::before {
-    position: absolute;
-    top: 0;
-    right: 0;
-    left: 0;
-    height: 4px;
-    background: linear-gradient(90deg, #E8B323 0%, #E8B323 42%, #10A878 100%);
-    content: '';
+    align-items: center;
+    padding: 18px clamp(24px, 3vw, 48px);
+    border-bottom: 1px solid #E6E9EE;
+    background: #FFFFFF;
 }
 
 .project-progress-aside-header > div {
     min-width: 0;
-    padding-top: 2px;
+    padding-top: 0;
 }
 
-.project-progress-aside-eyebrow {
+.project-progress-aside-brand {
     display: inline-flex;
+    width: fit-content;
     align-items: center;
-    margin-bottom: 9px;
-    padding: 5px 9px;
-    border: 1px solid #E9DFC0;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, .72);
-    color: #80620E;
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: .8px;
-    text-transform: uppercase;
+    text-decoration: none;
+}
+
+.project-progress-aside-logo {
+    display: block;
+    width: auto;
+    height: 34px;
+    object-fit: contain;
+    mix-blend-mode: multiply;
+}
+
+.project-progress-aside-header-copy {
+    grid-column: 2;
+    justify-self: center;
+    text-align: center;
 }
 
 .project-progress-aside-header h2 {
-    max-width: 760px;
+    max-width: min(760px, 100%);
     color: #202923;
     font: 800 clamp(22px, 2.2vw, 30px)/1.2 'Manrope', sans-serif;
     overflow-wrap: anywhere;
@@ -1406,7 +1402,7 @@ body.dark-mode .invite-user-search-result span,
 
 .project-progress-aside-description {
     max-width: 760px;
-    margin-top: 9px;
+    margin: 5px auto 0;
     color: #68736C;
     font-size: 13px;
     line-height: 1.6;
@@ -1414,6 +1410,8 @@ body.dark-mode .invite-user-search-result span,
 
 .project-progress-aside-close {
     display: grid;
+    grid-column: 3;
+    justify-self: end;
     width: 42px;
     height: 42px;
     flex: 0 0 42px;
@@ -1468,84 +1466,14 @@ body.dark-mode .invite-user-search-result span,
     gap: 16px;
 }
 
-.project-progress-analysis-grid {
+.project-progress-analysis-heading-copy {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 10px;
+    gap: 3px;
 }
 
-.project-progress-analysis-metric {
-    position: relative;
-    display: grid;
-    min-width: 0;
-    align-content: start;
-    gap: 5px;
-    padding: 15px 15px 14px;
-    border: 1px solid #E8EAE6;
-    border-radius: 12px;
-    background: linear-gradient(145deg, #FFFFFF 0%, #FAFBF9 100%);
-    box-shadow: 0 3px 12px rgba(30, 45, 35, .035);
-}
-
-.project-progress-analysis-metric::before {
-    position: absolute;
-    top: 0;
-    right: 12px;
-    left: 12px;
-    height: 2px;
-    border-radius: 0 0 3px 3px;
-    background: #C4C9C5;
-    content: '';
-}
-
-.project-progress-analysis-metric:nth-child(1)::before {
-    background: #D8A91B;
-}
-
-.project-progress-analysis-metric:nth-child(2)::before,
-.project-progress-analysis-metric:nth-child(3)::before,
-.project-progress-analysis-metric:nth-child(4)::before {
-    background: #D68A4E;
-}
-
-.project-progress-analysis-metric:nth-child(5)::before {
-    background: #4F91D5;
-}
-
-.project-progress-analysis-metric:nth-child(6)::before {
-    background: #8C7AE9;
-}
-
-.project-progress-analysis-metric small {
-    color: var(--muted);
-    font-size: 11px;
-    font-weight: 700;
-}
-
-.project-progress-analysis-metric strong {
-    color: #202923;
-    font: 800 24px/1.2 'Manrope', sans-serif;
-}
-
-.project-progress-analysis-metric span {
-    color: var(--muted);
-    font-size: 11px;
-    line-height: 1.45;
-}
-
-.project-progress-analysis-track {
-    height: 7px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: #EFEFF2;
-}
-
-.project-progress-analysis-fill {
-    display: block;
-    height: 100%;
-    border-radius: inherit;
-    background: linear-gradient(90deg, #E8B323, #10A878);
-    transition: width .2s ease;
+.project-progress-analysis-heading-copy small {
+    color: #8492A7;
+    font-size: 10px;
 }
 
 .project-progress-analysis-recommendation {
@@ -1595,19 +1523,42 @@ body.dark-mode .invite-user-search-result span,
 .project-progress-analysis-charts {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+    gap: 14px;
 }
 
 .project-progress-chart {
     display: grid;
     min-width: 0;
     align-content: start;
-    gap: 16px;
+    gap: 14px;
     padding: 17px;
-    border: 1px solid #E7EAE6;
-    border-radius: 12px;
-    background: linear-gradient(145deg, #FFFFFF, #FAFBF9);
-    box-shadow: 0 3px 12px rgba(30, 45, 35, .03);
+    border: 1px solid #E7EBF0;
+    border-radius: 13px;
+    background: #FFFFFF;
+    box-shadow: 0 2px 8px rgba(38, 50, 72, .035);
+}
+
+.project-progress-chart-heading,
+.project-progress-chart-title {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+    width: fit-content;
+    max-width: 100%;
+    padding: 4px 7px;
+    border-radius: 3px;
+    background: #F1F2F0;
+}
+
+.project-progress-chart-title h4 {
+    color: #29364C;
+    font: 750 13px/1.4 'Manrope', sans-serif;
+}
+
+.project-progress-chart-title small {
+    color: #8492A7;
+    font-size: 10px;
+    line-height: 1.4;
 }
 
 .project-progress-chart h4 {
@@ -1623,6 +1574,7 @@ body.dark-mode .invite-user-search-result span,
 .project-progress-chart-row {
     display: grid;
     gap: 6px;
+    min-width: 0;
 }
 
 .project-progress-chart-row-header {
@@ -1676,6 +1628,314 @@ body.dark-mode .invite-user-search-result span,
 
 .project-progress-chart-fill.is-done {
     background: #10B981;
+}
+
+.project-progress-chart-row-note {
+    color: #8798B3;
+    font-size: 9px;
+}
+
+.project-progress-column-graph {
+    display: grid;
+    grid-template-columns: 25px minmax(0, 1fr);
+    gap: 8px;
+    min-width: 0;
+}
+
+.project-progress-column-axis {
+    display: flex;
+    height: 205px;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 3px 0 55px;
+    color: #8792A2;
+    font-size: 8px;
+    text-align: right;
+}
+
+.project-progress-column-plot {
+    display: grid;
+    min-width: 0;
+    height: 205px;
+    grid-template-columns: repeat(var(--column-count), minmax(0, 1fr));
+    padding-bottom: 55px;
+    background: repeating-linear-gradient(
+        to bottom,
+        #E8EBEF 0,
+        #E8EBEF 1px,
+        transparent 1px,
+        transparent 25%
+    );
+    background-size: 100% calc(100% - 55px);
+    background-repeat: no-repeat;
+}
+
+.project-progress-column-group {
+    position: relative;
+    display: block;
+    min-width: 0;
+    height: 100%;
+}
+
+.project-progress-column-bars {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 5px;
+    padding: 0 2px;
+}
+
+.project-progress-column-bar {
+    position: relative;
+    display: flex;
+    width: min(28px, 42%);
+    min-width: 4px;
+    max-height: 100%;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+.project-progress-column-fill {
+    display: block;
+    width: 100%;
+    min-height: 2px;
+    border-radius: 3px 3px 0 0;
+    background: #5794EA;
+    transition: height .2s ease;
+}
+
+.project-progress-column-bar.is-planned .project-progress-column-fill {
+    background: #A1A1AA;
+}
+
+.project-progress-column-bar.is-progress .project-progress-column-fill {
+    background: #5794EA;
+}
+
+.project-progress-column-bar.is-blocked .project-progress-column-fill {
+    background: #D6A500;
+}
+
+.project-progress-column-bar.is-review .project-progress-column-fill {
+    background: #8C7AE9;
+}
+
+.project-progress-column-bar.is-upcoming .project-progress-column-fill {
+    background: #4F91D5;
+}
+
+.project-progress-column-bar.is-done .project-progress-column-fill {
+    background: #10A878;
+}
+
+.project-progress-column-bar.is-backlog .project-progress-column-fill,
+.project-progress-column-bar.is-todo .project-progress-column-fill {
+    background: #A1A1AA;
+}
+
+.project-progress-column-value {
+    position: absolute;
+    top: -16px;
+    left: 50%;
+    color: #596579;
+    font-size: 8px;
+    line-height: 1;
+    white-space: nowrap;
+    transform: translateX(-50%);
+}
+
+.project-progress-column-label {
+    display: -webkit-box;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    width: 100%;
+    overflow: hidden;
+    color: #657187;
+    font-size: 9px;
+    line-height: 1.25;
+    text-align: center;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.project-progress-column-status {
+    position: absolute;
+    top: calc(100% + 34px);
+    left: 0;
+    width: 100%;
+    color: #8792A2;
+    font-size: 8px;
+    line-height: 1.2;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+.project-progress-column-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    color: #68778D;
+    font-size: 9px;
+}
+
+.project-progress-column-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.project-progress-column-legend span::before {
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: #A1A1AA;
+    content: '';
+}
+
+.project-progress-column-legend .is-done::before {
+    background: #10A878;
+}
+
+.project-progress-donut-layout {
+    display: grid;
+    grid-template-columns: minmax(110px, .75fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 14px;
+}
+
+.project-progress-donut {
+    position: relative;
+    width: min(100%, 150px);
+    aspect-ratio: 1;
+    justify-self: center;
+}
+
+.project-progress-donut svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.project-progress-donut-track,
+.project-progress-donut-segment {
+    fill: none;
+    stroke-width: 13;
+}
+
+.project-progress-donut-track {
+    stroke: #EEF1F5;
+}
+
+.project-progress-donut-segment {
+    stroke-linecap: butt;
+    transition: stroke-dasharray .25s ease, stroke-dashoffset .25s ease;
+}
+
+.project-progress-donut-segment.is-todo,
+.project-progress-donut-segment.is-backlog {
+    stroke: #A7B0BE;
+}
+
+.project-progress-donut-segment.is-progress {
+    stroke: #4F91D5;
+}
+
+.project-progress-donut-segment.is-blocked {
+    stroke: #D88A45;
+}
+
+.project-progress-donut-segment.is-done {
+    stroke: #20A879;
+}
+
+.project-progress-donut-center {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    pointer-events: none;
+}
+
+.project-progress-donut-center strong {
+    color: #29364C;
+    font: 800 24px/1.1 'Manrope', sans-serif;
+}
+
+.project-progress-donut-center small {
+    margin-top: 3px;
+    color: #8492A7;
+    font-size: 9px;
+}
+
+.project-progress-donut-legend {
+    display: grid;
+    gap: 8px;
+}
+
+.project-progress-donut-legend-item {
+    display: grid;
+    grid-template-columns: 8px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    color: #68778D;
+    font-size: 10px;
+}
+
+.project-progress-legend-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+}
+
+.project-progress-legend-dot.is-todo,
+.project-progress-legend-dot.is-backlog {
+    background: #A7B0BE;
+}
+
+.project-progress-legend-dot.is-progress {
+    background: #4F91D5;
+}
+
+.project-progress-legend-dot.is-blocked {
+    background: #D88A45;
+}
+
+.project-progress-legend-dot.is-done {
+    background: #20A879;
+}
+
+.project-progress-donut-legend-item strong {
+    color: #35445D;
+    font-size: 10px;
+}
+
+.project-progress-analysis-actions {
+    display: flex;
+    align-items: center;
+}
+
+.project-progress-report-download {
+    min-height: 32px;
+    padding: 7px 10px;
+    border: 1px solid #DCE3EA;
+    border-radius: 8px;
+    background: #FFFFFF;
+    color: #40516B;
+    font: 700 10px 'DM Sans', sans-serif;
+    cursor: pointer;
+}
+
+.project-progress-report-download:hover {
+    border-color: #B8C6D8;
+    background: #F5F8FB;
 }
 
 .project-progress-chart-empty {
@@ -2833,9 +3093,12 @@ body.dark-mode .project-progress-aside,
 body.dark-mode .project-progress-aside-header,
 [data-theme="dark"] .project-progress-aside-header {
     border-color: #343C35;
-    background:
-        radial-gradient(ellipse at 82% 0%, rgba(16, 185, 129, .1), transparent 38%),
-        linear-gradient(115deg, #29281F 0%, #1B1B22 68%, #1C2520 100%);
+    background: #1E1E25;
+}
+
+body.dark-mode .project-progress-aside-logo,
+[data-theme="dark"] .project-progress-aside-logo {
+    filter: brightness(1.25);
 }
 
 body.dark-mode .project-progress-aside-eyebrow,
@@ -2871,29 +3134,91 @@ body.dark-mode .project-progress-aside-close:hover,
 body.dark-mode .project-progress-aside-section,
 body.dark-mode .project-progress-aside-metric,
 body.dark-mode .project-progress-aside-member,
-body.dark-mode .project-progress-analysis-metric,
 body.dark-mode .project-progress-chart,
 [data-theme="dark"] .project-progress-aside-section,
 [data-theme="dark"] .project-progress-aside-metric,
 [data-theme="dark"] .project-progress-aside-member,
-[data-theme="dark"] .project-progress-chart,
-[data-theme="dark"] .project-progress-analysis-metric {
+[data-theme="dark"] .project-progress-chart {
     border-color: #383844;
     background: #1E1E25;
     color: #F3F5F4;
 }
 
-body.dark-mode .project-progress-analysis-metric strong,
-body.dark-mode .project-progress-analysis-metric small,
-body.dark-mode .project-progress-analysis-metric span,
 body.dark-mode .project-progress-chart h4,
 body.dark-mode .project-progress-chart-row-header strong,
-[data-theme="dark"] .project-progress-analysis-metric strong,
-[data-theme="dark"] .project-progress-analysis-metric small,
-[data-theme="dark"] .project-progress-analysis-metric span,
+body.dark-mode .project-progress-donut-center strong,
+body.dark-mode .project-progress-donut-legend-item strong,
+[data-theme="dark"] .project-progress-analysis-heading-copy h3,
 [data-theme="dark"] .project-progress-chart h4,
-[data-theme="dark"] .project-progress-chart-row-header strong {
+[data-theme="dark"] .project-progress-chart-row-header strong,
+[data-theme="dark"] .project-progress-donut-center strong,
+[data-theme="dark"] .project-progress-donut-legend-item strong {
     color: #F3F5F4;
+}
+
+body.dark-mode .project-progress-analysis-heading-copy small,
+[data-theme="dark"] .project-progress-analysis-heading-copy small,
+[data-theme="dark"] .project-progress-analysis-heading-copy small {
+    color: #A1A1AA;
+}
+
+body.dark-mode .project-progress-chart-title,
+[data-theme="dark"] .project-progress-chart-title {
+    background: #292932;
+}
+
+body.dark-mode .project-progress-column-axis,
+body.dark-mode .project-progress-column-value,
+body.dark-mode .project-progress-column-label,
+body.dark-mode .project-progress-column-status,
+body.dark-mode .project-progress-column-legend,
+[data-theme="dark"] .project-progress-column-axis,
+[data-theme="dark"] .project-progress-column-value,
+[data-theme="dark"] .project-progress-column-label,
+[data-theme="dark"] .project-progress-column-status,
+[data-theme="dark"] .project-progress-column-legend {
+    color: #B6B9C1;
+}
+
+body.dark-mode .project-progress-column-plot,
+[data-theme="dark"] .project-progress-column-plot {
+    background-image: repeating-linear-gradient(
+        to bottom,
+        #383844 0,
+        #383844 1px,
+        transparent 1px,
+        transparent 25%
+    );
+}
+
+body.dark-mode .project-progress-report-download,
+[data-theme="dark"] .project-progress-report-download {
+    border-color: #383844;
+    background: #1E1E25;
+}
+
+body.dark-mode .project-progress-donut-legend-item,
+body.dark-mode .project-progress-chart-row-note,
+body.dark-mode .project-progress-chart-title small,
+[data-theme="dark"] .project-progress-donut-legend-item,
+[data-theme="dark"] .project-progress-chart-row-note,
+[data-theme="dark"] .project-progress-chart-title small {
+    color: #A1A1AA;
+}
+
+body.dark-mode .project-progress-report-download,
+[data-theme="dark"] .project-progress-report-download {
+    color: #E4E4E7;
+}
+
+body.dark-mode .project-progress-report-download:hover,
+[data-theme="dark"] .project-progress-report-download:hover {
+    background: #292932;
+}
+
+body.dark-mode .project-progress-donut-track,
+[data-theme="dark"] .project-progress-donut-track {
+    stroke: #383844;
 }
 
 body.dark-mode .project-progress-chart-empty,
@@ -2911,9 +3236,7 @@ body.dark-mode .project-progress-chart-row-header,
     color: #B6B9C1;
 }
 
-body.dark-mode .project-progress-analysis-track,
 body.dark-mode .project-progress-chart-track,
-[data-theme="dark"] .project-progress-analysis-track,
 [data-theme="dark"] .project-progress-chart-track {
     background: #383844;
 }
@@ -3132,7 +3455,13 @@ body.dark-mode .project-task-status-lock,
 
 @media (max-width: 640px) {
     .project-progress-aside-header {
-        padding: 24px 20px 20px;
+        grid-template-columns: 36px minmax(0, 1fr) 36px;
+        gap: 8px;
+        padding: 18px 14px;
+    }
+
+    .project-progress-aside-logo {
+        height: 28px;
     }
 
     .project-progress-aside-header h2 {
@@ -3152,11 +3481,11 @@ body.dark-mode .project-task-status-lock,
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .project-progress-analysis-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+    .project-progress-analysis-charts {
+        grid-template-columns: minmax(0, 1fr);
     }
 
-    .project-progress-analysis-charts {
+    .project-progress-donut-layout {
         grid-template-columns: minmax(0, 1fr);
     }
 
@@ -3196,17 +3525,7 @@ body.dark-mode .project-task-status-lock,
     }
 }
 
-@media (min-width: 641px) and (max-width: 1100px) {
-    .project-progress-analysis-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-}
-
 @media (min-width: 641px) and (max-width: 899px) {
-    .project-progress-analysis-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
     .project-progress-analysis-charts {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -5535,6 +5854,22 @@ body.dark-mode .admin-table tr:hover td,
     white-space: pre-wrap;
 }
 
+.project-sprint-submission-media {
+    display: grid;
+    min-width: 0;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.project-sprint-submission-media-title {
+    color: var(--muted);
+    font-size: 10px;
+}
+
+.project-sprint-submission-editor {
+    margin: 2px 0;
+}
+
 .project-sprint-review-comment {
     color: #8A510D;
 }
@@ -5561,17 +5896,48 @@ body.dark-mode .admin-table tr:hover td,
 .project-sprint-review-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
+}
+
+.project-sprint-review-actions .project-progress-aside-complete,
+.project-sprint-review-actions .project-sprint-request-changes {
+    min-height: 30px;
+    padding: 6px 10px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    font: 700 10px 'DM Sans', sans-serif;
+    transition: background .16s ease, box-shadow .16s ease;
+}
+
+.project-sprint-review-actions .project-progress-aside-complete {
+    border-color: #16835A;
+    background: #16835A;
+    color: #FFFFFF;
+}
+
+.project-sprint-review-actions .project-progress-aside-complete:hover {
+    background: #116B49;
+    box-shadow: 0 2px 6px rgba(22, 131, 90, .2);
+}
+
+.project-sprint-review-actions .project-sprint-request-changes {
+    border-color: #C96B2C;
+    background: #C96B2C;
+    color: #FFFFFF;
 }
 
 .project-sprint-request-changes {
-    padding: 8px 10px;
-    border: 1px solid #E8C9A0;
-    border-radius: 8px;
-    background: #FFF7E8;
-    color: #8A510D;
-    font: 700 11px 'DM Sans', sans-serif;
     cursor: pointer;
+}
+
+.project-sprint-review-actions .project-sprint-request-changes:hover {
+    background: #A9531F;
+    box-shadow: 0 2px 6px rgba(201, 107, 44, .2);
+}
+
+.project-sprint-review-actions button:focus-visible {
+    outline: 2px solid #5794EA;
+    outline-offset: 2px;
 }
 
 .project-sprint-remove {
@@ -5962,11 +6328,18 @@ body.dark-mode .project-sprint-review-form textarea,
     color: #E4E4E7;
 }
 
-body.dark-mode .project-sprint-request-changes,
-[data-theme="dark"] .project-sprint-request-changes {
-    border-color: #854D0E;
-    background: #422006;
-    color: #FDE68A;
+body.dark-mode .project-sprint-review-actions .project-progress-aside-complete,
+[data-theme="dark"] .project-sprint-review-actions .project-progress-aside-complete {
+    border-color: #16835A;
+    background: #16835A;
+    color: #FFFFFF;
+}
+
+body.dark-mode .project-sprint-review-actions .project-sprint-request-changes,
+[data-theme="dark"] .project-sprint-review-actions .project-sprint-request-changes {
+    border-color: #C96B2C;
+    background: #C96B2C;
+    color: #FFFFFF;
 }
 
 body.dark-mode .project-task-create-sprint-panel h4,
@@ -7889,7 +8262,7 @@ body.dark-mode .input-with-icon:focus-within .input-icon-svg,
     background: #FEE2E2;
 }
 
-.card-more-btn {
+.task-card-action-menu .card-more-btn {
     background: none;
     border: 0;
     color: #A1A1AA;
@@ -7900,9 +8273,62 @@ body.dark-mode .input-with-icon:focus-within .input-icon-svg,
     align-items: center;
 }
 
-.card-more-btn:hover {
+.task-card-action-menu .card-more-btn:hover {
     background: #F4F4F5;
     color: #1C1C1F;
+}
+
+.task-card-action-menu {
+    position: relative;
+    z-index: 5;
+    flex: 0 0 auto;
+}
+
+.task-card-status-menu {
+    position: absolute;
+    top: calc(100% + 5px);
+    right: 0;
+    z-index: 20;
+    display: grid;
+    width: 154px;
+    gap: 2px;
+    padding: 5px;
+    border: 1px solid #E4E4E7;
+    border-radius: 9px;
+    background: #FFFFFF;
+    box-shadow: 0 8px 22px rgba(24, 28, 35, .18);
+}
+
+.task-card-status-menu[hidden] {
+    display: none !important;
+}
+
+.task-card-status-option {
+    width: 100%;
+    min-height: 30px;
+    padding: 6px 9px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #343A46;
+    font: 600 11px 'DM Sans', sans-serif;
+    text-align: left;
+    cursor: pointer;
+}
+
+.task-card-status-option:hover:not(:disabled) {
+    background: #F2F4F7;
+}
+
+.task-card-status-option.is-current {
+    background: #F5F6F8;
+    color: #727987;
+    cursor: default;
+}
+
+.task-card-status-option:disabled:not(.is-current) {
+    color: #A0A4AC;
+    cursor: not-allowed;
 }
 
 .meta-due-span,
@@ -9252,6 +9678,34 @@ body.dark-mode .task-card {
     border-color: #2D2D3A;
     color: #FFFFFF;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+body.dark-mode .task-card-status-menu,
+[data-theme="dark"] .task-card-status-menu {
+    border-color: #3A3A46;
+    background: #25252D;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, .38);
+}
+
+body.dark-mode .task-card-status-option,
+[data-theme="dark"] .task-card-status-option {
+    color: #E4E4E7;
+}
+
+body.dark-mode .task-card-status-option:hover:not(:disabled),
+[data-theme="dark"] .task-card-status-option:hover:not(:disabled) {
+    background: #34343E;
+}
+
+body.dark-mode .task-card-status-option.is-current,
+[data-theme="dark"] .task-card-status-option.is-current {
+    background: #303039;
+    color: #A1A1AA;
+}
+
+body.dark-mode .task-card-status-option:disabled:not(.is-current),
+[data-theme="dark"] .task-card-status-option:disabled:not(.is-current) {
+    color: #71717A;
 }
 
 body.dark-mode .task-card.has-dependency-warning,

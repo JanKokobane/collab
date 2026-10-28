@@ -27,7 +27,7 @@ import { firebaseAuth } from '../../firebase.js'
 import { setDashboardButtonLoading, showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
 import { openMeteredMeetingModal } from './meteredMeetingModal.js'
-import { createTaskMediaEditor } from './taskMedia.js'
+import { createTaskMediaEditor } from './taskMedia.js?v=20261105-sprint-submission-media'
 
 // ============================================================
 // ADMIN CONSOLE TABLE & FUNCTIONS
@@ -1623,11 +1623,6 @@ function renderProjectActionDropdown(container, label, availableProjects, onSele
 }
 
 async function removeProject(project, deleteButton) {
-  if (projects.length <= 1) {
-    pushNotification('Action Denied', 'Workspace must maintain at least one project.', '⚠️', 'coral-bg')
-    return
-  }
-
   const confirmed = await showDashboardConfirmation({
     title: 'Delete project?',
     message: `Are you sure you want to permanently delete "${project.name}"? This will remove the project and its related project access.`,

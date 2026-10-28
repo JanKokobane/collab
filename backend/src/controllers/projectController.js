@@ -913,6 +913,50 @@ const updateProject = async (req, res) => {
 /**
  * POST /api/projects/:projectId/sprints/:sprintName/submit
  */
+const MAX_SPRINT_SUBMISSION_MEDIA_BYTES = 8 * 1024 * 1024;
+const MAX_SPRINT_SUBMISSION_ATTACHMENTS = 10;
+
+const normalizeSprintSubmissionAttachments = value => {
+    if (value === undefined) return { attachments: [], error: null };
+    if (!Array.isArray(value) || value.length > MAX_SPRINT_SUBMISSION_ATTACHMENTS) {
+        return { attachments: [], error: `Attach no more than ${MAX_SPRINT_SUBMISSION_ATTACHMENTS} files.` };
+    }
+
+    let totalBytes = 0;
+    const attachments = [];
+    for (const item of value) {
+        const fileName = typeof item?.fileName === 'string' ? item.fileName.trim() : '';
+        const mediaType = typeof item?.mediaType === 'string' ? item.mediaType.toLowerCase() : '';
+        const data = typeof item?.data === 'string' ? item.data : '';
+        const isSupportedType = /^(image\/(?!svg\+xml(?:$|;))[a-z0-9.+-]+|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|application\/pdf)$/.test(mediaType);
+        const dataMatch = data.match(/^data:([^;,]+);base64,([A-Za-z0-9+/]*={0,2})$/);
+
+        if (!fileName || fileName.length > 255 || /[\u0000-\u001f\u007f]/.test(fileName) ||
+            !isSupportedType || !dataMatch || dataMatch[1].toLowerCase() !== mediaType) {
+            return { attachments: [], error: 'One or more attachments are invalid or use an unsupported file type.' };
+        }
+
+        const encoded = dataMatch[2];
+        const buffer = Buffer.from(encoded, 'base64');
+        if (!buffer.length || buffer.toString('base64') !== encoded) {
+            return { attachments: [], error: 'One or more attachments contain invalid file data.' };
+        }
+        totalBytes += buffer.length;
+        if (totalBytes > MAX_SPRINT_SUBMISSION_MEDIA_BYTES) {
+            return { attachments: [], error: 'Sprint attachments must total 8 MB or less.' };
+        }
+
+        attachments.push({
+            fileName,
+            mediaType,
+            size: buffer.length,
+            data
+        });
+    }
+
+    return { attachments, error: null };
+};
+
 const submitProjectSprint = async (req, res) => {
     let client;
     try {
@@ -921,6 +965,8 @@ const submitProjectSprint = async (req, res) => {
         const submissionNote = typeof req.body?.submissionNote === 'string'
             ? req.body.submissionNote.trim()
             : '';
+        const { attachments: submissionAttachments, error: attachmentError } =
+            normalizeSprintSubmissionAttachments(req.body?.submissionAttachments);
 
         if (!projectId || !sprintName?.trim()) {
             return res.status(400).json({
@@ -929,11 +975,20 @@ const submitProjectSprint = async (req, res) => {
                 message: 'Project and sprint are required.'
             });
         }
-        if (!submissionNote || submissionNote.length > 5000) {
+        if (attachmentError) {
+            return res.status(400).json({
+                success: false,
+                code: 'SPRINT_SUBMISSION_ATTACHMENTS_INVALID',
+                message: attachmentError
+            });
+        }
+        if (submissionNote.length > 5000 || (!submissionNote && !submissionAttachments.length)) {
             return res.status(400).json({
                 success: false,
                 code: 'SPRINT_SUBMISSION_NOTE_REQUIRED',
-                message: 'Add a submission note of up to 5,000 characters.'
+                message: submissionNote.length > 5000
+                    ? 'Submission notes cannot exceed 5,000 characters.'
+                    : 'Add a submission note or attach a file or voice note.'
             });
         }
 
@@ -993,6 +1048,7 @@ const submitProjectSprint = async (req, res) => {
             ...sprint,
             status: project.creator_firebase_uid === firebaseUid ? 'Completed' : 'Pending Review',
             submissionNote,
+            submissionAttachments,
             submittedByFirebaseUid: firebaseUid,
             submittedByName,
             submittedAt,
