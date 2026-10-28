@@ -1,7 +1,7 @@
 import { currentUser, make, projects, tasks, root, addAuditLog, hub, renderAvatarElement } from './state.js'
 import { api } from './api.js'
-import { openProjectTaskModal } from './admin.js?v=20261028-project-overview'
-import { createTaskMediaEditor, renderTaskMediaAttachments } from './taskMedia.js?v=20261105-review-400-fix'
+import { openProjectTaskModal } from './admin.js?v=20261028-file-picker-fix'
+import { createTaskMediaEditor, renderTaskMediaAttachments } from './taskMedia.js?v=20261028-native-file-label'
 import {
   showDashboardConfirmation,
   showDashboardToast,
@@ -1049,27 +1049,63 @@ export function openProjectProgressAside(task) {
   )
   dependencyHeading.append(dependencyHeadingCopy)
   dependencySection.append(dependencyHeading)
-  const dependencySelect = document.createElement('select')
-  dependencySelect.className = 'project-dependency-select no-input-icon'
-  dependencySelect.multiple = true
-  dependencySelect.size = 5
-  dependencySelect.setAttribute('aria-label', 'Predecessor tasks across accessible projects')
-  tasks.filter(candidate => candidate.backendPersistent && candidate.taskId !== task.taskId)
-    .forEach(candidate => {
-      const option = make('option', '', `${candidate.project} · ${candidate.title} · ${candidate.status}`)
-      option.value = candidate.taskId
-      option.selected = (task.dependencies || []).some(dependency => dependency.task_id === candidate.taskId)
-      dependencySelect.append(option)
+  const dependencyCandidates = tasks.filter(candidate =>
+    candidate.backendPersistent && candidate.taskId !== task.taskId
+  )
+  const selectedDependencyIds = new Set(
+    (task.dependencies || []).map(dependency => dependency.task_id)
+  )
+  const dependencyGraph = make('div', 'project-dependency-graph')
+  dependencyGraph.setAttribute('aria-label', 'Task dependency connections')
+  const dependencyTarget = make('div', 'project-dependency-target')
+  dependencyTarget.append(
+    make('span', 'project-dependency-node-label', 'This task'),
+    make('strong', '', task.title),
+    make('small', '', `${project.name} · ${task.status || 'To do'}`)
+  )
+  dependencyGraph.append(dependencyTarget)
+  const dependencyList = make('div', 'project-dependency-list')
+  const renderDependencyGraph = () => {
+    dependencyList.replaceChildren()
+    if (!dependencyCandidates.length) {
+      dependencyList.append(make('p', 'project-progress-aside-empty', 'No other accessible tasks are available.'))
+      return
+    }
+    dependencyCandidates.forEach(candidate => {
+      const connected = selectedDependencyIds.has(candidate.taskId)
+      const row = make('div', `project-dependency-row${connected ? ' is-connected' : ''}`)
+      const checkbox = make('input')
+      checkbox.type = 'checkbox'
+      checkbox.value = candidate.taskId
+      checkbox.checked = connected
+      checkbox.id = `project-dependency-${candidate.taskId}`
+      checkbox.setAttribute('aria-label', `Make ${candidate.title} a predecessor`)
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) selectedDependencyIds.add(candidate.taskId)
+        else selectedDependencyIds.delete(candidate.taskId)
+        row.classList.toggle('is-connected', checkbox.checked)
+      })
+      const predecessor = make('label', 'project-dependency-node')
+      predecessor.htmlFor = checkbox.id
+      predecessor.append(
+        make('span', 'project-dependency-node-label', 'Predecessor'),
+        make('strong', '', candidate.title),
+        make('small', '', `${candidate.project || 'Project'} · ${candidate.status || 'To do'}`)
+      )
+      const arrow = make('span', 'project-dependency-arrow', '→')
+      arrow.setAttribute('aria-hidden', 'true')
+      row.append(checkbox, predecessor, arrow)
+      dependencyList.append(row)
     })
-  const dependencyHelp = make('small', 'project-progress-aside-help', 'Select tasks that must finish first. Select multiple with Ctrl or Command.')
-  dependencyHelp.id = 'project-dependency-help'
-  dependencySelect.setAttribute('aria-describedby', dependencyHelp.id)
+  }
+  renderDependencyGraph()
+  const dependencyHelp = make('small', 'project-progress-aside-help', 'Select the predecessor tasks that must finish before this task. Arrows show the direction of each connection.')
   const dependencySave = make('button', 'project-progress-aside-context-link', 'Save Dependencies')
   dependencySave.type = 'button'
   dependencySave.addEventListener('click', async () => {
     const restoreButton = setDashboardButtonLoading(dependencySave, 'Saving…')
     try {
-      const predecessorTaskIds = [...dependencySelect.selectedOptions].map(option => option.value)
+      const predecessorTaskIds = [...selectedDependencyIds]
       await api.put(
         `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(task.taskId)}/dependencies`,
         { predecessorTaskIds }
@@ -1091,7 +1127,7 @@ export function openProjectProgressAside(task) {
       showDashboardToast(error.message || 'Task dependencies could not be saved.', 'error')
     }
   })
-  dependencySection.append(dependencySelect, dependencyHelp, dependencySave)
+  dependencySection.append(dependencyGraph, dependencyList, dependencyHelp, dependencySave)
 
   const commentsSection = make('section', 'project-progress-aside-section is-comments collab-card')
   const commentsHeading = make('div', 'project-progress-aside-section-heading')
@@ -1576,22 +1612,38 @@ export function openProjectProgressAside(task) {
   if (!projectTasks.length) {
     taskList.append(make('p', 'project-progress-aside-empty', 'No project tasks yet.'))
   } else {
-    projectTasks.forEach(projectTask => {
+    projectTasks.forEach((projectTask, taskIndex) => {
       const taskRow = make('article', `project-progress-aside-task${projectTask.taskId === task.taskId ? ' is-selected' : ''}`)
-      const taskTop = make('div', 'project-progress-aside-task-top')
+      const taskTop = make('button', 'project-progress-aside-task-top', '')
+      taskTop.type = 'button'
+      taskTop.setAttribute('aria-expanded', String(projectTask.taskId === task.taskId))
+      const taskDetails = make('div', 'project-progress-aside-task-details')
+      taskDetails.id = `project-progress-aside-task-details-${taskIndex}`
+      taskDetails.hidden = projectTask.taskId !== task.taskId
+      taskTop.setAttribute('aria-controls', taskDetails.id)
       const taskIdentity = make('div', 'project-progress-aside-task-identity')
       taskIdentity.append(make('strong', '', projectTask.title))
-      if (projectTask.description) taskIdentity.append(make('p', '', projectTask.description))
       const taskStatus = make('span', `project-progress-aside-status is-${String(projectTask.status || 'To do').toLowerCase().replaceAll(' ', '-')}`, projectTask.status || 'To do')
-      taskTop.append(taskIdentity, taskStatus)
+      const taskExpandIcon = make('span', 'project-progress-aside-task-expand-icon', '⌄')
+      taskExpandIcon.setAttribute('aria-hidden', 'true')
+      taskTop.append(taskIdentity, taskStatus, taskExpandIcon)
+      taskTop.addEventListener('click', () => {
+        const isExpanded = taskTop.getAttribute('aria-expanded') === 'true'
+        taskDetails.hidden = isExpanded
+        taskTop.setAttribute('aria-expanded', String(!isExpanded))
+        taskRow.classList.toggle('is-expanded', !isExpanded)
+      })
       const taskMeta = make('div', 'project-progress-aside-task-meta')
       taskMeta.append(
         make('span', '', `Sprint · ${projectTask.sprint_name || 'No sprint'}`),
         make('span', '', `Assigned · ${projectTask.assigneeName || projectTask.assignee_email || 'Unassigned'}`),
         make('span', '', `Due · ${displayDate(projectTask.due_date)}`)
       )
-      taskRow.append(taskTop, taskMeta)
-      if (projectTask.taskId === task.taskId) taskRow.append(focusSection)
+      if (projectTask.description) {
+        taskDetails.append(make('p', 'project-progress-aside-task-description', projectTask.description))
+      }
+      taskDetails.append(taskMeta)
+      if (projectTask.taskId === task.taskId) taskDetails.append(focusSection)
       const canManageProjectTask = Boolean(
         currentUid && (
           isProjectOwner ||
@@ -1642,7 +1694,7 @@ export function openProjectProgressAside(task) {
           }
         })
         actions.append(editButton, deleteButton)
-        taskRow.append(actions)
+        taskDetails.append(actions)
       }
       if (
         canManageProjectTask &&
@@ -1679,8 +1731,10 @@ export function openProjectProgressAside(task) {
             showDashboardToast(error.message || 'The task could not be completed.', 'error')
           }
         })
-        taskRow.append(completeTaskButton)
+        taskDetails.append(completeTaskButton)
       }
+      taskRow.classList.toggle('is-expanded', projectTask.taskId === task.taskId)
+      taskRow.append(taskTop, taskDetails)
       taskList.append(taskRow)
     })
     if (!projectTasks.some(projectTask => projectTask.taskId === task.taskId)) {

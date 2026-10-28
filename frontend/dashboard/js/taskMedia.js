@@ -18,7 +18,11 @@ function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.addEventListener('load', () => resolve(String(reader.result)))
-    reader.addEventListener('error', () => reject(reader.error || new Error(`Unable to read ${file.name}.`)))
+    reader.addEventListener('error', () => {
+      const error = reader.error || new Error(`Unable to read ${file.name}.`)
+      console.error('[task-media] FileReader failed.', { fileName: file.name, error })
+      reject(error)
+    })
     reader.readAsDataURL(file)
   })
 }
@@ -38,18 +42,10 @@ export function createTaskMediaEditor({
   fileInput.type = 'file'
   fileInput.multiple = true
   fileInput.accept = 'image/*,audio/*,video/*,application/pdf'
-  fileInput.setAttribute('aria-hidden', 'true')
-  fileInput.tabIndex = -1
+  fileInput.setAttribute('aria-label', `Attach files for ${label}`)
   const attachButton = make('label', 'task-media-action', 'Attach file')
   attachButton.htmlFor = fileInput.id
-  attachButton.tabIndex = 0
-  attachButton.setAttribute('role', 'button')
   attachButton.setAttribute('aria-controls', fileInput.id)
-  attachButton.addEventListener('keydown', event => {
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    event.preventDefault()
-    fileInput.click()
-  })
   const audioButton = make('button', 'task-media-action', 'Record audio')
   audioButton.type = 'button'
   const screenButton = make('button', 'task-media-action', 'Record screen')
@@ -106,17 +102,30 @@ export function createTaskMediaEditor({
   }
 
   fileInput.addEventListener('change', () => {
-    const incoming = [...fileInput.files]
-    if (items.length + incoming.length > maxAttachments) {
-      setStatus(`You can attach up to ${maxAttachments} files.`, true)
-    } else if (totalBytes() + incoming.reduce((sum, file) => sum + file.size, 0) > maxTaskMediaBytes) {
-      setStatus('Task media must total 8 MB or less.', true)
-    } else {
-      items.push(...incoming)
-      setStatus('')
-      render()
+    try {
+      const incoming = Array.from(fileInput.files || [])
+      console.info('[task-media] File selection changed.', {
+        inputId: fileInput.id,
+        count: incoming.length
+      })
+      if (items.length + incoming.length > maxAttachments) {
+        setStatus(`You can attach up to ${maxAttachments} files.`, true)
+      } else if (totalBytes() + incoming.reduce((sum, file) => sum + file.size, 0) > maxTaskMediaBytes) {
+        setStatus('Task media must total 8 MB or less.', true)
+      } else {
+        items.push(...incoming)
+        setStatus('')
+        render()
+      }
+    } catch (error) {
+      console.error('[task-media] Unable to process selected files.', {
+        inputId: fileInput.id,
+        error
+      })
+      setStatus('The selected file could not be added.', true)
+    } finally {
+      fileInput.value = ''
     }
-    fileInput.value = ''
   })
 
   const finalizeRecording = async () => {

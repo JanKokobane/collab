@@ -2038,6 +2038,18 @@ body.dark-mode .invite-user-search-result span,
     font: 700 15px/1.4 'Manrope', sans-serif;
 }
 
+.project-progress-aside-content > .is-tasks,
+.project-progress-aside-content > .is-dependencies {
+    align-self: start;
+    gap: 9px;
+    padding: 12px;
+}
+
+.project-progress-aside-content > .is-tasks .project-progress-aside-section-heading,
+.project-progress-aside-content > .is-dependencies .project-progress-aside-section-heading {
+    padding-bottom: 8px;
+}
+
 .project-progress-aside-heading-group {
     display: flex;
     min-width: 0;
@@ -2220,8 +2232,8 @@ body.dark-mode .invite-user-search-result span,
 }
 
 .project-sprint-status.is-completed {
-    background: #E8F8F1;
-    color: #16835A;
+    background: #16835A;
+    color: #FFFFFF;
 }
 
 .project-sprint-status.is-pending-review {
@@ -2236,8 +2248,8 @@ body.dark-mode .invite-user-search-result span,
 }
 
 .project-sprint-status.is-active {
-    background: #FFF6D9;
-    color: #80620E;
+    background: #C62828;
+    color: #FFFFFF;
 }
 
 .project-sprint-status.is-upcoming {
@@ -2409,12 +2421,12 @@ body.dark-mode .invite-user-search-result span,
 
 .project-progress-aside-tasks {
     display: grid;
-    gap: 9px;
+    gap: 7px;
 }
 
 .project-progress-aside-task {
     min-width: 0;
-    padding: 13px 14px;
+    padding: 9px 10px;
     border: 1px solid #E9E9EC;
     border-radius: 10px;
     background: #FCFCFD;
@@ -2482,13 +2494,14 @@ body.dark-mode .invite-user-search-result span,
 
 .project-progress-aside-task {
     display: grid;
-    gap: 12px;
+    gap: 7px;
+    padding: 8px 9px;
 }
 
 .project-progress-aside-task-context {
     display: grid;
-    gap: 8px;
-    padding: 10px 12px;
+    gap: 6px;
+    padding: 8px 9px;
     border: 1px solid #E8EAE6;
     border-radius: 9px;
     background: #FFFFFF;
@@ -2583,30 +2596,71 @@ body.dark-mode .invite-user-search-result span,
 
 .project-progress-aside-task-top {
     display: flex;
+    width: 100%;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 10px;
+    gap: 7px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.project-progress-aside-task-top:focus-visible {
+    outline: 2px solid #D5AA21;
+    outline-offset: 3px;
+    border-radius: 5px;
 }
 
 .project-progress-aside-task-identity {
     display: grid;
     min-width: 0;
-    gap: 5px;
+    gap: 3px;
 }
 
 .project-progress-aside-task-identity p {
     overflow-wrap: anywhere;
 }
 
+.project-progress-aside-task-expand-icon {
+    flex: 0 0 auto;
+    color: #64746A;
+    font-size: 15px;
+    line-height: 1;
+    transition: transform .16s ease;
+}
+
+.project-progress-aside-task-top[aria-expanded="true"] .project-progress-aside-task-expand-icon {
+    transform: rotate(180deg);
+}
+
+.project-progress-aside-task-details {
+    display: grid;
+    min-width: 0;
+    gap: 6px;
+}
+
+.project-progress-aside-task-details[hidden] {
+    display: none;
+}
+
+.project-progress-aside-task-description {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
 .project-progress-aside-task-meta {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 4px;
 }
 
 .project-progress-aside-task-meta span {
     max-width: 100%;
-    padding: 5px 8px;
+    padding: 4px 6px;
     overflow: hidden;
     border-radius: 7px;
     background: #F1F1F3;
@@ -2643,15 +2697,109 @@ body.dark-mode .invite-user-search-result span,
     line-height: 1.45;
 }
 
+.project-dependency-graph {
+    display: grid;
+    gap: 7px;
+}
+
+.project-dependency-target,
+.project-dependency-node {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+    padding: 8px 9px;
+    border: 1px solid #DDE7E0;
+    border-radius: 8px;
+    background: #F7FBF8;
+    color: var(--ink);
+}
+
+.project-dependency-target {
+    border-color: #D7B13E;
+    background: #FFF9E8;
+}
+
+.project-dependency-node-label {
+    color: #718078;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.project-dependency-target strong,
+.project-dependency-node strong {
+    overflow: hidden;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.project-dependency-target small,
+.project-dependency-node small {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.project-dependency-list {
+    display: grid;
+    gap: 5px;
+}
+
+.project-dependency-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) 22px;
+    align-items: center;
+    gap: 6px;
+}
+
+.project-dependency-row input {
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    accent-color: #17966C;
+}
+
+.project-dependency-node {
+    cursor: pointer;
+    transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+
+.project-dependency-node:hover {
+    border-color: #A9C9B3;
+    background: #F0F8F2;
+}
+
+.project-dependency-row.is-connected .project-dependency-node {
+    border-color: #72B78A;
+    background: #EFFAF2;
+    box-shadow: 0 0 0 2px rgba(23, 150, 108, .08);
+}
+
+.project-dependency-arrow {
+    color: #A7B2AB;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+}
+
+.project-dependency-row.is-connected .project-dependency-arrow {
+    color: #17966C;
+}
+
 .project-progress-aside-section select[multiple] {
     width: 100%;
-    min-height: 116px;
+    min-height: 88px;
     padding: 5px;
     border: 1px solid var(--line);
     border-radius: 7px;
     background: #FFFFFF;
     color: var(--ink);
-    font: 11px 'DM Sans', sans-serif;
+    font: 10px 'DM Sans', sans-serif;
 }
 
 .project-progress-aside-section .project-dependency-select {
@@ -3008,6 +3156,7 @@ body.dark-mode .invite-user-search-result span,
     width: 1px;
     height: 1px;
     overflow: hidden;
+    clip: rect(0 0 0 0);
     clip-path: inset(50%);
     white-space: nowrap;
 }
@@ -3503,8 +3652,8 @@ body.dark-mode .project-progress-aside-team-avatar,
 
 body.dark-mode .project-progress-aside .project-sprint-status.is-completed,
 [data-theme="dark"] .project-progress-aside .project-sprint-status.is-completed {
-    background: #1E3829;
-    color: #A7E4C6;
+    background: #16835A;
+    color: #FFFFFF;
 }
 
 body.dark-mode .project-progress-aside .project-sprint-status.is-pending-review,
@@ -3523,8 +3672,8 @@ body.dark-mode .project-progress-aside .project-sprint-status.is-blocked,
 
 body.dark-mode .project-progress-aside .project-sprint-status.is-active,
 [data-theme="dark"] .project-progress-aside .project-sprint-status.is-active {
-    background: #38321F;
-    color: #E9CF7B;
+    background: #B71C1C;
+    color: #FFFFFF;
 }
 
 body.dark-mode .project-progress-aside .project-sprint-status.is-upcoming,

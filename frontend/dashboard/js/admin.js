@@ -27,7 +27,7 @@ import { firebaseAuth } from '../../firebase.js'
 import { setDashboardButtonLoading, showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
 import { openMeteredMeetingModal } from './meteredMeetingModal.js'
-import { createTaskMediaEditor } from './taskMedia.js?v=20261105-review-400-fix'
+import { createTaskMediaEditor } from './taskMedia.js?v=20261028-native-file-label'
 
 // ============================================================
 // ADMIN CONSOLE TABLE & FUNCTIONS
