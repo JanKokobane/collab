@@ -468,16 +468,19 @@ const getProjectTaskComments = async (req, res) => {
         const result = await query(
             `
                 SELECT
-                    comment_id,
-                    author_firebase_uid,
-                    author_name,
-                    author_email,
-                    body,
-                    attachments,
-                    created_at
-                FROM project_task_comments
-                WHERE task_id = $1::uuid
-                ORDER BY created_at, comment_id
+                    task_comment.comment_id,
+                    task_comment.author_firebase_uid,
+                    task_comment.author_name,
+                    task_comment.author_email,
+                    COALESCE(author_profile.profile_image, '') AS author_profile_image,
+                    task_comment.body,
+                    task_comment.attachments,
+                    task_comment.created_at
+                FROM project_task_comments task_comment
+                LEFT JOIN user_profiles author_profile
+                  ON author_profile.firebase_uid = task_comment.author_firebase_uid
+                WHERE task_comment.task_id = $1::uuid
+                ORDER BY task_comment.created_at, task_comment.comment_id
             `,
             [req.params.taskId]
         );

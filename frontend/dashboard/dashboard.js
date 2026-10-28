@@ -54,7 +54,7 @@ import {
   moveTaskStatus,
   taskCard,
   setupDragAndDrop
-} from './js/tasks.js?v=20261028-project-overview'
+} from './js/tasks.js?v=20261028-project-comment-avatars'
 
 import {
   renderCalendarPanel,
@@ -100,7 +100,7 @@ import { api } from './js/api.js'
 import {
   initEventListeners,
   simulateCollaborationEvent
-} from './js/events.js?v=20261028-project-overview'
+} from './js/events.js?v=20261028-project-comments'
 import {
   renderWorkspaceHub,
   renderWorkspaceSummary,
@@ -109,7 +109,7 @@ import {
   renderNotifications,
   initWorkspaceHubEvents
 } from './js/workspaceHub.js'
-import { openProjectTaskDetails } from './js/projectProgressAside.js?v=20261028-project-overview'
+import { openProjectTaskDetails } from './js/projectProgressAside.js?v=20261028-project-media-preview'
 import { initMessages, openMessageContext, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261026-collaboration-context'
 import { renderMeetingsPage } from './js/meetingsPage.js'
 import { initProjectStickyNotes } from './js/projectStickyNotes.js'

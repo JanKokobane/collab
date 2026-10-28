@@ -19,7 +19,7 @@ import {
   applyAccent,
   initSettingsControls
 } from './theme.js'
-import { initEventListeners } from './events.js?v=20261028-project-overview'
+import { initEventListeners } from './events.js?v=20261028-project-comments'
 
 // Apply user theme and accent immediately
 applyTheme(currentTheme)

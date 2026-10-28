@@ -16,6 +16,13 @@ function displayDate(value) {
     : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+function formatSprintDate(value) {
+  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`)
+  return Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+}
+
 function getProductionAnalysis(projectTasks, sprints) {
   const activeTasks = projectTasks.filter(task => task.status !== 'Done')
   const completed = projectTasks.length - activeTasks.length
@@ -156,15 +163,74 @@ function renderAnalysisChart(title, items, className) {
 
 function sprintLeadName(project, sprint) {
   if (sprint.assigneeName) return sprint.assigneeName
-  const member = [
+  const member = sprintLeadMember(project, sprint)
+  return member?.name || member?.email || 'No sprint lead'
+}
+
+function sprintLeadMember(project, sprint) {
+  return [
     {
       firebaseUid: project.creatorFirebaseUid,
       name: project.creatorName,
-      email: project.creatorEmail
+      email: project.creatorEmail,
+      initials: project.creatorInitials,
+      profileImage: project.creatorProfileImage,
+      tone: project.creatorTone
     },
     ...(project.acceptedMembers || [])
   ].find(candidate => candidate.firebaseUid === sprint.assigneeFirebaseUid)
-  return member?.name || member?.email || 'No sprint lead'
+}
+
+function openCommentMediaPreview(media, trigger) {
+  const backdrop = make('div', 'project-comment-media-preview-backdrop')
+  const dialog = make('div', 'project-comment-media-preview')
+  dialog.setAttribute('role', 'dialog')
+  dialog.setAttribute('aria-modal', 'true')
+  dialog.setAttribute('aria-label', media.alt || media.getAttribute('aria-label') || 'Shared media preview')
+  const closeButton = make('button', 'project-comment-media-preview-close', '×')
+  closeButton.type = 'button'
+  closeButton.setAttribute('aria-label', 'Close media preview')
+  const preview = media.cloneNode(false)
+  preview.removeAttribute('style')
+  if (preview.tagName === 'VIDEO') {
+    preview.controls = true
+    preview.preload = 'metadata'
+    preview.classList.add('project-comment-media-preview-video')
+  } else {
+    preview.classList.add('project-comment-media-preview-image')
+  }
+
+  const closePreview = () => {
+    document.removeEventListener('keydown', onKeyDown)
+    backdrop.remove()
+    trigger?.focus()
+  }
+  const onKeyDown = event => {
+    if (event.key === 'Escape') closePreview()
+  }
+
+  closeButton.addEventListener('click', closePreview)
+  backdrop.addEventListener('click', event => {
+    if (event.target === backdrop) closePreview()
+  })
+  dialog.append(closeButton, preview)
+  backdrop.append(dialog)
+  document.body.append(backdrop)
+  document.addEventListener('keydown', onKeyDown)
+  closeButton.focus()
+}
+
+function addCommentMediaExpandButtons(container) {
+  container.querySelectorAll('img.task-media-image, video.task-media-player').forEach(media => {
+    const expandButton = make('button', 'project-comment-media-expand', 'Expand')
+    expandButton.type = 'button'
+    expandButton.setAttribute(
+      'aria-label',
+      `Expand ${media.getAttribute('aria-label') || media.alt || 'shared media'}`
+    )
+    expandButton.addEventListener('click', () => openCommentMediaPreview(media, expandButton))
+    media.after(expandButton)
+  })
 }
 
 async function removeProjectSprint(project, sprint, task, removeButton) {
@@ -244,25 +310,62 @@ async function loadTaskComments(project, task, container) {
       `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(task.taskId)}/comments`
     )
     const comments = response?.data?.comments || []
-      task.commentsList = comments
-      task.comments = comments.length
+    task.commentsList = comments
+    task.comments = comments.length
     container.replaceChildren()
     if (!comments.length) {
-      container.append(make('p', 'project-progress-aside-empty', 'No task comments yet.'))
+      container.append(make('p', 'project-comments-empty', 'No comments yet. Share an update to start the discussion.'))
       return comments
     }
     comments.forEach(comment => {
-      const row = make('article', 'task-comment-item')
-      const header = make('div', 'task-comment-header')
+      const row = make('article', 'task-comment-item project-comment-item')
+      const avatar = make('span')
+      const authorName = comment.author_name || comment.author_email || 'Project member'
+      renderAvatarElement(avatar, {
+        name: authorName,
+        profileImage: comment.author_profile_image || comment.profile_image || ''
+      }, 'project-comment-avatar')
+      const copy = make('div', 'project-comment-content')
+      const header = make('div', 'task-comment-header project-comment-header')
       header.append(
-        make('strong', '', comment.author_name || 'Project member'),
+        make('strong', '', authorName),
         make('time', '', new Date(comment.created_at).toLocaleString(undefined, {
           month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
         }))
       )
-      row.append(header)
-      if (comment.body) row.append(make('p', 'task-comment-body', comment.body))
-      row.append(renderTaskMediaAttachments(comment.attachments || []))
+      copy.append(header)
+      if (comment.body) copy.append(make('p', 'task-comment-body', comment.body))
+      const attachments = comment.attachments || []
+      const playableAttachments = attachments.filter(attachment =>
+        attachment?.mediaType?.startsWith('image/') ||
+        attachment?.mediaType?.startsWith('audio/') ||
+        attachment?.mediaType?.startsWith('video/')
+      )
+      const attachmentContent = renderTaskMediaAttachments(playableAttachments)
+      addCommentMediaExpandButtons(attachmentContent)
+      const documentAttachments = attachments.filter(attachment =>
+        attachment?.mediaType === 'application/pdf' &&
+        typeof attachment.data === 'string' &&
+        typeof attachment.fileName === 'string'
+      )
+      documentAttachments.forEach(attachment => {
+        const documentLink = make('a', 'project-comment-document')
+        documentLink.href = attachment.data
+        documentLink.download = attachment.fileName
+        documentLink.setAttribute('aria-label', `Download ${attachment.fileName}`)
+        documentLink.append(
+          make('span', 'project-comment-document-type', 'PDF'),
+          make('span', 'project-comment-document-name', attachment.fileName),
+          make(
+            'span',
+            'project-comment-document-size',
+            `${Math.max(1, Math.round((Number(attachment.size) || 0) / 1024))} KB`
+          )
+        )
+        attachmentContent.append(documentLink)
+      })
+      if (attachmentContent.childElementCount) copy.append(attachmentContent)
+      row.append(avatar, copy)
       container.append(row)
     })
     return comments
@@ -285,6 +388,13 @@ export function openProjectProgressAside(task) {
   const sprints = Array.isArray(project.sprints) ? project.sprints : []
   const acceptedMembers = Array.isArray(project.acceptedMembers) ? project.acceptedMembers : []
   const projectSprints = Array.isArray(project.sprints) ? project.sprints : []
+  const projectOwner = {
+    firebaseUid: project.creatorFirebaseUid,
+    name: project.creatorName || project.creatorEmail || 'Project owner',
+    email: project.creatorEmail,
+    profileImage: project.creatorProfileImage,
+    role: 'Project owner'
+  }
   const currentUid = currentUser.uid
   const isProjectOwner = Boolean(currentUid && project.creatorFirebaseUid === currentUid)
   const backdrop = make('div', 'project-progress-aside-backdrop')
@@ -361,24 +471,34 @@ export function openProjectProgressAside(task) {
 
   const focusSection = make('section', 'project-progress-aside-section project-progress-aside-focus')
   const descriptionMediaContainer = make('div', 'task-media-player-list')
-  focusSection.append(make('div', 'project-progress-aside-section-heading', 'Task context'))
-  if (task.chatMessageId && task.chatConversationId) {
-    const discussionButton = make('button', 'project-progress-aside-context-link', 'View Discussion Context')
-    discussionButton.type = 'button'
-    discussionButton.addEventListener('click', () => {
-      close()
-      hub.openMessageContext?.({
-        conversationId: task.chatConversationId,
-        messageId: task.chatMessageId
-      })
+  focusSection.className = 'project-progress-aside-task-context'
+  focusSection.hidden = true
+  focusSection.append(make('h4', '', 'Task context'))
+  const discussionButton = make('button', 'project-progress-aside-context-link', 'View Discussion Context')
+  discussionButton.type = 'button'
+  discussionButton.hidden = true
+  discussionButton.addEventListener('click', () => {
+    close()
+    hub.openMessageContext?.({
+      conversationId: task.chatConversationId,
+      messageId: task.chatMessageId
     })
-    focusSection.append(discussionButton)
-  }
+  })
+  focusSection.append(discussionButton)
   if (task.hasDependencyWarning) {
     focusSection.append(make('p', 'task-dependency-warning', 'A predecessor task is blocked or its due date moved later.'))
   }
   focusSection.append(descriptionMediaContainer)
-  content.append(focusSection)
+  const updateTaskContextVisibility = () => {
+    const hasDiscussionContext = Boolean(task.chatMessageId && task.chatConversationId)
+    discussionButton.hidden = !hasDiscussionContext
+    focusSection.hidden = !(
+      hasDiscussionContext ||
+      task.hasDependencyWarning ||
+      descriptionMediaContainer.childElementCount
+    )
+  }
+  updateTaskContextVisibility()
   if (task.descriptionAttachments?.length) {
     descriptionMediaContainer.append(make('p', 'project-progress-aside-empty', 'Loading task media…'))
   }
@@ -391,6 +511,7 @@ export function openProjectProgressAside(task) {
     task.chatMessageId = detail.chat_message_id || task.chatMessageId
     task.chatConversationId = detail.chat_conversation_id || task.chatConversationId
     descriptionMediaContainer.replaceChildren(renderTaskMediaAttachments(task.descriptionAttachments))
+    updateTaskContextVisibility()
   }).catch(error => {
     if (aside.isConnected && task.descriptionAttachments?.length) {
       descriptionMediaContainer.replaceChildren(
@@ -401,9 +522,15 @@ export function openProjectProgressAside(task) {
 
   const dependencySection = make('section', 'project-progress-aside-section is-dependencies')
   const dependencyHeading = make('div', 'project-progress-aside-section-heading')
-  dependencyHeading.append(make('h3', '', 'Dependencies'))
+  const dependencyHeadingCopy = make('div', 'project-comments-title')
+  dependencyHeadingCopy.append(
+    make('span', 'project-progress-aside-eyebrow', 'Task planning'),
+    make('h3', '', 'Dependencies')
+  )
+  dependencyHeading.append(dependencyHeadingCopy)
   dependencySection.append(dependencyHeading)
   const dependencySelect = document.createElement('select')
+  dependencySelect.className = 'project-dependency-select no-input-icon'
   dependencySelect.multiple = true
   dependencySelect.size = 5
   dependencySelect.setAttribute('aria-label', 'Predecessor tasks across accessible projects')
@@ -415,6 +542,8 @@ export function openProjectProgressAside(task) {
       dependencySelect.append(option)
     })
   const dependencyHelp = make('small', 'project-progress-aside-help', 'Select tasks that must finish first. Select multiple with Ctrl or Command.')
+  dependencyHelp.id = 'project-dependency-help'
+  dependencySelect.setAttribute('aria-describedby', dependencyHelp.id)
   const dependencySave = make('button', 'project-progress-aside-context-link', 'Save Dependencies')
   dependencySave.type = 'button'
   dependencySave.addEventListener('click', async () => {
@@ -443,24 +572,34 @@ export function openProjectProgressAside(task) {
     }
   })
   dependencySection.append(dependencySelect, dependencyHelp, dependencySave)
-  content.append(dependencySection)
 
-  const commentsSection = make('section', 'project-progress-aside-section is-comments')
+  const commentsSection = make('section', 'project-progress-aside-section is-comments collab-card')
   const commentsHeading = make('div', 'project-progress-aside-section-heading')
-  commentsHeading.append(make('h3', '', 'Comments and media'))
+  const commentsTitle = make('div', 'project-comments-title')
+  commentsTitle.append(
+    make('span', 'project-progress-aside-eyebrow', 'Collaboration'),
+    make('h3', '', 'Comments and media')
+  )
+  commentsHeading.append(commentsTitle)
   const commentsList = make('div', 'task-comment-list')
-  commentsSection.append(commentsHeading, commentsList)
+  commentsList.setAttribute('aria-label', 'Task comments')
+  commentsSection.append(commentsHeading)
   const commentForm = document.createElement('form')
-  commentForm.className = 'task-comment-form'
+  commentForm.className = 'task-comment-form collab-textarea-wrap'
   const commentInput = document.createElement('textarea')
+  commentInput.className = 'collab-textarea'
+  commentInput.classList.add('no-input-icon')
   commentInput.maxLength = 5000
-  commentInput.rows = 2
-  commentInput.placeholder = 'Add a comment…'
+  commentInput.rows = 3
+  commentInput.placeholder = 'Share feedback, review notes, or attach delivery clips…'
   commentInput.setAttribute('aria-label', 'Task comment')
   const commentMedia = createTaskMediaEditor({ label: 'Comment media' })
-  const commentSubmit = make('button', 'project-progress-aside-context-link', 'Post Comment')
+  commentMedia.element.classList.add('collab-comment-media')
+  const commentActions = make('div', 'collab-action-bar')
+  const commentSubmit = make('button', 'collab-post-btn', 'Post comment')
   commentSubmit.type = 'submit'
-  commentForm.append(commentInput, commentMedia.element, commentSubmit)
+  commentActions.append(commentMedia.element, commentSubmit)
+  commentForm.append(commentInput, commentActions)
   commentForm.addEventListener('submit', async event => {
     event.preventDefault()
     const text = commentInput.value.trim()
@@ -478,31 +617,90 @@ export function openProjectProgressAside(task) {
       commentInput.value = ''
       commentMedia.clear()
       await loadTaskComments(project, task, commentsList)
+      restoreButton()
     } catch (error) {
       restoreButton()
       showDashboardToast(error.message || 'The comment could not be posted.', 'error')
     }
   })
-  commentsSection.append(commentForm)
+  commentsSection.append(commentForm, commentsList)
   content.append(commentsSection)
   void loadTaskComments(project, task, commentsList)
 
   const sprintSection = make('section', 'project-progress-aside-section is-sprints')
   sprintSection.setAttribute('aria-labelledby', 'project-progress-aside-sprints-title')
   const sprintHeading = make('div', 'project-progress-aside-section-heading')
+  const sprintHeadingCopy = make('div', 'project-comments-title')
+  sprintHeadingCopy.append(make('span', 'project-progress-aside-eyebrow', 'Delivery plan'))
   const sprintHeadingTitle = make('h3', '', 'Project sprints')
   sprintHeadingTitle.id = 'project-progress-aside-sprints-title'
-  sprintHeading.append(sprintHeadingTitle, make('span', 'project-progress-aside-count', String(sprints.length)))
+  sprintHeadingCopy.append(sprintHeadingTitle)
+  sprintHeading.append(sprintHeadingCopy)
   sprintSection.append(sprintHeading)
   const sprintList = make('div', 'project-sprint-list project-progress-aside-sprints')
   sprints.forEach(sprint => {
     const sprintStatus = sprint.status || 'Upcoming'
     const row = make('div', 'project-sprint-chip project-progress-aside-sprint')
-    row.append(
-      make('strong', '', sprint.name || 'Untitled sprint'),
-      make('small', '', sprintStatus),
-      make('small', 'project-sprint-assignee', `Assigned to ${sprintLeadName(project, sprint)}`)
+    row.setAttribute('aria-label', `${sprint.name || 'Untitled sprint'}: ${sprintStatus}`)
+    const sprintTop = make('div', 'project-sprint-card-top')
+    sprintTop.append(make('strong', 'project-sprint-card-name', sprint.name || 'Untitled sprint'))
+    const normalizedStatus = String(sprintStatus).toLowerCase().replaceAll(' ', '-')
+    sprintTop.append(make('span', `project-sprint-status is-${normalizedStatus}`, sprintStatus))
+    const sprintLead = sprintLeadMember(project, sprint)
+    const lead = sprintLead || (sprint.assigneeName
+      ? { name: sprint.assigneeName, firebaseUid: sprint.assigneeFirebaseUid }
+      : null)
+    const leadRow = make('div', 'project-sprint-card-lead')
+    if (lead) {
+      const leadAvatar = make('span')
+      renderAvatarElement(leadAvatar, lead, 'project-sprint-lead-avatar')
+      const leadLabel = lead.firebaseUid && lead.firebaseUid === project.creatorFirebaseUid
+        ? 'Owner'
+        : sprintLeadName(project, sprint)
+      leadRow.append(
+        leadAvatar,
+        make('span', 'project-sprint-card-lead-name', leadLabel)
+      )
+    } else {
+      leadRow.append(make('span', 'project-sprint-card-unassigned', 'No sprint lead assigned'))
+    }
+    sprintTop.append(leadRow)
+    const sprintTasks = projectTasks.filter(candidate => candidate.sprint_name === sprint.name)
+    const sprintStart = sprint.startDate || sprint.start_date
+    const sprintEnd = sprint.endDate || sprint.end_date
+    const sprintStartLabel = sprintStart ? formatSprintDate(sprintStart) : ''
+    const sprintEndLabel = sprintEnd ? formatSprintDate(sprintEnd) : ''
+    const sprintDates = sprintStartLabel && sprintEndLabel
+      ? `${sprintStartLabel} — ${sprintEndLabel}`
+      : ''
+    const completedSprintTasks = sprintTasks.filter(candidate => candidate.status === 'Done').length
+    const sprintProgress = sprintTasks.length
+      ? Math.round((completedSprintTasks / sprintTasks.length) * 100)
+      : 0
+    const progress = make('div', 'project-sprint-card-progress')
+    const progressTrack = make('div', 'project-sprint-card-track')
+    progressTrack.setAttribute('role', 'progressbar')
+    progressTrack.setAttribute('aria-label', `${sprint.name || 'Sprint'} task completion`)
+    progressTrack.setAttribute('aria-valuemin', '0')
+    progressTrack.setAttribute('aria-valuemax', '100')
+    progressTrack.setAttribute('aria-valuenow', String(sprintProgress))
+    const progressFill = make('span', 'project-sprint-card-fill')
+    progressFill.style.width = `${sprintProgress}%`
+    progressTrack.append(progressFill)
+    progress.append(
+      progressTrack,
+      make('strong', 'project-sprint-card-percent', sprintTasks.length ? `${sprintProgress}%` : '—')
     )
+    const progressSummary = make(
+      'small',
+      'project-sprint-card-summary',
+      sprintTasks.length
+        ? `${completedSprintTasks} of ${sprintTasks.length} ${sprintTasks.length === 1 ? 'task' : 'tasks'} complete`
+        : 'No tasks assigned to this sprint'
+    )
+    row.append(sprintTop)
+    if (sprintDates) row.append(make('small', 'project-sprint-card-dates', sprintDates))
+    row.append(progress, progressSummary)
     if (sprint.submissionNote) {
       row.append(make('p', 'project-sprint-submission-note', sprint.submissionNote))
     }
@@ -651,39 +849,83 @@ export function openProjectProgressAside(task) {
   const memberSection = make('section', 'project-progress-aside-section is-members')
   memberSection.setAttribute('aria-labelledby', 'project-progress-aside-members-title')
   const memberHeading = make('div', 'project-progress-aside-section-heading')
+  const memberHeadingCopy = make('div', 'project-comments-title')
+  memberHeadingCopy.append(make('span', 'project-progress-aside-eyebrow', 'Project team'))
   const memberHeadingTitle = make('h3', '', 'Accepted project invitees')
   memberHeadingTitle.id = 'project-progress-aside-members-title'
-  memberHeading.append(
-    memberHeadingTitle,
-    make('span', 'project-progress-aside-count', String(acceptedMembers.length))
+  memberHeadingCopy.append(memberHeadingTitle)
+  const teamMembers = acceptedMembers.filter(member =>
+    !(projectOwner.firebaseUid && member.firebaseUid === projectOwner.firebaseUid) &&
+    !(projectOwner.email && member.email?.toLowerCase() === projectOwner.email.toLowerCase())
   )
+  const hasProjectOwner = Boolean(
+    projectOwner.firebaseUid || projectOwner.email || projectOwner.name !== 'Project owner'
+  )
+  const listedMembers = hasProjectOwner
+    ? [projectOwner, ...teamMembers]
+    : teamMembers
+  memberHeading.append(memberHeadingCopy)
   memberSection.append(memberHeading)
   const memberList = make('div', 'project-progress-aside-members')
-  if (!acceptedMembers.length) {
+  if (!listedMembers.length) {
     memberList.append(make('p', 'project-progress-aside-empty', 'No accepted invitees yet.'))
   } else {
-    acceptedMembers.forEach(member => {
-      const memberRow = make('div', 'project-progress-aside-member')
+    listedMembers.forEach(member => {
+      const memberTaskCount = projectTasks.filter(projectTask =>
+        (member.firebaseUid && projectTask.assigneeFirebaseUid === member.firebaseUid) ||
+        (!member.firebaseUid && member.email && projectTask.assignee_email === member.email)
+      ).length
+      const isOwner = member.role === 'Project owner'
+      const memberRow = make(
+        'div',
+        `project-progress-aside-member project-progress-aside-invitee${isOwner ? ' is-owner' : ''}`
+      )
       const avatar = make('span')
-      renderAvatarElement(avatar, member, 'project-progress-aside-avatar')
+      renderAvatarElement(avatar, member, 'project-progress-aside-avatar project-progress-aside-invitee-avatar')
       const memberDetails = make('span', 'project-progress-aside-member-details')
       memberDetails.append(
         make('strong', '', member.name || member.email || 'Project member'),
-        make('small', '', member.role || member.email || 'Accepted invitee')
+        make('small', '', isOwner ? 'Project owner' : member.role || member.email || 'Accepted invitee')
       )
-      memberRow.append(avatar, memberDetails)
+      memberRow.append(
+        avatar,
+        memberDetails,
+        make('small', 'project-progress-aside-member-task-count', `${memberTaskCount} ${memberTaskCount === 1 ? 'task' : 'tasks'}`)
+      )
       memberList.append(memberRow)
     })
   }
   memberSection.append(memberList)
-  content.append(memberSection)
+  if (listedMembers.length) {
+    const teamFooter = make('div', 'project-progress-aside-team-footer')
+    teamFooter.append(make('span', 'project-progress-aside-team-label', 'TEAM'))
+    const avatarStack = make('div', 'project-progress-aside-team-avatars')
+    avatarStack.setAttribute('role', 'img')
+    avatarStack.setAttribute(
+      'aria-label',
+      `Team members: ${listedMembers.map(member => member.name || member.email || 'Project member').join(', ')}`
+    )
+    listedMembers.forEach(member => {
+      const avatar = make('span')
+      renderAvatarElement(avatar, member, 'project-progress-aside-team-avatar')
+      avatar.setAttribute('aria-hidden', 'true')
+      avatarStack.append(avatar)
+    })
+    teamFooter.append(avatarStack)
+    memberSection.append(teamFooter)
+  }
+  content.insertBefore(memberSection, commentsSection)
+  content.append(dependencySection)
 
   const taskSection = make('section', 'project-progress-aside-section is-tasks')
   taskSection.setAttribute('aria-labelledby', 'project-progress-aside-tasks-title')
   const taskHeading = make('div', 'project-progress-aside-section-heading')
+  const taskHeadingCopy = make('div', 'project-comments-title')
+  taskHeadingCopy.append(make('span', 'project-progress-aside-eyebrow', 'Project board'))
   const taskHeadingTitle = make('h3', '', 'Tasks')
   taskHeadingTitle.id = 'project-progress-aside-tasks-title'
-  taskHeading.append(taskHeadingTitle, make('span', 'project-progress-aside-count', String(projectTasks.length)))
+  taskHeadingCopy.append(taskHeadingTitle)
+  taskHeading.append(taskHeadingCopy)
   taskSection.append(taskHeading)
   const taskList = make('div', 'project-progress-aside-tasks')
   if (!projectTasks.length) {
@@ -704,6 +946,7 @@ export function openProjectProgressAside(task) {
         make('span', '', `Due · ${displayDate(projectTask.due_date)}`)
       )
       taskRow.append(taskTop, taskMeta)
+      if (projectTask.taskId === task.taskId) taskRow.append(focusSection)
       const canManageProjectTask = Boolean(
         currentUid && (
           isProjectOwner ||
@@ -795,6 +1038,9 @@ export function openProjectProgressAside(task) {
       }
       taskList.append(taskRow)
     })
+    if (!projectTasks.some(projectTask => projectTask.taskId === task.taskId)) {
+      taskSection.append(focusSection)
+    }
   }
   taskSection.append(taskList)
   content.append(taskSection)

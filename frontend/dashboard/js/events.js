@@ -10,7 +10,7 @@ import {
   setActiveFilter,
   setActiveDisplayMode
 } from './state.js'
-import { renderTasks, renderListView, getFilteredTasks } from './tasks.js?v=20261028-project-overview'
+import { renderTasks, renderListView, getFilteredTasks } from './tasks.js?v=20261028-project-comments'
 import { openCreateProjectModal, openAddSprintModal, openInviteCollaboratorModal, openManageCollaboratorsModal } from './projects.js'
 import { toLocalDateKey } from './dateUtils.js'
 import {
