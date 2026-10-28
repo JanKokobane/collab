@@ -4,7 +4,7 @@
 
 import { updateNotifCount } from './state.js'
 import { updateUserUI } from './auth.js'
-import { renderProjectNav } from './projects.js'
+import { renderProjectNav } from './projects.js?v=20261105-invitation-roles'
 import { renderTasks } from './tasks.js'
 import {
   renderMembersTable,

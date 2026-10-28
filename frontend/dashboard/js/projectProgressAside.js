@@ -563,6 +563,9 @@ function sprintSubmissionContent(sprint) {
   const submission = sprint.submission && typeof sprint.submission === 'object'
     ? sprint.submission
     : {}
+  const content = sprint.content && typeof sprint.content === 'object'
+    ? sprint.content
+    : {}
   const firstText = (...values) => values.find(value =>
     typeof value === 'string' && value.trim()
   )?.trim() || ''
@@ -573,22 +576,42 @@ function sprintSubmissionContent(sprint) {
     sprint.submission_media,
     sprint.attachments,
     submission.attachments,
-    submission.media
+    submission.media,
+    content.attachments,
+    content.media
   ].filter(Array.isArray)
-  const attachments = attachmentSources.find(source => source.length) || attachmentSources[0] || []
+  const attachmentsByKey = new Map()
+  attachmentSources.flat().forEach(attachment => {
+    if (!attachment || typeof attachment !== 'object') return
+    const key = [
+      attachment.fileName || attachment.name || '',
+      attachment.data || attachment.dataUrl || attachment.url || ''
+    ].join(':')
+    if (!attachmentsByKey.has(key)) attachmentsByKey.set(key, attachment)
+  })
+  const notes = [
+    sprint.submissionNote,
+    sprint.submission_note,
+    typeof sprint.submission === 'string' ? sprint.submission : '',
+    sprint.completionNote,
+    sprint.completion_note,
+    sprint.notes,
+    sprint.note,
+    sprint.text,
+    typeof sprint.content === 'string' ? sprint.content : '',
+    submission.note,
+    submission.text,
+    content.note,
+    content.text,
+    content.notes
+  ].flatMap(value => Array.isArray(value) ? value : [value])
+    .filter(value => typeof value === 'string' && value.trim())
+    .map(value => value.trim())
+  const uniqueNotes = [...new Set(notes)]
 
   return {
-    note: firstText(
-      sprint.submissionNote,
-      sprint.submission_note,
-      typeof sprint.submission === 'string' ? sprint.submission : '',
-      sprint.completionNote,
-      sprint.completion_note,
-      sprint.notes,
-      submission.note,
-      submission.text
-    ),
-    attachments,
+    notes: uniqueNotes,
+    attachments: [...attachmentsByKey.values()],
     feedback: firstText(
       sprint.reviewComment,
       sprint.review_comment,
@@ -596,28 +619,36 @@ function sprintSubmissionContent(sprint) {
       sprint.owner_feedback,
       sprint.feedback,
       submission.reviewComment,
-      submission.feedback
+      submission.feedback,
+      content.reviewComment,
+      content.feedback
     ),
     reviewAttachments: [
       sprint.reviewAttachments,
       sprint.review_attachments,
       submission.reviewAttachments,
-      submission.review_attachments
-    ].filter(Array.isArray).find(source => source.length) || [],
+      submission.review_attachments,
+      content.reviewAttachments,
+      content.review_attachments
+    ].filter(Array.isArray).flat(),
     submittedBy: firstText(
       sprint.submittedByName,
       sprint.submitted_by_name,
       submission.submittedByName,
-      submission.submitted_by_name
+      submission.submitted_by_name,
+      content.submittedByName
     ),
-    submittedAt: sprint.submittedAt || sprint.submitted_at || submission.submittedAt || submission.submitted_at || '',
+    submittedAt: sprint.submittedAt || sprint.submitted_at || submission.submittedAt ||
+      submission.submitted_at || content.submittedAt || '',
     reviewedBy: firstText(
       sprint.reviewedByName,
       sprint.reviewed_by_name,
       submission.reviewedByName,
-      submission.reviewed_by_name
+      submission.reviewed_by_name,
+      content.reviewedByName
     ),
-    reviewedAt: sprint.reviewedAt || sprint.reviewed_at || submission.reviewedAt || submission.reviewed_at || ''
+    reviewedAt: sprint.reviewedAt || sprint.reviewed_at || submission.reviewedAt ||
+      submission.reviewed_at || content.reviewedAt || ''
   }
 }
 
@@ -1128,11 +1159,11 @@ export function openProjectProgressAside(task) {
   sprintSection.append(sprintHeading)
   const sprintList = make('div', 'project-sprint-list project-progress-aside-sprints')
   const submissionMediaEditors = []
-  sprints.forEach(sprint => {
+  sprints.forEach((sprint, sprintIndex) => {
     const sprintStatus = sprint.status || 'Upcoming'
     const row = make('div', 'project-sprint-chip project-progress-aside-sprint')
     row.setAttribute('aria-label', `${sprint.name || 'Untitled sprint'}: ${sprintStatus}`)
-    const sprintTop = make('div', 'project-sprint-card-top')
+    const sprintTop = make('span', 'project-sprint-card-top')
     sprintTop.append(make('strong', 'project-sprint-card-name', sprint.name || 'Untitled sprint'))
     const normalizedStatus = String(sprintStatus).toLowerCase().replaceAll(' ', '-')
     sprintTop.append(make('span', `project-sprint-status is-${normalizedStatus}`, sprintStatus))
@@ -1140,7 +1171,7 @@ export function openProjectProgressAside(task) {
     const lead = sprintLead || (sprint.assigneeName
       ? { name: sprint.assigneeName, firebaseUid: sprint.assigneeFirebaseUid }
       : null)
-    const leadRow = make('div', 'project-sprint-card-lead')
+    const leadRow = make('span', 'project-sprint-card-lead')
     if (lead) {
       const leadAvatar = make('span')
       renderAvatarElement(leadAvatar, lead, 'project-sprint-lead-avatar')
@@ -1188,26 +1219,56 @@ export function openProjectProgressAside(task) {
         ? `${completedSprintTasks} of ${sprintTasks.length} ${sprintTasks.length === 1 ? 'task' : 'tasks'} complete`
         : 'No tasks assigned to this sprint'
     )
-    row.append(sprintTop)
-    if (sprintDates) row.append(make('small', 'project-sprint-card-dates', sprintDates))
-    const sprintDescription = typeof sprint.description === 'string'
-      ? sprint.description.trim()
-      : typeof sprint.details === 'string'
-        ? sprint.details.trim()
-        : ''
-    if (sprintDescription) {
-      const description = make('p', 'project-sprint-card-description', sprintDescription)
-      row.append(description)
+    const detailsId = `project-sprint-details-${sprintIndex}`
+    const toggle = make('button', 'project-sprint-card-toggle')
+    toggle.type = 'button'
+    toggle.setAttribute('aria-expanded', 'false')
+    toggle.setAttribute('aria-controls', detailsId)
+    toggle.append(sprintTop)
+    if (sprintDates) toggle.append(make('small', 'project-sprint-card-dates', sprintDates))
+    toggle.append(
+      progressSummary,
+      make('span', 'project-sprint-card-toggle-label', 'View sprint details'),
+      make('span', 'project-sprint-card-toggle-icon', '⌄')
+    )
+    const details = make('div', 'project-sprint-card-details')
+    details.id = detailsId
+    details.hidden = true
+    details.setAttribute('role', 'region')
+    details.setAttribute('aria-labelledby', `${detailsId}-toggle`)
+    toggle.id = `${detailsId}-toggle`
+    toggle.addEventListener('click', () => {
+      const expanded = toggle.getAttribute('aria-expanded') === 'true'
+      toggle.setAttribute('aria-expanded', String(!expanded))
+      details.hidden = expanded
+      row.classList.toggle('is-expanded', !expanded)
+      toggle.querySelector('.project-sprint-card-toggle-label').textContent =
+        expanded ? 'View sprint details' : 'Hide sprint details'
+    })
+    row.append(toggle, details)
+    const sprintDescriptions = [
+      sprint.description,
+      sprint.details,
+      sprint.goal,
+      sprint.objective,
+      sprint.summary
+    ].filter(value => typeof value === 'string' && value.trim())
+      .map(value => value.trim())
+    const uniqueDescriptions = [...new Set(sprintDescriptions)]
+    if (uniqueDescriptions.length) {
+      const description = make('div', 'project-sprint-card-descriptions')
+      uniqueDescriptions.forEach(text => {
+        description.append(make('p', 'project-sprint-card-description', text))
+      })
+      details.append(description)
     }
-    row.append(progress, progressSummary)
+    details.append(progress)
     const submission = sprintSubmissionContent(sprint)
-    if (submission.note) {
+    if (submission.notes.length) {
       const submissionNote = make('div', 'project-sprint-submission-note')
-      submissionNote.append(
-        make('strong', 'project-sprint-card-section-label', 'Submission note'),
-        make('p', '', submission.note)
-      )
-      row.append(submissionNote)
+      submissionNote.append(make('strong', 'project-sprint-card-section-label', 'Sprint notes'))
+      submission.notes.forEach(note => submissionNote.append(make('p', '', note)))
+      details.append(submissionNote)
     }
     if (submission.attachments.length) {
       const attachmentList = renderSprintSubmissionAttachments(submission.attachments)
@@ -1215,7 +1276,7 @@ export function openProjectProgressAside(task) {
         const submissionMedia = make('div', 'project-sprint-submission-media')
         submissionMedia.append(make('strong', 'project-sprint-submission-media-title', 'Submission attachments'))
         submissionMedia.append(attachmentList)
-        row.append(submissionMedia)
+        details.append(submissionMedia)
       }
     }
     if (submission.submittedBy || submission.submittedAt) {
@@ -1233,7 +1294,7 @@ export function openProjectProgressAside(task) {
         submission.submittedBy ? `Submitted by ${submission.submittedBy}` : '',
         submittedDate
       ].filter(Boolean).join(' · ')
-      row.append(submittedMetadata)
+      details.append(submittedMetadata)
     }
     if (submission.feedback) {
       const ownerFeedback = make('div', 'project-sprint-review-comment')
@@ -1243,12 +1304,12 @@ export function openProjectProgressAside(task) {
       )
       const reviewAttachments = renderSprintSubmissionAttachments(submission.reviewAttachments)
       if (reviewAttachments.childElementCount) ownerFeedback.append(reviewAttachments)
-      row.append(ownerFeedback)
+      details.append(ownerFeedback)
     } else if (submission.reviewAttachments.length) {
       const ownerFeedback = make('div', 'project-sprint-review-comment')
       ownerFeedback.append(make('strong', 'project-sprint-card-section-label', 'Owner feedback'))
       ownerFeedback.append(renderSprintSubmissionAttachments(submission.reviewAttachments))
-      row.append(ownerFeedback)
+      details.append(ownerFeedback)
     }
     if (submission.reviewedBy || submission.reviewedAt) {
       const reviewedDate = submission.reviewedAt
@@ -1260,7 +1321,7 @@ export function openProjectProgressAside(task) {
           minute: '2-digit'
         })
         : ''
-      row.append(make(
+      details.append(make(
         'small',
         'project-sprint-submission-metadata',
         [
@@ -1275,7 +1336,7 @@ export function openProjectProgressAside(task) {
       removeButton.setAttribute('aria-label', `Remove ${sprint.name || 'sprint'}`)
       removeButton.title = 'Remove sprint'
       removeButton.addEventListener('click', () => removeProjectSprint(project, sprint, task, removeButton))
-      row.append(removeButton)
+      details.append(removeButton)
     }
 
     if (currentUid && sprint.assigneeFirebaseUid === currentUid &&
@@ -1348,7 +1409,7 @@ export function openProjectProgressAside(task) {
           showDashboardToast(error.message || 'The sprint could not be submitted.', 'error')
         }
       })
-      row.append(submissionForm)
+      details.append(submissionForm)
     }
 
     if (isProjectOwner && sprint.status === 'Pending Review') {
@@ -1422,7 +1483,7 @@ export function openProjectProgressAside(task) {
         event.preventDefault()
         void submitReview('request_changes', changesButton)
       })
-      row.append(reviewForm)
+      details.append(reviewForm)
     }
     sprintList.append(row)
   })

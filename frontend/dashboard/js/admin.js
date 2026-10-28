@@ -21,7 +21,7 @@ import {
 import { getActiveProject } from './auth.js'
 import { createScheduleCalendarPicker } from './calendar.js'
 import { addDaysToDateKey, toLocalDateKey } from './dateUtils.js'
-import { openInviteCollaboratorModal, openCreateProjectModal, openEditProjectModal } from './projects.js'
+import { openInviteCollaboratorModal, openCreateProjectModal, openEditProjectModal } from './projects.js?v=20261105-invitation-roles'
 import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
 import { setDashboardButtonLoading, showDashboardConfirmation, showDashboardToast } from './modalChrome.js'

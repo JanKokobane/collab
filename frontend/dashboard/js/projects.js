@@ -877,26 +877,109 @@ export function openInviteCollaboratorModal(
   const roleSelect =
     document.createElement('select')
 
-  const invitationRoles = [
-    'Workspace Admin',
-    'Product Lead',
-    'Designer',
-    'Engineer',
-    'QA Specialist',
-    'Content Strategist',
-    'Member'
+  const invitationRoleGroups = [
+    {
+      label: 'General',
+      roles: [
+        'Workspace Admin',
+        'Product Lead',
+        'Designer',
+        'Engineer',
+        'QA Specialist',
+        'Content Strategist',
+        'Member'
+      ]
+    },
+    {
+      label: 'Project & delivery',
+      roles: [
+        'Project Manager',
+        'Program Manager',
+        'Scrum Master',
+        'Agile Coach',
+        'Product Owner',
+        'Delivery Manager',
+        'Release Manager'
+      ]
+    },
+    {
+      label: 'Analysis & data',
+      roles: [
+        'Business Analyst',
+        'Systems Analyst',
+        'Data Analyst',
+        'Data Scientist',
+        'Machine Learning Engineer',
+        'Researcher'
+      ]
+    },
+    {
+      label: 'Engineering & quality',
+      roles: [
+        'DevOps Engineer',
+        'Site Reliability Engineer',
+        'Security Engineer',
+        'QA Lead',
+        'Test Automation Engineer',
+        'Frontend Developer',
+        'Backend Developer',
+        'Full-Stack Developer',
+        'Mobile Developer',
+        'API Developer',
+        'Database Administrator'
+      ]
+    },
+    {
+      label: 'Design & research',
+      roles: [
+        'UX Researcher',
+        'UX Writer',
+        'UI Designer',
+        'Product Designer',
+        'Visual Designer',
+        'Brand Designer',
+        'Motion Designer'
+      ]
+    },
+    {
+      label: 'Content & marketing',
+      roles: [
+        'Technical Writer',
+        'Documentation Specialist',
+        'Content Writer',
+        'Copywriter',
+        'Editor',
+        'SEO Specialist',
+        'Marketing Manager',
+        'Growth Marketer',
+        'Social Media Manager',
+        'Community Manager'
+      ]
+    },
+    {
+      label: 'Business & operations',
+      roles: [
+        'Customer Success Manager',
+        'Support Specialist',
+        'Sales Lead',
+        'Operations Manager',
+        'Finance Manager',
+        'HR Manager',
+        'Legal Advisor',
+        'Stakeholder',
+        'Business Owner'
+      ]
+    }
   ]
-  invitationRoles.forEach(role => {
-    const opt =
-      make(
-        'option',
-        '',
-        role
-      )
-
-    opt.value = role
-
-    roleSelect.append(opt)
+  invitationRoleGroups.forEach(group => {
+    const optionGroup = make('optgroup')
+    optionGroup.label = group.label
+    group.roles.forEach(role => {
+      const option = make('option', '', role)
+      option.value = role
+      optionGroup.append(option)
+    })
+    roleSelect.append(optionGroup)
   })
 
   roleLabel.append(roleSelect)

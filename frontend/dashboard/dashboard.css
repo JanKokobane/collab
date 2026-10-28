@@ -1396,7 +1396,7 @@ body.dark-mode .invite-user-search-result span,
 .project-progress-aside-header h2 {
     max-width: min(760px, 100%);
     color: #202923;
-    font: 800 clamp(22px, 2.2vw, 30px)/1.2 'Manrope', sans-serif;
+    font: 100 clamp(17px, 1.6vw, 22px)/1.25 'Manrope', sans-serif;
     overflow-wrap: anywhere;
 }
 
@@ -2094,13 +2094,77 @@ body.dark-mode .invite-user-search-result span,
     align-self: flex-start;
     min-width: 0;
     align-content: start;
-    gap: 9px;
-    min-height: 135px;
-    padding: 14px 16px;
+    gap: 0;
+    min-height: 0;
+    padding: 0;
     border-color: #E5EBF3;
     border-radius: 13px;
     background: #FFFFFF;
     box-shadow: none;
+    overflow: hidden;
+}
+
+.project-sprint-card-toggle {
+    position: relative;
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    gap: 7px;
+    padding: 14px 42px 14px 16px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.project-sprint-card-toggle:hover {
+    background: #F7FAF7;
+}
+
+.project-sprint-card-toggle:focus-visible {
+    outline: 2px solid #5794EA;
+    outline-offset: -3px;
+}
+
+.project-sprint-card-toggle-label {
+    color: #287B67;
+    font-size: 9px;
+    font-weight: 700;
+}
+
+.project-sprint-card-toggle-icon {
+    position: absolute;
+    top: 50%;
+    right: 16px;
+    color: #64746A;
+    font-size: 18px;
+    line-height: 1;
+    transform: translateY(-50%);
+    transition: transform .16s ease;
+}
+
+.project-progress-aside-sprint.is-expanded .project-sprint-card-toggle-icon {
+    transform: translateY(-50%) rotate(180deg);
+}
+
+.project-sprint-card-details {
+    display: grid;
+    min-width: 0;
+    gap: 9px;
+    padding: 12px 16px 16px;
+    border-top: 1px solid #E8EDE8;
+}
+
+.project-sprint-card-details[hidden] {
+    display: none;
+}
+
+.project-progress-aside-sprint .project-sprint-card-details .project-sprint-remove {
+    position: static;
+    justify-self: end;
+    margin-top: 2px;
 }
 
 .project-sprint-card-top {
@@ -2109,6 +2173,11 @@ body.dark-mode .invite-user-search-result span,
     align-items: center;
     gap: 8px;
     padding-right: 18px;
+}
+
+.project-sprint-card-descriptions {
+    display: grid;
+    gap: 5px;
 }
 
 .project-sprint-card-description {
@@ -3350,6 +3419,26 @@ body.dark-mode .project-progress-aside .project-progress-aside-sprint,
     background: #222229;
 }
 
+body.dark-mode .project-sprint-card-toggle:hover,
+[data-theme="dark"] .project-sprint-card-toggle:hover {
+    background: #292D29;
+}
+
+body.dark-mode .project-sprint-card-toggle-label,
+[data-theme="dark"] .project-sprint-card-toggle-label {
+    color: #82C8A8;
+}
+
+body.dark-mode .project-sprint-card-toggle-icon,
+[data-theme="dark"] .project-sprint-card-toggle-icon {
+    color: #A0AAA1;
+}
+
+body.dark-mode .project-sprint-card-details,
+[data-theme="dark"] .project-sprint-card-details {
+    border-color: #383844;
+}
+
 body.dark-mode .project-progress-aside .project-sprint-card-name,
 [data-theme="dark"] .project-progress-aside .project-sprint-card-name {
     color: #F0F3F0;
@@ -3495,7 +3584,7 @@ body.dark-mode .project-task-status-lock,
     }
 
     .project-progress-aside-header h2 {
-        font-size: 20px;
+        font-size: 17px;
     }
 
     .project-progress-aside-content {
@@ -3526,7 +3615,7 @@ body.dark-mode .project-task-status-lock,
     .project-progress-aside .project-progress-aside-sprint {
         width: 100%;
         flex-basis: auto;
-        min-height: 124px;
+        min-height: 0;
     }
 
     .project-sprint-card-top {
@@ -5872,7 +5961,7 @@ body.dark-mode .admin-table tr:hover td,
 .project-progress-aside-sprint {
     width: 100%;
     min-width: 0;
-    padding: 12px 38px 12px 12px;
+    padding: 0;
 }
 
 .project-sprint-submission-note,
