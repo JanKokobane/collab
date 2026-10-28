@@ -22,7 +22,7 @@ import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } f
 import { createScheduleCalendarPicker } from './calendar.js'
 import { api } from './api.js'
 import { setDashboardButtonLoading, showDashboardToast } from './modalChrome.js'
-import { openProjectProgressAside } from './projectProgressAside.js?v=20261105-sprint-submission-media'
+import { openProjectProgressAside } from './projectProgressAside.js?v=20261105-review-400-fix'
 
 // ============================================================
 // TASKS & BOARD MANAGEMENT

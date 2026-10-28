@@ -2081,15 +2081,17 @@ body.dark-mode .invite-user-search-result span,
 }
 
 .project-progress-aside-sprints {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-content: start;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
     gap: 10px;
 }
 
 .project-progress-aside .project-progress-aside-sprint {
     display: grid;
     width: auto;
+    flex: 0 1 calc(50% - 5px);
+    align-self: flex-start;
     min-width: 0;
     align-content: start;
     gap: 9px;
@@ -2107,6 +2109,21 @@ body.dark-mode .invite-user-search-result span,
     align-items: center;
     gap: 8px;
     padding-right: 18px;
+}
+
+.project-sprint-card-description {
+    margin: 0;
+    color: #64746A;
+    font-size: 10px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.project-sprint-submission-metadata {
+    color: #7D887F;
+    font-size: 9px;
+    line-height: 1.4;
 }
 
 .project-progress-aside-sprint .project-sprint-card-name {
@@ -2446,6 +2463,10 @@ body.dark-mode .invite-user-search-result span,
     place-items: center;
     padding: 24px;
     background: rgba(13, 18, 15, .82);
+}
+
+.project-comment-media-preview-backdrop.is-sprint-attachment-preview {
+    z-index: 13000;
 }
 
 .project-comment-media-preview {
@@ -2911,6 +2932,15 @@ body.dark-mode .invite-user-search-result span,
     display: grid;
     min-width: 0;
     gap: 8px;
+}
+
+.task-media-file-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
 }
 
 .task-media-heading {
@@ -3490,10 +3520,12 @@ body.dark-mode .project-task-status-lock,
     }
 
     .project-progress-aside-sprints {
-        grid-template-columns: minmax(0, 1fr);
+        flex-direction: column;
     }
 
     .project-progress-aside .project-progress-aside-sprint {
+        width: 100%;
+        flex-basis: auto;
         min-height: 124px;
     }
 
@@ -5845,13 +5877,14 @@ body.dark-mode .admin-table tr:hover td,
 
 .project-sprint-submission-note,
 .project-sprint-review-comment {
+    display: grid;
     width: 100%;
-    margin: 4px 0 0;
-    color: var(--ink);
-    font-size: 11px;
-    line-height: 1.5;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
+    gap: 5px;
+    margin: 2px 0 0;
+    padding: 9px 10px;
+    border: 1px solid #E5EAE4;
+    border-radius: 8px;
+    background: #F8FAF7;
 }
 
 .project-sprint-submission-media {
@@ -5866,12 +5899,168 @@ body.dark-mode .admin-table tr:hover td,
     font-size: 10px;
 }
 
-.project-sprint-submission-editor {
-    margin: 2px 0;
+.project-sprint-card-section-label {
+    color: #64746A;
+    font-size: 9px;
+    font-weight: 700;
+}
+
+.project-sprint-submission-note p,
+.project-sprint-review-comment p {
+    margin: 0;
+    color: var(--ink);
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
 }
 
 .project-sprint-review-comment {
+    border-color: #F0DFC2;
+    background: #FFFAF1;
+}
+
+.project-sprint-review-comment .project-sprint-card-section-label {
     color: #8A510D;
+}
+
+.project-sprint-submission-files {
+    display: grid;
+    min-width: 0;
+    gap: 5px;
+}
+
+.project-sprint-submission-file {
+    display: flex;
+    flex-wrap: wrap;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid #E5EAE4;
+    border-radius: 8px;
+    background: #F8FAF7;
+}
+
+.project-sprint-submission-audio {
+    width: calc(100% - 38px);
+    height: 32px;
+    flex: 1 1 calc(100% - 38px);
+    margin-left: 38px;
+}
+
+.project-sprint-submission-file-icon {
+    display: grid;
+    width: 30px;
+    height: 32px;
+    flex: 0 0 30px;
+    place-items: center;
+    border-radius: 6px;
+    background: #E8EEF8;
+    color: #53647E;
+    font-size: 8px;
+    font-weight: 800;
+}
+
+.project-sprint-submission-file-icon.is-pdf {
+    background: #FBE8E8;
+    color: #A93232;
+}
+
+.project-sprint-submission-file-icon.is-image {
+    background: #E7F5EB;
+    color: #287B50;
+}
+
+.project-sprint-submission-file-icon.is-audio,
+.project-sprint-submission-file-icon.is-video {
+    background: #EAE8F8;
+    color: #6352A0;
+    font-size: 14px;
+}
+
+.project-sprint-submission-file-details {
+    display: grid;
+    min-width: 0;
+    flex: 1 1 auto;
+    gap: 2px;
+}
+
+.project-sprint-submission-file-name {
+    overflow: hidden;
+    color: #34443A;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.project-sprint-submission-file-size {
+    color: #7D887F;
+    font-size: 9px;
+}
+
+.project-sprint-submission-file-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+}
+
+.project-sprint-submission-file-view,
+.project-sprint-submission-file-download {
+    padding: 4px 5px;
+    border: 0;
+    background: transparent;
+    color: #287B67;
+    font: 700 9px 'DM Sans', sans-serif;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.project-sprint-submission-file-view:hover,
+.project-sprint-submission-file-download:hover {
+    color: #155B49;
+    text-decoration: underline;
+}
+
+.project-sprint-attachment-preview {
+    width: min(100%, 960px);
+    max-height: calc(100dvh - 48px);
+    gap: 12px;
+    padding: 18px;
+    border: 1px solid rgba(255, 255, 255, .18);
+    border-radius: 12px;
+    background: #171B18;
+}
+
+.project-sprint-attachment-preview-title {
+    max-width: calc(100% - 48px);
+    overflow: hidden;
+    color: #FFFFFF;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.project-sprint-attachment-preview .project-comment-media-preview-close {
+    top: 10px;
+    right: 10px;
+}
+
+.project-sprint-attachment-preview-audio {
+    width: min(100%, 680px);
+}
+
+.project-sprint-attachment-preview-document {
+    width: 100%;
+    height: min(75dvh, 760px);
+    border: 0;
+    border-radius: 6px;
+    background: #FFFFFF;
+}
+
+.project-sprint-submission-editor {
+    margin: 2px 0;
 }
 
 .project-sprint-review-form {
@@ -5913,6 +6102,17 @@ body.dark-mode .admin-table tr:hover td,
     border-color: #16835A;
     background: #16835A;
     color: #FFFFFF;
+}
+
+.project-sprint-review-form > .project-progress-aside-complete {
+    border-color: #16835A;
+    background: #16835A;
+    color: #FFFFFF;
+}
+
+.project-sprint-review-form > .project-progress-aside-complete:hover {
+    background: #116B49;
+    box-shadow: 0 2px 6px rgba(22, 131, 90, .2);
 }
 
 .project-sprint-review-actions .project-progress-aside-complete:hover {
@@ -6330,6 +6530,13 @@ body.dark-mode .project-sprint-review-form textarea,
 
 body.dark-mode .project-sprint-review-actions .project-progress-aside-complete,
 [data-theme="dark"] .project-sprint-review-actions .project-progress-aside-complete {
+    border-color: #16835A;
+    background: #16835A;
+    color: #FFFFFF;
+}
+
+body.dark-mode .project-sprint-review-form > .project-progress-aside-complete,
+[data-theme="dark"] .project-sprint-review-form > .project-progress-aside-complete {
     border-color: #16835A;
     background: #16835A;
     color: #FFFFFF;
@@ -9868,6 +10075,86 @@ body.dark-mode .project-comment-document-name,
 body.dark-mode .project-comment-document-size,
 [data-theme="dark"] .project-comment-document-size {
     color: #A0AAA1;
+}
+
+body.dark-mode .project-sprint-submission-file,
+[data-theme="dark"] .project-sprint-submission-file {
+    border-color: #39443B;
+    background: #252C26;
+}
+
+body.dark-mode .project-sprint-submission-file-name,
+[data-theme="dark"] .project-sprint-submission-file-name {
+    color: #E1E9E2;
+}
+
+body.dark-mode .project-sprint-submission-file-size,
+[data-theme="dark"] .project-sprint-submission-file-size {
+    color: #A0AAA1;
+}
+
+body.dark-mode .project-sprint-submission-audio,
+[data-theme="dark"] .project-sprint-submission-audio {
+    color-scheme: dark;
+}
+
+body.dark-mode .project-sprint-submission-file-icon.is-pdf,
+[data-theme="dark"] .project-sprint-submission-file-icon.is-pdf {
+    background: #512B2B;
+    color: #F3A5A5;
+}
+
+body.dark-mode .project-sprint-submission-file-icon.is-image,
+[data-theme="dark"] .project-sprint-submission-file-icon.is-image {
+    background: #254331;
+    color: #96D6AA;
+}
+
+body.dark-mode .project-sprint-submission-note,
+[data-theme="dark"] .project-sprint-submission-note {
+    border-color: #39443B;
+    background: #252C26;
+}
+
+body.dark-mode .project-sprint-review-comment,
+[data-theme="dark"] .project-sprint-review-comment {
+    border-color: #55432B;
+    background: #342B20;
+}
+
+body.dark-mode .project-sprint-card-section-label,
+[data-theme="dark"] .project-sprint-card-section-label {
+    color: #A0AAA1;
+}
+
+body.dark-mode .project-sprint-card-description,
+[data-theme="dark"] .project-sprint-card-description {
+    color: #CAD2CB;
+}
+
+body.dark-mode .project-sprint-submission-metadata,
+[data-theme="dark"] .project-sprint-submission-metadata {
+    color: #A0AAA1;
+}
+
+body.dark-mode .project-sprint-review-comment .project-sprint-card-section-label,
+[data-theme="dark"] .project-sprint-review-comment .project-sprint-card-section-label {
+    color: #E8B96E;
+}
+
+body.dark-mode .project-sprint-submission-note p,
+body.dark-mode .project-sprint-review-comment p,
+[data-theme="dark"] .project-sprint-submission-note p,
+[data-theme="dark"] .project-sprint-review-comment p {
+    color: #E1E9E2;
+}
+
+body.dark-mode .project-sprint-submission-file-icon.is-audio,
+body.dark-mode .project-sprint-submission-file-icon.is-video,
+[data-theme="dark"] .project-sprint-submission-file-icon.is-audio,
+[data-theme="dark"] .project-sprint-submission-file-icon.is-video {
+    background: #383253;
+    color: #C0B5F1;
 }
 
 body.dark-mode .project-comments-empty,

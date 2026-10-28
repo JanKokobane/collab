@@ -1,7 +1,7 @@
 import { currentUser, make, projects, tasks, root, addAuditLog, hub, renderAvatarElement } from './state.js'
 import { api } from './api.js'
 import { openProjectTaskModal } from './admin.js?v=20261028-project-overview'
-import { createTaskMediaEditor, renderTaskMediaAttachments } from './taskMedia.js?v=20261105-sprint-submission-media'
+import { createTaskMediaEditor, renderTaskMediaAttachments } from './taskMedia.js?v=20261105-review-400-fix'
 import {
   showDashboardConfirmation,
   showDashboardToast,
@@ -445,6 +445,180 @@ function sprintLeadMember(project, sprint) {
     },
     ...(project.acceptedMembers || [])
   ].find(candidate => candidate.firebaseUid === sprint.assigneeFirebaseUid)
+}
+
+function openSprintAttachmentPreview(attachment, trigger) {
+  const backdrop = make('div', 'project-comment-media-preview-backdrop')
+  backdrop.classList.add('is-sprint-attachment-preview')
+  const dialog = make('div', 'project-comment-media-preview project-sprint-attachment-preview')
+  dialog.setAttribute('role', 'dialog')
+  dialog.setAttribute('aria-modal', 'true')
+  dialog.setAttribute('aria-label', `${attachment.fileName || 'Sprint attachment'} preview`)
+  const heading = make('strong', 'project-sprint-attachment-preview-title', attachment.fileName || 'Sprint attachment')
+  const closeButton = make('button', 'project-comment-media-preview-close', '×')
+  closeButton.type = 'button'
+  closeButton.setAttribute('aria-label', 'Close attachment preview')
+
+  let preview
+  if (attachment.mediaType?.startsWith('image/')) {
+    preview = make('img', 'project-comment-media-preview-image')
+    preview.alt = attachment.fileName || 'Sprint submission image'
+  } else if (attachment.mediaType?.startsWith('video/')) {
+    preview = make('video', 'project-comment-media-preview-video')
+    preview.controls = true
+    preview.preload = 'metadata'
+  } else if (attachment.mediaType?.startsWith('audio/')) {
+    preview = make('audio', 'project-sprint-attachment-preview-audio')
+    preview.controls = true
+    preview.preload = 'metadata'
+  } else {
+    preview = make('iframe', 'project-sprint-attachment-preview-document')
+    preview.title = attachment.fileName || 'Sprint document preview'
+    preview.setAttribute('sandbox', '')
+  }
+  preview.src = attachment.data
+
+  const closePreview = () => {
+    document.removeEventListener('keydown', onKeyDown)
+    backdrop.remove()
+    trigger?.focus()
+  }
+  const onKeyDown = event => {
+    if (event.key === 'Escape') closePreview()
+  }
+  closeButton.addEventListener('click', closePreview)
+  backdrop.addEventListener('click', event => {
+    if (event.target === backdrop) closePreview()
+  })
+  dialog.append(heading, closeButton, preview)
+  backdrop.append(dialog)
+  document.body.append(backdrop)
+  document.addEventListener('keydown', onKeyDown)
+  closeButton.focus()
+}
+
+function renderSprintSubmissionAttachments(attachments) {
+  const list = make('div', 'project-sprint-submission-files')
+  attachments.forEach(attachment => {
+    const data = attachment?.data || attachment?.dataUrl || attachment?.url
+    const mediaType = attachment?.mediaType || attachment?.mimeType || attachment?.type
+    if (typeof data !== 'string' || typeof mediaType !== 'string') return
+    const fileName = attachment.fileName || attachment.name || 'Sprint attachment'
+    const size = Number(attachment.size) || 0
+    const row = make('div', 'project-sprint-submission-file')
+    const iconType = mediaType === 'application/pdf'
+      ? 'pdf'
+      : mediaType.startsWith('image/')
+        ? 'image'
+        : mediaType.startsWith('audio/')
+          ? 'audio'
+          : mediaType.startsWith('video/')
+            ? 'video'
+            : 'file'
+    const iconText = {
+      pdf: 'PDF',
+      image: 'IMG',
+      audio: '♪',
+      video: '▶',
+      file: 'FILE'
+    }[iconType]
+    const icon = make('span', `project-sprint-submission-file-icon is-${iconType}`, iconText)
+    icon.setAttribute('aria-hidden', 'true')
+    const details = make('span', 'project-sprint-submission-file-details')
+    details.append(
+      make('strong', 'project-sprint-submission-file-name', fileName),
+      make('small', 'project-sprint-submission-file-size', `${Math.max(1, Math.round(size / 1024))} KB`)
+    )
+    const actions = make('span', 'project-sprint-submission-file-actions')
+    if (!mediaType.startsWith('audio/')) {
+      const viewButton = make('button', 'project-sprint-submission-file-view', 'View')
+      viewButton.type = 'button'
+      viewButton.addEventListener('click', () => openSprintAttachmentPreview({
+        ...attachment,
+        data,
+        mediaType,
+        fileName
+      }, viewButton))
+      actions.append(viewButton)
+    }
+    const downloadLink = make('a', 'project-sprint-submission-file-download', 'Download')
+    downloadLink.href = data
+    downloadLink.download = fileName
+    actions.append(downloadLink)
+    row.append(icon, details, actions)
+    if (mediaType.startsWith('audio/')) {
+      const audioPlayer = make('audio', 'project-sprint-submission-audio')
+      audioPlayer.controls = true
+      audioPlayer.preload = 'metadata'
+      audioPlayer.src = data
+      audioPlayer.setAttribute('aria-label', fileName)
+      row.append(audioPlayer)
+    }
+    list.append(row)
+  })
+  return list
+}
+
+function sprintSubmissionContent(sprint) {
+  const submission = sprint.submission && typeof sprint.submission === 'object'
+    ? sprint.submission
+    : {}
+  const firstText = (...values) => values.find(value =>
+    typeof value === 'string' && value.trim()
+  )?.trim() || ''
+  const attachmentSources = [
+    sprint.submissionAttachments,
+    sprint.submission_attachments,
+    sprint.submissionMedia,
+    sprint.submission_media,
+    sprint.attachments,
+    submission.attachments,
+    submission.media
+  ].filter(Array.isArray)
+  const attachments = attachmentSources.find(source => source.length) || attachmentSources[0] || []
+
+  return {
+    note: firstText(
+      sprint.submissionNote,
+      sprint.submission_note,
+      typeof sprint.submission === 'string' ? sprint.submission : '',
+      sprint.completionNote,
+      sprint.completion_note,
+      sprint.notes,
+      submission.note,
+      submission.text
+    ),
+    attachments,
+    feedback: firstText(
+      sprint.reviewComment,
+      sprint.review_comment,
+      sprint.ownerFeedback,
+      sprint.owner_feedback,
+      sprint.feedback,
+      submission.reviewComment,
+      submission.feedback
+    ),
+    reviewAttachments: [
+      sprint.reviewAttachments,
+      sprint.review_attachments,
+      submission.reviewAttachments,
+      submission.review_attachments
+    ].filter(Array.isArray).find(source => source.length) || [],
+    submittedBy: firstText(
+      sprint.submittedByName,
+      sprint.submitted_by_name,
+      submission.submittedByName,
+      submission.submitted_by_name
+    ),
+    submittedAt: sprint.submittedAt || sprint.submitted_at || submission.submittedAt || submission.submitted_at || '',
+    reviewedBy: firstText(
+      sprint.reviewedByName,
+      sprint.reviewed_by_name,
+      submission.reviewedByName,
+      submission.reviewed_by_name
+    ),
+    reviewedAt: sprint.reviewedAt || sprint.reviewed_at || submission.reviewedAt || submission.reviewed_at || ''
+  }
 }
 
 function openCommentMediaPreview(media, trigger) {
@@ -1016,39 +1190,84 @@ export function openProjectProgressAside(task) {
     )
     row.append(sprintTop)
     if (sprintDates) row.append(make('small', 'project-sprint-card-dates', sprintDates))
+    const sprintDescription = typeof sprint.description === 'string'
+      ? sprint.description.trim()
+      : typeof sprint.details === 'string'
+        ? sprint.details.trim()
+        : ''
+    if (sprintDescription) {
+      const description = make('p', 'project-sprint-card-description', sprintDescription)
+      row.append(description)
+    }
     row.append(progress, progressSummary)
-    if (sprint.submissionNote) {
-      row.append(make('p', 'project-sprint-submission-note', sprint.submissionNote))
-    }
-    if (Array.isArray(sprint.submissionAttachments) && sprint.submissionAttachments.length) {
-      const submissionMedia = make('div', 'project-sprint-submission-media')
-      submissionMedia.append(make('strong', 'project-sprint-submission-media-title', 'Submission attachments'))
-      const playableAttachments = sprint.submissionAttachments.filter(attachment =>
-        attachment?.mediaType?.startsWith('image/') ||
-        attachment?.mediaType?.startsWith('audio/') ||
-        attachment?.mediaType?.startsWith('video/')
+    const submission = sprintSubmissionContent(sprint)
+    if (submission.note) {
+      const submissionNote = make('div', 'project-sprint-submission-note')
+      submissionNote.append(
+        make('strong', 'project-sprint-card-section-label', 'Submission note'),
+        make('p', '', submission.note)
       )
-      const attachmentContent = renderTaskMediaAttachments(playableAttachments)
-      sprint.submissionAttachments
-        .filter(attachment => attachment?.mediaType === 'application/pdf' &&
-          typeof attachment.data === 'string' && typeof attachment.fileName === 'string')
-        .forEach(attachment => {
-          const documentLink = make('a', 'project-comment-document')
-          documentLink.href = attachment.data
-          documentLink.download = attachment.fileName
-          documentLink.setAttribute('aria-label', `Download ${attachment.fileName}`)
-          documentLink.append(
-            make('span', 'project-comment-document-type', 'PDF'),
-            make('span', 'project-comment-document-name', attachment.fileName),
-            make('span', 'project-comment-document-size', `${Math.max(1, Math.round((Number(attachment.size) || 0) / 1024))} KB`)
-          )
-          attachmentContent.append(documentLink)
-        })
-      submissionMedia.append(attachmentContent)
-      row.append(submissionMedia)
+      row.append(submissionNote)
     }
-    if (sprint.reviewComment) {
-      row.append(make('p', 'project-sprint-review-comment', `Owner feedback: ${sprint.reviewComment}`))
+    if (submission.attachments.length) {
+      const attachmentList = renderSprintSubmissionAttachments(submission.attachments)
+      if (attachmentList.childElementCount) {
+        const submissionMedia = make('div', 'project-sprint-submission-media')
+        submissionMedia.append(make('strong', 'project-sprint-submission-media-title', 'Submission attachments'))
+        submissionMedia.append(attachmentList)
+        row.append(submissionMedia)
+      }
+    }
+    if (submission.submittedBy || submission.submittedAt) {
+      const submittedMetadata = make('small', 'project-sprint-submission-metadata')
+      const submittedDate = submission.submittedAt
+        ? new Date(submission.submittedAt).toLocaleString(undefined, {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit'
+        })
+        : ''
+      submittedMetadata.textContent = [
+        submission.submittedBy ? `Submitted by ${submission.submittedBy}` : '',
+        submittedDate
+      ].filter(Boolean).join(' · ')
+      row.append(submittedMetadata)
+    }
+    if (submission.feedback) {
+      const ownerFeedback = make('div', 'project-sprint-review-comment')
+      ownerFeedback.append(
+        make('strong', 'project-sprint-card-section-label', 'Owner feedback'),
+        make('p', '', submission.feedback)
+      )
+      const reviewAttachments = renderSprintSubmissionAttachments(submission.reviewAttachments)
+      if (reviewAttachments.childElementCount) ownerFeedback.append(reviewAttachments)
+      row.append(ownerFeedback)
+    } else if (submission.reviewAttachments.length) {
+      const ownerFeedback = make('div', 'project-sprint-review-comment')
+      ownerFeedback.append(make('strong', 'project-sprint-card-section-label', 'Owner feedback'))
+      ownerFeedback.append(renderSprintSubmissionAttachments(submission.reviewAttachments))
+      row.append(ownerFeedback)
+    }
+    if (submission.reviewedBy || submission.reviewedAt) {
+      const reviewedDate = submission.reviewedAt
+        ? new Date(submission.reviewedAt).toLocaleString(undefined, {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit'
+        })
+        : ''
+      row.append(make(
+        'small',
+        'project-sprint-submission-metadata',
+        [
+          submission.reviewedBy ? `Reviewed by ${submission.reviewedBy}` : '',
+          reviewedDate
+        ].filter(Boolean).join(' · ')
+      ))
     }
     if (isProjectOwner) {
       const removeButton = make('button', 'project-sprint-remove', '×')
@@ -1105,8 +1324,8 @@ export function openProjectProgressAside(task) {
             { submissionNote, submissionAttachments }
           )
           const savedProject = response?.data?.project
-          if (!Array.isArray(savedProject?.sprints)) {
-            throw new Error('The server did not confirm the sprint submission.')
+          if (response?.success !== true || !Array.isArray(savedProject?.sprints)) {
+            throw new Error(response?.message || 'The server did not confirm that the sprint submission was saved.')
           }
           project.sprints = savedProject.sprints
           hub.renderTasks?.()
@@ -1116,10 +1335,11 @@ export function openProjectProgressAside(task) {
             isProjectOwner ? 'check' : 'send'
           )
           showDashboardToast(
-            isProjectOwner
+            response.notificationWarning ||
+            (isProjectOwner
               ? `"${sprint.name}" completed.`
-              : `"${sprint.name}" submitted to the project owner for review.`,
-            'success'
+              : `"${sprint.name}" submitted to the project owner for review.`),
+            response.notificationWarning ? 'error' : 'success'
           )
           close()
           openProjectProgressAside(task)
@@ -1139,31 +1359,42 @@ export function openProjectProgressAside(task) {
       reviewInput.maxLength = 5000
       reviewInput.placeholder = 'Add optional feedback for the sprint lead…'
       reviewInput.setAttribute('aria-label', `Review comment for ${sprint.name}`)
+      const reviewMedia = createTaskMediaEditor({
+        label: 'Attach feedback file or voice note',
+        allowScreenRecording: false,
+        maxAttachments: 10
+      })
+      reviewMedia.element.classList.add('project-sprint-submission-editor')
+      submissionMediaEditors.push(reviewMedia)
       const actions = make('div', 'project-sprint-review-actions')
       const acceptButton = make('button', 'project-progress-aside-complete', 'Accept submission')
       acceptButton.type = 'button'
       const changesButton = make('button', 'project-sprint-request-changes', 'Request changes')
       changesButton.type = 'submit'
       actions.append(acceptButton, changesButton)
-      reviewForm.append(reviewInput, actions)
+      reviewForm.append(reviewInput, reviewMedia.element, actions)
 
       const submitReview = async (decision, button) => {
         const comment = reviewInput.value.trim()
-        if (decision === 'request_changes' && !comment) {
-          reviewInput.required = true
-          reviewInput.placeholder = 'Explain what needs to change before returning the sprint…'
-          reviewInput.focus()
-          return
-        }
-        reviewInput.required = false
         const restoreButton = setDashboardButtonLoading(button, decision === 'accept' ? 'Accepting…' : 'Sending…')
         try {
+          const reviewAttachments = await reviewMedia.getAttachments()
+          if (decision === 'request_changes' && !comment) {
+            restoreButton()
+            reviewInput.focus()
+            showDashboardToast('Add written feedback explaining the requested changes. You can also attach a file or voice note.', 'error')
+            return
+          }
           const response = await api.post(
             `/projects/${encodeURIComponent(project.projectId)}/sprints/${encodeURIComponent(sprint.name)}/review`,
-            { decision, comment }
+            {
+              decision,
+              comment,
+              ...(reviewAttachments.length ? { reviewAttachments } : {})
+            }
           )
           const savedProject = response?.data?.project
-          if (!Array.isArray(savedProject?.sprints)) {
+          if (response?.success !== true || !Array.isArray(savedProject?.sprints)) {
             throw new Error('The server did not confirm the sprint review.')
           }
           project.sprints = savedProject.sprints
@@ -1174,8 +1405,9 @@ export function openProjectProgressAside(task) {
             decision === 'accept' ? 'check' : 'comment'
           )
           showDashboardToast(
-            decision === 'accept' ? `"${sprint.name}" accepted and completed.` : `Changes requested for "${sprint.name}".`,
-            'success'
+            response.notificationWarning ||
+              (decision === 'accept' ? `"${sprint.name}" accepted and completed.` : `Changes requested for "${sprint.name}".`),
+            response.notificationWarning ? 'error' : 'success'
           )
           close()
           openProjectProgressAside(task)

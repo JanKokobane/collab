@@ -1,5 +1,6 @@
 const maxTaskMediaBytes = 8 * 1024 * 1024
 const maxScreenClipMs = 90_000
+let mediaInputId = 0
 
 function make(tagName, className = '', text = '') {
   const element = document.createElement(tagName)
@@ -33,13 +34,22 @@ export function createTaskMediaEditor({
   heading.append(make('strong', '', label), make('small', '', 'Up to 8 MB total'))
   const actions = make('div', 'task-media-actions')
   const fileInput = make('input', 'task-media-file-input')
+  fileInput.id = `task-media-file-input-${++mediaInputId}`
   fileInput.type = 'file'
   fileInput.multiple = true
   fileInput.accept = 'image/*,audio/*,video/*,application/pdf'
-  fileInput.hidden = true
-  const attachButton = make('button', 'task-media-action', 'Attach file')
-  attachButton.type = 'button'
-  attachButton.addEventListener('click', () => fileInput.click())
+  fileInput.setAttribute('aria-hidden', 'true')
+  fileInput.tabIndex = -1
+  const attachButton = make('label', 'task-media-action', 'Attach file')
+  attachButton.htmlFor = fileInput.id
+  attachButton.tabIndex = 0
+  attachButton.setAttribute('role', 'button')
+  attachButton.setAttribute('aria-controls', fileInput.id)
+  attachButton.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    fileInput.click()
+  })
   const audioButton = make('button', 'task-media-action', 'Record audio')
   audioButton.type = 'button'
   const screenButton = make('button', 'task-media-action', 'Record screen')

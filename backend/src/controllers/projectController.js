@@ -1061,29 +1061,40 @@ const submitProjectSprint = async (req, res) => {
              RETURNING project_id, sprints`,
             [JSON.stringify(sprints), projectId]
         );
-
-        if (project.creator_firebase_uid !== firebaseUid) {
-            await client.query(
-                `INSERT INTO notifications (
-                    recipient_firebase_uid, project_id, type, title, detail, avatar, tone_class
-                 )
-                 VALUES ($1, $2, 'sprint_submitted_for_review', $3, $4, $5, 'orange-bg')`,
-                [
-                    project.creator_firebase_uid,
-                    projectId,
-                    'Sprint ready for review',
-                    `${submittedByName} submitted "${sprint.name}" in "${project.name}" for your review.`,
-                    project.creator_initials || '•'
-                ]
-            );
+        if (!saved.rowCount) {
+            throw new Error('Sprint submission update did not persist.');
         }
+
         await client.query('COMMIT');
+
+        let notificationWarning = null;
+        if (project.creator_firebase_uid !== firebaseUid) {
+            try {
+                await client.query(
+                    `INSERT INTO notifications (
+                        recipient_firebase_uid, project_id, type, title, detail, avatar, tone_class
+                     )
+                     VALUES ($1, $2, 'sprint_submitted_for_review', $3, $4, $5, 'orange-bg')`,
+                    [
+                        project.creator_firebase_uid,
+                        projectId,
+                        'Sprint ready for review',
+                        `${submittedByName} submitted "${sprint.name}" in "${project.name}" for your review.`,
+                        project.creator_initials || '•'
+                    ]
+                );
+            } catch (notificationError) {
+                console.error('Sprint submission saved, but its notification could not be created:', notificationError);
+                notificationWarning = 'The submission was saved, but the project owner could not be notified.';
+            }
+        }
 
         return res.status(200).json({
             success: true,
             message: project.creator_firebase_uid === firebaseUid
                 ? 'Sprint completed successfully.'
                 : 'Sprint submitted for owner review.',
+            ...(notificationWarning ? { notificationWarning } : {}),
             data: { project: saved.rows[0] }
         });
     } catch (error) {
@@ -1094,7 +1105,7 @@ const submitProjectSprint = async (req, res) => {
         return res.status(500).json({
             success: false,
             code: 'SPRINT_SUBMISSION_FAILED',
-            message: 'The sprint could not be submitted for review.'
+            message: 'The sprint submission could not be saved. Please try again.'
         });
     } finally {
         client?.release();
@@ -1108,6 +1119,8 @@ const reviewProjectSprint = async (req, res) => {
         const firebaseUid = req.firebaseUid;
         const decision = typeof req.body?.decision === 'string' ? req.body.decision.trim() : '';
         const comment = typeof req.body?.comment === 'string' ? req.body.comment.trim() : '';
+        const { attachments: reviewAttachments, error: attachmentError } =
+            normalizeSprintSubmissionAttachments(req.body?.reviewAttachments);
 
         if (!projectId || !sprintName?.trim() || !['accept', 'request_changes'].includes(decision)) {
             return res.status(400).json({
@@ -1116,12 +1129,19 @@ const reviewProjectSprint = async (req, res) => {
                 message: 'Choose whether to accept the sprint or request changes.'
             });
         }
+        if (attachmentError) {
+            return res.status(400).json({
+                success: false,
+                code: 'SPRINT_REVIEW_ATTACHMENTS_INVALID',
+                message: attachmentError
+            });
+        }
         if (comment.length > 5000 || (decision === 'request_changes' && !comment)) {
             return res.status(400).json({
                 success: false,
                 code: 'SPRINT_REVIEW_COMMENT_REQUIRED',
                 message: decision === 'request_changes'
-                    ? 'Add a comment explaining the requested changes (up to 5,000 characters).'
+                    ? 'Add a written comment explaining the requested changes.'
                     : 'The review comment cannot exceed 5,000 characters.'
             });
         }
@@ -1180,6 +1200,7 @@ const reviewProjectSprint = async (req, res) => {
             ...sprint,
             status: decision === 'accept' ? 'Completed' : 'Changes Requested',
             reviewComment: comment,
+            reviewAttachments,
             reviewedByFirebaseUid: firebaseUid,
             reviewedByName: reviewerName,
             reviewedAt
@@ -1191,30 +1212,42 @@ const reviewProjectSprint = async (req, res) => {
              RETURNING project_id, sprints`,
             [JSON.stringify(sprints), projectId]
         );
-        if (sprint.assigneeFirebaseUid && sprint.assigneeFirebaseUid !== firebaseUid) {
-            await client.query(
-                `INSERT INTO notifications (
-                    recipient_firebase_uid, project_id, type, title, detail, avatar, tone_class
-                 )
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                [
-                    sprint.assigneeFirebaseUid,
-                    projectId,
-                    decision === 'accept' ? 'sprint_submission_accepted' : 'sprint_changes_requested',
-                    decision === 'accept' ? 'Sprint submission accepted' : 'Changes requested on sprint',
-                    decision === 'accept'
-                        ? `Your submission for "${sprint.name}" in "${project.name}" was accepted.`
-                        : `The project owner requested changes to "${sprint.name}" in "${project.name}": ${comment}`,
-                    project.creator_initials || '•',
-                    decision === 'accept' ? 'green-bg' : 'orange-bg'
-                ]
-            );
+        if (!saved.rowCount) {
+            throw new Error('Sprint review update did not persist.');
         }
+
         await client.query('COMMIT');
+
+        let notificationWarning = null;
+        if (sprint.assigneeFirebaseUid && sprint.assigneeFirebaseUid !== firebaseUid) {
+            try {
+                await client.query(
+                    `INSERT INTO notifications (
+                        recipient_firebase_uid, project_id, type, title, detail, avatar, tone_class
+                     )
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    [
+                        sprint.assigneeFirebaseUid,
+                        projectId,
+                        decision === 'accept' ? 'sprint_submission_accepted' : 'sprint_changes_requested',
+                        decision === 'accept' ? 'Sprint submission accepted' : 'Changes requested on sprint',
+                        decision === 'accept'
+                            ? `Your submission for "${sprint.name}" in "${project.name}" was accepted.`
+                            : `The project owner requested changes to "${sprint.name}" in "${project.name}": ${comment || 'See the attached feedback.'}`,
+                        project.creator_initials || '•',
+                        decision === 'accept' ? 'green-bg' : 'orange-bg'
+                    ]
+                );
+            } catch (notificationError) {
+                console.error('Sprint review saved, but its notification could not be created:', notificationError);
+                notificationWarning = 'The review was saved, but the sprint lead could not be notified.';
+            }
+        }
 
         return res.status(200).json({
             success: true,
             message: decision === 'accept' ? 'Sprint submission accepted.' : 'Changes requested on sprint.',
+            ...(notificationWarning ? { notificationWarning } : {}),
             data: { project: saved.rows[0] }
         });
     } catch (error) {

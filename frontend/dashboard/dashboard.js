@@ -109,7 +109,7 @@ import {
   renderNotifications,
   initWorkspaceHubEvents
 } from './js/workspaceHub.js'
-import { openProjectTaskDetails } from './js/projectProgressAside.js?v=20261105-sprint-submission-media'
+import { openProjectTaskDetails } from './js/projectProgressAside.js?v=20261105-review-400-fix'
 import { initMessages, openMessageContext, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261026-collaboration-context'
 import { renderMeetingsPage } from './js/meetingsPage.js'
 import { initProjectStickyNotes } from './js/projectStickyNotes.js'
