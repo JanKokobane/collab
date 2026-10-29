@@ -61,7 +61,8 @@ app.use(
     })
 );
 
-app.use(express.json({ limit: '12mb' }));
+// Data URLs add roughly 33% base64 overhead to uploaded media.
+app.use(express.json({ limit: '140mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/', (req, res) => {

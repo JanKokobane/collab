@@ -4,7 +4,7 @@ const { pool, query } = require('../config/db');
 const allowedStatuses = new Set(['Backlog', 'To do', 'In progress', 'Blocked', 'Done']);
 const allowedPriorities = new Set(['low', 'medium', 'high']);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const maxTaskAttachmentBytes = 8 * 1024 * 1024;
+const maxTaskAttachmentBytes = 100 * 1024 * 1024;
 const attachmentDataUrlPattern = /^data:[^;,]+(?:;codecs=[^;,]+)?;base64,([a-zA-Z0-9+/=]+)$/i;
 const validTaskAttachments = attachments => {
     if (!Array.isArray(attachments) || attachments.length > 10) return false;
@@ -92,7 +92,7 @@ const normalizeTaskInput = body => {
         return { error: 'The discussion message reference is invalid.' };
     }
     if (!validTaskAttachments(descriptionAttachments)) {
-        return { error: 'Task media must be valid attachments totaling 8 MB or less.' };
+        return { error: 'Task media must be valid attachments totaling 100 MB or less.' };
     }
     if (!isValidDate(startDate) || !isValidDate(dueDate)) {
         return { error: 'Task dates must use YYYY-MM-DD format.' };
@@ -513,7 +513,7 @@ const createProjectTaskComment = async (req, res) => {
         return res.status(400).json({
             success: false,
             code: 'INVALID_TASK_COMMENT',
-            message: 'Add comment text or valid media attachments totaling 8 MB or less.'
+            message: 'Add comment text or valid media attachments totaling 100 MB or less.'
         });
     }
 

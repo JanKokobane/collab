@@ -168,14 +168,14 @@ accepted invitee when edited.
   creator.
 - `GET|POST /api/projects/:projectId/tasks/:taskId/comments`: read or add task
   comments as the project creator or an accepted invitee. Comments may include
-  up to 8 MB of validated media attachments.
+  up to 100 MB of validated media attachments.
 - `GET /api/projects/:projectId/tasks/:taskId`: retrieve task detail, including
   description media and discussion backlink.
 - `GET|PUT /api/projects/:projectId/tasks/:taskId/dependencies`: read or replace
   predecessor links. Every predecessor must belong to a project accessible to
   the caller; cycles are rejected.
 - Task description and comment attachments are JSON data URLs, limited to ten
-  attachments and 8 MB total per task field/comment. Screen clips are captured
+  attachments and 100 MB total per task field/comment. Screen clips are captured
   in the browser and capped at 90 seconds.
 - Task creation may include `chatMessageId`; the API verifies that the referenced
   message belongs to an accessible conversation in the same project. Message

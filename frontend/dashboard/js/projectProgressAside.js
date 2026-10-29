@@ -386,62 +386,115 @@ function animateAnalysisCharts(aside) {
 }
 
 function downloadProjectAnalysis(project, projectTasks, analysis) {
-  const escapeCsv = value => {
-    const text = String(value ?? '')
-    const spreadsheetSafe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text
-    return `"${spreadsheetSafe.replaceAll('"', '""')}"`
-  }
-  const rows = [
-    ['Project', project.name],
-    ['Generated', new Date().toLocaleString()],
-    ['Completion', `${analysis.completion}%`],
-    ['Tasks completed', `${analysis.completed}/${projectTasks.length}`],
-    ['Open tasks', projectTasks.length - analysis.completed],
-    ['Blocked tasks', analysis.blocked],
-    ['Dependency risks', analysis.dependencyRisks],
-    ['Overdue tasks', analysis.overdue],
-    ['Due in 7 days', analysis.dueSoon],
-    ['Sprints', analysis.sprintCount],
-    [],
-    ['Sprint status', 'Count'],
-    ...analysis.sprintStatusBreakdown.map(item => [item.label, item.count]),
-    [],
-    ['Schedule outlook', 'Open tasks'],
-    ...analysis.scheduleBreakdown.map(item => [item.label, item.count]),
-    [],
-    ['Open workload by assignee', 'Open tasks'],
-    ...analysis.workload.map(item => [item.label, item.count]),
-    [],
-    ['Task', 'Status', 'Assignee', 'Sprint', 'Due date', 'Dependency warning'],
-    ...projectTasks.map(task => [
-      task.title,
-      task.status,
-      task.assigneeName || task.assignee_email || 'Unassigned',
-      task.sprint_name || '',
-      task.due_date || '',
-      task.hasDependencyWarning || task.dependencies?.some(dependency => dependency.warning_reason)
-        ? 'Yes'
-        : 'No'
-    ]),
-    [],
-    ['Sprint', 'Status', 'Tasks', 'Completed tasks', 'Completion'],
-    ...analysis.sprintProgress.map(sprint => [
-      sprint.label,
-      sprint.status,
-      sprint.count,
-      sprint.done,
-      `${sprint.completion}%`
-    ])
+  const escapeHtml = value => String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
+  const percentage = (count, total) => total ? Math.round((count / total) * 100) : 0
+  const percentLabel = (count, total) => `${percentage(count, total)}%`
+  const openTasks = projectTasks.length - analysis.completed
+  const deliveryIndicators = [
+    ['Tasks complete', analysis.completed, projectTasks.length],
+    ['Blocked', analysis.blocked, openTasks],
+    ['Dependency risk', analysis.dependencyRisks, openTasks],
+    ['Overdue', analysis.overdue, openTasks],
+    ['Due in 7 days', analysis.dueSoon, openTasks],
+    ['Awaiting review', analysis.pendingReview, analysis.sprintCount]
   ]
-  const csv = rows.map(row => row.map(escapeCsv).join(',')).join('\r\n')
-  const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `${String(project.name || 'project').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-|-$/g, '') || 'project'}-production-report.csv`
-  document.body.append(link)
-  link.click()
-  link.remove()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  const metricCards = [
+    ['Completion', `${analysis.completion}%`, 'of project tasks'],
+    ['Tasks complete', `${analysis.completed}/${projectTasks.length}`, 'completed'],
+    ['Open tasks', openTasks, 'remaining'],
+    ['Sprints', analysis.sprintCount, 'project sprints']
+  ].map(([label, value, note]) => `
+    <article class="metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></article>
+  `).join('')
+  const barSection = (title, items, total, valueLabel) => `
+    <section class="panel">
+      <h2>${escapeHtml(title)}</h2>
+      <div class="bars">
+        ${items.map(item => {
+          const value = Number(item.count || 0)
+          const ratio = percentage(value, total)
+          return `<div class="bar-row">
+            <div class="bar-label"><span>${escapeHtml(item.label)}</span><b>${escapeHtml(valueLabel ? valueLabel(item, value) : value)}</b></div>
+            <div class="track"><i style="width:${ratio}%"></i></div>
+          </div>`
+        }).join('')}
+      </div>
+    </section>
+  `
+  const taskRows = projectTasks.map(task => `
+    <tr>
+      <td>${escapeHtml(task.title)}</td>
+      <td><span class="status">${escapeHtml(task.status)}</span></td>
+      <td>${escapeHtml(task.assigneeName || task.assignee_email || 'Unassigned')}</td>
+      <td>${escapeHtml(task.sprint_name || task.sprint || '—')}</td>
+      <td>${escapeHtml(task.due_date || '—')}</td>
+      <td>${task.hasDependencyWarning || task.dependencies?.some(dependency => dependency.warning_reason) ? 'Yes' : 'No'}</td>
+    </tr>
+  `).join('')
+  const sprintRows = analysis.sprintProgress.map(sprint => `
+    <tr>
+      <td>${escapeHtml(sprint.label)}</td>
+      <td><span class="status">${escapeHtml(sprint.status)}</span></td>
+      <td>${sprint.count}</td>
+      <td>${sprint.done}</td>
+      <td>${sprint.completion}%</td>
+    </tr>
+  `).join('')
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(project.name)} production report</title>
+<style>
+  :root { color-scheme: light; font-family: Inter, Arial, sans-serif; color: #20232a; background: #f5f7fb; }
+  body { margin: 0; padding: 36px; } .report { max-width: 1180px; margin: auto; }
+  header { background: linear-gradient(135deg,#18243a,#315c87); color: white; padding: 32px; border-radius: 16px; margin-bottom: 20px; }
+  h1 { margin: 0 0 8px; font-size: 30px; } h2 { font-size: 17px; margin: 0 0 18px; } p { margin: 0; opacity: .8; }
+  .metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 20px; }
+  .metric,.panel { background: white; border: 1px solid #e4e8ef; border-radius: 12px; padding: 20px; box-shadow: 0 3px 12px #20304d0b; }
+  .metric span,.metric small { display:block; color:#667085; font-size:12px; } .metric strong { display:block; font-size:26px; margin:10px 0 4px; }
+  .charts { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; margin-bottom:20px; }
+  .bar-row { margin: 14px 0; } .bar-label { display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px; }
+  .track { height:10px; background:#edf0f5; border-radius:3px; overflow:hidden; } .track i { display:block; height:100%; min-width:2px; background:#3b82f6; border-radius:3px; }
+  .panel:nth-child(2) .track i { background:#10a878; } .panel:nth-child(3) .track i { background:#d88a45; }
+  table { width:100%; border-collapse:collapse; font-size:12px; background:white; } th,td { text-align:left; padding:11px 12px; border-bottom:1px solid #edf0f5; vertical-align:top; } th { background:#f7f8fb; color:#667085; font-weight:700; }
+  .table-panel { overflow:auto; margin-bottom:20px; } .status { display:inline-block; padding:3px 7px; border-radius:3px; background:#eef2ff; color:#3730a3; white-space:nowrap; }
+  @media (max-width: 760px) { body { padding:16px; } .metrics,.charts { grid-template-columns:1fr 1fr; } }
+  @media print { body { padding:0; background:white; } .panel,.metric,header { box-shadow:none; } }
+</style>
+</head>
+<body><main class="report">
+  <header><h1>${escapeHtml(project.name)}</h1><p>Production report generated ${escapeHtml(new Date().toLocaleString())}</p></header>
+  <div class="metrics">${metricCards}</div>
+  <div class="charts">
+    ${barSection('Delivery indicators', deliveryIndicators.map(([label, count]) => ({ label, count })), Math.max(projectTasks.length, openTasks, analysis.sprintCount), (item, value) => `${value} · ${percentLabel(value, item.label === 'Tasks complete' ? projectTasks.length : item.label === 'Awaiting review' ? analysis.sprintCount : openTasks)}`)}
+    ${barSection('Task status', analysis.taskStatusBreakdown, projectTasks.length)}
+    ${barSection('Sprint status', analysis.sprintStatusBreakdown, analysis.sprintCount)}
+    ${barSection('Schedule outlook', analysis.scheduleBreakdown, openTasks)}
+    ${barSection('Open work by assignee', analysis.workload, openTasks)}
+  </div>
+  <section class="panel table-panel"><h2>Task details</h2><table><thead><tr><th>Task</th><th>Status</th><th>Assignee</th><th>Sprint</th><th>Due date</th><th>Dependency warning</th></tr></thead><tbody>${taskRows || '<tr><td colspan="6">No tasks found.</td></tr>'}</tbody></table></section>
+  <section class="panel table-panel"><h2>Sprint delivery</h2><table><thead><tr><th>Sprint</th><th>Status</th><th>Tasks</th><th>Completed tasks</th><th>Completion</th></tr></thead><tbody>${sprintRows || '<tr><td colspan="5">No sprints found.</td></tr>'}</tbody></table></section>
+</main></body></html>`
+  const reportWindow = window.open('', '_blank')
+  if (!reportWindow) {
+    throw new Error('The report window was blocked. Allow pop-ups and try again.')
+  }
+  const reportUrl = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
+  reportWindow.location.href = reportUrl
+  reportWindow.addEventListener('load', () => {
+    reportWindow.focus()
+    window.setTimeout(() => {
+      reportWindow.print()
+      window.setTimeout(() => URL.revokeObjectURL(reportUrl), 1000)
+    }, 300)
+  }, { once: true })
 }
 
 function sprintLeadName(project, sprint) {
@@ -946,18 +999,6 @@ export function openProjectProgressAside(task) {
     make('small', '', 'Live task, sprint, workload, and schedule analytics')
   )
   analysisHeading.append(analysisHeadingCopy)
-  const analysisActions = make('div', 'project-progress-analysis-actions')
-  const downloadReport = make('button', 'project-progress-report-download', 'Download report')
-  downloadReport.type = 'button'
-  downloadReport.addEventListener('click', () => {
-    try {
-      downloadProjectAnalysis(project, projectTasks, analysis)
-    } catch (error) {
-      showDashboardToast(error.message || 'The production report could not be downloaded.', 'error')
-    }
-  })
-  analysisActions.append(downloadReport)
-  analysisHeading.append(analysisActions)
   const openTasks = projectTasks.filter(task =>
     String(task.status || '').trim().toLowerCase() !== 'done'
   ).length

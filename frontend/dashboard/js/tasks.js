@@ -225,7 +225,9 @@ const formatTaskCountdown = remainingMs => {
 const attachTaskCountdown = (badge, card, task) => {
   const deadline = getTaskDeadline(task.due_date || task.dueDate)
   if (!deadline || ['Done', 'Blocked'].includes(task.status)) {
-    badge.textContent = task.status === 'Blocked' ? 'BLOCKED' : task.tag || 'TASK'
+    badge.textContent = task.status === 'Done'
+      ? 'FINISHED'
+      : task.status === 'Blocked' ? 'BLOCKED' : task.tag || 'TASK'
     return
   }
 

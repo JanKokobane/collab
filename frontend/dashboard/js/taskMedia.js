@@ -1,6 +1,6 @@
 import { createNativeFilePicker } from './filePicker.js?v=20261028-dedicated-file-picker'
 
-const maxTaskMediaBytes = 8 * 1024 * 1024
+const maxTaskMediaBytes = 100 * 1024 * 1024
 const maxScreenClipMs = 90_000
 
 function make(tagName, className = '', text = '') {
@@ -36,7 +36,7 @@ export function createTaskMediaEditor({
 } = {}) {
   const root = make('section', 'task-media-editor')
   const heading = make('div', 'task-media-heading')
-  heading.append(make('strong', '', label), make('small', '', 'Up to 8 MB total'))
+  heading.append(make('strong', '', label), make('small', '', 'Up to 100 MB total'))
   const actions = make('div', 'task-media-actions')
   const filePicker = createNativeFilePicker({
     label: 'Attach file',
@@ -48,7 +48,7 @@ export function createTaskMediaEditor({
         if (items.length + incoming.length > maxAttachments) {
           setStatus(`You can attach up to ${maxAttachments} files.`, true)
         } else if (totalBytes() + incoming.reduce((sum, file) => sum + file.size, 0) > maxTaskMediaBytes) {
-          setStatus('Task media must total 8 MB or less.', true)
+          setStatus('Task media must total 100 MB or less.', true)
         } else {
           items.push(...incoming)
           setStatus('')
@@ -152,7 +152,7 @@ export function createTaskMediaEditor({
     }
     const recorded = new Blob(capturedChunks, { type: capturedRecorder?.mimeType || capturedChunks[0].type })
     if (!recorded.size || totalBytes() + recorded.size > maxTaskMediaBytes) {
-      setStatus('This recording exceeds the remaining 8 MB task media limit.', true)
+      setStatus('This recording exceeds the remaining 100 MB task media limit.', true)
       return
     }
     const mediaType = recorded.type.split(';')[0] || (capturedMode === 'audio' ? 'audio/webm' : 'video/webm')

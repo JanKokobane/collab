@@ -108,7 +108,7 @@ body {
     font-size: 11px;
     background: #E4E4E7;
     color: #52525B;
-    border-radius: 10px;
+    border-radius: 3px;
     padding: 2px 7px;
 }
 
@@ -681,7 +681,7 @@ body.dark-mode .invite-user-search-result span,
     margin-left: auto;
     padding: 2px 6px;
     border: 0;
-    border-radius: 10px;
+    border-radius: 3px;
 }
 
 .topbar-profile-group {
@@ -4018,7 +4018,7 @@ body.dark-mode .project-task-status-lock,
     align-items: center;
     min-height: 22px;
     padding: 3px 8px;
-    border-radius: 999px;
+    border-radius: 10px;
     background: #EEF2FF;
     color: #4338CA;
     font-size: 10px;
@@ -4729,7 +4729,7 @@ form.modal .brainstorm-board-member-option input[type="checkbox"] {
 .task-priority-badge {
     align-self: center;
     padding: 4px 7px;
-    border-radius: 999px;
+    border-radius: 10px;
     background: #F4F4F5;
     color: #52525B;
     font-size: 9px;
