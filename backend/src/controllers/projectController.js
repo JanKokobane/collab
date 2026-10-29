@@ -1044,6 +1044,9 @@ const submitProjectSprint = async (req, res) => {
 
         const submittedByName = req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'Sprint lead';
         const submittedAt = new Date().toISOString();
+        const submissionHistory = Array.isArray(sprint.submissionHistory)
+            ? sprint.submissionHistory
+            : [];
         sprints[sprintIndex] = {
             ...sprint,
             status: project.creator_firebase_uid === firebaseUid ? 'Completed' : 'Pending Review',
@@ -1052,6 +1055,17 @@ const submitProjectSprint = async (req, res) => {
             submittedByFirebaseUid: firebaseUid,
             submittedByName,
             submittedAt,
+            submissionHistory: [
+                ...submissionHistory,
+                {
+                    type: 'submission',
+                    note: submissionNote,
+                    attachments: submissionAttachments,
+                    submittedByFirebaseUid: firebaseUid,
+                    submittedByName,
+                    submittedAt
+                }
+            ],
             reviewComment: ''
         };
         const saved = await client.query(
@@ -1196,6 +1210,9 @@ const reviewProjectSprint = async (req, res) => {
 
         const reviewedAt = new Date().toISOString();
         const reviewerName = req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'Project owner';
+        const reviewHistory = Array.isArray(sprint.reviewHistory)
+            ? sprint.reviewHistory
+            : [];
         sprints[sprintIndex] = {
             ...sprint,
             status: decision === 'accept' ? 'Completed' : 'Changes Requested',
@@ -1203,7 +1220,18 @@ const reviewProjectSprint = async (req, res) => {
             reviewAttachments,
             reviewedByFirebaseUid: firebaseUid,
             reviewedByName: reviewerName,
-            reviewedAt
+            reviewedAt,
+            reviewHistory: [
+                ...reviewHistory,
+                {
+                    type: decision === 'accept' ? 'accepted' : 'changes_requested',
+                    comment,
+                    attachments: reviewAttachments,
+                    reviewedByFirebaseUid: firebaseUid,
+                    reviewedByName: reviewerName,
+                    reviewedAt
+                }
+            ]
         };
         const saved = await client.query(
             `UPDATE projects

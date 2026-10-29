@@ -622,6 +622,14 @@ function renderSprintSubmissionAttachments(attachments) {
       audioPlayer.src = data
       audioPlayer.setAttribute('aria-label', fileName)
       row.append(audioPlayer)
+    } else if (mediaType.startsWith('video/')) {
+      const videoPlayer = make('video', 'project-sprint-submission-video')
+      videoPlayer.controls = true
+      videoPlayer.preload = 'metadata'
+      videoPlayer.playsInline = true
+      videoPlayer.src = data
+      videoPlayer.setAttribute('aria-label', fileName)
+      row.append(videoPlayer)
     }
     list.append(row)
   })
@@ -638,6 +646,31 @@ function sprintSubmissionContent(sprint) {
   const firstText = (...values) => values.find(value =>
     typeof value === 'string' && value.trim()
   )?.trim() || ''
+  const contentSources = [sprint, submission, content]
+  const messageSources = contentSources.flatMap(source => [
+    source.messages,
+    source.message,
+    source.comments,
+    source.history,
+    source.submissionHistory,
+    source.submission_history,
+    source.submissionMessages,
+    source.submission_messages,
+    source.reviewHistory,
+    source.review_history
+  ]).filter(Array.isArray).flat()
+  const messageText = messageSources.flatMap(message => {
+    if (typeof message === 'string') return [message]
+    if (!message || typeof message !== 'object') return []
+    return [
+      message.text,
+      message.message,
+      message.body,
+      message.note,
+      message.comment,
+      message.content
+    ]
+  })
   const attachmentSources = [
     sprint.submissionAttachments,
     sprint.submission_attachments,
@@ -647,7 +680,12 @@ function sprintSubmissionContent(sprint) {
     submission.attachments,
     submission.media,
     content.attachments,
-    content.media
+    content.media,
+    ...messageSources.flatMap(message => [
+      message?.attachments,
+      message?.media,
+      message?.files
+    ])
   ].filter(Array.isArray)
   const attachmentsByKey = new Map()
   attachmentSources.flat().forEach(attachment => {
@@ -672,7 +710,8 @@ function sprintSubmissionContent(sprint) {
     submission.text,
     content.note,
     content.text,
-    content.notes
+    content.notes,
+    ...messageText
   ].flatMap(value => Array.isArray(value) ? value : [value])
     .filter(value => typeof value === 'string' && value.trim())
     .map(value => value.trim())

@@ -6322,6 +6322,15 @@ body.dark-mode .admin-table tr:hover td,
     margin-left: 38px;
 }
 
+.project-sprint-submission-video {
+    display: block;
+    width: min(100%, 560px);
+    max-height: 320px;
+    margin: 8px 0 2px 38px;
+    border-radius: 6px;
+    background: #101614;
+}
+
 .project-sprint-submission-file-icon {
     display: grid;
     width: 30px;

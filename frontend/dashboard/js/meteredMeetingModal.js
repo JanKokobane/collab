@@ -103,7 +103,14 @@ function finishSession(session) {
   }
   session.shareVideo.pause()
   session.shareVideo.srcObject = null
+  void stopPublishedSharedAudio(session).catch(error => {
+    console.warn('Unable to stop shared audio cleanly:', error)
+  })
   session.displayedScreenTrack = null
+  if (session.audioUnlockHandler) {
+    document.removeEventListener('pointerdown', session.audioUnlockHandler)
+    document.removeEventListener('keydown', session.audioUnlockHandler)
+  }
   session.cleanup?.()
   session.overlay.remove()
   if (activeSession === session) {
@@ -248,9 +255,26 @@ function renderAudioTracks(tile) {
   const tracks = [...tile.audioTracks.values()]
   tile.audio.srcObject = tracks.length ? new MediaStream(tracks) : null
   if (tracks.length) {
+    tile.audio.muted = false
+    tile.audio.volume = 1
+    tile.audio.setAttribute('playsinline', '')
     void tile.audio.play().catch(error => {
-      console.warn('Unable to play meeting audio:', error.message)
+      if (error?.name !== 'NotAllowedError') {
+        console.warn('Unable to play meeting audio:', error.message)
+      }
     })
+  }
+}
+
+function retryMeetingAudio(session) {
+  for (const tile of session.tiles.values()) {
+    if (tile.audio.srcObject && tile.audio.paused) {
+      void tile.audio.play().catch(error => {
+        if (error?.name !== 'NotAllowedError') {
+          console.warn('Unable to resume meeting audio:', error.message)
+        }
+      })
+    }
   }
 }
 
@@ -261,6 +285,127 @@ function playSharedScreen(session) {
       console.warn('Unable to play the shared screen:', error.message)
     }
   })
+}
+
+async function optimizeScreenShareSender(session) {
+  const producer = session.meeting?.videoProducer
+  const sender = producer?.rtpSender || producer?.sender || producer?._rtpSender
+  if (!sender?.getParameters || !sender?.setParameters) return
+  const parameters = sender.getParameters()
+  if (!Array.isArray(parameters.encodings) || !parameters.encodings.length) return
+  const screenTrack = session.displayedScreenTrack ||
+    session.meeting?.getCurrentlySharedVideoStream?.()?.getVideoTracks?.()[0]
+  if (screenTrack) screenTrack.contentHint = 'motion'
+  parameters.encodings = parameters.encodings.map(encoding => ({
+    ...encoding,
+    maxBitrate: Math.min(Math.max(encoding.maxBitrate || 0, 3_500_000), 5_000_000),
+    maxFramerate: 60,
+    scaleResolutionDownBy: 1,
+    priority: 'high'
+  }))
+  parameters.degradationPreference = 'maintain-framerate'
+  try {
+    await sender.setParameters(parameters)
+  } catch (error) {
+    console.warn('Unable to optimize screen-share bitrate:', error)
+  }
+}
+
+async function publishSharedAudio(session, stream) {
+  const track = stream?.getAudioTracks?.()[0]
+  const meeting = session.meeting
+  if (!track || !meeting?.sendTransport?.produce || session.sharedAudioProducer) return
+  const streamId = `screen-audio-${crypto.randomUUID?.() || Date.now()}`
+  const producer = await meeting.sendTransport.produce({
+    track,
+    appData: { type: 'audio', streamId }
+  })
+  session.sharedAudioProducer = producer
+  session.sharedAudioTrack = track
+  meeting.store?.addLocalStream?.({
+    streamId,
+    producer,
+    participantSessionId: session.localUserId,
+    track,
+    type: 'audio'
+  })
+  meeting.emit?.('localTrackStarted', { type: 'audio', streamId, track })
+}
+
+async function stopPublishedSharedAudio(session) {
+  const producer = session.sharedAudioProducer
+  const track = session.sharedAudioTrack
+  session.sharedAudioProducer = null
+  session.sharedAudioTrack = null
+  if (producer?.close) producer.close()
+  track?.stop()
+}
+
+async function startOptimizedScreenShare(session) {
+  const mediaDevices = navigator.mediaDevices
+  const nativeGetDisplayMedia = mediaDevices?.getDisplayMedia?.bind(mediaDevices)
+  if (!nativeGetDisplayMedia) {
+    throw new Error('Screen sharing is unavailable in this browser.')
+  }
+  let capturedStream
+  const capture = constraints => {
+    capturedStream = nativeGetDisplayMedia({
+      video: {
+        width: { ideal: 1920, max: 1920 },
+        height: { ideal: 1080, max: 1080 },
+        frameRate: { ideal: 30, max: 60 },
+        cursor: 'motion'
+      },
+      audio: true,
+      ...constraints,
+      video: {
+        ...(constraints?.video || {}),
+        width: { ideal: 1920, max: 1920 },
+        height: { ideal: 1080, max: 1080 },
+        frameRate: { ideal: 30, max: 60 },
+        cursor: 'motion'
+      },
+      audio: true
+    })
+    return capturedStream
+  }
+  const originalGetDisplayMedia = mediaDevices.getDisplayMedia
+  let interceptionInstalled = false
+  try {
+    mediaDevices.getDisplayMedia = capture
+    interceptionInstalled = mediaDevices.getDisplayMedia === capture
+  } catch (error) {
+    console.warn('This browser does not allow capture constraint customization:', error)
+  }
+  if (!interceptionInstalled) {
+    try {
+      Object.defineProperty(mediaDevices, 'getDisplayMedia', {
+        configurable: true,
+        value: capture,
+        writable: true
+      })
+      interceptionInstalled = mediaDevices.getDisplayMedia === capture
+    } catch (error) {
+      console.warn('This browser does not allow screen-share optimization:', error)
+    }
+  }
+  try {
+    await session.meeting.startScreenShare()
+    await optimizeScreenShareSender(session)
+    if (capturedStream) {
+      const stream = await capturedStream
+      if (stream.getAudioTracks().length) {
+        await publishSharedAudio(session, stream)
+      } else {
+        session.shareLabel.textContent =
+          'You are sharing your screen (this browser did not provide tab audio)'
+      }
+    }
+  } finally {
+    if (interceptionInstalled) {
+      mediaDevices.getDisplayMedia = originalGetDisplayMedia
+    }
+  }
 }
 
 function attachLocalTrack(session, item) {
@@ -284,8 +429,10 @@ function attachLocalTrack(session, item) {
     }
     session.displayedScreenTrack = item.track
     session.displayedScreenStreamId = item.streamId
+    item.track.contentHint = 'motion'
     session.shareVideo.srcObject = new MediaStream([item.track])
     playSharedScreen(session)
+    void optimizeScreenShareSender(session)
     localTile.videoTracks.clear()
     renderVideoTracks(localTile)
     setScreenSharePresentation(session, {
@@ -318,12 +465,18 @@ function detachLocalTrack(session, item) {
       window.clearInterval(session.screenShareHeartbeatTimer)
       session.screenShareHeartbeatTimer = null
     }
+    void stopPublishedSharedAudio(session).catch(error => {
+      console.warn('Unable to stop shared audio:', error)
+    })
     session.shareVideo.pause()
     session.shareVideo.srcObject = null
     session.shareVideo.hidden = true
     session.displayedScreenTrack = null
     session.displayedScreenStreamId = null
     session.sharing = false
+    void stopPublishedSharedAudio(session).catch(error => {
+      console.warn('Unable to stop shared audio:', error)
+    })
     setScreenSharePresentation(session, null)
     session.syncMediaControls?.()
   }
@@ -965,6 +1118,9 @@ export function openMeteredMeetingModal(meeting) {
     startedAt: 0
   }
   content.append(session.reactionLayer)
+  session.audioUnlockHandler = () => retryMeetingAudio(session)
+  document.addEventListener('pointerdown', session.audioUnlockHandler)
+  document.addEventListener('keydown', session.audioUnlockHandler)
   activeSession = session
   panelParts.chatForm.addEventListener('submit', async event => {
     event.preventDefault()
@@ -1298,10 +1454,12 @@ export function openMeteredMeetingModal(meeting) {
     try {
       if (session.cameraOn) {
         await session.meeting.stopVideo()
+        await stopPublishedSharedAudio(session)
         session.cameraOn = false
       } else {
         if (session.sharing) {
           await session.meeting.stopVideo()
+          await stopPublishedSharedAudio(session)
           session.sharing = false
           if (session.screenShareHeartbeatTimer) {
             window.clearInterval(session.screenShareHeartbeatTimer)
@@ -1327,6 +1485,7 @@ export function openMeteredMeetingModal(meeting) {
     try {
       if (session.sharing) {
         await session.meeting.stopVideo()
+        await stopPublishedSharedAudio(session)
         session.sharing = false
         session.cameraOn = false
         if (session.screenShareHeartbeatTimer) {
@@ -1343,7 +1502,7 @@ export function openMeteredMeetingModal(meeting) {
         session.sharing = true
         session.cameraOn = false
         try {
-          await session.meeting.startScreenShare()
+          await startOptimizedScreenShare(session)
           setScreenSharePresentation(session, {
             participantSessionId: session.localUserId,
             name: `${session.userName} (You)`,
@@ -1358,6 +1517,7 @@ export function openMeteredMeetingModal(meeting) {
                 } catch (stopError) {
                   console.warn('Unable to stop sharing after losing the lock:', stopError)
                 }
+                await stopPublishedSharedAudio(session)
                 session.sharing = false
                 session.screenShareHeartbeatTimer && window.clearInterval(session.screenShareHeartbeatTimer)
                 session.screenShareHeartbeatTimer = null
@@ -1368,6 +1528,7 @@ export function openMeteredMeetingModal(meeting) {
             })
           }, 5000)
         } catch (error) {
+          await stopPublishedSharedAudio(session)
           session.sharing = false
           session.cameraOn = cameraWasOn
           await updateScreenShareLease(session, 'release').catch(releaseError => {
@@ -1383,6 +1544,8 @@ export function openMeteredMeetingModal(meeting) {
       showSessionError(session, error)
     }
   })
+  shareButton.title = 'Share screen or tab. Choose Chrome Tab and enable Share tab audio for sound.'
+  shareButton.setAttribute('aria-label', 'Share screen or tab; enable Share tab audio for sound')
   session.shareButton = shareButton
   session.cameraButton = cameraButton
   session.syncMediaControls = () => {
