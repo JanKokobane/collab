@@ -22,7 +22,7 @@ import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } f
 import { createScheduleCalendarPicker } from './calendar.js'
 import { api } from './api.js'
 import { setDashboardButtonLoading, showDashboardToast } from './modalChrome.js'
-import { openProjectProgressAside } from './projectProgressAside.js?v=20261028-task-card-accordion'
+import { openProjectProgressAside } from './projectProgressAside.js?v=20261028-dedicated-file-picker'
 
 // ============================================================
 // TASKS & BOARD MANAGEMENT
@@ -206,6 +206,50 @@ export async function moveTaskStatus(taskId, newStatus) {
   showDashboardToast(`"${task.title}" moved to ${newStatus}.`, 'success')
 }
 
+const getTaskDeadline = dueDate => {
+  if (!dueDate) return null
+  const deadline = new Date(`${String(dueDate).slice(0, 10)}T23:59:59`)
+  return Number.isNaN(deadline.getTime()) ? null : deadline
+}
+
+const formatTaskCountdown = remainingMs => {
+  const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000))
+  const days = Math.floor(totalSeconds / 86400)
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (days > 0) return `${days}d ${String(hours).padStart(2, '0')}h`
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+const attachTaskCountdown = (badge, card, task) => {
+  const deadline = getTaskDeadline(task.due_date || task.dueDate)
+  if (!deadline || ['Done', 'Blocked'].includes(task.status)) {
+    badge.textContent = task.status === 'Blocked' ? 'BLOCKED' : task.tag || 'TASK'
+    return
+  }
+
+  let timer
+  const update = () => {
+    if (!card.isConnected) {
+      window.clearInterval(timer)
+      return
+    }
+    const remaining = deadline.getTime() - Date.now()
+    if (remaining <= 0 && task.backendPersistent) {
+      task.status = 'Blocked'
+      task.done = false
+      renderTasks()
+      hub.renderWorkspaceSummary?.()
+      return
+    }
+    badge.textContent = remaining <= 0 ? '00:00:00' : formatTaskCountdown(remaining)
+    badge.classList.toggle('is-expired', remaining <= 0)
+  }
+  update()
+  timer = window.setInterval(update, 1000)
+}
+
 export function taskCard(task) {
   const card = make('article', 'task-card')
   card.dataset.id = String(task.id)
@@ -242,7 +286,8 @@ export function taskCard(task) {
   })
 
   const top = make('div', 'task-top')
-  const tagWrap = make('span', `tag ${task.tagTone || 'blue'}`, task.tag)
+  const tagWrap = make('span', 'task-deadline-badge', '')
+  attachTaskCountdown(tagWrap, card, task)
   const priorityLabel = (task.priority || 'medium')[0].toUpperCase() +
     (task.priority || 'medium').slice(1)
   const priority = make(

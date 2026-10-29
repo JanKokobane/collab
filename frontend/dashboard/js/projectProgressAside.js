@@ -1,7 +1,7 @@
 import { currentUser, make, projects, tasks, root, addAuditLog, hub, renderAvatarElement } from './state.js'
 import { api } from './api.js'
-import { openProjectTaskModal } from './admin.js?v=20261028-file-picker-fix'
-import { createTaskMediaEditor, renderTaskMediaAttachments } from './taskMedia.js?v=20261028-native-file-label'
+import { openProjectTaskModal } from './admin.js?v=20261028-dedicated-file-picker'
+import { createTaskMediaEditor, renderTaskMediaAttachments } from './taskMedia.js?v=20261028-dedicated-file-picker'
 import {
   showDashboardConfirmation,
   showDashboardToast,
@@ -21,6 +21,10 @@ function formatSprintDate(value) {
   return Number.isNaN(date.getTime())
     ? ''
     : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+}
+
+function getTaskSprintName(task) {
+  return String(task.sprint_name || task.sprint || '').trim()
 }
 
 function getProductionAnalysis(projectTasks, sprints) {
@@ -107,14 +111,15 @@ function getProductionAnalysis(projectTasks, sprints) {
     workload.set(identity, entry)
   })
   const sprintNames = new Set(sprints.map(sprint => String(sprint.name || '').trim()).filter(Boolean))
-  const sprintProgress = sprints.map(sprint => {
+  const sprintProgress = sprints.map((sprint, index) => {
     const sprintName = String(sprint.name || '').trim()
     const sprintTasks = sprintName
-      ? projectTasks.filter(task => String(task.sprint_name || '').trim() === sprintName)
+      ? projectTasks.filter(task => getTaskSprintName(task) === sprintName)
       : []
     const done = sprintTasks.filter(task => taskStatus(task) === 'done').length
     return {
       label: sprintName || 'Untitled sprint',
+      number: index + 1,
       status: sprint.status || 'Upcoming',
       count: sprintTasks.length,
       done,
@@ -122,7 +127,7 @@ function getProductionAnalysis(projectTasks, sprints) {
     }
   })
   const noSprintTasks = projectTasks.filter(task =>
-    !sprintNames.has(String(task.sprint_name || '').trim())
+    !sprintNames.has(getTaskSprintName(task))
   )
   if (noSprintTasks.length) {
     const done = noSprintTasks.filter(task => taskStatus(task) === 'done').length
@@ -368,6 +373,18 @@ function renderProgressBars(
   return chart
 }
 
+function animateAnalysisCharts(aside) {
+  const animatedElements = aside.querySelectorAll(
+    '.project-progress-column-fill, .project-progress-donut-segment'
+  )
+  animatedElements.forEach((element, index) => {
+    element.classList.remove('is-animated')
+    element.style.animationDelay = `${index * 70}ms`
+  })
+  void aside.offsetWidth
+  animatedElements.forEach(element => element.classList.add('is-animated'))
+}
+
 function downloadProjectAnalysis(project, projectTasks, analysis) {
   const escapeCsv = value => {
     const text = String(value ?? '')
@@ -472,9 +489,7 @@ function openSprintAttachmentPreview(attachment, trigger) {
     preview.controls = true
     preview.preload = 'metadata'
   } else {
-    preview = make('iframe', 'project-sprint-attachment-preview-document')
-    preview.title = attachment.fileName || 'Sprint document preview'
-    preview.setAttribute('sandbox', '')
+    return
   }
   preview.src = attachment.data
 
@@ -530,9 +545,10 @@ function renderSprintSubmissionAttachments(attachments) {
       make('small', 'project-sprint-submission-file-size', `${Math.max(1, Math.round(size / 1024))} KB`)
     )
     const actions = make('span', 'project-sprint-submission-file-actions')
-    if (!mediaType.startsWith('audio/')) {
+    if (mediaType.startsWith('image/')) {
       const viewButton = make('button', 'project-sprint-submission-file-view', 'View')
       viewButton.type = 'button'
+      viewButton.setAttribute('aria-label', `View ${fileName}`)
       viewButton.addEventListener('click', () => openSprintAttachmentPreview({
         ...attachment,
         data,
@@ -653,6 +669,8 @@ function sprintSubmissionContent(sprint) {
 }
 
 function openCommentMediaPreview(media, trigger) {
+  if (!media || !['IMG', 'VIDEO'].includes(media.tagName)) return
+
   const backdrop = make('div', 'project-comment-media-preview-backdrop')
   const dialog = make('div', 'project-comment-media-preview')
   dialog.setAttribute('role', 'dialog')
@@ -681,6 +699,7 @@ function openCommentMediaPreview(media, trigger) {
   }
 
   closeButton.addEventListener('click', closePreview)
+  closeButton.addEventListener('pointerdown', event => event.stopPropagation())
   backdrop.addEventListener('click', event => {
     if (event.target === backdrop) closePreview()
   })
@@ -823,7 +842,18 @@ async function loadTaskComments(project, task, container) {
         const documentLink = make('a', 'project-comment-document')
         documentLink.href = attachment.data
         documentLink.download = attachment.fileName
+        documentLink.target = '_self'
         documentLink.setAttribute('aria-label', `Download ${attachment.fileName}`)
+        documentLink.addEventListener('click', event => {
+          event.preventDefault()
+          const download = document.createElement('a')
+          download.href = attachment.data
+          download.download = attachment.fileName
+          download.style.display = 'none'
+          document.body.append(download)
+          download.click()
+          download.remove()
+        })
         documentLink.append(
           make('span', 'project-comment-document-type', 'PDF'),
           make('span', 'project-comment-document-name', attachment.fileName),
@@ -935,7 +965,7 @@ export function openProjectProgressAside(task) {
   charts.append(
     renderDeliveryIndicators(analysis, projectTasks.length, openTasks, sprints.length),
     renderStatusDonut(analysis.taskStatusBreakdown, {
-      title: 'Task status mix',
+      title: 'Task status',
       subtitle: `${projectTasks.length} total project tasks`,
       centerValue: `${analysis.completion}%`,
       centerLabel: 'complete',
@@ -949,19 +979,18 @@ export function openProjectProgressAside(task) {
       ariaLabel: `${sprints.length} project sprints by delivery status`
     }),
     renderProgressBars(
-      'Sprint delivery',
-      `${projectTasks.length} total project tasks · grouped by sprint assignment`,
-      analysis.sprintProgress.map(sprint => ({
-        label: sprint.label,
-        status: sprint.status,
-        count: sprint.count,
-        done: sprint.done,
-        completion: sprint.completion,
+      'Project delivery',
+      `${projectTasks.length} total project tasks · ${sprints.length} total project sprints`,
+      [{
+        label: 'Project',
+        count: projectTasks.length,
+        done: analysis.completed,
+        completion: analysis.completion,
         tone: 'is-done'
-      })),
-      'is-sprint-progress',
+      }],
+      'is-project-delivery',
       'max',
-      'Add tasks to sprints to see delivery progress.'
+      'Add project tasks to see delivery progress.'
     ),
     renderProgressBars(
       'Schedule outlook',
@@ -974,9 +1003,11 @@ export function openProjectProgressAside(task) {
     renderProgressBars(
       'Open work by assignee',
       `${openTasks} open tasks grouped by assignee`,
-      analysis.workload.map(item => ({
+      analysis.workload.map((item, index) => ({
         ...item,
-        tone: item.label === 'Unassigned' ? 'is-blocked' : 'is-progress'
+        tone: item.label === 'Unassigned'
+          ? 'is-blocked'
+          : `is-assignee-${(index % 4) + 1}`
       })),
       'is-workload',
       'max',
@@ -1222,7 +1253,7 @@ export function openProjectProgressAside(task) {
       leadRow.append(make('span', 'project-sprint-card-unassigned', 'No sprint lead assigned'))
     }
     sprintTop.append(leadRow)
-    const sprintTasks = projectTasks.filter(candidate => candidate.sprint_name === sprint.name)
+    const sprintTasks = projectTasks.filter(candidate => getTaskSprintName(candidate) === sprint.name)
     const sprintStart = sprint.startDate || sprint.start_date
     const sprintEnd = sprint.endDate || sprint.end_date
     const sprintStartLabel = sprintStart ? formatSprintDate(sprintStart) : ''
@@ -1746,8 +1777,13 @@ export function openProjectProgressAside(task) {
   aside.append(content)
 
   const trigger = document.activeElement
+  let analysisAnimationTimer = null
   const close = () => {
     document.removeEventListener('keydown', onKeyDown)
+    if (analysisAnimationTimer) {
+      clearInterval(analysisAnimationTimer)
+      analysisAnimationTimer = null
+    }
     commentMedia.dispose()
     submissionMediaEditors.forEach(editor => editor.dispose())
     backdrop.remove()
@@ -1763,6 +1799,13 @@ export function openProjectProgressAside(task) {
   document.addEventListener('keydown', onKeyDown)
   backdrop.append(aside)
   root.replaceChildren(backdrop)
+  requestAnimationFrame(() => {
+    if (!aside.isConnected) return
+    animateAnalysisCharts(aside)
+    analysisAnimationTimer = setInterval(() => {
+      if (!document.hidden && aside.isConnected) animateAnalysisCharts(aside)
+    }, 5 * 60 * 1000)
+  })
   closeButton.focus()
 }
 

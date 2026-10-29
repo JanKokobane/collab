@@ -27,7 +27,7 @@ import { firebaseAuth } from '../../firebase.js'
 import { setDashboardButtonLoading, showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
 import { openMeteredMeetingModal } from './meteredMeetingModal.js'
-import { createTaskMediaEditor } from './taskMedia.js?v=20261028-native-file-label'
+import { createTaskMediaEditor } from './taskMedia.js?v=20261028-dedicated-file-picker'
 
 // ============================================================
 // ADMIN CONSOLE TABLE & FUNCTIONS
@@ -455,7 +455,7 @@ function renderProjectTaskDetails(project, taskRecords, loadError, refreshDetail
       })
       if (!sprints.length) {
         assignmentList.append(
-          make('small', '', task.assignee_name || task.assignee_email || 'Project invitee')
+          make('small', '', task.assignee_name || task.assignee_email || 'Project Owner')
         )
       }
       assignmentCell.append(assignmentList)

@@ -6,6 +6,7 @@ const { initializeFirebaseAdmin } = require('./src/config/firebaseAdmin');
 const { runMigrations } = require('./src/config/runMigrations');
 const { createServer } = require('node:http');
 const { attachMessageSocket } = require('./src/realtime/messageSocket');
+const { sweepTaskDeadlines } = require('./src/services/taskDeadlineService');
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -17,6 +18,12 @@ const startServer = async () => {
 
         await connectDB();
         await runMigrations();
+        await sweepTaskDeadlines();
+        const deadlineSweepTimer = setInterval(() => {
+            sweepTaskDeadlines().catch(error => {
+                console.error('Task deadline sweep failed:', error);
+            });
+        }, 60 * 1000);
 
         const server = createServer(app);
         const io = attachMessageSocket(server);
@@ -27,6 +34,7 @@ const startServer = async () => {
 
         const shutdown = async (signal) => {
             console.log(`${signal} received. Shutting down...`);
+            clearInterval(deadlineSweepTimer);
             io.close(async () => {
                 try {
                     await closeDB();

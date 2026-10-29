@@ -1,6 +1,7 @@
+import { createNativeFilePicker } from './filePicker.js?v=20261028-dedicated-file-picker'
+
 const maxTaskMediaBytes = 8 * 1024 * 1024
 const maxScreenClipMs = 90_000
-let mediaInputId = 0
 
 function make(tagName, className = '', text = '') {
   const element = document.createElement(tagName)
@@ -37,15 +38,40 @@ export function createTaskMediaEditor({
   const heading = make('div', 'task-media-heading')
   heading.append(make('strong', '', label), make('small', '', 'Up to 8 MB total'))
   const actions = make('div', 'task-media-actions')
-  const fileInput = make('input', 'task-media-file-input')
-  fileInput.id = `task-media-file-input-${++mediaInputId}`
-  fileInput.type = 'file'
-  fileInput.multiple = true
-  fileInput.accept = 'image/*,audio/*,video/*,application/pdf'
-  fileInput.setAttribute('aria-label', `Attach files for ${label}`)
-  const attachButton = make('label', 'task-media-action', 'Attach file')
-  attachButton.htmlFor = fileInput.id
-  attachButton.setAttribute('aria-controls', fileInput.id)
+  const filePicker = createNativeFilePicker({
+    label: 'Attach file',
+    ariaLabel: `Attach files for ${label}`,
+    accept: 'image/*,audio/*,video/*,application/pdf',
+    multiple: true,
+    onFiles: incoming => {
+      try {
+        if (items.length + incoming.length > maxAttachments) {
+          setStatus(`You can attach up to ${maxAttachments} files.`, true)
+        } else if (totalBytes() + incoming.reduce((sum, file) => sum + file.size, 0) > maxTaskMediaBytes) {
+          setStatus('Task media must total 8 MB or less.', true)
+        } else {
+          items.push(...incoming)
+          setStatus('')
+          render()
+        }
+      } catch (error) {
+        console.error('[task-media] Unable to add selected files.', {
+          inputId: filePicker.id,
+          error
+        })
+        setStatus('The selected file could not be added.', true)
+      }
+    },
+    onError: error => {
+      console.error('[task-media] File picker error.', {
+        inputId: filePicker.id,
+        error
+      })
+      setStatus('The selected file could not be added.', true)
+    }
+  })
+  const fileInput = filePicker.input
+  const attachButton = filePicker.trigger
   const audioButton = make('button', 'task-media-action', 'Record audio')
   audioButton.type = 'button'
   const screenButton = make('button', 'task-media-action', 'Record screen')
@@ -100,33 +126,6 @@ export function createTaskMediaEditor({
       attachmentList.append(tag)
     })
   }
-
-  fileInput.addEventListener('change', () => {
-    try {
-      const incoming = Array.from(fileInput.files || [])
-      console.info('[task-media] File selection changed.', {
-        inputId: fileInput.id,
-        count: incoming.length
-      })
-      if (items.length + incoming.length > maxAttachments) {
-        setStatus(`You can attach up to ${maxAttachments} files.`, true)
-      } else if (totalBytes() + incoming.reduce((sum, file) => sum + file.size, 0) > maxTaskMediaBytes) {
-        setStatus('Task media must total 8 MB or less.', true)
-      } else {
-        items.push(...incoming)
-        setStatus('')
-        render()
-      }
-    } catch (error) {
-      console.error('[task-media] Unable to process selected files.', {
-        inputId: fileInput.id,
-        error
-      })
-      setStatus('The selected file could not be added.', true)
-    } finally {
-      fileInput.value = ''
-    }
-  })
 
   const finalizeRecording = async () => {
     const capturedMode = mode

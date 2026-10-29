@@ -78,7 +78,7 @@ import {
   openProjectTaskModal,
   openAdminEditTaskModal,
   openInviteModal
-} from './js/admin.js?v=20261028-file-picker-fix'
+} from './js/admin.js?v=20261028-dedicated-file-picker'
 
 import {
   switchView,
@@ -109,7 +109,7 @@ import {
   renderNotifications,
   initWorkspaceHubEvents
 } from './js/workspaceHub.js'
-import { openProjectTaskDetails } from './js/projectProgressAside.js?v=20261028-task-card-accordion'
+import { openProjectTaskDetails } from './js/projectProgressAside.js?v=20261028-dedicated-file-picker'
 import { initMessages, openMessageContext, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261026-collaboration-context'
 import { renderMeetingsPage } from './js/meetingsPage.js'
 import { initProjectStickyNotes } from './js/projectStickyNotes.js'

@@ -649,7 +649,7 @@ export function replaceProjectTasksFromBackend(projectTaskGroups = []) {
     const project = projectById.get(projectId)
     if (!project || !Array.isArray(projectTasks)) return []
     return projectTasks.map(task => {
-      const assigneeName = task.assignee_name || task.assignee_email || 'Project invitee'
+      const assigneeName = task.assignee_name || task.assignee_email || 'Project Owner'
       const assignee = assigneeName
         .trim()
         .split(/\s+/)

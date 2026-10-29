@@ -11,7 +11,7 @@ import {
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   renderAuditLogs
-} from './admin.js?v=20261028-file-picker-fix'
+} from './admin.js?v=20261028-dedicated-file-picker'
 import {
   currentTheme,
   currentAccent,

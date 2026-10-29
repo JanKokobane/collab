@@ -771,6 +771,14 @@ const updateProjectTask = async (req, res) => {
                     priority = $7,
                     start_date = $8,
                     due_date = $9,
+                    deadline_warning_sent_at = CASE
+                        WHEN due_date IS DISTINCT FROM $9::date THEN NULL
+                        ELSE deadline_warning_sent_at
+                    END,
+                    deadline_blocked_at = CASE
+                        WHEN due_date IS DISTINCT FROM $9::date THEN NULL
+                        ELSE deadline_blocked_at
+                    END,
                     chat_message_id = $10::uuid,
                     description_attachments = $11::jsonb,
                     updated_at = NOW()

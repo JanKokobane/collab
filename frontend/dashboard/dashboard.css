@@ -1536,6 +1536,32 @@ body.dark-mode .invite-user-search-result span,
     border-radius: 13px;
     background: #FFFFFF;
     box-shadow: 0 2px 8px rgba(38, 50, 72, .035);
+    animation: project-progress-card-motion 6s ease-in-out infinite;
+    will-change: transform, box-shadow;
+}
+
+.project-progress-chart:nth-child(2) {
+    animation-delay: -1.5s;
+}
+
+.project-progress-chart:nth-child(3) {
+    animation-delay: -3s;
+}
+
+.project-progress-chart:nth-child(4) {
+    animation-delay: -4.5s;
+}
+
+@keyframes project-progress-card-motion {
+    0%,
+    100% {
+        transform: translateY(0);
+        box-shadow: 0 2px 8px rgba(38, 50, 72, .035);
+    }
+    50% {
+        transform: translateY(-3px);
+        box-shadow: 0 9px 22px rgba(38, 50, 72, .09);
+    }
 }
 
 .project-progress-chart-heading,
@@ -1707,6 +1733,23 @@ body.dark-mode .invite-user-search-result span,
     transition: height .2s ease;
 }
 
+@keyframes project-progress-column-fill-in {
+    from {
+        opacity: .35;
+        transform: scaleY(0);
+        transform-origin: bottom;
+    }
+    to {
+        opacity: 1;
+        transform: scaleY(1);
+        transform-origin: bottom;
+    }
+}
+
+.project-progress-column-fill.is-animated {
+    animation: project-progress-column-fill-in .7s cubic-bezier(.22, 1, .36, 1) both;
+}
+
 .project-progress-column-bar.is-planned .project-progress-column-fill {
     background: #A1A1AA;
 }
@@ -1801,6 +1844,44 @@ body.dark-mode .invite-user-search-result span,
     background: #10A878;
 }
 
+.project-progress-chart.is-project-delivery .project-progress-column-axis,
+.project-progress-chart.is-project-delivery .project-progress-column-plot {
+    height: 175px;
+}
+
+.project-progress-chart.is-project-delivery .project-progress-column-axis {
+    padding-bottom: 30px;
+}
+
+.project-progress-chart.is-project-delivery .project-progress-column-plot {
+    padding-bottom: 30px;
+    background-size: 100% calc(100% - 30px);
+}
+
+.project-progress-chart.is-project-delivery .project-progress-column-label {
+    top: calc(100% + 2px);
+}
+
+.project-progress-chart.is-project-delivery .project-progress-column-legend {
+    margin-top: -6px;
+}
+
+.project-progress-chart.is-workload .project-progress-column-bar.is-assignee-1 .project-progress-column-fill {
+    background: #3B82F6;
+}
+
+.project-progress-chart.is-workload .project-progress-column-bar.is-assignee-2 .project-progress-column-fill {
+    background: #8B5CF6;
+}
+
+.project-progress-chart.is-workload .project-progress-column-bar.is-assignee-3 .project-progress-column-fill {
+    background: #0F9D8A;
+}
+
+.project-progress-chart.is-workload .project-progress-column-bar.is-assignee-4 .project-progress-column-fill {
+    background: #E09F3E;
+}
+
 .project-progress-donut-layout {
     display: grid;
     grid-template-columns: minmax(110px, .75fr) minmax(0, 1fr);
@@ -1837,6 +1918,23 @@ body.dark-mode .invite-user-search-result span,
     transition: stroke-dasharray .25s ease, stroke-dashoffset .25s ease;
 }
 
+@keyframes project-progress-donut-segment-in {
+    from {
+        opacity: .2;
+        transform: rotate(-90deg) scale(.82);
+        transform-origin: 60px 60px;
+    }
+    to {
+        opacity: 1;
+        transform: rotate(-90deg) scale(1);
+        transform-origin: 60px 60px;
+    }
+}
+
+.project-progress-donut-segment.is-animated {
+    animation: project-progress-donut-segment-in .7s ease-out both;
+}
+
 .project-progress-donut-segment.is-todo,
 .project-progress-donut-segment.is-backlog {
     stroke: #A7B0BE;
@@ -1848,6 +1946,10 @@ body.dark-mode .invite-user-search-result span,
 
 .project-progress-donut-segment.is-blocked {
     stroke: #D88A45;
+}
+
+.project-progress-donut-segment.is-review {
+    stroke: #D06B9A;
 }
 
 .project-progress-donut-segment.is-done {
@@ -1906,6 +2008,10 @@ body.dark-mode .invite-user-search-result span,
 
 .project-progress-legend-dot.is-blocked {
     background: #D88A45;
+}
+
+.project-progress-legend-dot.is-review {
+    background: #D06B9A;
 }
 
 .project-progress-legend-dot.is-done {
@@ -2544,7 +2650,7 @@ body.dark-mode .invite-user-search-result span,
     display: grid;
     place-items: center;
     padding: 24px;
-    background: rgba(13, 18, 15, .82);
+    background: transparent;
 }
 
 .project-comment-media-preview-backdrop.is-sprint-attachment-preview {
@@ -2561,8 +2667,8 @@ body.dark-mode .invite-user-search-result span,
 
 .project-comment-media-preview-close {
     position: absolute;
-    top: -42px;
-    right: 0;
+    top: 10px;
+    right: 10px;
     display: grid;
     width: 36px;
     height: 36px;
@@ -3808,6 +3914,16 @@ body.dark-mode .project-task-status-lock,
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .project-progress-chart {
+        animation: none;
+        will-change: auto;
+    }
+
+    .project-progress-column-fill.is-animated,
+    .project-progress-donut-segment.is-animated {
+        animation: none;
+    }
+
     .project-progress-aside-backdrop,
     .project-progress-aside {
         animation: none;
@@ -3895,6 +4011,25 @@ body.dark-mode .project-task-status-lock,
 .tag.yellow {
     background: #FEF9C3;
     color: #854D0E;
+}
+
+.task-deadline-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #EEF2FF;
+    color: #4338CA;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .45px;
+    font-variant-numeric: tabular-nums;
+}
+
+.task-deadline-badge.is-expired {
+    background: #FEE2E2;
+    color: #B91C1C;
 }
 
 .card-more {
