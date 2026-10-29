@@ -913,7 +913,7 @@ const updateProject = async (req, res) => {
 /**
  * POST /api/projects/:projectId/sprints/:sprintName/submit
  */
-const MAX_SPRINT_SUBMISSION_MEDIA_BYTES = 8 * 1024 * 1024;
+const MAX_SPRINT_SUBMISSION_MEDIA_BYTES = 100 * 1024 * 1024;
 const MAX_SPRINT_SUBMISSION_ATTACHMENTS = 10;
 
 const normalizeSprintSubmissionAttachments = value => {
@@ -929,7 +929,7 @@ const normalizeSprintSubmissionAttachments = value => {
         const mediaType = typeof item?.mediaType === 'string' ? item.mediaType.toLowerCase() : '';
         const data = typeof item?.data === 'string' ? item.data : '';
         const isSupportedType = /^(image\/(?!svg\+xml(?:$|;))[a-z0-9.+-]+|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|application\/pdf)$/.test(mediaType);
-        const dataMatch = data.match(/^data:([^;,]+);base64,([A-Za-z0-9+/]*={0,2})$/);
+        const dataMatch = data.match(/^data:([^;,]+)(?:;codecs=[^;,]+)?;base64,([A-Za-z0-9+/]*={0,2})$/);
 
         if (!fileName || fileName.length > 255 || /[\u0000-\u001f\u007f]/.test(fileName) ||
             !isSupportedType || !dataMatch || dataMatch[1].toLowerCase() !== mediaType) {
@@ -943,7 +943,7 @@ const normalizeSprintSubmissionAttachments = value => {
         }
         totalBytes += buffer.length;
         if (totalBytes > MAX_SPRINT_SUBMISSION_MEDIA_BYTES) {
-            return { attachments: [], error: 'Sprint attachments must total 8 MB or less.' };
+            return { attachments: [], error: 'Sprint attachments must total 100 MB or less.' };
         }
 
         attachments.push({
