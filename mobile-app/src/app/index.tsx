@@ -17,6 +17,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import { router } from 'expo-router';
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  updateProfile,
+} from 'firebase/auth';
+import { firebaseAuth } from '@/lib/firebase';
 
 type AuthMode = 'signin' | 'signup';
 type IconName = 'user' | 'mail' | 'phone' | 'building' | 'edit' | 'briefcase' | 'globe' | 'lock' | 'chevron';
@@ -333,9 +341,15 @@ export default function AuthScreen() {
   const [industry, setIndustry] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
   const badgeAnimation = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => setHydrated(true), []);
+  useEffect(() => {
+    return onAuthStateChanged(firebaseAuth, (user) => {
+      setHydrated(true);
+      if (user) router.replace('/workspace');
+    });
+  }, []);
 
   useEffect(() => {
     Animated.timing(badgeAnimation, {
@@ -353,7 +367,7 @@ export default function AuthScreen() {
   const heroHeight = (short ? 165 : compact ? 190 : 220) * 1.1;
   const isSignup = mode === 'signup';
 
-  function submit() {
+  async function submit() {
     const nextErrors: Record<string, string> = {};
     if (isSignup && !name.trim()) nextErrors.name = 'Enter your full name.';
     if (!email.trim()) nextErrors.email = 'Enter your email address.';
@@ -372,7 +386,43 @@ export default function AuthScreen() {
     else if (isSignup && password !== confirmation) nextErrors.confirmation = 'Passwords do not match.';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
-    Alert.alert(isSignup ? 'Account created' : 'Welcome back', 'Authentication will be connected next.');
+
+    setSubmitting(true);
+    try {
+      const normalizedEmail = email.trim().toLowerCase();
+      if (isSignup) {
+        const credential = await createUserWithEmailAndPassword(
+          firebaseAuth,
+          normalizedEmail,
+          password,
+        );
+        await updateProfile(credential.user, { displayName: name.trim() });
+      } else {
+        await signInWithEmailAndPassword(firebaseAuth, normalizedEmail, password);
+      }
+      router.replace('/workspace');
+    } catch (error) {
+      const code =
+        typeof error === 'object' && error !== null && 'code' in error &&
+        typeof error.code === 'string'
+          ? error.code
+          : '';
+      const message =
+        code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found'
+          ? 'The email or password is incorrect.'
+          : code === 'auth/email-already-in-use'
+            ? 'An account already exists with this email address.'
+            : code === 'auth/weak-password'
+              ? 'Choose a stronger password with at least 6 characters.'
+              : code === 'auth/network-request-failed'
+                ? 'Unable to reach Firebase. Check your internet connection and try again.'
+                : error instanceof Error
+                  ? error.message
+                  : 'Authentication failed. Please try again.';
+      Alert.alert(isSignup ? 'Sign up failed' : 'Sign in failed', message);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   if (!hydrated) return <View style={styles.hydrationShell} />;
@@ -480,19 +530,32 @@ export default function AuthScreen() {
                   <Text style={styles.forgotText}>Forgot password?</Text>
                 </Pressable>
               )}
-              <Pressable accessibilityRole="button" onPress={submit} style={({ pressed }) => [styles.submitButton, pressed && styles.submitButtonPressed]}>
-                <Text style={styles.submitButtonText}>{isSignup ? 'Create account' : 'Sign in'}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ disabled: submitting }}
+                disabled={submitting}
+                onPress={submit}
+                style={({ pressed }) => [
+                  styles.submitButton,
+                  pressed && styles.submitButtonPressed,
+                  submitting && styles.buttonDisabled,
+                ]}>
+                <Text style={styles.submitButtonText}>
+                  {submitting ? 'Please wait...' : isSignup ? 'Create account' : 'Sign in'}
+                </Text>
                 <Text style={styles.submitArrow}>→</Text>
               </Pressable>
-              <View style={styles.divider}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>OR {isSignup ? 'SIGN UP' : 'SIGN IN'} WITH</Text>
-                <View style={styles.dividerLine} />
-              </View>
-              <View style={styles.socialRow}>
-                <SocialButton provider="Google" />
-                <SocialButton provider="GitHub" />
-                <SocialButton provider="Microsoft" />
+              <View style={{ display: 'none' }}>
+                <View style={styles.divider}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>OR {isSignup ? 'SIGN UP' : 'SIGN IN'} WITH</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+                <View style={styles.socialRow}>
+                  <SocialButton provider="Google" />
+                  <SocialButton provider="GitHub" />
+                  <SocialButton provider="Microsoft" />
+                </View>
               </View>
               <View style={styles.footer}>
                 <Text style={styles.footerLink}>Privacy</Text>
@@ -575,7 +638,7 @@ const styles = StyleSheet.create({
   phoneFields: { flexDirection: 'row', gap: 8 }, countryField: { flex: 0.9 }, phoneField: { flex: 1.5 },
   forgotButton: { alignSelf: 'flex-end', marginTop: -8 }, forgotText: { color: '#696969', fontSize: 11, fontWeight: '600' },
   compactForgotButton: { marginTop: -5 }, compactForgotText: { fontSize: 10 },
-  submitButton: { height: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 18, borderRadius: 25, backgroundColor: '#242424', shadowColor: '#000000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.16, shadowRadius: 10, elevation: 6 }, submitButtonPressed: { backgroundColor: '#111111', transform: [{ scale: 0.99 }] }, submitButtonText: { marginRight: 9, color: '#FFFFFF', fontSize: 13, fontWeight: '800' }, submitArrow: { color: '#FFFFFF', fontSize: 18 },
+  submitButton: { height: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 18, borderRadius: 25, backgroundColor: '#242424', shadowColor: '#000000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.16, shadowRadius: 10, elevation: 6 }, submitButtonPressed: { backgroundColor: '#111111', transform: [{ scale: 0.99 }] }, submitButtonText: { marginRight: 9, color: '#FFFFFF', fontSize: 13, fontWeight: '800' }, submitArrow: { color: '#FFFFFF', fontSize: 18 }, buttonDisabled: { opacity: 0.65 },
   compactSubmitButton: { height: 43, marginTop: 12 }, compactSubmitButtonText: { fontSize: 12 }, compactSubmitArrow: { fontSize: 16 },
   divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 24 }, compactDivider: { marginVertical: 16 }, dividerLine: { height: 1, flex: 1, backgroundColor: '#E3E3E3' }, dividerText: { marginHorizontal: 12, color: '#A0A0A0', fontSize: 9, fontWeight: '700', letterSpacing: 1 },
   socialRow: { flexDirection: 'row', gap: 8 }, socialButton: { height: 38, flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 999 }, googleButton: { backgroundColor: '#F1F5FF' }, githubButton: { backgroundColor: '#202020' }, microsoftButton: { backgroundColor: '#F3F4F6' }, compactSocialButton: { height: 34 }, buttonPressed: { opacity: 0.7, transform: [{ scale: 0.97 }] },
