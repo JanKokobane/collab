@@ -57,6 +57,7 @@ import {
 } from '@/lib/messagesApi';
 import { MessagesRealtime } from '@/lib/messagesRealtime';
 import { firebaseAuth } from '@/lib/firebase';
+import { useMessageCalls } from '@/contexts/MessageCallProvider';
 
 type MessageEvent = { message?: Record<string, unknown> };
 type ConversationEvent = { conversation_id?: string };
@@ -372,6 +373,7 @@ function ParticipantAvatar({
 }
 
 export default function MessagesScreen() {
+  const { activeCall, startCall, startingCall } = useMessageCalls();
   const insets = useSafeAreaInsets();
   const audioRecorder = useAudioRecorder({
     ...RecordingPresets.HIGH_QUALITY,
@@ -501,9 +503,11 @@ export default function MessagesScreen() {
   }, [handleApiError]);
 
   useEffect(() => {
-    if (activeSection !== 'calls' || selectedConversationId || loadingConversations) return;
+    if (selectedConversationId || loadingConversations) return;
     void loadCallHistory();
-  }, [activeSection, selectedConversationId, loadingConversations, loadCallHistory]);
+    const intervalId = setInterval(() => { void loadCallHistory(); }, 30_000);
+    return () => clearInterval(intervalId);
+  }, [selectedConversationId, loadingConversations, loadCallHistory]);
 
   const loadThread = useCallback(async (conversationId: string) => {
     const loadId = ++activeLoadId.current;
@@ -606,9 +610,9 @@ export default function MessagesScreen() {
     realtimeRef.current = socket;
     joinedConversationIds.current.clear();
 
-    const joinAvailableConversations = () => {
+    const joinAvailableConversations = (availableConversations = conversationsRef.current) => {
       if (!socket.isConnected) return;
-      conversationsRef.current.forEach((conversation) => {
+      availableConversations.forEach((conversation) => {
         if (joinedConversationIds.current.has(conversation.id)) return;
         joinedConversationIds.current.add(conversation.id);
         socket.emitWithAck('conversation:join', conversation.id).catch((cause) => {
@@ -625,7 +629,7 @@ export default function MessagesScreen() {
 
     const refreshAndJoin = async () => {
       const result = await refreshConversations();
-      if (active && result) joinAvailableConversations();
+      if (active && result) joinAvailableConversations(result);
     };
 
     const removers = [
@@ -1181,6 +1185,18 @@ export default function MessagesScreen() {
         : activeSection === 'groups' && conversation.type === 'group',
   );
   const activeProject = projects.find((project) => project.id === createProjectId) || null;
+  const unreadCountsBySection = conversations.reduce<Record<'messages' | 'channels' | 'groups', number>>(
+    (counts, conversation) => {
+      if (conversation.type === 'direct') counts.messages += Math.max(0, conversation.unreadCount);
+      if (conversation.type === 'channel') counts.channels += Math.max(0, conversation.unreadCount);
+      if (conversation.type === 'group') counts.groups += Math.max(0, conversation.unreadCount);
+      return counts;
+    },
+    { messages: 0, channels: 0, groups: 0 },
+  );
+  const missedCallCount = callHistory.filter(
+    (call) => call.status === 'missed' || call.status === 'declined',
+  ).length;
   const eligibleProjectMembers = activeProject
     ? [activeProject.creator, ...activeProject.acceptedMembers]
       .filter((member, index, list) =>
@@ -1334,8 +1350,17 @@ export default function MessagesScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Start voice call"
-              onPress={() => Alert.alert('Voice calls unavailable', 'Voice calling is not available in the mobile app yet.')}
-              style={({ pressed }) => [styles.headerIconButton, pressed && styles.pressed]}>
+              disabled={startingCall || Boolean(activeCall)}
+              onPress={() => {
+                if (selectedConversation && directPeer) {
+                  void startCall(selectedConversation.id, directPeer.name, 'audio');
+                }
+              }}
+              style={({ pressed }) => [
+                styles.headerIconButton,
+                (startingCall || activeCall) && { opacity: 0.5 },
+                pressed && styles.pressed,
+              ]}>
               <Svg width={22} height={22} viewBox="0 0 24 24">
                 <G fill="none">
                 <Path
@@ -1350,8 +1375,17 @@ export default function MessagesScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Start video call"
-              onPress={() => Alert.alert('Video calls unavailable', 'Video calling is not available in the mobile app yet.')}
-              style={({ pressed }) => [styles.headerIconButton, pressed && styles.pressed]}>
+              disabled={startingCall || Boolean(activeCall)}
+              onPress={() => {
+                if (selectedConversation && directPeer) {
+                  void startCall(selectedConversation.id, directPeer.name, 'video');
+                }
+              }}
+              style={({ pressed }) => [
+                styles.headerIconButton,
+                (startingCall || activeCall) && { opacity: 0.5 },
+                pressed && styles.pressed,
+              ]}>
               <Svg width={22} height={22} viewBox="0 0 24 24">
                 <Path
                   d="M3.59 19.499a2 2 0 0 1-2-2V6.502a2 2 0 0 1 2-2h11.211a2 2 0 0 1 2 2v10.997a2 2 0 0 1-2 2zm13.731-4.998a1 1 0 0 1-.52-.877v-3.247a1 1 0 0 1 .52-.877l3.608-1.976a1 1 0 0 1 1.48.877v7.2a1 1 0 0 1-1.48.876z"
@@ -1524,18 +1558,24 @@ export default function MessagesScreen() {
           <View style={styles.bottomNavigator} accessibilityRole="tablist">
             {messageSections.map((section) => {
               const selected = section.id === activeSection;
+              const unreadCount = section.id === 'calls'
+                ? missedCallCount
+                : unreadCountsBySection[section.id];
               return (
                 <Pressable
                   key={section.id}
                   accessibilityRole="tab"
                   accessibilityState={{ selected }}
-                  accessibilityLabel={section.label}
+                  accessibilityLabel={unreadCount
+                    ? `${section.label}, ${unreadCount} unread`
+                    : section.label}
                   onPress={() => setActiveSection(section.id)}
                   style={({ pressed }) => [
                     styles.bottomNavTab,
                     selected && styles.bottomNavTabSelected,
                     pressed && styles.pressed,
                   ]}>
+                  <View style={styles.bottomNavIconContainer}>
                   {section.id === 'messages' && (
                     <Svg style={styles.bottomNavIcon} width={24} height={24} viewBox="0 0 24 24">
                       <Path
@@ -1582,9 +1622,19 @@ export default function MessagesScreen() {
                       </G>
                     </Svg>
                   )}
-                  <Text style={[styles.bottomNavLabel, selected && styles.bottomNavLabelSelected]}>
-                    {section.label}
-                  </Text>
+                  {unreadCount > 0 && (
+                    <View style={styles.bottomNavBadge}>
+                      <Text style={styles.bottomNavBadgeText}>
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </Text>
+                    </View>
+                  )}
+                  </View>
+                  <View style={styles.bottomNavLabelRow}>
+                    <Text style={[styles.bottomNavLabel, selected && styles.bottomNavLabelSelected]}>
+                      {section.label}
+                    </Text>
+                  </View>
                 </Pressable>
               );
             })}
@@ -2188,9 +2238,28 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   bottomNavTabSelected: { backgroundColor: 'transparent' },
+  bottomNavIconContainer: {
+    width: 24,
+    height: 24,
+    position: 'relative',
+  },
   bottomNavIcon: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  bottomNavLabelRow: { flexDirection: 'row', alignItems: 'center' },
   bottomNavLabel: { color: '#77777F', fontSize: 11, fontWeight: '700' },
   bottomNavLabelSelected: { color: '#242424' },
+  bottomNavBadge: {
+    minWidth: 15,
+    height: 15,
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderRadius: 8,
+    backgroundColor: '#FF4D4F',
+  },
+  bottomNavBadgeText: { color: '#FFFFFF', fontSize: 8, fontWeight: '800' },
   callTypeIcon: { marginLeft: 8, color: '#287B6E', fontSize: 18 },
   missedCall: { color: '#B42318' },
   conversationAvatar: {
@@ -2228,9 +2297,9 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     paddingHorizontal: 5,
     borderRadius: 10,
-    backgroundColor: '#F5B800',
+    backgroundColor: '#FF4D4F',
   },
-  unreadText: { color: '#242424', fontSize: 10, fontWeight: '800' },
+  unreadText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
   thread: { flex: 1 },
   chatBackground: { flex: 1 },
   chatBackgroundImage: { opacity: 0.15 },

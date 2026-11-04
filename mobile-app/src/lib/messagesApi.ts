@@ -87,6 +87,45 @@ export interface CallHistoryItem {
   createdAt: string;
 }
 
+export type MessageCallType = 'audio' | 'video';
+
+export interface MessageCallParticipant {
+  firebase_uid: string;
+  display_name: string;
+  status: 'ringing' | 'accepted' | 'declined' | 'missed' | 'left';
+}
+
+export interface MessageCallIceServer {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+}
+
+export interface MessageCallInvitation {
+  call_id: string;
+  conversation_id: string;
+  caller_uid: string;
+  caller_name: string;
+  callee_uid: string;
+  callee_name: string;
+  call_type: MessageCallType;
+  status: 'ringing' | 'accepted' | 'declined' | 'missed' | 'ended';
+  ring_expires_at: string;
+  added_participant?: boolean;
+  peer_uid?: string;
+  peer_name?: string;
+  ice_servers?: MessageCallIceServer[];
+  participants?: MessageCallParticipant[];
+}
+
+export interface MessageCallJoinResult {
+  call?: MessageCallInvitation;
+  participants?: MessageCallParticipant[];
+  ice_servers?: MessageCallIceServer[];
+  iceServers?: MessageCallIceServer[];
+  conversationId?: string;
+}
+
 interface ApiEnvelope<T> {
   success: boolean;
   data?: T;
@@ -269,6 +308,86 @@ export async function fetchCallHistory(): Promise<CallHistoryItem[]> {
       createdAt,
     }];
   });
+}
+
+export async function startMessageCall(
+  conversationId: string,
+  callType: MessageCallType,
+): Promise<MessageCallJoinResult> {
+  const result = await request<MessageCallJoinResult>(
+    `/messages/conversations/${encodeURIComponent(conversationId)}/calls`,
+    { method: 'POST', body: { callType } },
+  );
+  return result.data || {};
+}
+
+export async function acceptMessageCall(
+  conversationId: string,
+  callId: string,
+): Promise<MessageCallJoinResult> {
+  const result = await request<MessageCallJoinResult>(
+    `/messages/conversations/${encodeURIComponent(conversationId)}/calls/${encodeURIComponent(callId)}/accept`,
+    { method: 'POST', body: {} },
+  );
+  return result.data || {};
+}
+
+export async function joinInvitedMessageCall(
+  conversationId: string,
+  callId: string,
+): Promise<MessageCallJoinResult> {
+  const result = await request<MessageCallJoinResult>(
+    `/messages/conversations/${encodeURIComponent(conversationId)}/calls/${encodeURIComponent(callId)}/join`,
+    { method: 'POST', body: {} },
+  );
+  return result.data || {};
+}
+
+export async function declineMessageCall(
+  conversationId: string,
+  callId: string,
+  invitedParticipant: boolean,
+): Promise<void> {
+  await request(
+    `/messages/conversations/${encodeURIComponent(conversationId)}/calls/${encodeURIComponent(callId)}/${invitedParticipant ? 'decline-invite' : 'decline'}`,
+    { method: 'POST', body: {} },
+  );
+}
+
+export async function endMessageCall(
+  conversationId: string,
+  callId: string,
+): Promise<void> {
+  await request(
+    `/messages/conversations/${encodeURIComponent(conversationId)}/calls/${encodeURIComponent(callId)}/end`,
+    { method: 'POST', body: {} },
+  );
+}
+
+export async function leaveMessageCall(callId: string): Promise<void> {
+  await request(`/messages/calls/${encodeURIComponent(callId)}/leave`, {
+    method: 'POST',
+    body: {},
+  });
+}
+
+export async function markMessageCallMissed(
+  conversationId: string,
+  callId: string,
+): Promise<{ stillRinging: boolean; retryAfterMs: number | null }> {
+  const result = await request<{
+    call?: { status?: string };
+    retry_after_ms?: number;
+  }>(
+    `/messages/conversations/${encodeURIComponent(conversationId)}/calls/${encodeURIComponent(callId)}/missed`,
+    { method: 'POST', body: {} },
+  );
+  return {
+    stillRinging: result.code === 'CALL_NOT_EXPIRED' || result.data?.call?.status === 'ringing',
+    retryAfterMs: Number.isFinite(result.data?.retry_after_ms)
+      ? Number(result.data?.retry_after_ms)
+      : null,
+  };
 }
 
 function normalizeProjectMember(value: unknown): ProjectMember | null {

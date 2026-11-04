@@ -64,6 +64,11 @@ export class MessagesRealtime {
     });
   }
 
+  emit(event: string, ...args: unknown[]): void {
+    if (!this.isConnected) return;
+    this.sendPacket(`42${JSON.stringify([event, ...args])}`);
+  }
+
   stop(): void {
     this.stopped = true;
     this.connected = false;

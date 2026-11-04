@@ -23,6 +23,19 @@ In the output, you'll find options to open the app in a
 - [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
 - [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
 
+## Voice and video calls
+
+Mobile calls use native WebRTC and are available while the app is open. Expo Go does not include the required native module, so install a development client and rebuild after installing dependencies or changing the native app configuration:
+
+```bash
+npx expo install expo-dev-client
+npx expo run:android
+# or
+npx expo run:ios
+```
+
+Incoming calls while the app is backgrounded or terminated are not supported yet.
+
 You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
 ## Get a fresh project

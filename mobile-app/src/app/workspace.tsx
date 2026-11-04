@@ -18,7 +18,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import { router, useFocusEffect } from 'expo-router';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { firebaseAuth } from '@/lib/firebase';
-import { fetchConversations } from '@/lib/messagesApi';
+import { fetchConversations, MessagesApiError } from '@/lib/messagesApi';
 
 const primaryItems = [
   { label: 'Home', icon: '⌂' },
@@ -69,6 +69,7 @@ export default function WorkspaceScreen() {
           ));
         }
       } catch (error) {
+        if (error instanceof MessagesApiError && error.status === 0) return;
         console.error('Unable to load unread message count:', error);
       }
     };
