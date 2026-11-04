@@ -58,7 +58,7 @@ const messageSections: { id: MessagesSection; label: string }[] = [
   { id: 'groups', label: 'Groups' },
   { id: 'calls', label: 'Calls' },
 ];
-const maxMessageAttachmentBytes = 512 * 1024;
+const maxMessageAttachmentBytes = 200 * 1024 * 1024;
 const maxMessageAttachments = 10;
 
 function formatFileSize(size: number): string {
@@ -541,7 +541,7 @@ export default function MessagesScreen() {
         return;
       }
       if (queuedBytes + size > maxMessageAttachmentBytes) {
-        setError('Attachments must total 512 KB or less per message.');
+        setError('Attachments must total 200 MB or less per message.');
         return;
       }
       const mediaType = file.type && file.type.length <= 128

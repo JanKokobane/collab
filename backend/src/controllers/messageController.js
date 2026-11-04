@@ -4,7 +4,7 @@ const { emitToConversation, emitToUser, setPresence } = require('../realtime/mes
 
 const allowedReactions = new Set(['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']);
 const maxAttachments = 10;
-const maxAttachmentBytes = 512 * 1024;
+const maxAttachmentBytes = 200 * 1024 * 1024;
 const attachmentDataUrlPattern = /^data:[^;,]+(?:;codecs=[^;,]+)?;base64,[a-zA-Z0-9+/=]+$/i;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const timestamp = value => value ? new Date(value).toISOString() : null;
@@ -613,7 +613,7 @@ const createMessage = async (req, res) => {
             forwardedFrom.senderName.trim().length < 1 || forwardedFrom.senderName.length > 160))) {
         return res.status(400).json({
             success: false, code: 'INVALID_MESSAGE',
-            message: 'Provide a message or valid attachments within the 512 KB total attachment limit.'
+            message: 'Provide a message or valid attachments within the 200 MB total attachment limit.'
         });
     }
     try {

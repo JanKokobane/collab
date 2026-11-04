@@ -7,7 +7,7 @@ import {
   renderCallParticipants
 } from './messageCallUI.js?v=20261022-call-timer-answer'
 
-const maxAttachmentBytes = 512 * 1024
+const maxAttachmentBytes = 200 * 1024 * 1024
 const messagesBuildId = '20261026-collaboration-context'
 const presenceHeartbeatMs = 25000
 const incomingCallRingDurationMs = 45000
@@ -3630,7 +3630,7 @@ export function initMessages() {
     const incomingFiles = [...event.currentTarget.files]
     const totalSize = [...pendingFiles, ...incomingFiles].reduce((sum, file) => sum + file.size, 0)
     if (totalSize > maxAttachmentBytes) {
-      showError(new Error('Attachments must total 512 KB or less per message.'))
+      showError(new Error('Attachments must total 200 MB or less per message.'))
       event.currentTarget.value = ''
       return
     }
