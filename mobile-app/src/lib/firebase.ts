@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApps, initializeApp } from 'firebase/app';
-import { getReactNativePersistence, initializeAuth } from 'firebase/auth';
+import { getAuth, getReactNativePersistence, initializeAuth } from 'firebase/auth';
+import type { User } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -14,16 +15,28 @@ const firebaseConfig = {
 
 export const firebaseApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
-export const firebaseAuth = initializeAuth(firebaseApp, {
-  persistence: getReactNativePersistence(AsyncStorage),
-});
+function isAuthAlreadyInitialized(error: unknown): boolean {
+  return error instanceof Error &&
+    'code' in error &&
+    error.code === 'auth/already-initialized';
+}
+
+function initializeFirebaseAuth() {
+  try {
+    return initializeAuth(firebaseApp, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+  } catch (error) {
+    if (!isAuthAlreadyInitialized(error)) throw error;
+    return getAuth(firebaseApp);
+  }
+}
+
+export const firebaseAuth = initializeFirebaseAuth();
 
 export const firestoreDb = getFirestore(firebaseApp);
 
-export async function markCurrentUserOffline(): Promise<void> {
-  const user = firebaseAuth.currentUser;
-  if (!user) return;
-
+export async function setUserPresence(user: User, isOnline: boolean): Promise<void> {
   const baseUrl = (
     process.env.EXPO_PUBLIC_API_BASE_URL || 'https://collab-y7pb.onrender.com'
   ).replace(/\/+$/, '');
@@ -33,11 +46,15 @@ export async function markCurrentUserOffline(): Promise<void> {
       Authorization: `Bearer ${await user.getIdToken()}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ isOnline: false }),
+    body: JSON.stringify({ isOnline }),
   });
-
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
     throw new Error(payload?.message || 'Presence could not be updated.');
   }
+}
+
+export async function markCurrentUserOffline(): Promise<void> {
+  const user = firebaseAuth.currentUser;
+  if (user) await setUserPresence(user, false);
 }

@@ -5,6 +5,7 @@ import {
   FlatList,
   Image,
   ImageBackground,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -23,6 +24,8 @@ import {
   AudioModule,
   RecordingPresets,
   setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio';
@@ -67,7 +70,7 @@ const messageSections: { id: MessagesSection; label: string }[] = [
 ];
 const maxMessageAttachmentBytes = 200 * 1024 * 1024;
 const maxMessageAttachments = 10;
-const voiceNoteIconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="none" stroke="#000" stroke-linejoin="round" stroke-width="4"><rect width="14" height="27" x="17" y="4" fill="#FFD700" rx="7"/><path stroke-linecap="round" d="M9 23C9 31.2843 15.7157 38 24 38C32.2843 38 39 31.2843 39 23"/><path stroke-linecap="round" d="M24 38V44"/></g></svg>';
+const voiceNoteIconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="4"><rect width="14" height="27" x="17" y="4" rx="7"/><path stroke-linecap="round" d="M9 23c0 8.284 6.716 15 15 15s15-6.716 15-15M24 38v6"/></g></svg>';
 const attachmentIconSvgs = {
   pdf: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="#ef5350" d="M13 9h5.5L13 3.5zM6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2m4.93 10.44c.41.9.93 1.64 1.53 2.15l.41.32c-.87.16-2.07.44-3.34.93l-.11.04l.5-1.04c.45-.87.78-1.66 1.01-2.4m6.48 3.81c.18-.18.27-.41.28-.66c.03-.2-.02-.39-.12-.55c-.29-.47-1.04-.69-2.28-.69l-1.29.07l-.87-.58c-.63-.52-1.2-1.43-1.6-2.56l.04-.14c.33-1.33.64-2.94-.02-3.6a.85.85 0 0 0-.61-.24h-.24c-.37 0-.7.39-.79.77c-.37 1.33-.15 2.06.22 3.27v.01c-.25.88-.57 1.9-1.08 2.93l-.96 1.8l-.89.49c-1.2.75-1.77 1.59-1.88 2.12c-.04.19-.02.36.05.54l.03.05l.48.31l.44.11c.81 0 1.73-.95 2.97-3.07l.18-.07c1.03-.33 2.31-.56 4.03-.75c1.03.51 2.24.74 3 .74c.44 0 .74-.11.91-.3m-.41-.71l.09.11c-.01.1-.04.11-.09.13h-.04l-.19.02c-.46 0-1.17-.19-1.9-.51c.09-.1.13-.1.23-.1c1.4 0 1.8.25 1.9.35M7.83 17c-.65 1.19-1.24 1.85-1.69 2c.05-.38.5-1.04 1.21-1.69zm3.02-6.91c-.23-.9-.24-1.63-.07-2.05l.07-.12l.15.05c.17.24.19.56.09 1.1l-.03.16l-.16.82z"/></svg>',
   word: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="#01579b" d="M6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2m7 1.5V9h5.5zM7 13l1.5 7h2l1.5-3l1.5 3h2l1.5-7h1v-2h-4v2h1l-.9 4.2L13 15h-2l-1.1 2.2L9 13h1v-2H6v2z"/></svg>',
@@ -115,6 +118,27 @@ function formatVoiceDuration(durationSeconds: number): string {
   return `${minutes}:${seconds}`;
 }
 
+function getAttachmentDuration(attachment: MessageAttachment): number {
+  if (Number.isFinite(attachment.duration_seconds) && attachment.duration_seconds! > 0) {
+    return attachment.duration_seconds!;
+  }
+  const savedDuration = attachment.fileName.match(/^voice-note-(\d+)s-/i)?.[1];
+  return Number(savedDuration) || 0;
+}
+
+function getAttachmentWaveform(attachment: MessageAttachment): number[] {
+  if (attachment.waveform_peaks?.length === 40 &&
+      attachment.waveform_peaks.every((peak) => Number.isFinite(peak))) {
+    return attachment.waveform_peaks.map((peak) => Math.max(0, Math.min(1, peak)));
+  }
+
+  let seed = [...attachment.fileName].reduce((sum, character) => sum + character.charCodeAt(0), 17);
+  return Array.from({ length: 40 }, () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return 0.18 + (seed / 233280) * 0.82;
+  });
+}
+
 function buildVoiceWaveformPeaks(samples: number[], peakCount = 40): number[] {
   if (!samples.length) return Array(peakCount).fill(0.08);
   return Array.from({ length: peakCount }, (_, index) => {
@@ -153,6 +177,141 @@ async function writeAttachmentToDirectory(
   const file = directory.createFile(name, attachment.mediaType || 'application/octet-stream');
   await file.write(getAttachmentBase64Data(attachment), { encoding: 'base64' });
   return file;
+}
+
+let activeVoiceNotePlayer: ReturnType<typeof useAudioPlayer> | null = null;
+
+function VoiceNotePlayer({ attachment }: { attachment: MessageAttachment }) {
+  const player = useAudioPlayer(null, { updateInterval: 100 });
+  const status = useAudioPlayerStatus(player);
+  const [waveformWidth, setWaveformWidth] = useState(0);
+  const [speedIndex, setSpeedIndex] = useState(0);
+  const [playbackError, setPlaybackError] = useState('');
+  const sourceLoaded = useRef(false);
+  const playbackFile = useRef<File | null>(null);
+  const waveform = getAttachmentWaveform(attachment);
+  const duration = status.duration > 0 ? status.duration : getAttachmentDuration(attachment);
+  const progress = duration > 0 ? Math.min(1, status.currentTime / duration) : 0;
+  const playbackSpeeds = [1, 1.5, 2];
+
+  useEffect(() => () => {
+    if (activeVoiceNotePlayer === player) activeVoiceNotePlayer = null;
+    player.pause();
+    try {
+      if (playbackFile.current?.exists) playbackFile.current.delete();
+    } catch (cause) {
+      console.error('Unable to remove the temporary voice-note file:', cause);
+    }
+  }, [player]);
+
+  const togglePlayback = async () => {
+    if (status.playing) {
+      player.pause();
+      return;
+    }
+
+    try {
+      setPlaybackError('');
+      if (activeVoiceNotePlayer && activeVoiceNotePlayer !== player) {
+        activeVoiceNotePlayer.pause();
+        void activeVoiceNotePlayer.seekTo(0).catch((cause) => {
+          console.error('Unable to reset the previous voice note:', cause);
+        });
+      }
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      if (!sourceLoaded.current) {
+        const file = new File(
+          Paths.cache,
+          `${Date.now()}-${Math.random().toString(36).slice(2)}-${getSafeAttachmentName(attachment.fileName)}`,
+        );
+        try {
+          await file.write(getAttachmentBase64Data(attachment), { encoding: 'base64' });
+        } catch (cause) {
+          if (file.exists) file.delete();
+          throw cause;
+        }
+        playbackFile.current = file;
+        player.replace(file.uri);
+        sourceLoaded.current = true;
+      }
+      if (status.didJustFinish || (duration > 0 && status.currentTime >= duration - 0.1)) {
+        await player.seekTo(0);
+      }
+      activeVoiceNotePlayer = player;
+      player.play();
+    } catch (cause) {
+      console.error('Unable to play message voice note:', cause);
+      setPlaybackError('This audio could not be played.');
+    }
+  };
+
+  const seekWaveform = (locationX: number) => {
+    if (!status.isLoaded || !duration || !waveformWidth) return;
+    const seekTo = Math.max(0, Math.min(1, locationX / waveformWidth)) * duration;
+    void player.seekTo(seekTo).catch((cause) => {
+      console.error('Unable to seek message voice note:', cause);
+      setPlaybackError('The audio position could not be changed.');
+    });
+  };
+
+  const changeSpeed = () => {
+    const nextIndex = (speedIndex + 1) % playbackSpeeds.length;
+    setSpeedIndex(nextIndex);
+    player.setPlaybackRate(playbackSpeeds[nextIndex]);
+  };
+
+  return (
+    <View style={styles.voicePlayerContainer}>
+      <View style={styles.voicePlayer}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={status.playing ? 'Pause voice note' : 'Play voice note'}
+          onPress={() => { void togglePlayback(); }}
+          style={({ pressed }) => [styles.voicePlayerButton, pressed && styles.pressed]}>
+          <Svg width={20} height={20} viewBox="0 0 24 24">
+            <Path
+              d={status.playing ? 'M7 5h4v14H7zM14 5h4v14h-4z' : 'm8 5 11 7-11 7z'}
+              fill="#242424"
+            />
+          </Svg>
+        </Pressable>
+        <View style={styles.voicePlayerTimeline}>
+          <Pressable
+            accessibilityRole="adjustable"
+            accessibilityLabel="Voice note playback position"
+            accessibilityValue={{ min: 0, max: 100, now: Math.round(progress * 100) }}
+            disabled={!status.isLoaded}
+            onLayout={(event) => setWaveformWidth(event.nativeEvent.layout.width)}
+            onPress={(event) => seekWaveform(event.nativeEvent.locationX)}
+            style={({ pressed }) => [styles.voicePlayerWaveform, pressed && styles.voicePlayerWaveformPressed]}>
+            {waveform.map((peak, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.voicePlayerWaveformBar,
+                  { height: `${16 + Math.round(peak * 84)}%` },
+                  index < Math.round(progress * waveform.length) && styles.voicePlayerWaveformBarPlayed,
+                ]}
+              />
+            ))}
+          </Pressable>
+          <Text style={styles.voicePlayerTime}>
+            {formatVoiceDuration(Math.floor(status.currentTime))} / {formatVoiceDuration(Math.ceil(duration))}
+          </Text>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Playback speed ${playbackSpeeds[speedIndex]}x`}
+          onPress={changeSpeed}
+          style={({ pressed }) => [styles.voicePlayerSpeed, pressed && styles.pressed]}>
+          <Text style={styles.voicePlayerSpeedText}>{playbackSpeeds[speedIndex]}x</Text>
+        </Pressable>
+      </View>
+      {!!(playbackError || status.error) && (
+        <Text style={styles.voicePlayerError}>{playbackError || status.error}</Text>
+      )}
+    </View>
+  );
 }
 
 function getConversationTitle(conversation: Conversation, currentUid: string): string {
@@ -264,6 +423,7 @@ export default function MessagesScreen() {
   const loadingOlderRef = useRef(false);
   const activeLoadId = useRef(0);
   const voiceRecordingSamples = useRef<number[]>([]);
+  const messageInputRef = useRef<TextInput>(null);
 
   conversationsRef.current = conversations;
   selectedConversationIdRef.current = selectedConversationId;
@@ -690,6 +850,8 @@ export default function MessagesScreen() {
       setError(`You can attach up to ${maxMessageAttachments} files to a message.`);
       return;
     }
+    messageInputRef.current?.blur();
+    Keyboard.dismiss();
     setVoiceNoteBusy(true);
     setError('');
     try {
@@ -698,11 +860,14 @@ export default function MessagesScreen() {
         setError('Allow microphone access to record a voice note.');
         return;
       }
+      messageInputRef.current?.blur();
+      Keyboard.dismiss();
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await audioRecorder.prepareToRecordAsync();
       voiceRecordingSamples.current = [];
       setVoiceWaveformLevels(Array(40).fill(0.08));
       setVoiceRecordingPaused(false);
+      Keyboard.dismiss();
       setVoiceRecordingSession(true);
       audioRecorder.record({ forDuration: 3600 });
     } catch (cause) {
@@ -1061,7 +1226,11 @@ export default function MessagesScreen() {
               </Text>
             )}
             {!item.deleted && item.attachments.map((attachment, index) => (
-              attachment.mediaType.startsWith('image/') ? (
+              attachment.is_voice_note || attachment.mediaType.startsWith('audio/') ? (
+                <View key={`${attachment.fileName}-${index}`} style={styles.messageAttachment}>
+                  <VoiceNotePlayer attachment={attachment} />
+                </View>
+              ) : attachment.mediaType.startsWith('image/') ? (
                 <View key={`${attachment.fileName}-${index}`} style={styles.messageAttachment}>
                   <Image
                     accessibilityLabel={attachment.fileName}
@@ -1479,25 +1648,21 @@ export default function MessagesScreen() {
             )}
             {voiceRecordingSession ? (
               <View style={styles.recordingPanel}>
-                <View style={styles.recordingHeading}>
-                  <View style={[
-                    styles.recordingIndicator,
-                    voiceRecordingPaused && styles.recordingIndicatorPaused,
-                  ]} />
-                  <Text style={styles.recordingHeadingText}>
-                    {voiceRecordingPaused ? 'Recording paused' : 'Recording voice note'}
-                  </Text>
+                <View style={styles.recordingWaveRow}>
+                  <View style={styles.recordingWaveform} accessibilityLabel="Voice recording waveform">
+                    {voiceWaveformLevels.map((level, index) => (
+                      <View
+                        key={index}
+                        style={[
+                          styles.recordingWaveformBar,
+                          { height: 3 + level * 24 },
+                        ]}
+                      />
+                    ))}
+                  </View>
                   <Text style={styles.recordingTime}>
                     {formatVoiceDuration(Math.floor(recorderState.durationMillis / 1000))}
                   </Text>
-                </View>
-                <View style={styles.recordingWaveform} accessibilityLabel="Voice recording waveform">
-                  {voiceWaveformLevels.map((level, index) => (
-                    <View
-                      key={index}
-                      style={[styles.recordingWaveformBar, { height: 4 + level * 36 }]}
-                    />
-                  ))}
                 </View>
                 <View style={styles.recordingActions}>
                   <Pressable
@@ -1507,8 +1672,15 @@ export default function MessagesScreen() {
                     onPress={() => { void finishVoiceRecording(true); }}
                     style={({ pressed }) => [styles.recordingDiscardButton, pressed && styles.pressed]}>
                     {voiceNoteBusy
-                      ? <ActivityIndicator size="small" color="#D64252" />
-                      : <Text style={styles.recordingDiscardIcon}>×</Text>}
+                      ? <ActivityIndicator size="small" color="#FF526B" />
+                      : (
+                        <Svg width={21} height={21} viewBox="0 0 24 24">
+                          <Path
+                            d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6zM8 9h8v10H8zm7.5-5-1-1h-5l-1 1H5v2h14V4z"
+                            fill="#FF526B"
+                          />
+                        </Svg>
+                      )}
                   </Pressable>
                   <Pressable
                     accessibilityRole="button"
@@ -1516,7 +1688,22 @@ export default function MessagesScreen() {
                     disabled={voiceNoteBusy}
                     onPress={toggleVoiceRecordingPause}
                     style={({ pressed }) => [styles.recordingPauseButton, pressed && styles.pressed]}>
-                    <Text style={styles.recordingPauseIcon}>{voiceRecordingPaused ? '▶' : 'Ⅱ'}</Text>
+                    <Svg width={21} height={21} viewBox="0 0 48 48">
+                      <Path
+                        d="M24 38v6M9 23a15 15 0 0 0 30 0"
+                        fill="none"
+                        stroke="#FFFFFF"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={4}
+                      />
+                      <Path
+                        d="M17 11a7 7 0 0 1 14 0v13a7 7 0 0 1-14 0z"
+                        fill="none"
+                        stroke="#FFFFFF"
+                        strokeWidth={4}
+                      />
+                    </Svg>
                     <Text style={styles.recordingPauseText}>{voiceRecordingPaused ? 'Resume' : 'Pause'}</Text>
                   </Pressable>
                   <Pressable
@@ -1526,21 +1713,18 @@ export default function MessagesScreen() {
                     onPress={() => { void finishVoiceRecording(false); }}
                     style={({ pressed }) => [styles.recordingSendButton, pressed && styles.pressed]}>
                     {voiceNoteBusy
-                      ? <ActivityIndicator size="small" color="#FFFFFF" />
+                      ? <ActivityIndicator size="small" color="#242424" />
                       : (
-                        <>
-                          <Svg width={18} height={18} viewBox="0 0 24 24">
-                            <Path
-                              d="m5 12 14-7-4 14-3-6-7-1Z M12 13l7-8"
-                              fill="none"
-                              stroke="#FFFFFF"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                            />
-                          </Svg>
-                          <Text style={styles.recordingSendText}>Send voice note</Text>
-                        </>
+                        <Svg width={20} height={20} viewBox="0 0 24 24">
+                          <Path
+                            d="M22 12L3 20l3.563-8L3 4zM6.5 12H22"
+                            fill="none"
+                            stroke="#242424"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={1.5}
+                          />
+                        </Svg>
                       )}
                   </Pressable>
                 </View>
@@ -1568,6 +1752,7 @@ export default function MessagesScreen() {
               )}
               <View style={styles.composerInputWrap}>
                 <TextInput
+                  ref={messageInputRef}
                   accessibilityLabel="Write a message"
                   placeholder="Write a message…"
                   placeholderTextColor="#96969D"
@@ -1588,6 +1773,10 @@ export default function MessagesScreen() {
                       busy: voiceNoteBusy,
                     }}
                     disabled={sending || pickingAttachment || voiceNoteBusy || selectedAttachments.length >= maxMessageAttachments}
+                    onPressIn={() => {
+                      messageInputRef.current?.blur();
+                      Keyboard.dismiss();
+                    }}
                     onPress={() => { void handleVoiceNotePress(); }}
                     style={({ pressed }) => [
                       styles.voiceNoteButton,
@@ -2076,6 +2265,59 @@ const styles = StyleSheet.create({
   messageBody: { color: '#FFFFFF', fontSize: 14, lineHeight: 20 },
   messageBodyOwn: { color: '#FFFFFF' },
   messageAttachment: { marginTop: 7 },
+  voicePlayerContainer: { maxWidth: '100%' },
+  voicePlayer: {
+    width: 280,
+    maxWidth: '100%',
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#000000',
+  },
+  voicePlayerButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+    backgroundColor: '#F5B800',
+  },
+  voicePlayerTimeline: { flex: 1, minWidth: 0, gap: 4 },
+  voicePlayerWaveform: {
+    height: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 2,
+  },
+  voicePlayerWaveformPressed: { opacity: 0.8 },
+  voicePlayerWaveformBar: {
+    minWidth: 2,
+    maxWidth: 3,
+    flex: 1,
+    borderRadius: 2,
+    backgroundColor: '#727272',
+  },
+  voicePlayerWaveformBarPlayed: { backgroundColor: '#F5B800' },
+  voicePlayerTime: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontVariant: ['tabular-nums'],
+  },
+  voicePlayerSpeed: {
+    minWidth: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: '#292929',
+  },
+  voicePlayerSpeedText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
+  voicePlayerError: { marginTop: 3, color: '#FF8A8A', fontSize: 9 },
   messageAttachmentImage: { width: 200, height: 150, borderRadius: 8, backgroundColor: '#343434' },
   messageAttachmentDocumentPreview: {
     width: 200,
@@ -2125,47 +2367,31 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   recordingPanel: {
-    gap: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#D5E4DC',
-    borderRadius: 14,
-    backgroundColor: '#F4F8F5',
-    shadowColor: '#1B4639',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 2,
+    gap: 6,
+    padding: 4,
+    borderRadius: 12,
+    backgroundColor: '#3A3A3A',
   },
-  recordingHeading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  recordingIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#E5484D',
-  },
-  recordingIndicatorPaused: { backgroundColor: '#E8A23A' },
-  recordingHeadingText: { color: '#4B5E56', fontSize: 12, fontWeight: '700' },
+  recordingWaveRow: { minHeight: 20, flexDirection: 'row', alignItems: 'center' },
   recordingTime: {
-    marginLeft: 'auto',
-    color: '#222B27',
-    fontSize: 15,
+    marginLeft: 8,
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
   recordingWaveform: {
-    height: 42,
+    height: 28,
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 3,
     overflow: 'hidden',
   },
   recordingWaveformBar: {
-    minWidth: 2,
-    flex: 1,
+    width: 2,
     borderRadius: 99,
-    backgroundColor: '#91A39A',
+    backgroundColor: '#F5B800',
   },
   recordingActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   recordingDiscardButton: {
@@ -2173,34 +2399,28 @@ const styles = StyleSheet.create({
     height: 42,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 21,
-    backgroundColor: '#FBE9EB',
+    backgroundColor: 'transparent',
   },
-  recordingDiscardIcon: { color: '#D64252', fontSize: 28, lineHeight: 32 },
   recordingPauseButton: {
-    minHeight: 42,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    backgroundColor: '#E6EFEA',
-  },
-  recordingPauseIcon: { color: '#287B6E', fontSize: 17, fontWeight: '800' },
-  recordingPauseText: { color: '#287B6E', fontSize: 12, fontWeight: '700' },
-  recordingSendButton: {
     minHeight: 42,
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 8,
     paddingHorizontal: 10,
-    borderRadius: 10,
-    backgroundColor: '#1DAA72',
+    borderRadius: 21,
+    backgroundColor: '#000000',
   },
-  recordingSendText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  recordingPauseText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  recordingSendButton: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 19,
+    backgroundColor: '#F5B800',
+  },
   stagedAttachments: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   stagedAttachment: {
     maxWidth: '100%',

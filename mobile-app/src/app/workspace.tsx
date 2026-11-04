@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,9 +15,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { firebaseAuth } from '@/lib/firebase';
+import { fetchConversations } from '@/lib/messagesApi';
 
 const primaryItems = [
   { label: 'Home', icon: '⌂' },
@@ -43,12 +44,42 @@ export default function WorkspaceScreen() {
   const [ready, setReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('Home');
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
 
   useEffect(() => onAuthStateChanged(firebaseAuth, (currentUser) => {
     setUser(currentUser);
     setReady(true);
     if (!currentUser) router.replace('/');
   }), []);
+
+  useFocusEffect(useCallback(() => {
+    if (!user) {
+      setUnreadMessageCount(0);
+      return;
+    }
+
+    let active = true;
+    const loadUnreadMessageCount = async () => {
+      try {
+        const conversations = await fetchConversations();
+        if (active) {
+          setUnreadMessageCount(conversations.reduce(
+            (total, conversation) => total + Math.max(0, conversation.unreadCount),
+            0,
+          ));
+        }
+      } catch (error) {
+        console.error('Unable to load unread message count:', error);
+      }
+    };
+
+    void loadUnreadMessageCount();
+    const intervalId = setInterval(() => { void loadUnreadMessageCount(); }, 30_000);
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
+  }, [user]));
 
   useEffect(() => {
     if (!user) {
@@ -162,7 +193,9 @@ export default function WorkspaceScreen() {
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Messages"
+          accessibilityLabel={unreadMessageCount
+            ? `Messages, ${unreadMessageCount} unread`
+            : 'Messages'}
           onPress={() => router.push('/messages')}
           style={({ pressed }) => [styles.messageButton, pressed && styles.pressed]}>
           <Svg width={36} height={36} viewBox="0 0 48 48" fill="none">
@@ -174,7 +207,13 @@ export default function WorkspaceScreen() {
               strokeWidth={1.5}
             />
           </Svg>
-          <View style={styles.messageBadge} />
+          {unreadMessageCount > 0 && (
+            <View style={styles.messageBadge}>
+              <Text style={styles.messageBadgeText}>
+                {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+              </Text>
+            </View>
+          )}
         </Pressable>
       </View>
 
@@ -393,13 +432,17 @@ const styles = StyleSheet.create({
   },
   messageBadge: {
     position: 'absolute',
-    top: 7,
-    right: 7,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    top: 0,
+    right: -3,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderRadius: 9,
     backgroundColor: '#FF4D4F',
   },
+  messageBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
   avatar: {
     width: 36,
     height: 36,
