@@ -18,9 +18,16 @@ import {
   View,
   type ListRenderItem,
 } from 'react-native';
-import { File } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
+import {
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioRecorder,
+  useAudioRecorderState,
+} from 'expo-audio';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, G, Path } from 'react-native-svg';
+import Svg, { Circle, G, Path, SvgXml } from 'react-native-svg';
 import { router } from 'expo-router';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import {
@@ -60,10 +67,92 @@ const messageSections: { id: MessagesSection; label: string }[] = [
 ];
 const maxMessageAttachmentBytes = 200 * 1024 * 1024;
 const maxMessageAttachments = 10;
+const voiceNoteIconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="none" stroke="#000" stroke-linejoin="round" stroke-width="4"><rect width="14" height="27" x="17" y="4" fill="#FFD700" rx="7"/><path stroke-linecap="round" d="M9 23C9 31.2843 15.7157 38 24 38C32.2843 38 39 31.2843 39 23"/><path stroke-linecap="round" d="M24 38V44"/></g></svg>';
+const attachmentIconSvgs = {
+  pdf: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="#ef5350" d="M13 9h5.5L13 3.5zM6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2m4.93 10.44c.41.9.93 1.64 1.53 2.15l.41.32c-.87.16-2.07.44-3.34.93l-.11.04l.5-1.04c.45-.87.78-1.66 1.01-2.4m6.48 3.81c.18-.18.27-.41.28-.66c.03-.2-.02-.39-.12-.55c-.29-.47-1.04-.69-2.28-.69l-1.29.07l-.87-.58c-.63-.52-1.2-1.43-1.6-2.56l.04-.14c.33-1.33.64-2.94-.02-3.6a.85.85 0 0 0-.61-.24h-.24c-.37 0-.7.39-.79.77c-.37 1.33-.15 2.06.22 3.27v.01c-.25.88-.57 1.9-1.08 2.93l-.96 1.8l-.89.49c-1.2.75-1.77 1.59-1.88 2.12c-.04.19-.02.36.05.54l.03.05l.48.31l.44.11c.81 0 1.73-.95 2.97-3.07l.18-.07c1.03-.33 2.31-.56 4.03-.75c1.03.51 2.24.74 3 .74c.44 0 .74-.11.91-.3m-.41-.71l.09.11c-.01.1-.04.11-.09.13h-.04l-.19.02c-.46 0-1.17-.19-1.9-.51c.09-.1.13-.1.23-.1c1.4 0 1.8.25 1.9.35M7.83 17c-.65 1.19-1.24 1.85-1.69 2c.05-.38.5-1.04 1.21-1.69zm3.02-6.91c-.23-.9-.24-1.63-.07-2.05l.07-.12l.15.05c.17.24.19.56.09 1.1l-.03.16l-.16.82z"/></svg>',
+  word: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="#01579b" d="M6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2m7 1.5V9h5.5zM7 13l1.5 7h2l1.5-3l1.5 3h2l1.5-7h1v-2h-4v2h1l-.9 4.2L13 15h-2l-1.1 2.2L9 13h1v-2H6v2z"/></svg>',
+  powerpoint: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="#e64a19" d="M6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2m7 1.5V9h5.5zM8 11v2h1v6H8v1h4v-1h-1v-2h2a3 3 0 0 0 3-3a3 3 0 0 0-3-3zm5 2a1 1 0 0 1 1 1a1 1 0 0 1-1 1h-2v-2z"/></svg>',
+  image: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 16 16"><path fill="#26a69a" d="M8.5 6h4l-4-4zM3.875 1H9.5l4 4v8.6c0 .773-.616 1.4-1.375 1.4h-8.25c-.76 0-1.375-.627-1.375-1.4V2.4c0-.777.612-1.4 1.375-1.4M4 13.6h8V8l-2.625 2.8L8 9.4zm1.25-7.7c-.76 0-1.375.627-1.375 1.4s.616 1.4 1.375 1.4c.76 0 1.375-.627 1.375-1.4S6.009 5.9 5.25 5.9"/></svg>',
+  audio: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path fill="#ef5350" d="M16 2a14 14 0 1 0 14 14A14 14 0 0 0 16 2m6 10h-4v8a4 4 0 1 1-4-4a3.96 3.96 0 0 1 2 .555V8h6Z"/></svg>',
+  video: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path fill="#ff9800" d="m24 6l2 6h-4l-2-6h-3l2 6h-4l-2-6h-3l2 6H8L6 6H5a3 3 0 0 0-3 3v14a3 3 0 0 0 3 3h22a3 3 0 0 0 3-3V6Z"/></svg>',
+  archive: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="#afb42b" d="M14 17h-2v-2h-2v-2h2v2h2m0-6h-2v2h2v2h-2v-2h-2V9h2V7h-2V5h2v2h2m5-4H5c-1.11 0-2 .89-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2"/></svg>',
+  document: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><g fill="none"><path d="M0 0h24v24H0z"/><path fill="#42a5f5" d="M8 16h8v2H8zm0-4h8v2H8zm6-10H6c-1.1 0-2 .9-2 2v16c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8zm4 18H6V4h7v5h5z"/></g></svg>',
+};
+
+function getAttachmentIconXml(attachment: MessageAttachment): string {
+  const mediaType = attachment.mediaType.toLowerCase();
+  const extension = attachment.fileName.toLowerCase().split('.').pop() || '';
+  if (mediaType === 'application/pdf' || extension === 'pdf') return attachmentIconSvgs.pdf;
+  if (mediaType.startsWith('image/') || ['avif', 'bmp', 'gif', 'heic', 'jpeg', 'jpg', 'png', 'svg', 'webp'].includes(extension)) {
+    return attachmentIconSvgs.image;
+  }
+  if (mediaType.startsWith('audio/') || attachment.is_voice_note ||
+      ['aac', 'flac', 'm4a', 'mp3', 'ogg', 'wav'].includes(extension)) {
+    return attachmentIconSvgs.audio;
+  }
+  if (mediaType.startsWith('video/') || ['avi', 'mkv', 'mov', 'mp4', 'webm'].includes(extension)) {
+    return attachmentIconSvgs.video;
+  }
+  if (['zip', 'rar', '7z', 'gz', 'tar'].includes(extension)) return attachmentIconSvgs.archive;
+  if (['doc', 'docx', 'odt', 'rtf'].includes(extension) ||
+      mediaType.includes('msword') || mediaType.includes('wordprocessingml')) {
+    return attachmentIconSvgs.word;
+  }
+  if (['ppt', 'pptx', 'odp'].includes(extension) || mediaType.includes('presentation')) {
+    return attachmentIconSvgs.powerpoint;
+  }
+  return attachmentIconSvgs.document;
+}
 
 function formatFileSize(size: number): string {
   if (size < 1024) return `${size} B`;
   return `${(size / 1024).toFixed(size < 10 * 1024 ? 1 : 0)} KB`;
+}
+
+function formatVoiceDuration(durationSeconds: number): string {
+  const minutes = Math.floor(durationSeconds / 60).toString().padStart(2, '0');
+  const seconds = (durationSeconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${seconds}`;
+}
+
+function buildVoiceWaveformPeaks(samples: number[], peakCount = 40): number[] {
+  if (!samples.length) return Array(peakCount).fill(0.08);
+  return Array.from({ length: peakCount }, (_, index) => {
+    const start = Math.floor(index * samples.length / peakCount);
+    const end = Math.max(start + 1, Math.floor((index + 1) * samples.length / peakCount));
+    return Math.max(0.08, ...samples.slice(start, end));
+  });
+}
+
+function getSafeAttachmentName(fileName: string): string {
+  const safeName = fileName.replace(/[\\/:*?"<>|\u0000-\u001F]/g, '_').trim();
+  return safeName && safeName !== '.' && safeName !== '..' ? safeName : 'attachment';
+}
+
+function getAttachmentBase64Data(attachment: MessageAttachment): string {
+  const match = attachment.data.match(/^data:[^,]*;base64,([A-Za-z0-9+/]*={0,2})$/);
+  if (!match) throw new Error('This attachment has an invalid file payload.');
+  return match[1];
+}
+
+async function writeAttachmentToDirectory(
+  directory: Directory,
+  attachment: MessageAttachment,
+): Promise<File> {
+  const originalName = getSafeAttachmentName(attachment.fileName);
+  const extensionIndex = originalName.lastIndexOf('.');
+  const basename = extensionIndex > 0 ? originalName.slice(0, extensionIndex) : originalName;
+  const extension = extensionIndex > 0 ? originalName.slice(extensionIndex) : '';
+  let name = originalName;
+  let suffix = 2;
+  while (new File(directory, name).exists) {
+    name = `${basename} (${suffix})${extension}`;
+    suffix += 1;
+  }
+
+  const file = directory.createFile(name, attachment.mediaType || 'application/octet-stream');
+  await file.write(getAttachmentBase64Data(attachment), { encoding: 'base64' });
+  return file;
 }
 
 function getConversationTitle(conversation: Conversation, currentUid: string): string {
@@ -125,6 +214,11 @@ function ParticipantAvatar({
 
 export default function MessagesScreen() {
   const insets = useSafeAreaInsets();
+  const audioRecorder = useAudioRecorder({
+    ...RecordingPresets.HIGH_QUALITY,
+    isMeteringEnabled: true,
+  });
+  const recorderState = useAudioRecorderState(audioRecorder);
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -147,6 +241,7 @@ export default function MessagesScreen() {
   const [selectedMemberUids, setSelectedMemberUids] = useState<string[]>([]);
   const [creatingConversation, setCreatingConversation] = useState(false);
   const [actionMessage, setActionMessage] = useState<Message | null>(null);
+  const [savingAttachmentKey, setSavingAttachmentKey] = useState<string | null>(null);
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [forwardTarget, setForwardTarget] = useState<Message | null>(null);
@@ -155,6 +250,10 @@ export default function MessagesScreen() {
   const [loadingCallHistory, setLoadingCallHistory] = useState(false);
   const [selectedAttachments, setSelectedAttachments] = useState<MessageAttachment[]>([]);
   const [pickingAttachment, setPickingAttachment] = useState(false);
+  const [voiceNoteBusy, setVoiceNoteBusy] = useState(false);
+  const [voiceRecordingSession, setVoiceRecordingSession] = useState(false);
+  const [voiceRecordingPaused, setVoiceRecordingPaused] = useState(false);
+  const [voiceWaveformLevels, setVoiceWaveformLevels] = useState<number[]>(() => Array(40).fill(0.08));
   const currentUserId = user?.uid || '';
 
   const realtimeRef = useRef<MessagesRealtime | null>(null);
@@ -164,9 +263,24 @@ export default function MessagesScreen() {
   const cursorRef = useRef<string | null>(null);
   const loadingOlderRef = useRef(false);
   const activeLoadId = useRef(0);
+  const voiceRecordingSamples = useRef<number[]>([]);
 
   conversationsRef.current = conversations;
   selectedConversationIdRef.current = selectedConversationId;
+
+  useEffect(() => {
+    const metering = recorderState.metering;
+    if (!voiceRecordingSession || voiceRecordingPaused || !recorderState.isRecording ||
+        typeof metering !== 'number' || !Number.isFinite(metering)) return;
+    const level = Math.max(0.08, Math.min(1, (metering + 60) / 60));
+    voiceRecordingSamples.current.push(level);
+    setVoiceWaveformLevels((current) => [...current.slice(1), level]);
+  }, [
+    recorderState.isRecording,
+    recorderState.metering,
+    voiceRecordingPaused,
+    voiceRecordingSession,
+  ]);
 
   const handleApiError = useCallback(async (cause: unknown, fallback: string) => {
     const message = cause instanceof Error ? cause.message : fallback;
@@ -523,7 +637,8 @@ export default function MessagesScreen() {
   };
 
   const handlePickAttachment = async () => {
-    if (Platform.OS === 'web' || pickingAttachment || sending || editingMessageId) return;
+    if (Platform.OS === 'web' || pickingAttachment || sending || editingMessageId ||
+        voiceNoteBusy || recorderState.isRecording) return;
     setPickingAttachment(true);
     setError('');
     try {
@@ -568,11 +683,136 @@ export default function MessagesScreen() {
     }
   };
 
-  const handleSend = async () => {
+  const handleVoiceNotePress = async () => {
+    if (voiceNoteBusy || sending || pickingAttachment || editingMessageId ||
+        voiceRecordingSession) return;
+    if (selectedAttachments.length >= maxMessageAttachments) {
+      setError(`You can attach up to ${maxMessageAttachments} files to a message.`);
+      return;
+    }
+    setVoiceNoteBusy(true);
+    setError('');
+    try {
+      const permission = await AudioModule.requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        setError('Allow microphone access to record a voice note.');
+        return;
+      }
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await audioRecorder.prepareToRecordAsync();
+      voiceRecordingSamples.current = [];
+      setVoiceWaveformLevels(Array(40).fill(0.08));
+      setVoiceRecordingPaused(false);
+      setVoiceRecordingSession(true);
+      audioRecorder.record({ forDuration: 3600 });
+    } catch (cause) {
+      console.error('Unable to record voice note:', cause);
+      setVoiceRecordingSession(false);
+      setError(cause instanceof Error
+        ? `The voice note could not be recorded: ${cause.message}`
+        : 'The voice note could not be recorded.');
+      if (!recorderState.isRecording) {
+        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch((modeError) => {
+          console.error('Unable to reset audio mode after recording error:', modeError);
+        });
+      }
+    } finally {
+      setVoiceNoteBusy(false);
+    }
+  };
+
+  const toggleVoiceRecordingPause = () => {
+    if (!voiceRecordingSession || voiceNoteBusy) return;
+    try {
+      if (voiceRecordingPaused) {
+        audioRecorder.record({ forDuration: 3600 });
+        setVoiceRecordingPaused(false);
+      } else {
+        audioRecorder.pause();
+        setVoiceRecordingPaused(true);
+      }
+    } catch (cause) {
+      console.error('Unable to change voice recording state:', cause);
+      setError(cause instanceof Error ? cause.message : 'The recording could not be paused or resumed.');
+    }
+  };
+
+  const finishVoiceRecording = async (discard: boolean) => {
+    if (!voiceRecordingSession || voiceNoteBusy) return;
+    setVoiceNoteBusy(true);
+    setError('');
+    try {
+      const durationSeconds = Math.max(1, Math.ceil(recorderState.durationMillis / 1000));
+      if (recorderState.isRecording || voiceRecordingPaused) await audioRecorder.stop();
+      setVoiceRecordingSession(false);
+      setVoiceRecordingPaused(false);
+      try {
+        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      } catch (modeError) {
+        console.error('Unable to reset audio mode after recording:', modeError);
+        setError('The recording finished, but audio settings could not be restored.');
+      }
+
+      const uri = audioRecorder.uri;
+      if (!uri) throw new Error('The voice note could not be saved.');
+      const file = new File(uri);
+      if (discard) {
+        file.delete();
+        voiceRecordingSamples.current = [];
+        setVoiceWaveformLevels(Array(40).fill(0.08));
+        return;
+      }
+
+      const size = file.size;
+      const queuedBytes = selectedAttachments.reduce((total, attachment) => total + attachment.size, 0);
+      if (!Number.isSafeInteger(size) || size <= 0) {
+        file.delete();
+        throw new Error('The voice note was empty or could not be read.');
+      }
+      if (selectedAttachments.length >= maxMessageAttachments) {
+        file.delete();
+        throw new Error(`You can attach up to ${maxMessageAttachments} files to a message.`);
+      }
+      if (queuedBytes + size > maxMessageAttachmentBytes) {
+        file.delete();
+        throw new Error('Attachments must total 200 MB or less per message.');
+      }
+
+      const data = await file.base64();
+      if (!data) {
+        file.delete();
+        throw new Error('The voice note could not be read.');
+      }
+      const mediaType = 'audio/mp4';
+      const voiceNote: MessageAttachment = {
+        fileName: `voice-note-${durationSeconds}s-${Date.now()}.m4a`,
+        mediaType,
+        size,
+        data: `data:${mediaType};base64,${data}`,
+        is_voice_note: true,
+        duration_seconds: durationSeconds,
+        waveform_peaks: buildVoiceWaveformPeaks(voiceRecordingSamples.current),
+      };
+      voiceRecordingSamples.current = [];
+      setVoiceWaveformLevels(Array(40).fill(0.08));
+      setVoiceNoteBusy(false);
+      await handleSend([...selectedAttachments, voiceNote]);
+    } catch (cause) {
+      console.error(discard ? 'Unable to discard voice note:' : 'Unable to finish voice note:', cause);
+      setVoiceRecordingSession(false);
+      setVoiceRecordingPaused(false);
+      setError(cause instanceof Error ? cause.message : 'The voice note could not be finished.');
+    } finally {
+      setVoiceNoteBusy(false);
+    }
+  };
+
+  const handleSend = async (attachmentsOverride?: MessageAttachment[]) => {
     const body = draft.trim();
-    const attachments = selectedAttachments;
+    const attachments = attachmentsOverride ?? selectedAttachments;
     const conversationId = selectedConversationIdRef.current;
-    if ((!body && attachments.length === 0) || !conversationId || sending || pickingAttachment) return;
+    if ((!body && attachments.length === 0) || !conversationId || sending || pickingAttachment ||
+        (voiceNoteBusy && !attachmentsOverride) || (recorderState.isRecording && !attachmentsOverride)) return;
     if (body.length > 5000) {
       setError('Messages can contain at most 5,000 characters.');
       return;
@@ -639,6 +879,7 @@ export default function MessagesScreen() {
     } catch (cause) {
       setMessages((current) => current.filter((message) => message.clientMessageId !== clientMessageId));
       setDraft(body);
+      setSelectedAttachments(attachments);
       setConversations((current) => current.map((conversation) =>
         conversation.id === conversationId
           ? { ...conversation, latestMessage: 'Message failed to send' }
@@ -661,6 +902,44 @@ export default function MessagesScreen() {
       await loadThread(message.conversationId);
     } catch (cause) {
       await handleApiError(cause, 'The message action could not be completed.');
+    }
+  };
+
+  const handleAttachmentFileAction = async (
+    attachment: MessageAttachment,
+    action: 'download' | 'saveAs',
+    key: string,
+  ) => {
+    if (savingAttachmentKey) return;
+    setSavingAttachmentKey(key);
+    setActionMessage(null);
+    try {
+      let file: File;
+      if (action === 'download') {
+        const downloadsDirectory = new Directory(Paths.document, 'Downloads');
+        if (!downloadsDirectory.exists) downloadsDirectory.create({ intermediates: true });
+        file = await writeAttachmentToDirectory(downloadsDirectory, attachment);
+        Alert.alert('Download complete', `${attachment.fileName} was saved to the app's Downloads.`);
+      } else if (Platform.OS === 'android') {
+        const directory = await Directory.pickDirectoryAsync();
+        file = await writeAttachmentToDirectory(directory, attachment);
+        Alert.alert('File saved', `${attachment.fileName} was saved to the selected folder.`);
+      } else if (Platform.OS === 'ios') {
+        const previewDirectory = new Directory(Paths.cache, 'message-attachments');
+        if (!previewDirectory.exists) previewDirectory.create({ intermediates: true });
+        file = await writeAttachmentToDirectory(previewDirectory, attachment);
+        await file.preview({ title: attachment.fileName, mimeType: attachment.mediaType });
+      } else {
+        throw new Error('Saving attachments is only available in the mobile app.');
+      }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Please try again.';
+      Alert.alert(
+        action === 'download' ? 'Download failed' : 'Save as failed',
+        message || 'Please try again.',
+      );
+    } finally {
+      setSavingAttachmentKey(null);
     }
   };
 
@@ -790,18 +1069,22 @@ export default function MessagesScreen() {
                     resizeMode="cover"
                     style={styles.messageAttachmentImage}
                   />
-                  <Text numberOfLines={1} style={styles.messageAttachmentName}>
-                    {attachment.fileName} · {formatFileSize(attachment.size)}
-                  </Text>
+                  <View style={styles.attachmentCaption}>
+                    <SvgXml xml={getAttachmentIconXml(attachment)} width={24} height={24} />
+                    <Text numberOfLines={1} style={styles.messageAttachmentName}>
+                      {attachment.fileName} · {formatFileSize(attachment.size)}
+                    </Text>
+                  </View>
                 </View>
               ) : (
-                <View key={`${attachment.fileName}-${index}`} style={styles.messageAttachmentFile}>
-                  <Text style={styles.attachmentFileIcon}>▤</Text>
-                  <View style={styles.attachmentFileCopy}>
+                <View key={`${attachment.fileName}-${index}`} style={styles.messageAttachment}>
+                  <View style={styles.messageAttachmentDocumentPreview}>
+                    <SvgXml xml={getAttachmentIconXml(attachment)} width={48} height={48} />
+                  </View>
+                  <View style={styles.attachmentCaption}>
                     <Text numberOfLines={1} style={styles.messageAttachmentName}>
-                      {attachment.fileName}
+                      {attachment.fileName} · {formatFileSize(attachment.size)}
                     </Text>
-                    <Text style={styles.attachmentFileSize}>{formatFileSize(attachment.size)}</Text>
                   </View>
                 </View>
               )
@@ -1085,44 +1368,6 @@ export default function MessagesScreen() {
                     pressed && styles.pressed,
                   ]}>
                   {section.id === 'messages' && (
-                    <Svg style={styles.bottomNavIcon} width={24} height={24} viewBox="0 0 48 48">
-                      <Path
-                        d="M40.5 9.3h-33a3 3 0 0 0-3 3v20a3 3 0 0 0 3 3h1.64v7.4l8.26-7.4h23.1a3 3 0 0 0 3-3v-20a3 3 0 0 0-3-3"
-                        fill="none"
-                        stroke={selected ? '#242424' : '#77777F'}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <Circle
-                        cx={24}
-                        cy={22.3}
-                        r={3.25}
-                        fill="none"
-                        stroke={selected ? '#242424' : '#77777F'}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <Circle
-                        cx={14}
-                        cy={22.3}
-                        r={3.25}
-                        fill="none"
-                        stroke={selected ? '#242424' : '#77777F'}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <Circle
-                        cx={34}
-                        cy={22.3}
-                        r={3.25}
-                        fill="none"
-                        stroke={selected ? '#242424' : '#77777F'}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </Svg>
-                  )}
-                  {section.id === 'channels' && (
                     <Svg style={styles.bottomNavIcon} width={24} height={24} viewBox="0 0 24 24">
                       <Path
                         fill={selected ? '#242424' : '#77777F'}
@@ -1131,6 +1376,14 @@ export default function MessagesScreen() {
                       <Path
                         fill={selected ? '#242424' : '#77777F'}
                         d="M5.138 8.779a1.49 1.49 0 0 0 1.35-2.64c-1.43-.85-3.45 1.87-1.35 2.64m1.37 3.391c-1.43-.84-3.45 1.84-1.35 2.65a1.5 1.5 0 0 0 1.35-2.65M19.342 7.3c-.49-.06-1.87-.2-3.471-.29H12.9a40 40 0 0 0-3.462.32a.3.3 0 0 0 .03.6c.71 0 2 .12 3.441.18h2.94c1.591-.1 2.942-.1 3.432-.1a.34.34 0 0 0 .37-.31a.35.35 0 0 0-.31-.4m-.249 5.47H14.3c-.48 0-1 0-1.44.08c-1.631.13-3.002.3-3.322.31a.3.3 0 1 0 0 .601c.36 0 1.73.16 3.401.18h1.44c.44 0 1-.06 1.44-.1a78 78 0 0 0 3.352-.36a.34.34 0 1 0 0-.68z"
+                      />
+                    </Svg>
+                  )}
+                  {section.id === 'channels' && (
+                    <Svg style={styles.bottomNavIcon} width={24} height={24} viewBox="0 0 20 20">
+                      <Path
+                        fill={selected ? '#242424' : '#77777F'}
+                        d="M14.158 1.026a.5.5 0 0 1 .317.632l-.5 1.5a.5.5 0 0 1-.95-.316l.5-1.5a.5.5 0 0 1 .633-.316m3.697 1.828a.5.5 0 1 0-.708-.707l-2 2a.5.5 0 0 0 .707.707zm-10.248.292a2 2 0 0 1 3.261-.515l6.587 6.98a2 2 0 0 1-.648 3.203L12.87 14.55A3.504 3.504 0 0 1 9.5 19a3.5 3.5 0 0 1-2.975-1.655l-1.2.529a1.5 1.5 0 0 1-1.661-.308l-1.222-1.21a1.5 1.5 0 0 1-.299-1.71zm-.154 13.789a2.5 2.5 0 0 0 4.488-1.977zm2.688-13.617a1 1 0 0 0-1.63.257l-5.465 11.5a.5.5 0 0 0 .1.569l1.222 1.211a.5.5 0 0 0 .553.102L16.403 11.9a1 1 0 0 0 .325-1.601zM17 6a.5.5 0 0 0 0 1h1.5a.5.5 0 1 0 0-1z"
                       />
                     </Svg>
                   )}
@@ -1200,7 +1453,7 @@ export default function MessagesScreen() {
               />
             )}
           <View style={styles.composer}>
-            {(replyTarget || editingMessageId) && (
+            {(replyTarget || editingMessageId) && !voiceRecordingSession && (
               <View style={styles.composerContext}>
                 <View style={styles.composerContextText}>
                   <Text style={styles.composerContextTitle}>
@@ -1224,13 +1477,85 @@ export default function MessagesScreen() {
                 </Pressable>
               </View>
             )}
+            {voiceRecordingSession ? (
+              <View style={styles.recordingPanel}>
+                <View style={styles.recordingHeading}>
+                  <View style={[
+                    styles.recordingIndicator,
+                    voiceRecordingPaused && styles.recordingIndicatorPaused,
+                  ]} />
+                  <Text style={styles.recordingHeadingText}>
+                    {voiceRecordingPaused ? 'Recording paused' : 'Recording voice note'}
+                  </Text>
+                  <Text style={styles.recordingTime}>
+                    {formatVoiceDuration(Math.floor(recorderState.durationMillis / 1000))}
+                  </Text>
+                </View>
+                <View style={styles.recordingWaveform} accessibilityLabel="Voice recording waveform">
+                  {voiceWaveformLevels.map((level, index) => (
+                    <View
+                      key={index}
+                      style={[styles.recordingWaveformBar, { height: 4 + level * 36 }]}
+                    />
+                  ))}
+                </View>
+                <View style={styles.recordingActions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Discard voice note"
+                    disabled={voiceNoteBusy}
+                    onPress={() => { void finishVoiceRecording(true); }}
+                    style={({ pressed }) => [styles.recordingDiscardButton, pressed && styles.pressed]}>
+                    {voiceNoteBusy
+                      ? <ActivityIndicator size="small" color="#D64252" />
+                      : <Text style={styles.recordingDiscardIcon}>×</Text>}
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={voiceRecordingPaused ? 'Resume voice recording' : 'Pause voice recording'}
+                    disabled={voiceNoteBusy}
+                    onPress={toggleVoiceRecordingPause}
+                    style={({ pressed }) => [styles.recordingPauseButton, pressed && styles.pressed]}>
+                    <Text style={styles.recordingPauseIcon}>{voiceRecordingPaused ? '▶' : 'Ⅱ'}</Text>
+                    <Text style={styles.recordingPauseText}>{voiceRecordingPaused ? 'Resume' : 'Pause'}</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Send voice note"
+                    disabled={voiceNoteBusy || sending}
+                    onPress={() => { void finishVoiceRecording(false); }}
+                    style={({ pressed }) => [styles.recordingSendButton, pressed && styles.pressed]}>
+                    {voiceNoteBusy
+                      ? <ActivityIndicator size="small" color="#FFFFFF" />
+                      : (
+                        <>
+                          <Svg width={18} height={18} viewBox="0 0 24 24">
+                            <Path
+                              d="m5 12 14-7-4 14-3-6-7-1Z M12 13l7-8"
+                              fill="none"
+                              stroke="#FFFFFF"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                            />
+                          </Svg>
+                          <Text style={styles.recordingSendText}>Send voice note</Text>
+                        </>
+                      )}
+                  </Pressable>
+                </View>
+              </View>
+            ) : (
+              <>
             <View style={styles.composerRow}>
               {!editingMessageId && Platform.OS !== 'web' && (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Attach a file"
-                  accessibilityState={{ disabled: sending || pickingAttachment }}
-                  disabled={sending || pickingAttachment}
+                  accessibilityState={{
+                    disabled: sending || pickingAttachment || voiceNoteBusy || recorderState.isRecording,
+                  }}
+                  disabled={sending || pickingAttachment || voiceNoteBusy || recorderState.isRecording}
                   onPress={() => { void handlePickAttachment(); }}
                   style={({ pressed }) => [
                     styles.attachButton,
@@ -1241,25 +1566,48 @@ export default function MessagesScreen() {
                     : <Text style={styles.attachButtonText}>+</Text>}
                 </Pressable>
               )}
-              <TextInput
-                accessibilityLabel="Write a message"
-                placeholder="Write a message…"
-                placeholderTextColor="#96969D"
-                value={draft}
-                onChangeText={setDraft}
-                multiline
-                maxLength={5000}
-                editable={!sending}
-                style={styles.composerInput}
-                onSubmitEditing={() => { void handleSend(); }}
-              />
+              <View style={styles.composerInputWrap}>
+                <TextInput
+                  accessibilityLabel="Write a message"
+                  placeholder="Write a message…"
+                  placeholderTextColor="#96969D"
+                  value={draft}
+                  onChangeText={setDraft}
+                  multiline
+                  maxLength={5000}
+                  editable={!sending}
+                  style={styles.composerInput}
+                  onSubmitEditing={() => { void handleSend(); }}
+                />
+                {!editingMessageId && Platform.OS !== 'web' && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Record a voice note"
+                    accessibilityState={{
+                      disabled: sending || pickingAttachment || voiceNoteBusy || selectedAttachments.length >= maxMessageAttachments,
+                      busy: voiceNoteBusy,
+                    }}
+                    disabled={sending || pickingAttachment || voiceNoteBusy || selectedAttachments.length >= maxMessageAttachments}
+                    onPress={() => { void handleVoiceNotePress(); }}
+                    style={({ pressed }) => [
+                      styles.voiceNoteButton,
+                        pressed && styles.pressed,
+                      ]}>
+                    {voiceNoteBusy
+                      ? <ActivityIndicator size="small" color="#242424" />
+                      : <SvgXml xml={voiceNoteIconSvg} width={18} height={18} />}
+                  </Pressable>
+                )}
+              </View>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={editingMessageId ? 'Save edited message' : 'Send message'}
                 accessibilityState={{
-                  disabled: !(draft.trim() || selectedAttachments.length) || sending || pickingAttachment,
+                  disabled: !(draft.trim() || selectedAttachments.length) || sending || pickingAttachment ||
+                    voiceNoteBusy || recorderState.isRecording,
                 }}
-                disabled={!(draft.trim() || selectedAttachments.length) || sending || pickingAttachment}
+                disabled={!(draft.trim() || selectedAttachments.length) || sending || pickingAttachment ||
+                  voiceNoteBusy || recorderState.isRecording}
                 onPress={() => { void handleSend(); }}
                 style={({ pressed }) => [
                   styles.sendButton,
@@ -1302,6 +1650,8 @@ export default function MessagesScreen() {
                   </View>
                 ))}
               </View>
+            )}
+              </>
             )}
           </View>
           </ImageBackground>
@@ -1436,74 +1786,112 @@ export default function MessagesScreen() {
         onRequestClose={() => setActionMessage(null)}>
         <Pressable style={styles.actionsBackdrop} onPress={() => setActionMessage(null)}>
           <Pressable style={styles.actionsModal} onPress={() => undefined}>
-            <Text style={styles.modalTitle}>Message actions</Text>
-            {actionMessage && (
-              <>
-                <Pressable style={styles.actionItem} onPress={() => {
-                  setReplyTarget(actionMessage);
-                  setEditingMessageId(null);
-                  setDraft('');
-                  setActionMessage(null);
-                }}>
-                  <Text style={styles.actionText}>Reply</Text>
-                </Pressable>
-                {actionMessage.senderUid === currentUserId && !actionMessage.deleted && (
+            <ScrollView style={styles.actionScroll}>
+              <Text style={styles.modalTitle}>Message actions</Text>
+              {actionMessage && (
+                <>
+                  {actionMessage.attachments.length > 0 && !actionMessage.deleted && (
+                    <>
+                      <Text style={styles.formLabel}>Attachments</Text>
+                      {actionMessage.attachments.map((attachment, index) => {
+                        const key = `${actionMessage.id}:${index}`;
+                        const isSaving = savingAttachmentKey === key;
+                        return (
+                          <View key={`${attachment.fileName}-${index}`} style={styles.attachmentAction}>
+                            <Text numberOfLines={1} style={styles.attachmentActionName}>
+                              {attachment.fileName}
+                            </Text>
+                            <View style={styles.attachmentActionButtons}>
+                              {(['download', 'saveAs'] as const).map((action) => (
+                                <Pressable
+                                  key={action}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`${action === 'download' ? 'Download' : 'Save as'} ${attachment.fileName}`}
+                                  disabled={Boolean(savingAttachmentKey)}
+                                  onPress={() => void handleAttachmentFileAction(attachment, action, key)}
+                                  style={[
+                                    styles.attachmentActionButton,
+                                    savingAttachmentKey && styles.attachmentActionButtonDisabled,
+                                  ]}>
+                                  <Text style={styles.attachmentActionButtonText}>
+                                    {isSaving
+                                      ? 'Saving…'
+                                      : action === 'download' ? 'Download' : 'Save as'}
+                                  </Text>
+                                </Pressable>
+                              ))}
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </>
+                  )}
                   <Pressable style={styles.actionItem} onPress={() => {
-                    setEditingMessageId(actionMessage.id);
-                    setReplyTarget(null);
-                    setDraft(actionMessage.body);
-                    setSelectedAttachments([]);
+                    setReplyTarget(actionMessage);
+                    setEditingMessageId(null);
+                    setDraft('');
                     setActionMessage(null);
                   }}>
-                    <Text style={styles.actionText}>Edit</Text>
+                    <Text style={styles.actionText}>Reply</Text>
                   </Pressable>
-                )}
-                {!actionMessage.deleted && (
-                  <>
-                    <Text style={styles.formLabel}>React</Text>
-                    <View style={styles.reactionChoices}>
-                      {['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄'].map((emoji) => (
+                  {actionMessage.senderUid === currentUserId && !actionMessage.deleted && (
+                    <Pressable style={styles.actionItem} onPress={() => {
+                      setEditingMessageId(actionMessage.id);
+                      setReplyTarget(null);
+                      setDraft(actionMessage.body);
+                      setSelectedAttachments([]);
+                      setActionMessage(null);
+                    }}>
+                      <Text style={styles.actionText}>Edit</Text>
+                    </Pressable>
+                  )}
+                  {!actionMessage.deleted && (
+                    <>
+                      <Text style={styles.formLabel}>React</Text>
+                      <View style={styles.reactionChoices}>
+                        {['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄'].map((emoji) => (
+                          <Pressable
+                            key={emoji}
+                            accessibilityRole="button"
+                            accessibilityLabel={`React with ${emoji}`}
+                            onPress={() => void runMessageAction(actionMessage, 'reaction', { emoji })}
+                            style={styles.reactionChoice}>
+                            <Text style={styles.reactionChoiceText}>{emoji}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                      {(['pin', 'decision'] as const).map((action) => (
                         <Pressable
-                          key={emoji}
-                          accessibilityRole="button"
-                          accessibilityLabel={`React with ${emoji}`}
-                          onPress={() => void runMessageAction(actionMessage, 'reaction', { emoji })}
-                          style={styles.reactionChoice}>
-                          <Text style={styles.reactionChoiceText}>{emoji}</Text>
+                          key={action}
+                          style={styles.actionItem}
+                          onPress={() => void runMessageAction(actionMessage, action)}>
+                          <Text style={styles.actionText}>
+                            {action === 'pin'
+                              ? actionMessage.pinned ? 'Unpin message' : 'Pin message'
+                              : actionMessage.isDecision ? 'Remove decision label' : 'Mark as decision'}
+                          </Text>
                         </Pressable>
                       ))}
-                    </View>
-                    {(['pin', 'decision'] as const).map((action) => (
-                      <Pressable
-                        key={action}
-                        style={styles.actionItem}
-                        onPress={() => void runMessageAction(actionMessage, action)}>
-                        <Text style={styles.actionText}>
-                          {action === 'pin'
-                            ? actionMessage.pinned ? 'Unpin message' : 'Pin message'
-                            : actionMessage.isDecision ? 'Remove decision label' : 'Mark as decision'}
-                        </Text>
+                      <Pressable style={styles.actionItem} onPress={() => {
+                        const target = actionMessage;
+                        setActionMessage(null);
+                        startConversationCreation('direct', target);
+                      }}>
+                        <Text style={styles.actionText}>Forward</Text>
                       </Pressable>
-                    ))}
-                    <Pressable style={styles.actionItem} onPress={() => {
-                      const target = actionMessage;
-                      setActionMessage(null);
-                      startConversationCreation('direct', target);
-                    }}>
-                      <Text style={styles.actionText}>Forward</Text>
-                    </Pressable>
-                  </>
-                )}
-                <Pressable style={styles.actionItem} onPress={() => void handleDeleteMessage(actionMessage, 'me')}>
-                  <Text style={styles.actionDanger}>Delete for me</Text>
-                </Pressable>
-                {actionMessage.senderUid === currentUserId && !actionMessage.deleted && (
-                  <Pressable style={styles.actionItem} onPress={() => void handleDeleteMessage(actionMessage, 'everyone')}>
-                    <Text style={styles.actionDanger}>Delete for everyone</Text>
+                    </>
+                  )}
+                  <Pressable style={styles.actionItem} onPress={() => void handleDeleteMessage(actionMessage, 'me')}>
+                    <Text style={styles.actionDanger}>Delete for me</Text>
                   </Pressable>
-                )}
-              </>
-            )}
+                  {actionMessage.senderUid === currentUserId && !actionMessage.deleted && (
+                    <Pressable style={styles.actionItem} onPress={() => void handleDeleteMessage(actionMessage, 'everyone')}>
+                      <Text style={styles.actionDanger}>Delete for everyone</Text>
+                    </Pressable>
+                  )}
+                </>
+              )}
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1666,7 +2054,12 @@ const styles = StyleSheet.create({
   messageRowOwn: { justifyContent: 'flex-start', flexDirection: 'row-reverse' },
   messageRowOther: { justifyContent: 'flex-start' },
   messageContent: { maxWidth: '82%' },
-  messageBubble: { maxWidth: '100%', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 16 },
+  messageBubble: {
+    maxWidth: '100%',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 16,
+  },
   messageBubbleOwn: { backgroundColor: '#000000', borderBottomRightRadius: 5 },
   messageBubbleOther: { backgroundColor: '#000000', borderBottomLeftRadius: 5 },
   messageMarker: { marginBottom: 4, color: '#88888F', fontSize: 10, fontWeight: '600' },
@@ -1684,19 +2077,16 @@ const styles = StyleSheet.create({
   messageBodyOwn: { color: '#FFFFFF' },
   messageAttachment: { marginTop: 7 },
   messageAttachmentImage: { width: 200, height: 150, borderRadius: 8, backgroundColor: '#343434' },
-  messageAttachmentName: { flex: 1, color: '#FFFFFF', fontSize: 11 },
-  messageAttachmentFile: {
-    flexDirection: 'row',
+  messageAttachmentDocumentPreview: {
+    width: 200,
+    height: 150,
     alignItems: 'center',
-    gap: 9,
-    marginTop: 7,
-    padding: 9,
+    justifyContent: 'center',
     borderRadius: 8,
-    backgroundColor: '#242424',
+    backgroundColor: '#343434',
   },
-  attachmentFileIcon: { color: '#F5B800', fontSize: 22 },
-  attachmentFileCopy: { flex: 1 },
-  attachmentFileSize: { marginTop: 2, color: '#D5D5D5', fontSize: 10 },
+  messageAttachmentName: { flex: 1, flexShrink: 1, color: '#FFFFFF', fontSize: 11 },
+  attachmentCaption: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4 },
   messageMeta: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4 },
   reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 5 },
   reactionChip: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 12, backgroundColor: '#F1F1F2' },
@@ -1714,6 +2104,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  composerInputWrap: { flex: 1, minHeight: 42, maxHeight: 120, justifyContent: 'center' },
   attachButton: {
     width: 42,
     height: 42,
@@ -1723,6 +2114,93 @@ const styles = StyleSheet.create({
     backgroundColor: '#242424',
   },
   attachButtonText: { marginTop: -2, color: '#FFFFFF', fontSize: 29, lineHeight: 34 },
+  voiceNoteButton: {
+    position: 'absolute',
+    right: 7,
+    bottom: 5,
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  recordingPanel: {
+    gap: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#D5E4DC',
+    borderRadius: 14,
+    backgroundColor: '#F4F8F5',
+    shadowColor: '#1B4639',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  recordingHeading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  recordingIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E5484D',
+  },
+  recordingIndicatorPaused: { backgroundColor: '#E8A23A' },
+  recordingHeadingText: { color: '#4B5E56', fontSize: 12, fontWeight: '700' },
+  recordingTime: {
+    marginLeft: 'auto',
+    color: '#222B27',
+    fontSize: 15,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  recordingWaveform: {
+    height: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 3,
+    overflow: 'hidden',
+  },
+  recordingWaveformBar: {
+    minWidth: 2,
+    flex: 1,
+    borderRadius: 99,
+    backgroundColor: '#91A39A',
+  },
+  recordingActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  recordingDiscardButton: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 21,
+    backgroundColor: '#FBE9EB',
+  },
+  recordingDiscardIcon: { color: '#D64252', fontSize: 28, lineHeight: 32 },
+  recordingPauseButton: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: '#E6EFEA',
+  },
+  recordingPauseIcon: { color: '#287B6E', fontSize: 17, fontWeight: '800' },
+  recordingPauseText: { color: '#287B6E', fontSize: 12, fontWeight: '700' },
+  recordingSendButton: {
+    minHeight: 42,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: '#1DAA72',
+  },
+  recordingSendText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   stagedAttachments: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   stagedAttachment: {
     maxWidth: '100%',
@@ -1754,6 +2232,7 @@ const styles = StyleSheet.create({
     maxHeight: 120,
     minHeight: 42,
     paddingHorizontal: 14,
+    paddingRight: 42,
     paddingTop: 11,
     paddingBottom: 9,
     borderRadius: 18,
@@ -1844,6 +2323,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     maxWidth: 420,
+    maxHeight: '90%',
     padding: 18,
     borderWidth: 1,
     borderColor: '#D4D4D8',
@@ -1855,9 +2335,23 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     elevation: 8,
   },
+  actionScroll: { flexGrow: 0 },
   actionItem: { minHeight: 42, justifyContent: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E4E4E7' },
   actionText: { color: '#29292D', fontSize: 13, fontWeight: '600' },
   actionDanger: { color: '#B42318', fontSize: 13, fontWeight: '700' },
+  attachmentAction: { paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E4E4E7' },
+  attachmentActionName: { color: '#29292D', fontSize: 12, fontWeight: '600' },
+  attachmentActionButtons: { flexDirection: 'row', gap: 8, marginTop: 7 },
+  attachmentActionButton: {
+    flex: 1,
+    minHeight: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 7,
+    backgroundColor: '#F1F1F3',
+  },
+  attachmentActionButtonDisabled: { opacity: 0.5 },
+  attachmentActionButtonText: { color: '#29292D', fontSize: 12, fontWeight: '700' },
   reactionChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
   reactionChoice: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 19, backgroundColor: '#F1F1F3' },
   reactionChoiceText: { fontSize: 20 },

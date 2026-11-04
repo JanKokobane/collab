@@ -220,7 +220,7 @@ const attachMessageSocket = server => {
         }
     });
 
-    io.on('connection', async socket => {
+    io.on('connection', socket => {
         const uid = socket.data.firebaseUid;
         let callSignalWindowStartedAt = Date.now();
         let callSignalCount = 0;
@@ -232,46 +232,6 @@ const attachMessageSocket = server => {
         userSockets.add(socket.id);
         socketsByUid.set(uid, userSockets);
         socket.join(userRoom(uid));
-        try {
-            await setPresence(uid, true);
-        } catch (error) {
-            console.error('Unable to set message presence online:', error.message);
-            socket.disconnect(true);
-            return;
-        }
-        try {
-            const pendingCallInvites = await query(
-                `SELECT call.call_id, call.conversation_id::text AS conversation_id,
-                        call.caller_uid, call.caller_name, call.callee_uid,
-                        call.callee_name, call.call_type, call.status,
-                        call.ring_expires_at,
-                        participant.firebase_uid AS invited_uid
-                 FROM message_call_participants participant
-                 JOIN message_calls call ON call.call_id = participant.call_id
-                 WHERE participant.firebase_uid = $1
-                   AND participant.status = 'ringing'
-                   AND call.status IN ('ringing', 'accepted')
-                   AND call.expires_at > NOW()
-                   AND (call.status <> 'ringing' OR call.ring_expires_at > NOW())
-                 ORDER BY participant.invited_at DESC
-                 LIMIT 10`,
-                [uid]
-            );
-            pendingCallInvites.rows.forEach(call => {
-                socket.emit('call:updated', {
-                    call: {
-                        ...call,
-                        callee_uid: call.invited_uid,
-                        added_participant: call.invited_uid !== call.callee_uid
-                    }
-                });
-            });
-        } catch (error) {
-            console.error('Unable to restore pending call invitations:', {
-                uid,
-                message: error.message
-            });
-        }
 
         socket.on('conversation:join', async (conversationId, acknowledge) => {
             const acknowledgeResult = typeof acknowledge === 'function' ? acknowledge : () => {};
@@ -483,6 +443,54 @@ const attachMessageSocket = server => {
                 console.error('Unable to set message presence offline:', error.message);
             }
         });
+
+        void (async () => {
+            try {
+                await setPresence(uid, true);
+                if (socket.disconnected) {
+                    if (!socketsByUid.get(uid)?.size) await setPresence(uid, false);
+                    return;
+                }
+            } catch (error) {
+                console.error('Unable to set message presence online:', error.message);
+                socket.disconnect(true);
+                return;
+            }
+
+            try {
+                const pendingCallInvites = await query(
+                    `SELECT call.call_id, call.conversation_id::text AS conversation_id,
+                            call.caller_uid, call.caller_name, call.callee_uid,
+                            call.callee_name, call.call_type, call.status,
+                            call.ring_expires_at,
+                            participant.firebase_uid AS invited_uid
+                     FROM message_call_participants participant
+                     JOIN message_calls call ON call.call_id = participant.call_id
+                     WHERE participant.firebase_uid = $1
+                       AND participant.status = 'ringing'
+                       AND call.status IN ('ringing', 'accepted')
+                       AND call.expires_at > NOW()
+                       AND (call.status <> 'ringing' OR call.ring_expires_at > NOW())
+                     ORDER BY participant.invited_at DESC
+                     LIMIT 10`,
+                    [uid]
+                );
+                pendingCallInvites.rows.forEach(call => {
+                    socket.emit('call:updated', {
+                        call: {
+                            ...call,
+                            callee_uid: call.invited_uid,
+                            added_participant: call.invited_uid !== call.callee_uid
+                        }
+                    });
+                });
+            } catch (error) {
+                console.error('Unable to restore pending call invitations:', {
+                    uid,
+                    message: error.message
+                });
+            }
+        })();
     });
 
     return io;

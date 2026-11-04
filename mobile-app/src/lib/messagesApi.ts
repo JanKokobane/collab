@@ -44,6 +44,8 @@ export interface MessageAttachment {
   size: number;
   data: string;
   is_voice_note?: boolean;
+  duration_seconds?: number;
+  waveform_peaks?: number[];
 }
 
 export interface MessageReaction {

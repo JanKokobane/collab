@@ -27,6 +27,13 @@
     "plugins": [
       "expo-router",
       [
+        "./node_modules/expo-audio/app.plugin.js",
+        {
+          "microphonePermission": "Allow $(PRODUCT_NAME) to record voice messages.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#208AEF",
