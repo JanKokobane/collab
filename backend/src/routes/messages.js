@@ -14,6 +14,7 @@ const {
 } = require('../controllers/messageController');
 const {
     getCallHistory,
+    getUserCallHistory,
     startCall,
     updateCall,
     inviteCallParticipants,
@@ -48,6 +49,7 @@ router.delete('/conversations/:conversationId/messages', clearConversationMessag
 router.post('/conversations/:conversationId/read', markConversationRead);
 router.patch('/conversations/:conversationId/messages/:messageId/:action', mutateMessage);
 router.get('/conversations/:conversationId/calls', getCallHistory);
+router.get('/calls/history', getUserCallHistory);
 router.post('/conversations/:conversationId/calls', callStartRateLimit, startCall);
 router.post('/conversations/:conversationId/calls/:callId/invite', inviteCallParticipants);
 router.post('/conversations/:conversationId/calls/:callId/join', joinInvitedCall);

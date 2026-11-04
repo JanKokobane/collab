@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
-  ImageBackground,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -431,11 +431,22 @@ export default function AuthScreen() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" />
       <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ImageBackground
-          source={require('@/assets/images/loginBG.jpg')}
-          resizeMode="cover"
-          style={[styles.hero, { height: heroHeight + 29.4, marginBottom: -29.4 }]}
-          imageStyle={[styles.heroImage, { transform: [{ translateX: width * -0.01 }, { translateY: heroHeight * 0.029 }, { scaleX: 0.85 }, { scaleY: 0.9 }] }]}>
+        <View style={[styles.hero, { height: heroHeight + 29.4, marginBottom: -29.4 }]}>
+          <Image
+            source={require('@/assets/images/loginBG.jpg')}
+            resizeMode="cover"
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                transform: [
+                  { translateX: width * -0.01 },
+                  { translateY: heroHeight * 0.029 },
+                  { scaleX: 0.85 },
+                  { scaleY: 0.9 },
+                ],
+              },
+            ]}
+          />
           <View style={styles.heroOverlay}>
             <Animated.View
               style={[
@@ -459,7 +470,7 @@ export default function AuthScreen() {
               Build something{'\n'}brilliant, together.
             </Text>
           </View>
-        </ImageBackground>
+        </View>
 
         <View style={styles.authCard}>
           <ScrollView
@@ -580,7 +591,6 @@ const styles = StyleSheet.create({
   formScroll: { flex: 1, backgroundColor: 'transparent' },
   formScrollContent: { flexGrow: 1 },
   hero: { overflow: 'hidden', backgroundColor: '#FAF6E9' },
-  heroImage: { resizeMode: 'cover' },
   heroOverlay: { flex: 1, justifyContent: 'flex-start', alignItems: 'flex-start', paddingHorizontal: 22, paddingTop: 40, backgroundColor: 'rgba(250, 246, 233, 0.12)' },
   ideaBadge: {
     alignSelf: 'flex-start',

@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { router } from 'expo-router';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { firebaseAuth } from '@/lib/firebase';
@@ -81,7 +82,7 @@ export default function WorkspaceScreen() {
           setProfileImage(savedProfileImage);
         }
       } catch (error) {
-        console.error('Unable to load the signed-in user profile photo:', error);
+        console.warn('Unable to refresh the profile photo; keeping the Firebase photo if available.', error);
       }
     }
 
@@ -94,6 +95,7 @@ export default function WorkspaceScreen() {
   function selectSection(section: string) {
     setActiveSection(section);
     setMenuOpen(false);
+    if (section === 'Messages') router.push('/messages');
   }
 
   async function handleSignOut() {
@@ -130,14 +132,50 @@ export default function WorkspaceScreen() {
           accessibilityRole="button"
           accessibilityLabel="Open navigation menu"
           onPress={() => setMenuOpen(true)}
-          style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}>
-          <Text style={styles.menuButtonText}>☰</Text>
+          style={({ pressed }) => [styles.avatarButton, pressed && styles.pressed]}>
+          <ProfileAvatar uri={profileImage} initials={initials} style={styles.avatar} />
         </Pressable>
-        <View style={styles.topbarTitle}>
-          <Text style={styles.breadcrumb}>Workspace</Text>
-          <Text style={styles.currentSection}>{activeSection}</Text>
-        </View>
-        <ProfileAvatar uri={profileImage} initials={initials} style={styles.avatar} />
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Search workspace"
+          onPress={() => setMenuOpen(true)}
+          style={({ pressed }) => [styles.searchButton, pressed && styles.pressed]}>
+          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+            <Circle
+              cx={11.5}
+              cy={11.5}
+              r={9.5}
+              stroke="#71717A"
+              strokeWidth={1.5}
+              opacity={0.5}
+            />
+            <Path
+              d="M18.2173 18.2178L21.9999 22.0004"
+              stroke="#71717A"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+            />
+          </Svg>
+          <Text style={styles.searchText}>Search</Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Messages"
+          onPress={() => router.push('/messages')}
+          style={({ pressed }) => [styles.messageButton, pressed && styles.pressed]}>
+          <Svg width={36} height={36} viewBox="0 0 48 48" fill="none">
+            <Path
+              d="M5.5 38.741v-27.73a4.08 4.08 0 0 1 4.088-4.089h28.824a4.08 4.08 0 0 1 4.088 4.089v21.597a4.08 4.08 0 0 1-4.088 4.089H12.805L9.421 40.08C7.693 41.81 5.5 41.244 5.5 38.741m9.38-22.657h18.24M14.88 21.6h18.24m-18.24 5.517h11.184"
+              stroke="#29292D"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+            />
+          </Svg>
+          <View style={styles.messageBadge} />
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -327,17 +365,41 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E4E4E7',
     backgroundColor: '#FFFFFF',
   },
-  menuButton: {
+  avatarButton: {
     width: 42,
     height: 42,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 10,
+    marginRight: 10,
   },
-  menuButtonText: { color: '#29292D', fontSize: 24 },
-  topbarTitle: { flex: 1, marginLeft: 12 },
-  breadcrumb: { color: '#8A8A91', fontSize: 11 },
-  currentSection: { marginTop: 2, color: '#202024', fontSize: 15, fontWeight: '700' },
+  searchButton: {
+    flex: 1,
+    height: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    borderRadius: 19,
+    backgroundColor: '#F4F4F5',
+    marginHorizontal: 4,
+  },
+  searchText: { marginLeft: 8, color: '#71717A', fontSize: 13, fontWeight: '600' },
+  messageButton: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  messageBadge: {
+    position: 'absolute',
+    top: 7,
+    right: 7,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF4D4F',
+  },
   avatar: {
     width: 36,
     height: 36,
@@ -368,6 +430,7 @@ const styles = StyleSheet.create({
     width: '84%',
     maxWidth: 340,
     height: '100%',
+    flexDirection: 'column',
     paddingHorizontal: 16,
     backgroundColor: '#FFFFFF',
     borderRightWidth: 1,
@@ -410,7 +473,13 @@ const styles = StyleSheet.create({
   groupLabel: { color: '#A1A1AA', fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
   projectDot: { width: 9, height: 9, marginHorizontal: 6, borderRadius: 5 },
   secondaryGroup: { marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F0F0F2' },
-  accountArea: { paddingTop: 15, paddingBottom: 8, borderTopWidth: 1, borderTopColor: '#E4E4E7' },
+  accountArea: {
+    marginTop: 'auto',
+    paddingTop: 15,
+    paddingBottom: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E4E4E7',
+  },
   accountInfo: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 },
   accountAvatar: {
     width: 38,

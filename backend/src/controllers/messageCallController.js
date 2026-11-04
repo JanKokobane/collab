@@ -132,6 +132,36 @@ const getCallHistory = async (req, res) => {
     }
 };
 
+const getUserCallHistory = async (req, res) => {
+    const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 100, 1), 200);
+    try {
+        const result = await query(
+            `SELECT calls.call_id, calls.conversation_id::text AS conversation_id,
+                    calls.caller_uid, calls.caller_name, calls.callee_uid, calls.callee_name,
+                    calls.call_type, calls.status, calls.created_at, calls.accepted_at,
+                    calls.ended_at, calls.ended_by_uid, calls.ring_expires_at
+             FROM message_calls calls
+             JOIN message_conversations conversation
+               ON conversation.conversation_id = calls.conversation_id
+              AND conversation.conversation_type = 'direct'
+             JOIN message_conversation_members member
+               ON member.conversation_id = calls.conversation_id
+              AND member.firebase_uid = $1
+             LEFT JOIN message_conversation_user_state state
+               ON state.conversation_id = calls.conversation_id
+              AND state.firebase_uid = $1
+             WHERE (state.hidden_at IS NULL)
+               AND (state.calls_cleared_at IS NULL OR calls.created_at > state.calls_cleared_at)
+             ORDER BY calls.created_at DESC, calls.call_id DESC
+             LIMIT $2`,
+            [req.firebaseUid, limit]
+        );
+        return res.json({ success: true, data: { calls: result.rows } });
+    } catch (error) {
+        return responseError(res, error, 'Fetch user call history');
+    }
+};
+
 const startCall = async (req, res) => {
     const callType = req.body?.callType;
     if (!['audio', 'video'].includes(callType)) {
@@ -839,6 +869,7 @@ const updateCall = async (req, res) => {
 
 module.exports = {
     getCallHistory,
+    getUserCallHistory,
     startCall,
     updateCall,
     inviteCallParticipants,
