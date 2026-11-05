@@ -23,8 +23,9 @@ import { fetchConversations, MessagesApiError } from '@/lib/messagesApi';
 const primaryItems = [
   { label: 'Home', icon: '⌂' },
   { label: 'Meetings', icon: '▣' },
-  { label: 'Messages', icon: '▤' },
+  { label: 'Workspace', icon: '▦' },
   { label: 'Team Brainstorm', icon: '◎' },
+  { label: 'Notifications', icon: '♧' },
 ];
 
 const projects = [
@@ -225,7 +226,7 @@ export default function WorkspaceScreen() {
         </Text>
         <Text style={styles.description}>
           {activeSection === 'Home'
-            ? 'Your workspace navigation is ready. Choose a section from the menu to get started.'
+            ? 'Your workspace navigation is ready. Choose a section from the bottom navigation to get started.'
             : `${activeSection} is selected. Its mobile workspace tools can be added here next.`}
         </Text>
         <Pressable
@@ -235,6 +236,76 @@ export default function WorkspaceScreen() {
           <Text style={styles.openMenuButtonText}>Open navigation</Text>
         </Pressable>
       </ScrollView>
+
+      <View style={styles.bottomNavigation} accessibilityRole="tablist">
+        {primaryItems.map((item) => {
+          const selected = activeSection === item.label;
+          return (
+            <Pressable
+              key={item.label}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+              accessibilityLabel={item.label}
+              onPress={() => selectSection(item.label)}
+              style={({ pressed }) => [
+                styles.bottomNavigationItem,
+                selected && styles.bottomNavigationItemActive,
+                selected && styles.bottomNavigationItemSelected,
+                pressed && styles.pressed,
+              ]}>
+              {item.label === 'Home' ? (
+                <Svg width={selected ? 30 : 24} height={selected ? 30 : 24} viewBox="0 0 24 24">
+                  <Path
+                    fill={selected ? '#F5B800' : '#71717A'}
+                    d="M6 19h3v-6h6v6h3v-9l-6-4.5L6 10zm-2 2V9l8-6l8 6v12h-7v-6h-2v6zm8-8.75"
+                  />
+                </Svg>
+              ) : item.label === 'Meetings' ? (
+                <Svg width={selected ? 30 : 24} height={selected ? 30 : 24} viewBox="0 0 24 24">
+                  <Path
+                    fill={selected ? '#F5B800' : '#71717A'}
+                    d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2m0 14H5.17L4 17.17V4h16zm-6-5.4l3 2.4V7l-3 2.4V7H7v6h7z"
+                  />
+                </Svg>
+              ) : item.label === 'Notifications' ? (
+                <Svg width={selected ? 30 : 24} height={selected ? 30 : 24} viewBox="0 0 24 24">
+                  <Path
+                    fill={selected ? '#F5B800' : '#71717A'}
+                    d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22m7-6v-5a7 7 0 0 0-6-6.93V3a1 1 0 0 0-2 0v1.07A7 7 0 0 0 5 11v5l-2 2v1h18v-1z"
+                  />
+                </Svg>
+              ) : item.label === 'Workspace' ? (
+                <Svg width={selected ? 30 : 24} height={selected ? 30 : 24} viewBox="0 0 16 16">
+                  <Path
+                    fill={selected ? '#F5B800' : '#71717A'}
+                    d="M4 16s-1 0-1-1s1-4 5-4s5 3 5 4s-1 1-1 1zm4-5.95a2.5 2.5 0 1 0 0-5a2.5 2.5 0 0 0 0 5M2 1a2 2 0 0 0-2 2v9.5A1.5 1.5 0 0 0 1.5 14h.653a5.4 5.4 0 0 1 1.066-2H1V3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v9h-2.219c.554.654.89 1.373 1.066 2h.653a1.5 1.5 0 0 0 1.5-1.5V3a2 2 0 0 0-2-2z"
+                  />
+                </Svg>
+              ) : item.label === 'Team Brainstorm' ? (
+                <Svg width={selected ? 30 : 24} height={selected ? 30 : 24} viewBox="0 0 24 24">
+                  <Path
+                    fill={selected ? '#F5B800' : '#71717A'}
+                    d="M20 10c-.74 0-1.38.4-1.72 1H13V9h4c.55 0 1-.45 1-1V5.72c.6-.35 1-.98 1-1.72c0-1.1-.9-2-2-2s-2 .9-2 2c0 .74.4 1.38 1 1.72V7h-3V5c0-1.65-1.35-3-3-3c-1.3 0-2.41.83-2.83 2.01A3.51 3.51 0 0 0 4 7.5c0 .33.05.65.14.96C2.87 9.14 2 10.49 2 12c0 1.08.43 2.09 1.17 2.83c-.11.38-.17.77-.17 1.17c0 1.96 1.41 3.59 3.31 3.93C6.86 21.16 8.11 22 9.5 22c1.93 0 3.5-1.57 3.5-3.5V17h3v1.28c-.6.35-1 .98-1 1.72c0 1.1.9 2 2 2s2-.9 2-2c0-.74-.4-1.38-1-1.72V16c0-.55-.45-1-1-1h-4v-2h5.28c.35.6.98 1 1.72 1c1.1 0 2-.9 2-2s-.9-2-2-2"
+                  />
+                </Svg>
+              ) : (
+                <Text style={[
+                  styles.bottomNavigationIcon,
+                  selected && styles.bottomNavigationIconActive,
+                  selected && styles.bottomNavigationIconSelected,
+                ]}>
+                  {item.icon}
+                </Text>
+              )}
+              <Text
+                numberOfLines={2}
+                style={[styles.bottomNavigationLabel, selected && styles.bottomNavigationLabelActive]}>
+                {item.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
 
       <Modal
         visible={menuOpen}
@@ -269,18 +340,6 @@ export default function WorkspaceScreen() {
             </View>
 
             <ScrollView style={styles.menuScroll} contentContainerStyle={styles.menuContent}>
-              <View style={styles.navGroup}>
-                {primaryItems.map((item) => (
-                  <MenuItem
-                    key={item.label}
-                    icon={item.icon}
-                    label={item.label}
-                    active={activeSection === item.label}
-                    onPress={() => selectSection(item.label)}
-                  />
-                ))}
-              </View>
-
               <View style={styles.projectHeading}>
                 <Text style={styles.groupLabel}>PROJECTS</Text>
               </View>
@@ -468,6 +527,39 @@ const styles = StyleSheet.create({
     backgroundColor: '#212121',
   },
   openMenuButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  bottomNavigation: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingHorizontal: 4,
+    paddingTop: 6,
+    paddingBottom: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#E4E4E7',
+    backgroundColor: '#FFFFFF',
+  },
+  bottomNavigationItem: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    paddingHorizontal: 2,
+    borderRadius: 9,
+  },
+  bottomNavigationItemActive: { backgroundColor: 'transparent' },
+  bottomNavigationItemSelected: { transform: [{ scale: 1.2 }] },
+  bottomNavigationIcon: { color: '#71717A', fontSize: 18, lineHeight: 21 },
+  bottomNavigationIconActive: { color: '#F5B800' },
+  bottomNavigationIconSelected: { fontSize: 26, lineHeight: 29 },
+  bottomNavigationLabel: {
+    color: '#71717A',
+    fontSize: 9,
+    lineHeight: 10,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  bottomNavigationLabelActive: { color: '#F5B800', fontWeight: '800' },
   modalRoot: { flex: 1, flexDirection: 'row' },
   backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(24, 24, 27, 0.42)' },
   drawer: {

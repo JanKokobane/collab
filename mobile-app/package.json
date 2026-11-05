@@ -43,11 +43,16 @@
   },
   "scripts": {
     "start": "expo start",
+    "start:dev-client": "expo start --dev-client",
+    "build:android:development": "npx eas-cli@latest build --platform android --profile development",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint"
+  },
+  "engines": {
+    "node": ">=22.13.0"
   },
   "private": true
 }

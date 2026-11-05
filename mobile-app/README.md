@@ -55,11 +55,20 @@ Android remote push notifications do not work in Expo Go; install and open the
 custom development build instead:
 
 ```bash
-npx expo install expo-dev-client
+nvm install 22
+nvm use 22
+node --version
+npm ci
 npx eas-cli@latest login
-npx eas-cli@latest init
-npx eas-cli@latest build --platform android --profile development
+npm run build:android:development
 ```
+
+The app requires Node.js 22.13 or newer. `.nvmrc` selects Node 22 when using
+`nvm`. If `nvm` is not installed, install Node.js 22.13+ from
+[nodejs.org](https://nodejs.org/en/download/) and restart Terminal. If your
+terminal starts in Conda's `base` environment, run `conda deactivate` if
+`node --version` still reports v20 after `nvm use 22`. You do not need to run
+`npx expo run:android` for the cloud build.
 
 For cloud builds, EAS needs the Android config file but it should not be
 committed. In the Expo dashboard, open this project's **Environment variables**,
@@ -75,7 +84,7 @@ for this cloud build.
 For day-to-day JavaScript/TypeScript work, start Metro from `mobile-app/`:
 
 ```bash
-npx expo start --dev-client
+npm run start:dev-client
 ```
 
 Open the installed development app and connect it to the server (the phone and

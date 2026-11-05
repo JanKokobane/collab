@@ -72,6 +72,11 @@ const messageSections: { id: MessagesSection; label: string }[] = [
 const maxMessageAttachmentBytes = 200 * 1024 * 1024;
 const maxMessageAttachments = 10;
 const voiceNoteIconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="4"><rect width="14" height="27" x="17" y="4" rx="7"/><path stroke-linecap="round" d="M9 23c0 8.284 6.716 15 15 15s15-6.716 15-15M24 38v6"/></g></svg>';
+const callOptionsSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 40 40"><title>option</title><g fill="currentColor"><path d="M23.112 9.315a3.113 3.113 0 1 1-6.226.002a3.113 3.113 0 0 1 6.226-.002"/><circle cx="20" cy="19.999" r="3.112"/><circle cx="20" cy="30.685" r="3.112"/></g></svg>';
+const incomingAudioSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><title>phone-incoming-outline</title><path fill="currentColor" d="M20 15.5c-1.2 0-2.5-.2-3.6-.6h-.3c-.3 0-.5.1-.7.3l-2.2 2.2c-2.8-1.5-5.2-3.8-6.6-6.6l2.2-2.2c.3-.3.4-.7.2-1c-.3-1.1-.5-2.4-.5-3.6c0-.5-.5-1-1-1H4c-.5 0-1 .5-1 1c0 9.4 7.6 17 17 17c.5 0 1-.5 1-1v-3.5c0-.5-.5-1-1-1M5 5h1.5c.1.9.3 1.8.5 2.6L5.8 8.8C5.4 7.6 5.1 6.3 5 5m14 14c-1.3-.1-2.6-.4-3.8-.8l1.2-1.2c.8.2 1.7.4 2.6.4zm0-8V9.5h-3.5L21 4l-1-1l-5.5 5.5V5H13v6z"/></svg>';
+const outgoingAudioSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><title>phone-outgoing-outline</title><path fill="currentColor" d="M20 15.5c-1.2 0-2.5-.2-3.6-.6h-.3c-.3 0-.5.1-.7.3l-2.2 2.2c-2.8-1.5-5.2-3.8-6.6-6.6l2.2-2.2c.3-.3.4-.7.2-1c-.3-1.1-.5-2.4-.5-3.6c0-.5-.5-1-1-1H4c-.5 0-1 .5-1 1c0 9.4 7.6 17 17 17c.5 0 1-.5 1-1v-3.5c0-.5-.5-1-1-1M5 5h1.5c.1.9.3 1.8.5 2.6L5.8 8.8C5.4 7.6 5.1 6.3 5 5m14 14c-1.3-.1-2.6-.4-3.8-.8l1.2-1.2c.8.2 1.7.4 2.6.4zM15 3v1.5h3.5L13 10l1 1l5.5-5.5V9H21V3z"/></svg>';
+const missedVideoSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="#ef4444" d="m11.22 15.308l3.807-3.858l-.708-.708l-3.1 3.139l-3.43-3.42h2.269v-1h-4v4h1v-2.315z"/><path fill="#000000" d="M5.095 19q-.69 0-1.153-.462t-.462-1.153V6.615q0-.69.462-1.152T5.096 5h10.77q.69 0 1.152.463t.463 1.153v4.653l3.038-3.038v7.538l-3.038-3.038v4.654q0 .69-.463 1.153T15.866 19zm0-1h10.77q.269 0 .442-.173t.173-.442V6.615q0-.269-.173-.442T15.866 6H5.096q-.269 0-.442.173t-.173.443v10.769q0 .269.173.442t.442.173m-.615 0V6z"/></svg>';
+const incomingVideoSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><title>video-filled</title><g fill="currentColor"><path d="M20.117 7.625a1 1 0 0 0-.564.1L15 10v4l4.553 2.275A1 1 0 0 0 21 15.383V8.617a1 1 0 0 0-.883-.992"/><path d="M5 5C3.355 5 2 6.355 2 8v8c0 1.645 1.355 3 3 3h8c1.645 0 3-1.355 3-3V8c0-1.645-1.355-3-3-3z"/></g></svg>';
 const attachmentIconSvgs = {
   pdf: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="#ef5350" d="M13 9h5.5L13 3.5zM6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2m4.93 10.44c.41.9.93 1.64 1.53 2.15l.41.32c-.87.16-2.07.44-3.34.93l-.11.04l.5-1.04c.45-.87.78-1.66 1.01-2.4m6.48 3.81c.18-.18.27-.41.28-.66c.03-.2-.02-.39-.12-.55c-.29-.47-1.04-.69-2.28-.69l-1.29.07l-.87-.58c-.63-.52-1.2-1.43-1.6-2.56l.04-.14c.33-1.33.64-2.94-.02-3.6a.85.85 0 0 0-.61-.24h-.24c-.37 0-.7.39-.79.77c-.37 1.33-.15 2.06.22 3.27v.01c-.25.88-.57 1.9-1.08 2.93l-.96 1.8l-.89.49c-1.2.75-1.77 1.59-1.88 2.12c-.04.19-.02.36.05.54l.03.05l.48.31l.44.11c.81 0 1.73-.95 2.97-3.07l.18-.07c1.03-.33 2.31-.56 4.03-.75c1.03.51 2.24.74 3 .74c.44 0 .74-.11.91-.3m-.41-.71l.09.11c-.01.1-.04.11-.09.13h-.04l-.19.02c-.46 0-1.17-.19-1.9-.51c.09-.1.13-.1.23-.1c1.4 0 1.8.25 1.9.35M7.83 17c-.65 1.19-1.24 1.85-1.69 2c.05-.38.5-1.04 1.21-1.69zm3.02-6.91c-.23-.9-.24-1.63-.07-2.05l.07-.12l.15.05c.17.24.19.56.09 1.1l-.03.16l-.16.82z"/></svg>',
   word: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="#01579b" d="M6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2m7 1.5V9h5.5zM7 13l1.5 7h2l1.5-3l1.5 3h2l1.5-7h1v-2h-4v2h1l-.9 4.2L13 15h-2l-1.1 2.2L9 13h1v-2H6v2z"/></svg>',
@@ -315,6 +320,28 @@ function VoiceNotePlayer({ attachment }: { attachment: MessageAttachment }) {
   );
 }
 
+function CallStatusIcon({
+  type,
+  missed,
+  isOutgoing = false,
+}: {
+  type: 'audio' | 'video';
+  missed: boolean;
+  isOutgoing?: boolean;
+}) {
+  const xml = type === 'video'
+    ? (missed ? missedVideoSvg : incomingVideoSvg)
+    : (isOutgoing && !missed ? outgoingAudioSvg : incomingAudioSvg);
+  return (
+    <SvgXml
+      xml={xml}
+      width={30}
+      height={30}
+      color={missed ? '#FF2D2D' : '#000000'}
+    />
+  );
+}
+
 function getConversationTitle(conversation: Conversation, currentUid: string): string {
   if (conversation.type === 'channel') return `# ${conversation.name || 'Channel'}`;
   const others = conversation.participants.filter((member) => member.firebaseUid !== currentUid);
@@ -409,6 +436,7 @@ export default function MessagesScreen() {
   const [activeSection, setActiveSection] = useState<MessagesSection>('messages');
   const [callHistory, setCallHistory] = useState<CallHistoryItem[]>([]);
   const [loadingCallHistory, setLoadingCallHistory] = useState(false);
+  const [showCallMenu, setShowCallMenu] = useState(false);
   const [selectedAttachments, setSelectedAttachments] = useState<MessageAttachment[]>([]);
   const [pickingAttachment, setPickingAttachment] = useState(false);
   const [voiceNoteBusy, setVoiceNoteBusy] = useState(false);
@@ -416,6 +444,13 @@ export default function MessagesScreen() {
   const [voiceRecordingPaused, setVoiceRecordingPaused] = useState(false);
   const [voiceWaveformLevels, setVoiceWaveformLevels] = useState<number[]>(() => Array(40).fill(0.08));
   const currentUserId = user?.uid || '';
+
+  const clearCallLog = useCallback(() => {
+    setCallHistory((current) => current.filter((call) =>
+      call.callerUid !== currentUserId && call.calleeUid !== currentUserId,
+    ));
+    setShowCallMenu(false);
+  }, [currentUserId]);
 
   const realtimeRef = useRef<MessagesRealtime | null>(null);
   const joinedConversationIds = useRef(new Set<string>());
@@ -1312,6 +1347,14 @@ export default function MessagesScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" />
+      {showCallMenu && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close call options"
+          onPress={() => setShowCallMenu(false)}
+          style={styles.callMenuDismissArea}
+        />
+      )}
       <View style={styles.pageHeader}>
         <Pressable
           accessibilityRole="button"
@@ -1408,6 +1451,28 @@ export default function MessagesScreen() {
             </Pressable>
           </View>
         )}
+        {!selectedConversation && activeSection === 'calls' && (
+          <View style={styles.callMenuWrap}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open call options"
+              onPress={() => setShowCallMenu((current) => !current)}
+              style={({ pressed }) => [styles.callMenuButton, pressed && styles.pressed]}>
+              <SvgXml xml={callOptionsSvg} width={18} height={18} color="#242424" />
+            </Pressable>
+            {showCallMenu && (
+              <View style={styles.callMenu}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear call log"
+                  onPress={clearCallLog}
+                  style={({ pressed }) => [styles.callMenuItem, pressed && styles.callMenuItemPressed]}>
+                  <Text style={styles.callMenuText}>Clear call log</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        )}
         {!selectedConversation && activeSection !== 'calls' && (
           <Pressable
             accessibilityRole="button"
@@ -1474,15 +1539,17 @@ export default function MessagesScreen() {
                     <View style={styles.conversationCopy}>
                       <View style={styles.conversationTitleRow}>
                         <Text numberOfLines={1} style={styles.conversationTitle}>{peerName}</Text>
-                        <Text style={styles.conversationDate}>{formatConversationDate(item.createdAt)}</Text>
                       </View>
                       <Text style={[styles.conversationPreview, missed && styles.missedCall]}>
                         {missed ? 'Missed' : isCaller ? 'Outgoing' : 'Incoming'} {item.type} call
                       </Text>
+                      <Text style={styles.callConversationDate}>
+                        {formatConversationDate(item.createdAt)}
+                      </Text>
                     </View>
-                    <Text style={[styles.callTypeIcon, missed && styles.missedCall]}>
-                      {item.type === 'video' ? '▣' : '☎'}
-                    </Text>
+                    <View style={[styles.callTypeIcon, missed && styles.missedCall]}>
+                      <CallStatusIcon type={item.type} missed={missed} isOutgoing={isCaller} />
+                    </View>
                   </Pressable>
                 );
               }}
@@ -2178,6 +2245,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E4E4E7',
     backgroundColor: '#FFFFFF',
+    zIndex: 1001,
   },
   backButton: { width: 40, height: 44, alignItems: 'flex-start', justifyContent: 'center' },
   backButtonText: { color: '#26262A', fontSize: 34, lineHeight: 38 },
@@ -2260,8 +2328,44 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF4D4F',
   },
   bottomNavBadgeText: { color: '#FFFFFF', fontSize: 8, fontWeight: '800' },
-  callTypeIcon: { marginLeft: 8, color: '#287B6E', fontSize: 18 },
+  callTypeIcon: { marginLeft: 8, justifyContent: 'center', alignItems: 'center' },
   missedCall: { color: '#B42318' },
+  callMenuDismissArea: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1000,
+  },
+  callMenuWrap: { position: 'relative', marginLeft: 8, zIndex: 1002 },
+  callMenuButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F4F4F5',
+  },
+  callMenu: {
+    position: 'absolute',
+    top: 42,
+    right: 0,
+    minWidth: 170,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E4E4E7',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    zIndex: 1003,
+  },
+  callMenuItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  callMenuItemPressed: { backgroundColor: '#F4F4F5' },
+  callMenuText: { color: '#242424', fontSize: 14, fontWeight: '600' },
   conversationAvatar: {
     width: 46,
     height: 46,
@@ -2288,6 +2392,7 @@ const styles = StyleSheet.create({
   conversationTitleRow: { flexDirection: 'row', alignItems: 'center' },
   conversationTitle: { flex: 1, color: '#26262A', fontSize: 14, fontWeight: '700' },
   conversationDate: { marginLeft: 7, color: '#9999A0', fontSize: 10 },
+  callConversationDate: { marginTop: 4, color: '#9999A0', fontSize: 10 },
   conversationPreview: { marginTop: 5, color: '#797980', fontSize: 12 },
   unreadBadge: {
     minWidth: 20,
