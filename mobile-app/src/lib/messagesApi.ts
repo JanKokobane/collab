@@ -261,10 +261,12 @@ async function request<T>(
   }
   const payload = await response.json().catch(() => null) as ApiEnvelope<T> | null;
   if (!response.ok) {
+    const message = payload?.message || (response.status === 403
+      ? "You don't have permission to access this conversation."
+      : 'The messaging request could not be completed.');
+    const details = [payload?.code, `HTTP ${response.status}`].filter(Boolean).join(', ');
     throw new MessagesApiError(
-      payload?.message || (response.status === 403
-        ? "You don't have permission to access this conversation."
-        : 'The messaging request could not be completed.'),
+      `${message} (${details})`,
       response.status,
       payload?.code || null,
     );

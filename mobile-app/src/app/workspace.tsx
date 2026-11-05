@@ -98,15 +98,25 @@ export default function WorkspaceScreen() {
           process.env.EXPO_PUBLIC_API_BASE_URL || 'https://collab-y7pb.onrender.com'
         ).replace(/\/+$/, '');
         const token = await user.getIdToken();
-        const response = await fetch(`${baseUrl}/api/users/profile-image`, {
+        let response = await fetch(`${baseUrl}/api/users/profile-image`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
+        if (response.status === 401) {
+          response = await fetch(`${baseUrl}/api/users/profile-image`, {
+            headers: {
+              Authorization: `Bearer ${await user.getIdToken(true)}`,
+            },
+          });
+        }
         const payload = await response.json().catch(() => null);
 
         if (!response.ok) {
-          throw new Error(payload?.message || 'The profile photo could not be retrieved.');
+          const code = typeof payload?.code === 'string'
+            ? ` (${payload.code})`
+            : ` (HTTP ${response.status})`;
+          throw new Error(`${payload?.message || 'The profile photo could not be retrieved.'}${code}`);
         }
 
         const savedProfileImage = payload?.data?.profileImage;
