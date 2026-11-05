@@ -1,6 +1,7 @@
 import * as Application from 'expo-application';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
+import { isRunningInExpoGo } from 'expo';
 import { Platform } from 'react-native';
 import type { User } from 'firebase/auth';
 
@@ -41,10 +42,40 @@ export async function sendPushTokenToBackend(token: string, user: User): Promise
 export async function registerForPushNotificationsAsync(user: User): Promise<string | null> {
   if (Platform.OS !== 'android' || !Device.isDevice) return null;
 
-  await Notifications.setNotificationChannelAsync('default', {
-    name: 'Default',
-    importance: Notifications.AndroidImportance.HIGH,
-  });
+  if (isRunningInExpoGo()) {
+    console.warn(
+      'FCM push notifications on Android require a custom development build. ' +
+      'Run `npx expo run:android` and open the installed app instead of Expo Go.',
+    );
+    return null;
+  }
+
+  try {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Default',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'default',
+      vibrationPattern: [0, 250, 250, 250],
+      enableVibrate: true,
+      enableLights: false,
+      showBadge: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      audioAttributes: {
+        usage: Notifications.AndroidAudioUsage.NOTIFICATION,
+        contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+        flags: {
+          enforceAudibility: false,
+          requestHardwareAudioVideoSynchronization: false,
+        },
+      },
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      'Could not configure the Android notification channel. Rebuild the development app ' +
+      `with \`npx expo prebuild --platform android && npx expo run:android\`. ${detail}`,
+    );
+  }
 
   const { status: currentStatus } = await Notifications.getPermissionsAsync();
   const { status } = currentStatus === 'granted'
