@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { firebaseAuth, setUserPresence } from '@/lib/firebase';
+import { registerForPushNotificationsAsync } from '@/lib/pushNotifications';
 import { MessageCallProvider } from '@/contexts/MessageCallProvider';
 
 export default function AuthLayout() {
@@ -55,6 +56,11 @@ export default function AuthLayout() {
       }
       if (user && appState === 'active') {
         reportPresence(user, true);
+      }
+      if (user) {
+        registerForPushNotificationsAsync(user).catch((error) => {
+          console.error('Unable to register for push notifications:', error);
+        });
       }
     });
 

@@ -1,6 +1,7 @@
 const { createHash, randomUUID } = require('node:crypto');
 const { pool, query } = require('../config/db');
 const { emitToConversation, emitToUser, setPresence } = require('../realtime/messageSocket');
+const { sendPushNotification } = require('../services/pushNotificationService');
 
 const allowedReactions = new Set(['👍', '❤️', '😂', '🎉', '👀', '🙌', '🔥', '✅', '🤔', '😄']);
 const maxAttachments = 10;
@@ -8,6 +9,60 @@ const maxAttachmentBytes = 200 * 1024 * 1024;
 const attachmentDataUrlPattern = /^data:[^;,]+(?:;codecs=[^;,]+)?;base64,[a-zA-Z0-9+/=]+$/i;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const timestamp = value => value ? new Date(value).toISOString() : null;
+
+const notifyMessageRecipients = async (message, conversation, senderUid) => {
+    const recipients = await query(
+        `SELECT member.firebase_uid, member.push_token
+         FROM message_conversation_members conversation_member
+         JOIN user_push_tokens member
+           ON member.firebase_uid = conversation_member.firebase_uid
+         WHERE conversation_member.conversation_id = $1::uuid
+           AND conversation_member.firebase_uid <> $2`,
+        [message.conversation_id, senderUid]
+    );
+    if (!recipients.rowCount) return;
+
+    const title = conversation.conversation_type === 'direct'
+        ? message.sender_name
+        : conversation.name;
+    const content = message.body ||
+        (message.attachments?.some(attachment => attachment.is_voice_note)
+            ? 'Sent a voice message'
+            : message.attachments?.some(attachment => attachment.mediaType?.startsWith('image/'))
+                ? 'Sent a photo'
+                : message.attachments?.some(attachment => attachment.mediaType?.startsWith('video/'))
+                    ? 'Sent a video'
+                    : 'Sent an attachment');
+    const body = conversation.conversation_type === 'direct'
+        ? content.slice(0, 180)
+        : `${message.sender_name}: ${content}`.slice(0, 180);
+
+    await Promise.all(recipients.rows.map(({ firebase_uid: firebaseUid, push_token: pushToken }) =>
+        sendPushNotification(pushToken, title, body, {
+            type: 'message',
+            conversationId: message.conversation_id,
+            messageId: message.message_id,
+            senderId: senderUid
+        }).catch(error => {
+            console.error('Message push notification delivery failed.', {
+                firebaseUid,
+                conversationId: message.conversation_id,
+                errorName: error.name,
+                message: error.message
+            });
+        })
+    ));
+};
+
+const queueMessageNotification = (message, conversation, senderUid) => {
+    notifyMessageRecipients(message, conversation, senderUid).catch(error => {
+        console.error('Message push notification could not be prepared.', {
+            conversationId: message.conversation_id,
+            errorName: error.name,
+            message: error.message
+        });
+    });
+};
 
 const withTransaction = async callback => {
     const client = await pool.connect();
@@ -680,7 +735,7 @@ const createMessage = async (req, res) => {
                  WHERE conversation_id = $1::uuid`,
                 [conversation.conversation_id]
             );
-            return { message: row, duplicate: false };
+            return { message: row, conversation, duplicate: false };
         });
         if (result.error) return res.status(result.error === 'INVALID_REPLY' ? 400 : 404).json({
             success: false,
@@ -692,6 +747,7 @@ const createMessage = async (req, res) => {
         const message = makeMessage(result.message);
         if (!result.duplicate) {
             emitToConversation(message.conversation_id, 'message:created', { message });
+            queueMessageNotification(message, result.conversation, req.firebaseUid);
         }
         return res.status(result.duplicate ? 200 : 201).json({
             success: true, data: { messageId: message.message_id, message }

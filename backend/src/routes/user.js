@@ -8,6 +8,7 @@ const {
     saveProfileImage,
     searchUsers
 } = require('../controllers/userController');
+const { savePushToken } = require('../controllers/pushTokenController');
 const { requireFirebaseAuth } = require('../middleware/requireFirebaseAuth');
 
 const router = express.Router();
@@ -15,6 +16,7 @@ const router = express.Router();
 router.use(requireFirebaseAuth);
 router.get('/profile', getProfile);
 router.put('/profile', saveProfile);
+router.post('/push-token', savePushToken);
 router.get('/profile-image', getProfileImage);
 router.put('/profile-image', saveProfileImage);
 router.get('/members', getProjectMembers);

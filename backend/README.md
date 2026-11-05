@@ -11,9 +11,10 @@ Copy `.env.example` to `.env` for local development and set:
 - `DATABASE_URL`: PostgreSQL connection URL. Use a local database URL for
   development and Render's PostgreSQL URL in production.
 - `FIREBASE_PROJECT_ID`: project that signs the frontend's Firebase ID tokens.
-- Firebase Admin credentials through `GOOGLE_APPLICATION_CREDENTIALS`
-  (local) or Render's secret environment variables
-  (`FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY`).
+- Firebase Admin credentials through `FIREBASE_SERVICE_ACCOUNT_PATH` (defaults
+  to `backend/serviceAccountKey.json`), `GOOGLE_APPLICATION_CREDENTIALS`, or
+  the `FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY` environment variables.
+  Keep service-account JSON files backend-only and never commit them.
 - `CORS_ALLOWED_ORIGINS`: defaults to `*` so the frontend can be hosted on any
   domain. Set a comma-separated exact-origin allowlist to restrict browser
   access. CORS does not enable cookie credentials; API routes still require
@@ -81,6 +82,21 @@ Run `npm run migrate` to apply the numbered SQL files in `db/migrations/`.
 Startup also applies pending migrations before the HTTP server listens.
 Migrations run transactionally and use a PostgreSQL advisory lock so multiple
 server instances do not apply the same migration simultaneously.
+
+### Firebase push notifications
+
+The backend already depends on `firebase-admin`. For local development, put the
+Firebase service-account JSON at `backend/serviceAccountKey.json`, or set
+`FIREBASE_SERVICE_ACCOUNT_PATH` to its path (relative paths are resolved from
+the backend working directory). Alternatively, use the existing environment
+credentials. Never add the JSON file to source control.
+
+Migration `029_user_push_tokens.sql` creates the authenticated device-token
+table. The mobile app registers tokens at `POST /api/users/push-token`; new
+messages, incoming calls, and calls that expire unanswered look up each
+recipient's token and use Firebase Admin `messaging().send()` to deliver a
+notification. Payload data values are strings as required by FCM.
+
 Set `GEMINI_API_KEY` in the backend environment to enable the authenticated
 `POST /api/ai/parse-task`, `POST /api/ai/summarize-meeting`, and
 `POST /api/ai/summarize-chat` endpoints. These use Google's `@google/genai`

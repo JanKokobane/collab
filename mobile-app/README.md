@@ -36,6 +36,30 @@ npx expo run:ios
 
 Incoming calls while the app is backgrounded or terminated are not supported yet.
 
+## Android push notifications (FCM)
+
+The Expo notification, device, and application packages are declared in this app.
+Register an Android app in the Firebase project used by `src/lib/firebase.ts`,
+using the Android package name from `app.json` (`com.mojancko01.mobileapp`), and
+put its downloaded `google-services.json` in this directory. The config already
+points Expo at that file. Keep the Firebase Admin service-account JSON on the
+backend only; never put it in this app.
+
+On a physical Android device, `src/lib/pushNotifications.ts` requests notification
+permission, retrieves the native FCM token (not an Expo push token), and sends it
+to the authenticated `POST /api/users/push-token` endpoint. The root layout
+registers the signed-in user's device. Rebuild the native app after adding or
+changing `google-services.json`:
+
+```bash
+npx expo prebuild --platform android
+npx expo run:android
+```
+
+New direct and group messages, incoming audio/video calls, and missed calls send
+a visible Android notification when a registered device token is available.
+These are standard notifications, not a full-screen Android call UI.
+
 You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
 ## Get a fresh project

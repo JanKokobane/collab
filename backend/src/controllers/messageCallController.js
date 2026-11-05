@@ -7,10 +7,51 @@ const {
 } = require('../realtime/messageSocket');
 const { getConversation } = require('./messageController');
 const { getMessageCallIceServers } = require('../services/messageCallIceConfig');
+const { sendPushNotification } = require('../services/pushNotificationService');
 
 const callIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const projectIdPattern = /^[A-Za-z0-9_-]{1,128}$/;
 const staleCallGracePeriodMs = 60_000;
+
+const notifyCallParticipant = async (
+    firebaseUid,
+    call,
+    title,
+    body,
+    type = 'incoming_call'
+) => {
+    const result = await query(
+        'SELECT push_token FROM user_push_tokens WHERE firebase_uid = $1',
+        [firebaseUid]
+    );
+    await Promise.all(result.rows.map(({ push_token: pushToken }) =>
+        sendPushNotification(pushToken, title, body, {
+            type,
+            channelName: call.call_id,
+            callId: call.call_id,
+            conversationId: call.conversation_id,
+            callerId: call.caller_uid,
+            callerName: call.caller_name,
+            callType: call.call_type
+        }).catch(error => {
+            console.error('Call push notification delivery failed.', {
+                firebaseUid,
+                errorName: error.name,
+                message: error.message
+            });
+        })
+    ));
+};
+
+const queueCallNotification = (firebaseUid, call, title, body, type) => {
+    notifyCallParticipant(firebaseUid, call, title, body, type).catch(error => {
+        console.error('Call push notification could not be prepared.', {
+            firebaseUid,
+            errorName: error.name,
+            message: error.message
+        });
+    });
+};
 
 const getCallParticipants = async callId => {
     const result = await query(
@@ -87,13 +128,24 @@ const markExpiredCallsMissed = async conversationId => {
         [conversationId]
     );
     for (const call of result.rows) {
-        await query(
+        const missedParticipants = await query(
             `UPDATE message_call_participants
              SET status = CASE WHEN firebase_uid = $2 THEN 'accepted' ELSE 'missed' END,
                  left_at = CASE WHEN firebase_uid = $2 THEN left_at ELSE NOW() END
-             WHERE call_id = $1::uuid AND status = 'ringing'`,
+             WHERE call_id = $1::uuid AND status = 'ringing'
+             RETURNING firebase_uid, display_name`,
             [call.call_id, call.caller_uid]
         );
+        for (const participant of missedParticipants.rows) {
+            if (participant.firebase_uid === call.caller_uid) continue;
+            queueCallNotification(
+                participant.firebase_uid,
+                { ...call, callee_uid: participant.firebase_uid, callee_name: participant.display_name },
+                'Missed call',
+                `${call.caller_name} called you`,
+                'missed_call'
+            );
+        }
         emitToCallParticipants(call, 'call:updated', { call });
         await emitCallParticipantsUpdate(call.call_id);
     }
@@ -204,6 +256,7 @@ const startCall = async (req, res) => {
              LIMIT 1`,
             [conversationId]
         );
+        let staleMissedParticipants = [];
         if (active.rowCount) {
             const staleCall = active.rows[0];
             const isOldEnough = Date.now() - new Date(staleCall.created_at).getTime() > staleCallGracePeriodMs;
@@ -221,16 +274,20 @@ const startCall = async (req, res) => {
                  WHERE call_id = $1::uuid`,
                 [staleCall.call_id, staleStatus, req.firebaseUid]
             );
-            await client.query(
+            const missedParticipants = await client.query(
                 `UPDATE message_call_participants
                  SET status = CASE
                          WHEN status = 'ringing' AND $2 = 'missed' THEN 'missed'
                          ELSE 'left'
                      END,
                      left_at = NOW()
-                 WHERE call_id = $1::uuid AND status IN ('ringing', 'accepted')`,
+                 WHERE call_id = $1::uuid AND status IN ('ringing', 'accepted')
+                 RETURNING firebase_uid, display_name`,
                 [staleCall.call_id, staleStatus]
             );
+            staleMissedParticipants = staleStatus === 'missed'
+                ? missedParticipants.rows.filter(participant => participant.firebase_uid !== staleCall.caller_uid)
+                : [];
             staleCall.status = staleStatus;
             staleCall.ended_by_uid = req.firebaseUid;
         }
@@ -280,6 +337,19 @@ const startCall = async (req, res) => {
         await client.query('COMMIT');
         if (active.rowCount) {
             const staleCall = active.rows[0];
+            for (const participant of staleMissedParticipants) {
+                queueCallNotification(
+                    participant.firebase_uid,
+                    {
+                        ...staleCall,
+                        callee_uid: participant.firebase_uid,
+                        callee_name: participant.display_name
+                    },
+                    'Missed call',
+                    `${staleCall.caller_name} called you`,
+                    'missed_call'
+                );
+            }
             emitToCallParticipants(staleCall, 'call:updated', { call: staleCall });
             await emitCallParticipantsUpdate(staleCall.call_id);
         }
@@ -296,6 +366,12 @@ const startCall = async (req, res) => {
             created_at: createdAt.toISOString(),
             ring_expires_at: ringExpiresAt.toISOString()
         };
+        queueCallNotification(
+            calleeUid,
+            call,
+            `${call.caller_name} is calling`,
+            `Incoming ${callType} call`
+        );
         emitToCallParticipants(call, 'call:updated', { call });
         res.set('Cache-Control', 'no-store');
         return res.status(201).json({
@@ -443,6 +519,16 @@ const inviteCallParticipants = async (req, res) => {
         await client.query('COMMIT');
         await emitCallParticipantsUpdate(callId);
         for (const member of invited) {
+            queueCallNotification(
+                member.firebase_uid,
+                {
+                    ...call,
+                    callee_uid: member.firebase_uid,
+                    callee_name: member.display_name
+                },
+                'Call invitation',
+                `${call.caller_name} invited you to an ${call.call_type} call`
+            );
             emitToUser(member.firebase_uid, 'call:updated', {
                 call: {
                     ...call,
@@ -698,15 +784,30 @@ const updateCall = async (req, res) => {
                                ended_by_uid, ring_expires_at`,
                     [callId, req.firebaseUid]
                 );
-                await client.query(
+                const missedParticipants = await client.query(
                     `UPDATE message_call_participants
                      SET status = CASE WHEN firebase_uid = $2 THEN 'accepted' ELSE 'missed' END,
                          left_at = CASE WHEN firebase_uid = $2 THEN left_at ELSE NOW() END
-                     WHERE call_id = $1::uuid AND status = 'ringing'`,
+                     WHERE call_id = $1::uuid AND status = 'ringing'
+                     RETURNING firebase_uid, display_name`,
                     [callId, req.firebaseUid]
                 );
                 await client.query('COMMIT');
                 const updatedCall = toPublicCall(updated.rows[0]);
+                for (const participant of missedParticipants.rows) {
+                    if (participant.firebase_uid === call.caller_uid) continue;
+                    queueCallNotification(
+                        participant.firebase_uid,
+                        {
+                            ...updatedCall,
+                            callee_uid: participant.firebase_uid,
+                            callee_name: participant.display_name
+                        },
+                        'Missed call',
+                        `${call.caller_name} called you`,
+                        'missed_call'
+                    );
+                }
                 emitToCallParticipants(updatedCall, 'call:updated', { call: updatedCall });
                 await emitCallParticipantsUpdate(callId);
                 return res.json({ success: true, data: { call: updatedCall } });
@@ -741,15 +842,30 @@ const updateCall = async (req, res) => {
                      WHERE call_id = $1::uuid`,
                     [callId]
                 );
-                await client.query(
+                const missedParticipants = await client.query(
                     `UPDATE message_call_participants
                      SET status = CASE WHEN firebase_uid = $2 THEN 'accepted' ELSE 'missed' END,
                          left_at = CASE WHEN firebase_uid = $2 THEN left_at ELSE NOW() END
-                     WHERE call_id = $1::uuid AND status = 'ringing'`,
+                     WHERE call_id = $1::uuid AND status = 'ringing'
+                     RETURNING firebase_uid, display_name`,
                     [callId, req.firebaseUid]
                 );
                 await client.query('COMMIT');
                 const updatedCall = { ...call, status: 'missed', ended_at: new Date().toISOString() };
+                for (const participant of missedParticipants.rows) {
+                    if (participant.firebase_uid === call.caller_uid) continue;
+                    queueCallNotification(
+                        participant.firebase_uid,
+                        {
+                            ...updatedCall,
+                            callee_uid: participant.firebase_uid,
+                            callee_name: participant.display_name
+                        },
+                        'Missed call',
+                        `${call.caller_name} called you`,
+                        'missed_call'
+                    );
+                }
                 emitToCallParticipants(updatedCall, 'call:updated', { call: updatedCall });
                 await emitCallParticipantsUpdate(callId);
                 return res.status(410).json({
