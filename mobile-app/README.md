@@ -42,8 +42,9 @@ The Expo notification, device, and application packages are declared in this app
 Register an Android app in the Firebase project used by `src/lib/firebase.ts`,
 using the Android package name from `app.json` (`com.mojancko01.mobileapp`), and
 put its downloaded `google-services.json` in this directory. The config already
-points Expo at that file. Keep the Firebase Admin service-account JSON on the
-backend only; never put it in this app.
+points Expo at that file for local development. This file is git-ignored; keep
+the Firebase Admin service-account JSON on the backend only and never put that
+private key in this app.
 
 On a physical Android device, `src/lib/pushNotifications.ts` requests notification
 permission, retrieves the native FCM token (not an Expo push token), and sends it
@@ -54,9 +55,34 @@ Android remote push notifications do not work in Expo Go; install and open the
 custom development build instead:
 
 ```bash
-npx expo prebuild --platform android
-npx expo run:android
+npx expo install expo-dev-client
+npx eas-cli@latest login
+npx eas-cli@latest init
+npx eas-cli@latest build --platform android --profile development
 ```
+
+For cloud builds, EAS needs the Android config file but it should not be
+committed. In the Expo dashboard, open this project's **Environment variables**,
+create a **development** environment variable named `GOOGLE_SERVICES_JSON`,
+choose the **file** type, and upload Firebase's `google-services.json`.
+`app.config.js` maps that EAS file to Expo's `android.googleServicesFile` field.
+For local builds, simply put the downloaded file at `mobile-app/google-services.json`.
+
+The development profile builds an installable APK in the cloud; open the build
+URL on your Android phone to install it. No Android Studio or `adb` is needed
+for this cloud build.
+
+For day-to-day JavaScript/TypeScript work, start Metro from `mobile-app/`:
+
+```bash
+npx expo start --dev-client
+```
+
+Open the installed development app and connect it to the server (the phone and
+computer should be on the same network). Fast Refresh updates JS changes without
+rebuilding. Rebuild with the EAS command above after adding/changing native
+dependencies, Android config plugins, or `google-services.json`. EAS Update is
+not configured here; it is not needed for development-server updates.
 
 New direct and group messages, incoming audio/video calls, and missed calls send
 a visible Android notification when a registered device token is available.
