@@ -12,7 +12,6 @@
       "bitcode": false
     },
     "android": {
-      "googleServicesFile": "./google-services.json",
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -41,12 +40,7 @@
     },
     "plugins": [
       "expo-router",
-      [
-        "expo-notifications",
-        {
-          "defaultChannel": "default"
-        }
-      ],
+      "expo-notifications",
       [
         "./node_modules/expo-audio/app.plugin.js",
         {

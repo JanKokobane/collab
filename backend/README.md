@@ -79,6 +79,8 @@ verification. Use a database provider whose certificate chain is trusted by
 Node.js; unverified TLS is not supported.
 
 Run `npm run migrate` to apply the numbered SQL files in `db/migrations/`.
+This includes `000_create_projects.sql`, the base project table required by
+subsequent migrations. Use this sequence when initializing a new, empty database.
 Startup also applies pending migrations before the HTTP server listens.
 Migrations run transactionally and use a PostgreSQL advisory lock so multiple
 server instances do not apply the same migration simultaneously.
