@@ -29,6 +29,8 @@ export interface HomeMeeting {
   title: string;
   date: string;
   startTime: string;
+  endTime: string;
+  endedAt: string | null;
   projectName: string;
 }
 
@@ -41,7 +43,15 @@ export interface HomeMember {
 
 export interface HomeNotification {
   id: string;
+  projectId: string | null;
+  relatedTaskId: string | null;
+  type: string;
+  title: string;
+  detail: string;
+  avatar: string;
+  toneClass: string;
   isRead: boolean;
+  createdAt: string;
 }
 
 export interface HomeResource {
@@ -55,6 +65,42 @@ export interface HomeResource {
 export interface HomeScratchpad {
   content: string;
   updatedAt: string | null;
+}
+
+export interface BrainstormBoardSummary {
+  id: string;
+  projectId: string;
+  title: string;
+  updatedAt: string;
+}
+
+export interface BrainstormReaction {
+  emoji: string;
+  firebaseUid: string;
+}
+
+export interface BrainstormNote {
+  id: string;
+  category: string;
+  content: string;
+  author: string;
+  authorUid?: string | null;
+  color: string;
+  position: { x: number; y: number };
+  reactions: BrainstormReaction[];
+}
+
+export interface BrainstormLink {
+  id: string;
+  from: string;
+  to: string;
+  type: string;
+}
+
+export interface BrainstormBoard extends BrainstormBoardSummary {
+  createdByFirebaseUid: string;
+  notes: BrainstormNote[];
+  links: BrainstormLink[];
 }
 
 interface ApiEnvelope<T> {
@@ -75,7 +121,7 @@ function asText(value: unknown, fallback = ''): string {
 
 async function request<T>(
   path: string,
-  options: { method?: 'GET' | 'PUT'; body?: unknown } = {},
+  options: { method?: 'GET' | 'POST' | 'PUT' | 'PATCH'; body?: unknown } = {},
 ): Promise<T> {
   const user = firebaseAuth.currentUser;
   if (!user) throw new HomeApiError('Please sign in to load your workspace.', 401);
@@ -136,6 +182,13 @@ export async function fetchHomeTasks(project: HomeProject): Promise<HomeTask[]> 
   });
 }
 
+export async function updateHomeTaskStatus(task: HomeTask, status: string): Promise<void> {
+  await request<{ taskId?: string; status?: string }>(
+    `/projects/${encodeURIComponent(task.projectId)}/tasks/${encodeURIComponent(task.id)}/status`,
+    { method: 'PATCH', body: { status } },
+  );
+}
+
 export async function fetchHomeMeetings(project: HomeProject): Promise<HomeMeeting[]> {
   const data = await request<{ meetings?: unknown[] }>(
     `/projects/${encodeURIComponent(project.id)}/meetings`,
@@ -150,6 +203,8 @@ export async function fetchHomeMeetings(project: HomeProject): Promise<HomeMeeti
       title: asText(row.title, 'Untitled meeting'),
       date,
       startTime: asText(row.start_time),
+      endTime: asText(row.end_time),
+      endedAt: typeof row.ended_at === 'string' ? row.ended_at : null,
       projectName: project.name,
     }];
   });
@@ -195,8 +250,30 @@ export async function fetchHomeNotifications(): Promise<HomeNotification[]> {
     const row = asRecord(value);
     const id = String(row.id ?? '');
     if (!id) return [];
-    return [{ id, isRead: Boolean(row.is_read) }];
+    return [{
+      id,
+      projectId: typeof row.project_id === 'string' ? row.project_id : null,
+      relatedTaskId: typeof row.related_task_id === 'string' ? row.related_task_id : null,
+      type: asText(row.type, 'update'),
+      title: asText(row.title, 'Notification'),
+      detail: asText(row.detail),
+      avatar: asText(row.avatar),
+      toneClass: asText(row.tone_class),
+      isRead: Boolean(row.is_read),
+      createdAt: asText(row.created_at),
+    }];
   });
+}
+
+export async function markHomeNotificationRead(notificationId: string): Promise<void> {
+  await request<{ notification?: unknown }>(
+    `/notifications/${encodeURIComponent(notificationId)}/read`,
+    { method: 'PATCH' },
+  );
+}
+
+export async function markAllHomeNotificationsRead(): Promise<void> {
+  await request<{ updatedCount?: number }>('/notifications/read-all', { method: 'PATCH' });
 }
 
 export async function fetchHomeScratchpad(project: HomeProject): Promise<HomeScratchpad> {
@@ -223,4 +300,110 @@ export async function saveHomeScratchpad(
     content: asText(row.content, content),
     updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
   };
+}
+
+export async function fetchBrainstormBoards(project: HomeProject): Promise<BrainstormBoardSummary[]> {
+  const data = await request<{ boards?: unknown[] }>(
+    `/projects/${encodeURIComponent(project.id)}/brainstorm-boards`,
+  );
+  return (data.boards || []).flatMap((value) => {
+    const row = asRecord(value);
+    const id = asText(row.board_id);
+    if (!id) return [];
+    return [{
+      id,
+      projectId: asText(row.project_id, project.id),
+      title: asText(row.title, 'Untitled board'),
+      updatedAt: asText(row.updated_at),
+    }];
+  });
+}
+
+export async function fetchBrainstormBoard(boardId: string): Promise<BrainstormBoard> {
+  const data = await request<{ board?: unknown }>(
+    `/projects/brainstorm-boards/${encodeURIComponent(boardId)}`,
+  );
+  const row = asRecord(data.board);
+  const boardData = asRecord(row.board_data);
+  const id = asText(row.board_id);
+  if (!id) throw new HomeApiError('The server returned an invalid brainstorm board.', 502);
+
+  const notes = (Array.isArray(boardData.notes) ? boardData.notes : []).flatMap((value) => {
+    const note = asRecord(value);
+    const noteId = asText(note.id);
+    const position = asRecord(note.position);
+    if (!noteId || typeof position.x !== 'number' || typeof position.y !== 'number') return [];
+    return [{
+      id: noteId,
+      category: asText(note.category, 'Ideas'),
+      content: asText(note.content),
+      author: asText(note.author),
+      authorUid: typeof note.authorUid === 'string' ? note.authorUid : null,
+      color: asText(note.color, 'yellow'),
+      position: { x: position.x, y: position.y },
+      reactions: (Array.isArray(note.reactions) ? note.reactions : []).flatMap((item) => {
+        const reaction = asRecord(item);
+        const emoji = asText(reaction.emoji);
+        const firebaseUid = asText(reaction.firebaseUid);
+        return emoji && firebaseUid ? [{ emoji, firebaseUid }] : [];
+      }),
+    }];
+  });
+  const links = (Array.isArray(boardData.links) ? boardData.links : []).flatMap((value) => {
+    const link = asRecord(value);
+    const linkId = asText(link.id);
+    const from = asText(link.from);
+    const to = asText(link.to);
+    if (!linkId || !from || !to) return [];
+    return [{ id: linkId, from, to, type: asText(link.type, 'related') }];
+  });
+
+  return {
+    id,
+    projectId: asText(row.project_id),
+    title: asText(row.title, 'Untitled board'),
+    updatedAt: asText(row.updated_at),
+    createdByFirebaseUid: asText(row.created_by_firebase_uid),
+    notes,
+    links,
+  };
+}
+
+export async function createBrainstormBoard(project: HomeProject, title: string): Promise<string> {
+  const data = await request<{ board?: unknown }>(
+    `/projects/${encodeURIComponent(project.id)}/brainstorm-boards`,
+    { method: 'POST', body: { title, memberFirebaseUids: [] } },
+  );
+  const board = asRecord(data.board);
+  const id = asText(board.board_id);
+  if (!id) throw new HomeApiError('The server did not return the created brainstorm board.', 502);
+  return id;
+}
+
+export async function saveBrainstormBoard(
+  boardId: string,
+  boardData: { notes: BrainstormNote[]; links: BrainstormLink[] },
+): Promise<void> {
+  await request<{ board?: unknown }>(
+    `/projects/brainstorm-boards/${encodeURIComponent(boardId)}`,
+    { method: 'PUT', body: { boardData } },
+  );
+}
+
+export async function toggleBrainstormReaction(
+  boardId: string,
+  noteId: string,
+  emoji: string,
+): Promise<BrainstormReaction[]> {
+  const data = await request<{ note?: unknown }>(
+    `/projects/brainstorm-boards/${encodeURIComponent(boardId)}/notes/${encodeURIComponent(noteId)}/reactions`,
+    { method: 'POST', body: { emoji } },
+  );
+  const note = asRecord(data.note);
+  return (Array.isArray(note.reactions) ? note.reactions : []).flatMap((value) => {
+    const reaction = asRecord(value);
+    const reactionEmoji = asText(reaction.emoji);
+    const firebaseUid = asText(reaction.firebaseUid);
+    return reactionEmoji && firebaseUid ? [{ emoji: reactionEmoji, firebaseUid }] : [];
+  });
 }

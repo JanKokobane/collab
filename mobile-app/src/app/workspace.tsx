@@ -29,7 +29,10 @@ import {
   fetchHomeScratchpad,
   fetchHomeTasks,
   HomeApiError,
+  markAllHomeNotificationsRead,
+  markHomeNotificationRead,
   saveHomeScratchpad,
+  updateHomeTaskStatus,
   type HomeMeeting,
   type HomeMember,
   type HomeNotification,
@@ -38,6 +41,8 @@ import {
   type HomeTask,
 } from '@/lib/homeApi';
 import HomeDashboard from '@/components/home-dashboard';
+import NotificationsScreen from '@/components/notifications-screen';
+import TodoScreen from '@/components/todo-screen';
 import WorkspaceBottomNavigation from '@/components/workspace-bottom-navigation';
 
 const projects = [
@@ -64,7 +69,13 @@ export default function WorkspaceScreen() {
   const [homeNotesLoaded, setHomeNotesLoaded] = useState(false);
   const [homeLoading, setHomeLoading] = useState(true);
   const [homeRefreshKey, setHomeRefreshKey] = useState(0);
+  const [notificationsRefreshKey, setNotificationsRefreshKey] = useState(0);
+  const [todoRefreshKey, setTodoRefreshKey] = useState(0);
   const [homeError, setHomeError] = useState<string | null>(null);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [todoLoading, setTodoLoading] = useState(false);
+  const [todoError, setTodoError] = useState<string | null>(null);
   const [homePartialErrors, setHomePartialErrors] = useState<string[]>([]);
   const [homeProjects, setHomeProjects] = useState<HomeProject[]>([]);
   const [homeTasks, setHomeTasks] = useState<HomeTask[]>([]);
@@ -166,6 +177,70 @@ export default function WorkspaceScreen() {
     void loadHome();
     return () => { active = false; };
   }, [activeSection, homeRefreshKey, user]));
+
+  useFocusEffect(useCallback(() => {
+    if (!user || activeSection !== 'Notifications') return;
+
+    let active = true;
+    async function loadNotifications() {
+      setNotificationsLoading(true);
+      setNotificationsError(null);
+      try {
+        const notifications = await fetchHomeNotifications();
+        if (active) setHomeNotifications(notifications);
+      } catch (error) {
+        console.error('Unable to load notifications:', error);
+        if (active) {
+          setNotificationsError(error instanceof HomeApiError
+            ? error.message
+            : 'Notifications could not be loaded. Please try again.');
+        }
+      } finally {
+        if (active) setNotificationsLoading(false);
+      }
+    }
+
+    void loadNotifications();
+    return () => { active = false; };
+  }, [activeSection, notificationsRefreshKey, user]));
+
+  useFocusEffect(useCallback(() => {
+    if (!user || activeSection !== 'To-do') return;
+
+    let active = true;
+    async function loadTodoTasks() {
+      setTodoLoading(true);
+      setTodoError(null);
+      try {
+        const projects = await fetchHomeProjects();
+        if (!active) return;
+        setHomeProjects(projects);
+        const taskResults = await Promise.allSettled(projects.map((project) => fetchHomeTasks(project)));
+        if (!active) return;
+        const tasks: HomeTask[] = [];
+        const failedProjects = taskResults.filter((result) => result.status === 'rejected').length;
+        for (const result of taskResults) {
+          if (result.status === 'fulfilled') tasks.push(...result.value);
+        }
+        setHomeTasks(tasks);
+        if (failedProjects) {
+          setTodoError('Some project tasks could not be loaded.');
+        }
+      } catch (error) {
+        console.error('Unable to load to-do tasks:', error);
+        if (active) {
+          setTodoError(error instanceof HomeApiError
+            ? error.message
+            : 'Your tasks could not be loaded. Please try again.');
+        }
+      } finally {
+        if (active) setTodoLoading(false);
+      }
+    }
+
+    void loadTodoTasks();
+    return () => { active = false; };
+  }, [activeSection, todoRefreshKey, user]));
 
   useFocusEffect(useCallback(() => {
     const project = homeProjects.find((item) => item.id === homeProjectId);
@@ -306,6 +381,50 @@ export default function WorkspaceScreen() {
     }
   }
 
+  async function handleMarkNotificationRead(notification: HomeNotification) {
+    try {
+      await markHomeNotificationRead(notification.id);
+      setHomeNotifications((current) => current.map((item) => (
+        item.id === notification.id ? { ...item, isRead: true } : item
+      )));
+    } catch (error) {
+      console.error('Unable to mark notification as read:', error);
+      Alert.alert(
+        'Could not update notification',
+        error instanceof HomeApiError ? error.message : 'Please try again.',
+      );
+    }
+  }
+
+  async function handleMarkAllNotificationsRead() {
+    try {
+      await markAllHomeNotificationsRead();
+      setHomeNotifications((current) => current.map((item) => ({ ...item, isRead: true })));
+    } catch (error) {
+      console.error('Unable to mark all notifications as read:', error);
+      Alert.alert(
+        'Could not update notifications',
+        error instanceof HomeApiError ? error.message : 'Please try again.',
+      );
+    }
+  }
+
+  async function handleToggleHomeTask(task: HomeTask) {
+    const status = task.status.trim().toLowerCase() === 'done' ? 'To do' : 'Done';
+    try {
+      await updateHomeTaskStatus(task, status);
+      setHomeTasks((current) => current.map((item) => (
+        item.id === task.id ? { ...item, status } : item
+      )));
+    } catch (error) {
+      console.error('Unable to update task status:', error);
+      Alert.alert(
+        'Could not update task',
+        error instanceof HomeApiError ? error.message : 'Please try again.',
+      );
+    }
+  }
+
   function handleHomeProjectSelect(projectId: string) {
     if (projectId === homeProjectId) return;
     setHomeProjectId(projectId);
@@ -427,6 +546,27 @@ export default function WorkspaceScreen() {
               onRetry={() => setHomeRefreshKey((key) => key + 1)}
             />
           </View>
+        ) : activeSection === 'Notifications' ? (
+          <View style={styles.homeContent}>
+            <NotificationsScreen
+              notifications={homeNotifications}
+              loading={notificationsLoading}
+              error={notificationsError}
+              onRetry={() => setNotificationsRefreshKey((key) => key + 1)}
+              onMarkAllRead={() => { void handleMarkAllNotificationsRead(); }}
+              onMarkRead={(notification) => { void handleMarkNotificationRead(notification); }}
+            />
+          </View>
+        ) : activeSection === 'To-do' ? (
+          <View style={styles.homeContent}>
+            <TodoScreen
+              tasks={homeTasks}
+              loading={todoLoading}
+              error={todoError}
+              onRetry={() => setTodoRefreshKey((key) => key + 1)}
+              onToggleTask={handleToggleHomeTask}
+            />
+          </View>
         ) : (
           <View style={styles.content}>
             <Text style={styles.eyebrow}>COLLAB WORKSPACE</Text>
@@ -447,6 +587,7 @@ export default function WorkspaceScreen() {
       <WorkspaceBottomNavigation
         activeItem={activeSection}
         onSelect={selectSection}
+        unreadNotificationCount={homeNotifications.filter((notification) => !notification.isRead).length}
       />
 
       <Modal

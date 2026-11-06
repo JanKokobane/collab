@@ -256,10 +256,7 @@ export default function HomeDashboard({
     task.dueDate.slice(0, 10) <= dueThroughKey
   ));
   const unreadNotifications = notifications.filter((notification) => !notification.isRead).length;
-  const upcomingMeetings = meetings
-    .filter((meeting) => new Date(
-      `${meeting.date.slice(0, 10)}T${meeting.startTime || '00:00:00'}`,
-    ) >= date)
+  const sortedMeetings = [...meetings]
     .sort((left, right) => (
       `${left.date.slice(0, 10)}T${left.startTime}`.localeCompare(
         `${right.date.slice(0, 10)}T${right.startTime}`,
@@ -339,8 +336,8 @@ export default function HomeDashboard({
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <View>
-            <Text style={styles.cardKicker}>Next up</Text>
-            <Text style={styles.cardTitle}>Upcoming meetings</Text>
+            <Text style={styles.cardKicker}>Your schedule</Text>
+            <Text style={styles.cardTitle}>Meetings</Text>
           </View>
           <Pressable
             accessibilityRole="button"
@@ -355,15 +352,28 @@ export default function HomeDashboard({
           <View style={styles.meetingEmptyState}>
             <Text style={styles.meetingDescription}>Checking your project calendars…</Text>
           </View>
-        ) : upcomingMeetings.length === 0 ? (
+        ) : sortedMeetings.length === 0 ? (
           <View style={styles.meetingEmptyState}>
-            <Text style={styles.meetingTitle}>No upcoming meetings</Text>
-            <Text style={styles.meetingDescription}>Your project calendars are clear. A perfect time to focus.</Text>
+            <Text style={styles.meetingTitle}>No meetings scheduled</Text>
+            <Text style={styles.meetingDescription}>Your project calendars are clear.</Text>
           </View>
         ) : (
           <View style={styles.meetingSchedule}>
-            {upcomingMeetings.map((meeting) => {
+            {sortedMeetings.map((meeting) => {
               const meetingDate = new Date(`${meeting.date.slice(0, 10)}T00:00:00`);
+              const meetingStart = new Date(
+                `${meeting.date.slice(0, 10)}T${meeting.startTime || '00:00:00'}`,
+              );
+              const meetingEnd = new Date(
+                `${meeting.date.slice(0, 10)}T${meeting.endTime || '23:59:59'}`,
+              );
+              const meetingStatus = meeting.endedAt
+                ? 'Meeting ended'
+                : meetingStart <= date && meetingEnd >= date
+                  ? 'In progress'
+                  : meetingEnd < date
+                    ? 'Past meeting'
+                    : 'Upcoming';
               return (
                 <View key={`${meeting.projectName}-${meeting.id}`} style={styles.meetingRow}>
                   <View
@@ -385,13 +395,24 @@ export default function HomeDashboard({
                   <View style={styles.meetingCopy}>
                     <View style={styles.meetingTitleRow}>
                       <Text numberOfLines={1} style={styles.meetingTitle}>{meeting.title}</Text>
-                      <Text numberOfLines={1} style={styles.meetingDateText}>
-                        {meetingDate.toLocaleDateString('en-GB', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric',
-                        })}
-                      </Text>
+                      <View style={styles.meetingDateStatus}>
+                        <Text numberOfLines={1} style={styles.meetingDateText}>
+                          {meetingDate.toLocaleDateString('en-GB', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </Text>
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.meetingStatus,
+                            meetingStatus === 'In progress' && styles.meetingStatusLive,
+                            meetingStatus === 'Meeting ended' && styles.meetingStatusEnded,
+                          ]}>
+                          {meetingStatus}
+                        </Text>
+                      </View>
                     </View>
                     <Text numberOfLines={1} style={styles.meetingDescription}>
                       {`${meeting.startTime ? `${meeting.startTime.slice(0, 5)} · ` : ''}${meeting.projectName}`}
@@ -556,8 +577,12 @@ const styles = StyleSheet.create({
   calendarDate: { color: '#202020', fontSize: 15, lineHeight: 17, fontWeight: '700' },
   meetingCopy: { flex: 1, minWidth: 0 },
   meetingTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
-  meetingDateText: { maxWidth: 82, color: '#202020', fontSize: 12, lineHeight: 14, fontWeight: '700', textAlign: 'right' },
-  meetingTitle: { color: '#202020', fontSize: 12, fontWeight: '700' },
+  meetingDateStatus: { width: 82, alignItems: 'flex-end', gap: 2 },
+  meetingDateText: { color: '#202020', fontSize: 12, lineHeight: 14, fontWeight: '700', textAlign: 'right' },
+  meetingStatus: { color: '#77766F', fontSize: 8, lineHeight: 10, fontWeight: '700', textAlign: 'right' },
+  meetingStatusLive: { color: '#168A50' },
+  meetingStatusEnded: { color: '#9B3D37' },
+  meetingTitle: { flex: 1, minWidth: 0, color: '#202020', fontSize: 12, fontWeight: '700' },
   meetingDescription: { marginTop: 4, color: '#85847D', fontSize: 10, lineHeight: 14 },
   meetingPeople: { flexDirection: 'row', alignItems: 'center', marginTop: 9, paddingLeft: 5 },
   avatarOverlap: { marginLeft: -5, borderWidth: 2, borderColor: '#F6F6F3', borderRadius: 99 },
