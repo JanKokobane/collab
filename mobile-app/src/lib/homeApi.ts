@@ -48,6 +48,7 @@ export interface HomeResource {
   id: string;
   title: string;
   url: string;
+  category: string;
   projectName: string;
 }
 
@@ -166,6 +167,7 @@ export async function fetchHomeResources(project: HomeProject): Promise<HomeReso
       id,
       title: asText(row.title, 'Resource'),
       url: asText(row.target_url),
+      category: asText(row.category, 'Other'),
       projectName: project.name,
     }];
   });

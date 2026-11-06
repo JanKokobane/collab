@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
+  Alert,
   ActivityIndicator,
   Image,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -24,6 +26,41 @@ const artColors: Record<string, [string, string, string]> = {
   open: ['#3267D6', '#31B99C', '#202020'],
   updates: ['#35B775', '#FFBD18', '#202020'],
 };
+
+function getResourceUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+function ResourceFavicon({ resource }: { resource: HomeResource }) {
+  const [failed, setFailed] = useState(false);
+  const url = getResourceUrl(resource.url);
+  const domain = url?.hostname.replace(/^www\./, '') || '';
+
+  if (!url || failed) {
+    return (
+      <View style={styles.resourceFaviconFallback}>
+        <Text style={styles.resourceFaviconFallbackText}>
+          {resource.title.trim().charAt(0).toUpperCase() || '↗'}
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: new URL('/favicon.ico', url.origin).href }}
+      style={styles.resourceFavicon}
+      resizeMode="contain"
+      accessibilityLabel={`${domain} logo`}
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 function getGreeting(date: Date) {
   const hour = date.getHours();
@@ -219,7 +256,7 @@ export default function HomeDashboard({
     task.dueDate.slice(0, 10) <= dueThroughKey
   ));
   const unreadNotifications = notifications.filter((notification) => !notification.isRead).length;
-  const upcomingMeeting = meetings
+  const upcomingMeetings = meetings
     .filter((meeting) => new Date(
       `${meeting.date.slice(0, 10)}T${meeting.startTime || '00:00:00'}`,
     ) >= date)
@@ -227,7 +264,7 @@ export default function HomeDashboard({
       `${left.date.slice(0, 10)}T${left.startTime}`.localeCompare(
         `${right.date.slice(0, 10)}T${right.startTime}`,
       )
-    ))[0];
+    ));
   const completedPercent = tasks.length > 0
     ? Math.round((completedTasks / tasks.length) * 100)
     : 0;
@@ -314,34 +351,57 @@ export default function HomeDashboard({
             </Svg>
           </Pressable>
         </View>
-        <View style={styles.emptyMeeting}>
-          {upcomingMeeting ? (
-          <View style={styles.calendarArt}>
-            <View style={styles.calendarRings} />
-            <Text style={styles.calendarDate}>{new Date(`${upcomingMeeting.date.slice(0, 10)}T00:00:00`).getDate().toString().padStart(2, '0')}</Text>
+        {loading ? (
+          <View style={styles.meetingEmptyState}>
+            <Text style={styles.meetingDescription}>Checking your project calendars…</Text>
           </View>
-          ) : (
-          <View style={styles.calendarArt}>
-            <View style={styles.calendarRings} />
-            <Text style={styles.calendarDate}>{date.getDate().toString().padStart(2, '0')}</Text>
+        ) : upcomingMeetings.length === 0 ? (
+          <View style={styles.meetingEmptyState}>
+            <Text style={styles.meetingTitle}>No upcoming meetings</Text>
+            <Text style={styles.meetingDescription}>Your project calendars are clear. A perfect time to focus.</Text>
           </View>
-          )}
-          <View style={styles.meetingCopy}>
-            <Text style={styles.meetingTitle}>
-              {loading ? 'Loading meetings…' : upcomingMeeting?.title || 'No meetings scheduled'}
-            </Text>
-            <Text style={styles.meetingDescription}>
-              {upcomingMeeting
-                ? `${new Date(`${upcomingMeeting.date.slice(0, 10)}T00:00:00`).toLocaleDateString()}${upcomingMeeting.startTime ? ` · ${upcomingMeeting.startTime.slice(0, 5)}` : ''} · ${upcomingMeeting.projectName}`
-                : loading ? 'Checking your project calendars.' : 'Your project calendars are clear. A perfect time to focus.'}
-            </Text>
-            <View style={styles.meetingPeople}>
-              <Text style={styles.availability}>
-                {upcomingMeeting ? `From ${upcomingMeeting.projectName}` : `${members.length} team ${members.length === 1 ? 'member' : 'members'}`}
-              </Text>
-            </View>
+        ) : (
+          <View style={styles.meetingSchedule}>
+            {upcomingMeetings.map((meeting) => {
+              const meetingDate = new Date(`${meeting.date.slice(0, 10)}T00:00:00`);
+              return (
+                <View key={`${meeting.projectName}-${meeting.id}`} style={styles.meetingRow}>
+                  <View
+                    style={styles.calendarArt}
+                    accessibilityLabel={meetingDate.toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}>
+                    <View style={styles.calendarMonthTab}>
+                      <Text style={styles.calendarMonth}>
+                        {meetingDate.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={styles.calendarDateArea}>
+                      <Text style={styles.calendarDate}>{meetingDate.getDate()}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.meetingCopy}>
+                    <View style={styles.meetingTitleRow}>
+                      <Text numberOfLines={1} style={styles.meetingTitle}>{meeting.title}</Text>
+                      <Text numberOfLines={1} style={styles.meetingDateText}>
+                        {meetingDate.toLocaleDateString('en-GB', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </Text>
+                    </View>
+                    <Text numberOfLines={1} style={styles.meetingDescription}>
+                      {`${meeting.startTime ? `${meeting.startTime.slice(0, 5)} · ` : ''}${meeting.projectName}`}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
           </View>
-        </View>
+        )}
       </View>
 
       <View style={styles.teamRow}>
@@ -368,120 +428,56 @@ export default function HomeDashboard({
         </View>
       </View>
 
-      <View style={[styles.card, styles.scratchpadCard]}>
-        <View style={styles.scratchpadHeader}>
-          <View>
-            <Text style={styles.cardKicker}>Shared space</Text>
-            <Text style={styles.cardTitle}>Team scratchpad</Text>
-          </View>
-          <View style={styles.presence}>
-            <Text style={[styles.syncStatus, notesSaved && styles.syncStatusSaved]}>
-              {notesSaving ? 'Saving…' : notesSaved ? 'Synced' : 'Unsaved'}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.projectSelector}>
-          <Text style={styles.projectLabel}>PROJECT</Text>
-          {projects.length > 0 ? (
-            <View style={styles.projectOptions}>
-              {projects.map((project) => (
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={notesSaving}
-                  accessibilityState={{ selected: project.id === selectedProjectId }}
-                  key={project.id}
-                  onPress={() => onProjectSelect(project.id)}
-                  style={[
-                    styles.projectOption,
-                    project.id === selectedProjectId && styles.projectOptionSelected,
-                  ]}>
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.projectName,
-                      project.id === selectedProjectId && styles.projectNameSelected,
-                    ]}>
-                    {project.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : (
-            <Text style={styles.projectName}>{loading ? 'Loading projects…' : 'No projects available'}</Text>
-          )}
-        </View>
-
-        <View style={styles.noteActions}>
-          <Pressable disabled={notesLoading || notesSaving || !notesLoaded} style={styles.noteAction} onPress={() => insertNote('☐ ')}>
-            <Text style={styles.noteActionText}>+ Checklist</Text>
-          </Pressable>
-          <Pressable disabled={notesLoading || notesSaving || !notesLoaded} style={styles.noteAction} onPress={() => insertNote('• ')}>
-            <Text style={styles.noteActionText}>+ Bullet</Text>
-          </Pressable>
-          <Pressable disabled={notesLoading || notesSaving || !notesLoaded} style={styles.noteAction} onPress={() => insertNote('`code` ')}>
-            <Text style={styles.noteActionText}>+ Code</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.notesField}>
-          <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-            <Path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" stroke="#8B8A84" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
-          </Svg>
-          <TextInput
-            accessibilityLabel="Team notes"
-            multiline
-            textAlignVertical="top"
-            value={notes}
-            onChangeText={onNotesChange}
-            editable={notesLoaded && !notesLoading}
-            placeholder="Capture sprint targets, decisions, or quick team notes..."
-            placeholderTextColor="#A09F98"
-            style={styles.notesInput}
-          />
-        </View>
-
-        <View style={styles.scratchpadFooter}>
-          <Pressable
-            accessibilityRole="button"
-            disabled={notesLoading || notesSaving || !notesLoaded}
-            onPress={() => onNotesChange('')}
-            style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}>
-            <Text style={styles.clearText}>Clear</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            disabled={notesSaving || notesLoading || !notesLoaded || !selectedProjectId}
-            onPress={onSaveNotes}
-            style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}>
-            <Text style={styles.saveText}>{notesSaving ? 'Saving…' : 'Save notes'}</Text>
-          </Pressable>
-        </View>
-      </View>
-
       <View style={[styles.card, styles.resourceCard]}>
-        <View style={styles.resourceIcon}>
-          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-            <Path d="m12 17-5 5v-7L3 11l4-4 4 4h7l-5 5" stroke="#826600" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" />
-          </Svg>
-        </View>
-        <View style={styles.resourceCopy}>
-          <Text style={styles.cardTitle}>Pinned resources</Text>
-          <Text style={styles.resourceDescription}>
-            {resources.length > 0
-              ? `Pinned across ${new Set(resources.map((resource) => resource.projectName)).size} ${new Set(resources.map((resource) => resource.projectName)).size === 1 ? 'project' : 'projects'}.`
-              : loading ? 'Loading project resources…' : 'No pinned resources yet.'}
-          </Text>
-          <View style={styles.resourceChips}>
-            {resources.slice(0, 3).map((resource) => (
-              <Text key={resource.id} numberOfLines={1} style={styles.resourceChip}>{resource.title}</Text>
-            ))}
-            {resources.length > 3 && <Text style={styles.resourceChip}>+{resources.length - 3}</Text>}
+        <Text style={styles.resourceHeading}>Pinned Collaboration Resources</Text>
+        <Text style={styles.resourceDescription}>
+          Central links to team specs, Figma boards, repos, and environments.
+        </Text>
+        {resources.length > 0 ? (
+          <View style={styles.resourceList}>
+            {resources.map((resource) => {
+              const url = getResourceUrl(resource.url);
+              const domain = url?.hostname.replace(/^www\./, '') || 'Invalid link';
+              return (
+                <Pressable
+                  key={resource.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${resource.title}, ${domain}`}
+                  onPress={() => {
+                    if (!url) {
+                      Alert.alert('Invalid resource link', 'This resource does not have a valid web address.');
+                      return;
+                    }
+                    void Linking.openURL(url.href).catch((error: unknown) => {
+                      console.error('Unable to open pinned resource:', error);
+                      Alert.alert('Could not open link', 'Please try opening this resource again.');
+                    });
+                  }}
+                  style={({ pressed }) => [styles.resourceRow, pressed && styles.pressed]}>
+                  <View style={styles.resourceLogoBox}>
+                    <ResourceFavicon resource={resource} />
+                  </View>
+                  <View style={styles.resourceDetails}>
+                    <View style={styles.resourceTitleLine}>
+                      <Text numberOfLines={1} style={styles.resourceTitle}>{resource.title}</Text>
+                      <Text numberOfLines={1} style={styles.resourceCategory}>{resource.category}</Text>
+                    </View>
+                    <Text numberOfLines={1} style={styles.resourceSubtitle}>
+                      {`${resource.projectName} · ${domain}`}
+                    </Text>
+                  </View>
+                  <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
+                    <Path d="M7 17 17 7M8 7h9v9" stroke="#92929A" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
+                  </Svg>
+                </Pressable>
+              );
+            })}
           </View>
-        </View>
-        <Svg width={17} height={17} viewBox="0 0 24 24" fill="none">
-          <Path d="m9 18 6-6-6-6" stroke="#77766F" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
-        </Svg>
+        ) : (
+          <Text style={styles.resourceEmpty}>
+            {loading ? 'Loading project resources…' : 'No pinned resources yet.'}
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -550,11 +546,17 @@ const styles = StyleSheet.create({
   cardKicker: { color: '#8C8B84', fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase' },
   cardTitle: { marginTop: 3, color: '#202020', fontSize: 16, fontWeight: '800', letterSpacing: -0.5 },
   roundArrow: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20, backgroundColor: '#202020' },
-  emptyMeeting: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 17, padding: 14, borderRadius: 15, backgroundColor: '#F6F6F3' },
-  calendarArt: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#202020', borderRadius: 13, backgroundColor: '#FFC400', shadowColor: '#202020', shadowOffset: { width: 2, height: 2 }, shadowOpacity: 1, shadowRadius: 0, elevation: 2 },
-  calendarRings: { position: 'absolute', top: 7, width: 25, height: 2, backgroundColor: '#202020' },
-  calendarDate: { paddingTop: 5, color: '#202020', fontSize: 18, fontWeight: '800' },
-  meetingCopy: { flex: 1 },
+  meetingSchedule: { gap: 8, marginTop: 17 },
+  meetingRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7, paddingLeft: 11, paddingRight: 8, borderRadius: 13, backgroundColor: '#F6F6F3' },
+  meetingEmptyState: { gap: 4, marginTop: 17, padding: 14, borderRadius: 15, backgroundColor: '#F6F6F3' },
+  calendarArt: { width: 36, height: 38, alignItems: 'center', overflow: 'hidden', borderWidth: 1, borderColor: '#E4E4E7', borderRadius: 6, backgroundColor: '#FFFFFF', shadowColor: '#202020', shadowOffset: { width: 1, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 1 },
+  calendarMonthTab: { width: '100%', height: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E53935' },
+  calendarMonth: { color: '#FFFFFF', fontSize: 5, lineHeight: 7, fontWeight: '800', letterSpacing: 0.2 },
+  calendarDateArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  calendarDate: { color: '#202020', fontSize: 15, lineHeight: 17, fontWeight: '700' },
+  meetingCopy: { flex: 1, minWidth: 0 },
+  meetingTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+  meetingDateText: { maxWidth: 82, color: '#202020', fontSize: 12, lineHeight: 14, fontWeight: '700', textAlign: 'right' },
   meetingTitle: { color: '#202020', fontSize: 12, fontWeight: '700' },
   meetingDescription: { marginTop: 4, color: '#85847D', fontSize: 10, lineHeight: 14 },
   meetingPeople: { flexDirection: 'row', alignItems: 'center', marginTop: 9, paddingLeft: 5 },
@@ -590,11 +592,20 @@ const styles = StyleSheet.create({
   clearText: { color: '#8C8B84', fontSize: 10, fontWeight: '800' },
   saveButton: { height: 37, justifyContent: 'center', paddingHorizontal: 14, borderRadius: 10, backgroundColor: '#202020' },
   saveText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
-  resourceCard: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  resourceIcon: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#FFF4C2' },
-  resourceCopy: { flex: 1 },
+  resourceCard: { gap: 0 },
+  resourceHeading: { color: '#202020', fontSize: 14, lineHeight: 18, fontWeight: '800' },
   resourceDescription: { marginTop: 3, color: '#85847D', fontSize: 9, lineHeight: 13 },
-  resourceChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 9 },
-  resourceChip: { paddingHorizontal: 7, paddingVertical: 4, overflow: 'hidden', borderRadius: 999, backgroundColor: '#F2F2EE', color: '#65645E', fontSize: 7, fontWeight: '800' },
+  resourceList: { gap: 8, marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#ECECF0' },
+  resourceRow: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 9, paddingVertical: 7, borderWidth: 1, borderColor: '#E4E4E7', borderRadius: 9, backgroundColor: '#FAFAFB' },
+  resourceLogoBox: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 1, borderColor: '#E7E7EB', borderRadius: 7, backgroundColor: '#FFFFFF' },
+  resourceFavicon: { width: 19, height: 19 },
+  resourceFaviconFallback: { width: 19, height: 19, alignItems: 'center', justifyContent: 'center', borderRadius: 4, backgroundColor: '#F1F1F4' },
+  resourceFaviconFallbackText: { color: '#555560', fontSize: 12, fontWeight: '700' },
+  resourceDetails: { flex: 1, minWidth: 0, gap: 3 },
+  resourceTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  resourceTitle: { flexShrink: 1, color: '#202020', fontSize: 10, fontWeight: '700' },
+  resourceCategory: { maxWidth: 125, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden', borderRadius: 999, backgroundColor: '#EEEEF1', color: '#5D5D66', fontSize: 7, fontWeight: '700' },
+  resourceSubtitle: { color: '#85847D', fontSize: 8, lineHeight: 11 },
+  resourceEmpty: { marginTop: 12, color: '#85847D', fontSize: 10 },
   pressed: { opacity: 0.72 },
 });
