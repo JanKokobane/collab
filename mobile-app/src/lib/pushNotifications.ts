@@ -1,4 +1,3 @@
-import * as Application from 'expo-application';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { isRunningInExpoGo } from 'expo';
@@ -86,7 +85,7 @@ export async function registerForPushNotificationsAsync(user: User): Promise<str
 
   const token = (await Notifications.getDevicePushTokenAsync()).data;
   if (__DEV__) {
-    console.info('Native FCM device token:', token, 'Application:', Application.applicationId);
+    console.info('Native FCM device token:', token);
   }
   await sendPushTokenToBackend(token, user);
   return token;

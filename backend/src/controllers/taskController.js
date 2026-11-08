@@ -356,9 +356,10 @@ const getProjectTasks = async (req, res) => {
                       )
                 ) dependencies ON TRUE
                 WHERE t.project_id = $1
+                  AND ($3::boolean = FALSE OR t.assignee_firebase_uid = $2)
                 ORDER BY t.created_at, t.title
             `,
-            [project.project_id, req.firebaseUid]
+            [project.project_id, req.firebaseUid, req.query.assignedToMe === 'true']
         );
         return res.status(200).json({
             success: true,

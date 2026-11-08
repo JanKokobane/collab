@@ -14,6 +14,36 @@ export class HomeApiError extends Error {
 export interface HomeProject {
   id: string;
   name: string;
+  projectType?: string;
+  timeSpan?: string;
+  description?: string;
+  color?: string;
+  creatorFirebaseUid?: string;
+  creatorName?: string;
+  creatorEmail?: string;
+  acceptedMembers?: HomeProjectMember[];
+  sprints?: HomeProjectSprint[];
+}
+
+export interface HomeProjectMember {
+  firebaseUid: string;
+  name: string;
+  email: string;
+  role: string;
+  profileImage: string | null;
+}
+
+export interface HomeProjectSprint {
+  [key: string]: unknown;
+  id?: string;
+  name: string;
+  status: string;
+  assigneeFirebaseUid?: string;
+  assigneeName?: string;
+  assigneeEmail?: string;
+  submissionNote?: string;
+  reviewComment?: string;
+  submittedAt?: string;
 }
 
 export interface HomeTask {
@@ -22,6 +52,13 @@ export interface HomeTask {
   status: string;
   dueDate: string | null;
   projectId: string;
+  description?: string;
+  category?: string;
+  sprintName?: string;
+  assigneeFirebaseUid?: string;
+  assigneeName?: string;
+  assigneeEmail?: string;
+  priority?: string;
 }
 
 export interface HomeMeeting {
@@ -121,7 +158,11 @@ function asText(value: unknown, fallback = ''): string {
 
 async function request<T>(
   path: string,
-  options: { method?: 'GET' | 'POST' | 'PUT' | 'PATCH'; body?: unknown } = {},
+  options: {
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH';
+    body?: unknown;
+    allowRootPayload?: boolean;
+  } = {},
 ): Promise<T> {
   const user = firebaseAuth.currentUser;
   if (!user) throw new HomeApiError('Please sign in to load your workspace.', 401);
@@ -150,24 +191,90 @@ async function request<T>(
       response.status,
     );
   }
+  if (options.allowRootPayload) {
+    if (!payload || typeof payload !== 'object') {
+      throw new HomeApiError('The server returned an invalid workspace response.', 502);
+    }
+    return payload as T;
+  }
   if (!payload?.data) {
     throw new HomeApiError('The server returned an invalid workspace response.', 502);
   }
   return payload.data;
 }
 
+function parseHomeProject(value: unknown): HomeProject | null {
+  const row = asRecord(value);
+  const id = asText(row.project_id, asText(row.id));
+  if (!id) return null;
+
+  const acceptedMembers = Array.isArray(row.accepted_members)
+    ? row.accepted_members.flatMap((memberValue) => {
+      const member = asRecord(memberValue);
+      const firebaseUid = asText(member.firebaseUid, asText(member.firebase_uid));
+      if (!firebaseUid) return [];
+      return [{
+        firebaseUid,
+        name: asText(member.name, asText(member.email, 'Project member')),
+        email: asText(member.email),
+        role: asText(member.role, 'Member'),
+        profileImage: typeof member.profileImage === 'string'
+          ? member.profileImage
+          : typeof member.profile_image === 'string' ? member.profile_image : null,
+      }];
+    })
+    : [];
+  const sprints = Array.isArray(row.sprints)
+    ? row.sprints.flatMap((sprintValue) => {
+      const sprint = asRecord(sprintValue);
+      const name = asText(sprint.name);
+      if (!name) return [];
+      return [{
+        ...sprint,
+        id: asText(sprint.id) || undefined,
+        name,
+        status: asText(sprint.status, 'Upcoming'),
+        assigneeFirebaseUid: asText(sprint.assigneeFirebaseUid, asText(sprint.assignee_firebase_uid)) || undefined,
+        assigneeName: asText(sprint.assigneeName, asText(sprint.assignee_name)) || undefined,
+        assigneeEmail: asText(sprint.assigneeEmail, asText(sprint.assignee_email)) || undefined,
+        submissionNote: asText(sprint.submissionNote, asText(sprint.submission_note)) || undefined,
+        reviewComment: asText(sprint.reviewComment, asText(sprint.review_comment)) || undefined,
+        submittedAt: asText(sprint.submittedAt, asText(sprint.submitted_at)) || undefined,
+      }];
+    })
+    : [];
+
+  return {
+    id,
+    name: asText(row.name, 'Untitled project'),
+    projectType: asText(row.project_type, asText(row.projectType)),
+    timeSpan: asText(row.time_span, asText(row.timeSpan)),
+    description: asText(row.description),
+    color: asText(row.color),
+    creatorFirebaseUid: asText(row.creator_firebase_uid, asText(row.creatorFirebaseUid)),
+    creatorName: asText(row.creator_name, asText(row.creatorName)),
+    creatorEmail: asText(row.creator_email, asText(row.creatorEmail)),
+    acceptedMembers,
+    sprints,
+  };
+}
+
 export async function fetchHomeProjects(): Promise<HomeProject[]> {
   const data = await request<{ projects?: unknown[] }>('/projects');
   return (data.projects || []).flatMap((value) => {
-    const row = asRecord(value);
-    const id = asText(row.project_id);
-    if (!id) return [];
-    return [{ id, name: asText(row.name, 'Untitled project') }];
+    const project = parseHomeProject(value);
+    return project ? [project] : [];
   });
 }
 
-export async function fetchHomeTasks(project: HomeProject): Promise<HomeTask[]> {
-  const data = await request<{ tasks?: unknown[] }>(`/projects/${encodeURIComponent(project.id)}/tasks`);
+export async function fetchHomeTasks(
+  project: HomeProject,
+  assignedToCurrentUser = false,
+): Promise<HomeTask[]> {
+  const assignedFilter = assignedToCurrentUser ? '?assignedToMe=true' : '';
+  const data = await request<{ tasks?: unknown[] }>(
+    `/projects/${encodeURIComponent(project.id)}/tasks${assignedFilter}`,
+  );
   return (data.tasks || []).flatMap((value) => {
     const row = asRecord(value);
     const id = asText(row.task_id);
@@ -178,11 +285,173 @@ export async function fetchHomeTasks(project: HomeProject): Promise<HomeTask[]> 
       status: asText(row.status),
       dueDate: typeof row.due_date === 'string' ? row.due_date : null,
       projectId: project.id,
+      description: asText(row.description),
+      category: asText(row.category),
+      sprintName: asText(row.sprint_name, asText(row.sprintName)),
+      assigneeFirebaseUid: asText(row.assignee_firebase_uid) || undefined,
+      assigneeName: asText(row.assignee_name) || undefined,
+      assigneeEmail: asText(row.assignee_email) || undefined,
+      priority: asText(row.priority),
     }];
   });
 }
 
-export async function updateHomeTaskStatus(task: HomeTask, status: string): Promise<void> {
+export interface HomeUserSearchResult {
+  firebaseUid: string;
+  name: string;
+  email: string;
+  profileImage: string | null;
+}
+
+export async function searchHomeUsers(queryText: string): Promise<HomeUserSearchResult[]> {
+  const query = await request<{ users?: unknown[] }>(
+    `/users/search?q=${encodeURIComponent(queryText.trim())}`,
+    { allowRootPayload: true },
+  );
+  return (query.users || []).flatMap((value) => {
+    const row = asRecord(value);
+    const firebaseUid = asText(row.firebase_uid, asText(row.firebaseUid));
+    const email = asText(row.email);
+    if (!firebaseUid || !email) return [];
+    return [{
+      firebaseUid,
+      email,
+      name: asText(row.name, email),
+      profileImage: typeof row.profile_image === 'string'
+        ? row.profile_image
+        : typeof row.profileImage === 'string' ? row.profileImage : null,
+    }];
+  });
+}
+
+export async function createHomeProject(input: {
+  name: string;
+  projectType: string;
+  timeSpan: string;
+  description: string;
+}): Promise<HomeProject> {
+  const timestamp = Date.now();
+  const data = await request<{ project?: unknown }>('/projects', {
+    method: 'POST',
+    body: {
+      project_id: `p_${timestamp}`,
+      name: input.name.trim(),
+      project_type: input.projectType,
+      time_span: input.timeSpan,
+      description: input.description.trim(),
+      color: 'coral',
+      invited_members: [],
+      sprints: [
+        { id: `s_${timestamp}_1`, name: 'Sprint 1: Kickoff & Scoping', status: 'Active' },
+        { id: `s_${timestamp}_2`, name: 'Sprint 2: Implementation', status: 'Upcoming' },
+      ],
+    },
+  });
+  const project = parseHomeProject(data.project);
+  if (!project) throw new HomeApiError('The server did not return the created project.', 502);
+  return project;
+}
+
+export async function sendHomeProjectInvitation(
+  projectId: string,
+  invitee: HomeUserSearchResult,
+  role: string,
+): Promise<void> {
+  await request<{ invitations?: unknown[] }>('/invitations', {
+    method: 'POST',
+    body: {
+      projectId,
+      firebaseUid: invitee.firebaseUid,
+      firebaseUids: [invitee.firebaseUid],
+      users: [{ firebaseUid: invitee.firebaseUid, email: invitee.email }],
+      emails: [invitee.email],
+      role,
+      inviterAvatar: firebaseAuth.currentUser?.photoURL || '',
+    },
+  });
+}
+
+export async function updateHomeProjectSprints(
+  project: HomeProject,
+  sprints: HomeProjectSprint[],
+): Promise<HomeProject> {
+  const data = await request<{ project?: unknown }>(
+    `/projects/${encodeURIComponent(project.id)}`,
+    {
+      method: 'PUT',
+      body: { sprints },
+    },
+  );
+  const updatedProject = parseHomeProject(data.project);
+  if (!updatedProject) {
+    throw new HomeApiError('The server did not return the updated project.', 502);
+  }
+  return updatedProject;
+}
+
+export async function createHomeTask(input: {
+  projectId: string;
+  title: string;
+  description: string;
+  category: string;
+  sprintName: string;
+  assigneeFirebaseUid: string;
+  priority: string;
+  dueDate: string | null;
+}): Promise<void> {
+  await request<{ taskId?: string }>(
+    `/projects/${encodeURIComponent(input.projectId)}/tasks`,
+    {
+      method: 'POST',
+      body: {
+        title: input.title.trim(),
+        description: input.description.trim(),
+        category: input.category,
+        sprintName: input.sprintName,
+        assigneeFirebaseUid: input.assigneeFirebaseUid,
+        status: 'To do',
+        priority: input.priority,
+        startDate: null,
+        dueDate: input.dueDate,
+      },
+    },
+  );
+}
+
+export async function submitHomeSprint(
+  projectId: string,
+  sprintName: string,
+  note: string,
+): Promise<HomeProjectSprint[]> {
+  const data = await request<{ project?: { sprints?: unknown[] } }>(
+    `/projects/${encodeURIComponent(projectId)}/sprints/${encodeURIComponent(sprintName)}/submit`,
+    { method: 'POST', body: { submissionNote: note.trim() } },
+  );
+  const project = parseHomeProject({ project_id: projectId, sprints: data.project?.sprints });
+  return project?.sprints || [];
+}
+
+export async function reviewHomeSprint(
+  projectId: string,
+  sprintName: string,
+  decision: 'accept' | 'request_changes',
+  comment: string,
+): Promise<HomeProjectSprint[]> {
+  const data = await request<{ project?: { sprints?: unknown[] } }>(
+    `/projects/${encodeURIComponent(projectId)}/sprints/${encodeURIComponent(sprintName)}/review`,
+    {
+      method: 'POST',
+      body: { decision, comment: comment.trim() },
+    },
+  );
+  const project = parseHomeProject({ project_id: projectId, sprints: data.project?.sprints });
+  return project?.sprints || [];
+}
+
+export async function updateHomeTaskStatus(
+  task: Pick<HomeTask, 'id' | 'projectId'>,
+  status: string,
+): Promise<void> {
   await request<{ taskId?: string; status?: string }>(
     `/projects/${encodeURIComponent(task.projectId)}/tasks/${encodeURIComponent(task.id)}/status`,
     { method: 'PATCH', body: { status } },

@@ -32,7 +32,6 @@ import {
   markAllHomeNotificationsRead,
   markHomeNotificationRead,
   saveHomeScratchpad,
-  updateHomeTaskStatus,
   type HomeMeeting,
   type HomeMember,
   type HomeNotification,
@@ -44,12 +43,6 @@ import HomeDashboard from '@/components/home-dashboard';
 import NotificationsScreen from '@/components/notifications-screen';
 import TodoScreen from '@/components/todo-screen';
 import WorkspaceBottomNavigation from '@/components/workspace-bottom-navigation';
-
-const projects = [
-  { label: 'Product Launch', color: '#F28B82' },
-  { label: 'Website Redesign', color: '#5794EA' },
-  { label: 'Marketing Sprint', color: '#10B981' },
-];
 
 const secondaryItems = [
   { label: 'Settings', icon: '⚙' },
@@ -70,12 +63,9 @@ export default function WorkspaceScreen() {
   const [homeLoading, setHomeLoading] = useState(true);
   const [homeRefreshKey, setHomeRefreshKey] = useState(0);
   const [notificationsRefreshKey, setNotificationsRefreshKey] = useState(0);
-  const [todoRefreshKey, setTodoRefreshKey] = useState(0);
   const [homeError, setHomeError] = useState<string | null>(null);
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
-  const [todoLoading, setTodoLoading] = useState(false);
-  const [todoError, setTodoError] = useState<string | null>(null);
   const [homePartialErrors, setHomePartialErrors] = useState<string[]>([]);
   const [homeProjects, setHomeProjects] = useState<HomeProject[]>([]);
   const [homeTasks, setHomeTasks] = useState<HomeTask[]>([]);
@@ -86,12 +76,45 @@ export default function WorkspaceScreen() {
   const [homeProjectId, setHomeProjectId] = useState('');
   const [homeNotesSaving, setHomeNotesSaving] = useState(false);
   const [menuSearch, setMenuSearch] = useState('');
+  const [menuProjectsLoading, setMenuProjectsLoading] = useState(false);
+  const [menuProjectsError, setMenuProjectsError] = useState<string | null>(null);
 
   useEffect(() => onAuthStateChanged(firebaseAuth, (currentUser) => {
     setUser(currentUser);
     setReady(true);
     if (!currentUser) router.replace('/');
   }), []);
+
+  useEffect(() => {
+    if (!user || !menuOpen) return;
+
+    let active = true;
+    setMenuProjectsLoading(true);
+    setMenuProjectsError(null);
+    fetchHomeProjects()
+      .then((projectsResult) => {
+        if (!active) return;
+        setHomeProjects(projectsResult);
+        setHomeProjectId((current) => (
+          projectsResult.some((project) => project.id === current)
+            ? current
+            : projectsResult[0]?.id || ''
+        ));
+      })
+      .catch((error: unknown) => {
+        console.error('Unable to load projects for the navigation menu:', error);
+        if (active) {
+          setMenuProjectsError(error instanceof HomeApiError
+            ? error.message
+            : 'Projects could not be loaded. Please try again.');
+        }
+      })
+      .finally(() => {
+        if (active) setMenuProjectsLoading(false);
+      });
+
+    return () => { active = false; };
+  }, [menuOpen, user]);
 
   useFocusEffect(useCallback(() => {
     if (!user || activeSection !== 'Home') return;
@@ -203,44 +226,6 @@ export default function WorkspaceScreen() {
     void loadNotifications();
     return () => { active = false; };
   }, [activeSection, notificationsRefreshKey, user]));
-
-  useFocusEffect(useCallback(() => {
-    if (!user || activeSection !== 'To-do') return;
-
-    let active = true;
-    async function loadTodoTasks() {
-      setTodoLoading(true);
-      setTodoError(null);
-      try {
-        const projects = await fetchHomeProjects();
-        if (!active) return;
-        setHomeProjects(projects);
-        const taskResults = await Promise.allSettled(projects.map((project) => fetchHomeTasks(project)));
-        if (!active) return;
-        const tasks: HomeTask[] = [];
-        const failedProjects = taskResults.filter((result) => result.status === 'rejected').length;
-        for (const result of taskResults) {
-          if (result.status === 'fulfilled') tasks.push(...result.value);
-        }
-        setHomeTasks(tasks);
-        if (failedProjects) {
-          setTodoError('Some project tasks could not be loaded.');
-        }
-      } catch (error) {
-        console.error('Unable to load to-do tasks:', error);
-        if (active) {
-          setTodoError(error instanceof HomeApiError
-            ? error.message
-            : 'Your tasks could not be loaded. Please try again.');
-        }
-      } finally {
-        if (active) setTodoLoading(false);
-      }
-    }
-
-    void loadTodoTasks();
-    return () => { active = false; };
-  }, [activeSection, todoRefreshKey, user]));
 
   useFocusEffect(useCallback(() => {
     const project = homeProjects.find((item) => item.id === homeProjectId);
@@ -409,22 +394,6 @@ export default function WorkspaceScreen() {
     }
   }
 
-  async function handleToggleHomeTask(task: HomeTask) {
-    const status = task.status.trim().toLowerCase() === 'done' ? 'To do' : 'Done';
-    try {
-      await updateHomeTaskStatus(task, status);
-      setHomeTasks((current) => current.map((item) => (
-        item.id === task.id ? { ...item, status } : item
-      )));
-    } catch (error) {
-      console.error('Unable to update task status:', error);
-      Alert.alert(
-        'Could not update task',
-        error instanceof HomeApiError ? error.message : 'Please try again.',
-      );
-    }
-  }
-
   function handleHomeProjectSelect(projectId: string) {
     if (projectId === homeProjectId) return;
     setHomeProjectId(projectId);
@@ -460,7 +429,7 @@ export default function WorkspaceScreen() {
     .map((part) => part[0]?.toUpperCase())
     .join('');
   const searchTerm = menuSearch.trim().toLowerCase();
-  const filteredProjects = projects.filter((project) => project.label.toLowerCase().includes(searchTerm));
+  const filteredProjects = homeProjects.filter((project) => project.name.toLowerCase().includes(searchTerm));
   const filteredSecondaryItems = secondaryItems.filter((item) => item.label.toLowerCase().includes(searchTerm));
 
   return (
@@ -491,28 +460,6 @@ export default function WorkspaceScreen() {
             style={styles.headerLogo}
             accessibilityLabel="Collab"
           />
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={unreadMessageCount
-              ? `Messages, ${unreadMessageCount} unread`
-              : 'Messages'}
-            onPress={() => router.push('/messages')}
-            style={({ pressed }) => [styles.messageButton, pressed && styles.pressed]}>
-            <Image
-              source={require('../../assets/images/messages-icon.png')}
-              resizeMode="contain"
-              style={styles.messageIcon}
-              accessibilityLabel="Messages"
-            />
-            {unreadMessageCount > 0 && (
-              <View style={styles.messageBadge}>
-                <Text style={styles.messageBadgeText}>
-                  {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
-                </Text>
-              </View>
-            )}
-          </Pressable>
 
           <View accessibilityLabel="Profile" accessible style={styles.avatarButton}>
             <ProfileAvatar uri={profileImage} initials={initials} style={styles.avatar} />
@@ -559,13 +506,7 @@ export default function WorkspaceScreen() {
           </View>
         ) : activeSection === 'To-do' ? (
           <View style={styles.homeContent}>
-            <TodoScreen
-              tasks={homeTasks}
-              loading={todoLoading}
-              error={todoError}
-              onRetry={() => setTodoRefreshKey((key) => key + 1)}
-              onToggleTask={handleToggleHomeTask}
-            />
+            <TodoScreen />
           </View>
         ) : (
           <View style={styles.content}>
@@ -587,6 +528,7 @@ export default function WorkspaceScreen() {
       <WorkspaceBottomNavigation
         activeItem={activeSection}
         onSelect={selectSection}
+        unreadMessageCount={unreadMessageCount}
         unreadNotificationCount={homeNotifications.filter((notification) => !notification.isRead).length}
       />
 
@@ -650,25 +592,57 @@ export default function WorkspaceScreen() {
                 <Text style={styles.groupLabel}>PROJECTS</Text>
               </View>
               <View style={styles.navGroup}>
-                {filteredProjects.map((project) => (
+                {filteredProjects.map((project, index) => (
                   <Pressable
-                    key={project.label}
+                    key={project.id}
                     accessibilityRole="button"
-                    accessibilityState={{ selected: activeSection === project.label }}
-                    onPress={() => selectSection(project.label)}
+                    accessibilityState={{ selected: homeProjectId === project.id }}
+                    onPress={() => {
+                      handleHomeProjectSelect(project.id);
+                      selectSection(project.name);
+                    }}
                     style={({ pressed }) => [
                       styles.navItem,
-                      activeSection === project.label && styles.navItemActive,
                       pressed && styles.pressed,
                     ]}>
-                    <View style={[styles.projectDot, { backgroundColor: project.color }]} />
-                    <Text style={[styles.navLabel, activeSection === project.label && styles.navLabelActive]}>
-                      {project.label}
+                    <View style={[
+                      styles.projectDot,
+                      { backgroundColor: project.color || ['#F28B82', '#5794EA', '#10B981'][index % 3] },
+                    ]} />
+                    <Text style={[styles.navLabel, homeProjectId === project.id && styles.navLabelActive]}>
+                      {project.name}
                     </Text>
                   </Pressable>
                 ))}
               </View>
+              {menuProjectsLoading && homeProjects.length === 0 ? (
+                <View style={styles.menuProjectsState}>
+                  <ActivityIndicator size="small" color="#A47E00" />
+                  <Text style={styles.menuProjectsStateText}>Loading projects...</Text>
+                </View>
+              ) : null}
+              {menuProjectsError ? (
+                <View style={styles.menuProjectsState}>
+                  <Text style={styles.menuProjectsError}>{menuProjectsError}</Text>
+                  <Pressable onPress={() => {
+                    setMenuOpen(false);
+                    requestAnimationFrame(() => setMenuOpen(true));
+                  }}>
+                    <Text style={styles.menuProjectsRetry}>Retry</Text>
+                  </Pressable>
+                </View>
+              ) : !menuProjectsLoading && !menuProjectsError && filteredProjects.length === 0 ? (
+                <Text style={styles.menuProjectsStateText}>
+                  {homeProjects.length === 0 ? 'No projects yet.' : 'No matching projects.'}
+                </Text>
+              ) : null}
 
+              {filteredProjects.length === 0 && filteredSecondaryItems.length === 0 && !menuProjectsLoading && !menuProjectsError && (
+                <Text style={styles.noSearchResults}>No matching sections.</Text>
+              )}
+            </ScrollView>
+
+            <View style={styles.accountArea}>
               <View style={[styles.navGroup, styles.secondaryGroup]}>
                 {filteredSecondaryItems.map((item) => (
                   <MenuItem
@@ -680,12 +654,6 @@ export default function WorkspaceScreen() {
                   />
                 ))}
               </View>
-              {filteredProjects.length === 0 && filteredSecondaryItems.length === 0 && (
-                <Text style={styles.noSearchResults}>No matching sections.</Text>
-              )}
-            </ScrollView>
-
-            <View style={styles.accountArea}>
               <View style={styles.accountInfo}>
                 <ProfileAvatar uri={profileImage} initials={initials} style={styles.accountAvatar} />
                 <View style={styles.accountCopy}>
@@ -793,7 +761,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 10,
-    marginLeft: 8,
+    marginLeft: 'auto',
   },
   menuSearch: {
     height: 42,
@@ -819,28 +787,6 @@ const styles = StyleSheet.create({
     color: '#71717A',
     fontSize: 13,
   },
-  messageButton: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    marginLeft: 'auto',
-  },
-  messageIcon: { width: 28, height: 28 },
-  messageBadge: {
-    position: 'absolute',
-    top: 0,
-    right: -3,
-    minWidth: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-    borderRadius: 9,
-    backgroundColor: '#FF4D4F',
-  },
-  messageBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
   avatar: {
     width: 36,
     height: 36,
@@ -906,10 +852,10 @@ const styles = StyleSheet.create({
   navIconActive: { color: '#1C1C1F' },
   navLabel: { flex: 1, color: '#52525B', fontSize: 14, fontWeight: '500' },
   navLabelActive: { color: '#1C1C1F', fontWeight: '700' },
+  projectDot: { width: 9, height: 9, marginHorizontal: 6, borderRadius: 5 },
   projectHeading: { marginTop: 22, marginBottom: 8, paddingHorizontal: 12 },
   groupLabel: { color: '#A1A1AA', fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
-  projectDot: { width: 9, height: 9, marginHorizontal: 6, borderRadius: 5 },
-  secondaryGroup: { marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F0F0F2' },
+  secondaryGroup: { marginBottom: 12 },
   accountArea: {
     marginTop: 'auto',
     paddingTop: 15,
