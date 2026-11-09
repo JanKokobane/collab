@@ -34,12 +34,18 @@ export async function sendPushTokenToBackend(token: string, user: User): Promise
 export async function registerForPushNotificationsAsync(user: User): Promise<string | null> {
   if (Platform.OS !== 'android' || !Device.isDevice) return null;
   if (isRunningInExpoGo()) {
-    console.warn(
-      'FCM push notifications on Android require a custom development build. ' +
-      'Run `npx expo run:android` and open the installed app instead of Expo Go.',
-    );
     return null;
   }
+
+  const Notifications = await import('expo-notifications');
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
 
   const Notifications = await import('expo-notifications');
   Notifications.setNotificationHandler({
