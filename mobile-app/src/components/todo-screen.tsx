@@ -48,6 +48,7 @@ type Task = {
   priority: string;
   due: string | null;
   status: string;
+  projectSprintsComplete: boolean;
   progress: number;
   category: string | null;
   description: string | null;
@@ -185,6 +186,10 @@ function taskFromHomeTask(
     priority: task.priority || 'No priority',
     due: task.dueDate,
     status: task.status || 'To do',
+    projectSprintsComplete: Boolean(
+      project.sprints?.length &&
+      project.sprints.every((sprint) => sprint.status === 'Completed')
+    ),
     progress: normalizedStatus === 'done'
       ? 100
       : normalizedStatus === 'in progress' ? 50 : 0,
@@ -199,16 +204,22 @@ function TaskCard({
   onOpen,
   onAdvance,
   busy,
+  isFirst,
 }: {
   task: Task;
   onOpen: () => void;
   onAdvance: () => void;
   busy: boolean;
+  isFirst: boolean;
 }) {
   const done = task.status.trim().toLowerCase() === 'done';
 
   return (
-    <View style={[styles.taskCard, done && styles.taskCardDone]}>
+    <View style={[
+      styles.taskCard,
+      isFirst && styles.taskCardFirst,
+      done && styles.taskCardDone,
+    ]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`View details for ${task.title}`}
@@ -403,6 +414,11 @@ export default function TodoScreen() {
       ? 100
       : status === 'In progress' ? Math.max(task.progress, 25) : 0;
 
+    if (currentStatus === 'in progress' && !task.projectSprintsComplete) {
+      setLoadError('This in-progress task cannot be moved until every project sprint is complete.');
+      return;
+    }
+
     setBusyTaskId(task.id);
     setLoadError('');
     try {
@@ -506,89 +522,89 @@ export default function TodoScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterTabs}
           accessibilityLabel="Filter tasks">
-          {filters.map((item) => {
-            const { title, description } = filterCopy[item];
-            const isActive = filter === item;
+            {filters.map((item) => {
+              const { title, description } = filterCopy[item];
+              const isActive = filter === item;
 
-            return (
-              <Pressable
-                key={item}
-                accessibilityRole="button"
-                accessibilityLabel={`${title}: ${description}`}
-                accessibilityState={{ selected: isActive }}
-                onPress={() => setFilter(item)}
-                style={({ pressed }) => [
-                  styles.filterButton,
-                  isActive && styles.filterButtonActive,
-                  pressed && styles.filterButtonPressed,
-                ]}>
-                {isActive ? (
-                  <LinearGradient
-                    colors={['#258EFF', '#0755ED']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.filterButtonGradient}
-                  />
-                ) : null}
-                <View style={styles.filterButtonContent}>
-                  <View style={styles.filterIconContainer}>
-                    {item === 'Today' ? (
-                      <Image
-                        source={require('../../assets/images/today-filter-sliders.png')}
-                        style={styles.todayFilterIcon}
-                        resizeMode="contain"
-                      />
-                    ) : null}
-                    {item === 'All' ? (
-                      <Image
-                        source={require('../../assets/images/all-tasks-planner.png')}
-                        style={styles.allFilterIcon}
-                        resizeMode="contain"
-                      />
-                    ) : null}
-                    {item === 'In progress' ? (
-                      <Image
-                        source={require('../../assets/images/in-progress-laptop.png')}
-                        style={styles.progressFilterIcon}
-                        resizeMode="contain"
-                      />
-                    ) : null}
-                    {item === 'Completed' ? (
-                      <Image
-                        source={require('../../assets/images/completed-party-popper.png')}
-                        style={styles.completedFilterIcon}
-                        resizeMode="contain"
-                      />
-                    ) : null}
+              return (
+                <Pressable
+                  key={item}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${title}: ${description}`}
+                  accessibilityState={{ selected: isActive }}
+                  onPress={() => setFilter(item)}
+                  style={({ pressed }) => [
+                    styles.filterButton,
+                    isActive && styles.filterButtonActive,
+                    pressed && styles.filterButtonPressed,
+                  ]}>
+                  {isActive ? (
+                    <LinearGradient
+                      colors={['#258EFF', '#0755ED']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.filterButtonGradient}
+                    />
+                  ) : null}
+                  <View style={styles.filterButtonContent}>
+                    <View style={styles.filterIconContainer}>
+                      {item === 'Today' ? (
+                        <Image
+                          source={require('../../assets/images/today-filter-sliders.png')}
+                          style={styles.todayFilterIcon}
+                          resizeMode="contain"
+                        />
+                      ) : null}
+                      {item === 'All' ? (
+                        <Image
+                          source={require('../../assets/images/all-tasks-planner.png')}
+                          style={styles.allFilterIcon}
+                          resizeMode="contain"
+                        />
+                      ) : null}
+                      {item === 'In progress' ? (
+                        <Image
+                          source={require('../../assets/images/in-progress-laptop.png')}
+                          style={styles.progressFilterIcon}
+                          resizeMode="contain"
+                        />
+                      ) : null}
+                      {item === 'Completed' ? (
+                        <Image
+                          source={require('../../assets/images/completed-party-popper.png')}
+                          style={styles.completedFilterIcon}
+                          resizeMode="contain"
+                        />
+                      ) : null}
+                    </View>
+                    <View style={styles.filterButtonDivider} />
+                    <View style={styles.filterButtonText}>
+                      <Text
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        allowFontScaling={false}
+                        style={[
+                          styles.filterButtonTitle,
+                          isActive && styles.filterButtonTitleActive,
+                        ]}>
+                        {title}
+                      </Text>
+                      <Text
+                        numberOfLines={2}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.65}
+                        allowFontScaling={false}
+                        style={[
+                          styles.filterButtonDescription,
+                          isActive && styles.filterButtonDescriptionActive,
+                        ]}>
+                        {description}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.filterButtonDivider} />
-                  <View style={styles.filterButtonText}>
-                    <Text
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      allowFontScaling={false}
-                      style={[
-                        styles.filterButtonTitle,
-                        isActive && styles.filterButtonTitleActive,
-                      ]}>
-                      {title}
-                    </Text>
-                    <Text
-                      numberOfLines={2}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.65}
-                      allowFontScaling={false}
-                      style={[
-                        styles.filterButtonDescription,
-                        isActive && styles.filterButtonDescriptionActive,
-                      ]}>
-                      {description}
-                    </Text>
-                  </View>
-                </View>
-              </Pressable>
-            );
-          })}
+                </Pressable>
+              );
+            })}
         </ScrollView>
 
         <View style={styles.taskSection}>
@@ -599,10 +615,11 @@ export default function TodoScreen() {
             </View>
           ) : (
             <View style={styles.taskList}>
-              {visibleTasks.map((task) => (
+              {visibleTasks.map((task, index) => (
                 <TaskCard
                   key={task.id}
                   task={task}
+                  isFirst={index === 0}
                   busy={busyTaskId === task.id}
                   onOpen={() => setSelectedTaskId(task.id)}
                   onAdvance={() => { void nextStatus(task); }}
@@ -776,7 +793,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.9,
     shadowRadius: 0,
     elevation: 5,
-    marginTop: -145,
+    marginTop: -135,
   },
   filterButtonActive: {
     borderColor: '#65B5FF',
@@ -817,6 +834,7 @@ const styles = StyleSheet.create({
   sortChevronUp: { transform: [{ rotate: '-90deg' }] },
   taskList: { gap: 13 },
   taskCard: { paddingHorizontal: 17, paddingTop: 17, paddingBottom: 15, borderWidth: 1, borderColor: '#E0E4E0', borderRadius: 17, backgroundColor: '#FFFFFF', },
+  taskCardFirst: { transform: [{ translateY: -150 }] },
   taskCardDone: { opacity: 0.72 },
   cardMain: { gap: 0 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
