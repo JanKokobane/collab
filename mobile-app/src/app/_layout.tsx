@@ -88,7 +88,7 @@ export default function AuthLayout() {
   return (
     <ThemeProvider value={DefaultTheme}>
       <MessageCallProvider>
-        <Stack initialRouteName="index" screenOptions={{ headerShown: false }} />
+        <Stack screenOptions={{ headerShown: false }} />
       </MessageCallProvider>
     </ThemeProvider>
   );

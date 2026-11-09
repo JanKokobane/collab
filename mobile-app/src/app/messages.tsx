@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ElementRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -373,7 +373,7 @@ function ParticipantAvatar({
 }
 
 export default function MessagesScreen() {
-  const { activeCall, startCall, startingCall } = useMessageCalls();
+  const { activeCall, startingCall, startCall } = useMessageCalls();
   const insets = useSafeAreaInsets();
   const audioRecorder = useAudioRecorder({
     ...RecordingPresets.HIGH_QUALITY,
@@ -425,7 +425,7 @@ export default function MessagesScreen() {
   const loadingOlderRef = useRef(false);
   const activeLoadId = useRef(0);
   const voiceRecordingSamples = useRef<number[]>([]);
-  const messageInputRef = useRef<TextInput>(null);
+  const messageInputRef = useRef<ElementRef<typeof TextInput>>(null);
 
   conversationsRef.current = conversations;
   selectedConversationIdRef.current = selectedConversationId;
@@ -854,7 +854,6 @@ export default function MessagesScreen() {
       setError(`You can attach up to ${maxMessageAttachments} files to a message.`);
       return;
     }
-    messageInputRef.current?.blur();
     Keyboard.dismiss();
     setVoiceNoteBusy(true);
     setError('');
@@ -864,7 +863,6 @@ export default function MessagesScreen() {
         setError('Allow microphone access to record a voice note.');
         return;
       }
-      messageInputRef.current?.blur();
       Keyboard.dismiss();
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await audioRecorder.prepareToRecordAsync();

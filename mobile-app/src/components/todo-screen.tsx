@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -9,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { firebaseAuth } from '@/lib/firebase';
@@ -31,7 +33,11 @@ type IconName =
   | 'check'
   | 'close'
   | 'arrow'
-  | 'folder';
+  | 'folder'
+  | 'filterCalendar'
+  | 'listCheck'
+  | 'coloredTaskList'
+  | 'doneCircle';
 
 type Task = {
   id: string;
@@ -48,7 +54,13 @@ type Task = {
   assignee: string;
 };
 
-const filters: TaskFilter[] = ['All', 'Today', 'In progress', 'Completed'];
+const filters: TaskFilter[] = ['Today', 'All', 'In progress', 'Completed'];
+const filterCopy: Record<TaskFilter, { title: string; description: string }> = {
+  All: { title: 'All', description: 'Available tasks' },
+  Today: { title: 'Today', description: 'Tasks due today' },
+  'In progress': { title: 'In Progress', description: 'Tasks in progress' },
+  Completed: { title: 'Completed', description: 'Complete tasks' },
+};
 
 function Icon({
   name,
@@ -72,6 +84,18 @@ function Icon({
         <Path d="M16 3v4M8 3v4M3 10h18" />
       </>
     ),
+    filterCalendar: (
+      <>
+        <Rect x="3.5" y="5" width="17" height="16" rx="2.5" strokeWidth={2.2} />
+        <Path d="M8 3v4M16 3v4M4 10h16" strokeWidth={2.2} />
+        <Circle cx="8" cy="14" r="1" fill={color} stroke="none" />
+        <Circle cx="12" cy="14" r="1" fill={color} stroke="none" />
+        <Circle cx="16" cy="14" r="1" fill={color} stroke="none" />
+        <Circle cx="8" cy="18" r="1" fill={color} stroke="none" />
+        <Circle cx="12" cy="18" r="1" fill={color} stroke="none" />
+        <Circle cx="16" cy="18" r="1" fill={color} stroke="none" />
+      </>
+    ),
     lock: (
       <>
         <Rect x="5" y="10" width="14" height="11" rx="2" />
@@ -90,6 +114,30 @@ function Icon({
     close: <Path d="m6 6 12 12M18 6 6 18" />,
     arrow: <Path d="M5 12h14M13 6l6 6-6 6" />,
     folder: <Path d="M3 6h7l2 2h9v11H3Z" />,
+    listCheck: (
+      <Path d="m2 5 2.5 2.5L9 3m3 2h10M2 12l2.5 2.5L9 10m3 2h10M2 19l2.5 2.5L9 17m3 2h10" />
+    ),
+    coloredTaskList: (
+      <>
+        <Path d="m1.5 4 1.5 1.5L6 2.5M1.5 12l1.5 1.5L6 10.5M1.5 20l1.5 1.5L6 18.5" stroke="#168FE5" strokeWidth={2.2} />
+        <Rect x="9" y="2" width="14" height="4" rx="2" fill="#F97316" fillOpacity={0.2} stroke="#F97316" strokeWidth={1.5} />
+        <Rect x="9" y="10" width="14" height="4" rx="2" fill="#EAB308" fillOpacity={0.2} stroke="#EAB308" strokeWidth={1.5} />
+        <Rect x="9" y="18" width="14" height="4" rx="2" fill="#22C55E" fillOpacity={0.2} stroke="#22C55E" strokeWidth={1.5} />
+      </>
+    ),
+    doneCircle: (
+      <>
+        <Circle cx="12" cy="12" r="10" fill="#22C55E" stroke="none" />
+        <Path
+          d="m6.5 12.2 3.6 3.6 7.6-7.6"
+          fill="none"
+          stroke="#FFFFFF"
+          strokeWidth={2.8}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </>
+    ),
   };
 
   return (
@@ -144,14 +192,6 @@ function taskFromHomeTask(
     description: task.description || null,
     assignee: task.assigneeName || task.assigneeEmail || currentUserName,
   };
-}
-
-function formatDateHeading() {
-  return new Date().toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  });
 }
 
 function TaskCard({
@@ -397,26 +437,44 @@ export default function TodoScreen() {
           { paddingBottom: Math.max(insets.bottom, 24) + 24 },
         ]}
         keyboardShouldPersistTaps="handled">
-        <View style={styles.welcomeRow}>
-          <View style={styles.welcomeCopy}>
-            <Text style={styles.dateLabel}>{formatDateHeading().toUpperCase()}</Text>
-            <Text style={styles.heading}>My tasks</Text>
-            <Text style={styles.welcomeSubtitle}>
-              Stay focused on the work assigned to you.
-            </Text>
-          </View>
-          <View style={styles.weekBadge}>
-            <Text style={styles.weekBadgeNumber}>{openCount}</Text>
-            <Text style={styles.weekBadgeLabel}>OPEN</Text>
-          </View>
-        </View>
-
         {loadError ? (
           <View style={styles.loadErrorBanner}>
             <Text style={styles.loadErrorText}>{loadError}</Text>
           </View>
         ) : null}
         {warning ? <Text style={styles.warningText}>{warning}</Text> : null}
+
+        <View style={styles.sectionTitleRow}>
+          <View style={styles.sectionTitleCopy}>
+            <Text style={styles.sectionTitle}>
+              {filter === 'All' ? 'Assigned to me' : filter}
+            </Text>
+            <Text style={styles.taskCount}>
+              {visibleTasks.length} task{visibleTasks.length === 1 ? '' : 's'}
+            </Text>
+          </View>
+          <View style={styles.sectionActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={searchOpen ? 'Close task search' : 'Search tasks'}
+              onPress={toggleSearch}
+              style={styles.searchAction}>
+              <Icon name="search" size={16} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Sort by due date${dueDateAscending === null
+                ? ''
+                : `, currently ${dueDateAscending ? 'ascending' : 'descending'}`}`}
+              onPress={() => setDueDateAscending((ascending) => ascending === null || !ascending)}
+              style={styles.sortButton}>
+              <Text style={styles.sortText}>Due date</Text>
+              <View style={dueDateAscending === true && styles.sortChevronUp}>
+                <Icon name="chevron" size={14} color="#79827E" />
+              </View>
+            </Pressable>
+          </View>
+        </View>
 
         {searchOpen ? (
           <View style={styles.searchBox}>
@@ -443,86 +501,97 @@ export default function TodoScreen() {
           </View>
         ) : null}
 
-        <View style={styles.progressCard}>
-          <View style={styles.progressHeading}>
-            <Text style={styles.progressEyebrow}>TASK PROGRESS</Text>
-            <Text style={styles.progressComplete}>
-              {tasks.length === 0
-                ? 'No tasks yet'
-                : openCount === 0
-                  ? 'All caught up'
-                  : `${openCount} remaining`}
-            </Text>
-          </View>
-          <View style={styles.progressMain}>
-            <View style={styles.progressCount}>
-              <Text style={styles.progressTitle}>{doneCount}</Text>
-              <Text style={styles.progressMeta}>/ {tasks.length} tasks</Text>
-            </View>
-            <View style={styles.progressPercentBadge}>
-              <Text style={styles.progressPercent}>{completionPercent}%</Text>
-            </View>
-          </View>
-          <View
-            accessibilityRole="progressbar"
-            accessibilityValue={{ min: 0, max: 100, now: completionPercent }}
-            style={styles.weeklyTrack}>
-            <View style={[styles.weeklyTrackFill, { width: `${completionPercent}%` }]} />
-          </View>
-        </View>
-
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterTabs}
           accessibilityLabel="Filter tasks">
-          {filters.map((item) => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: filter === item }}
-              key={item}
-              onPress={() => setFilter(item)}
-              style={[styles.filterButton, filter === item && styles.filterButtonActive]}>
-              <Text style={[styles.filterText, filter === item && styles.filterTextActive]}>
-                {item}
-              </Text>
-            </Pressable>
-          ))}
+          {filters.map((item) => {
+            const { title, description } = filterCopy[item];
+            const isActive = filter === item;
+
+            return (
+              <Pressable
+                key={item}
+                accessibilityRole="button"
+                accessibilityLabel={`${title}: ${description}`}
+                accessibilityState={{ selected: isActive }}
+                onPress={() => setFilter(item)}
+                style={({ pressed }) => [
+                  styles.filterButton,
+                  isActive && styles.filterButtonActive,
+                  pressed && styles.filterButtonPressed,
+                ]}>
+                {isActive ? (
+                  <LinearGradient
+                    colors={['#258EFF', '#0755ED']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.filterButtonGradient}
+                  />
+                ) : null}
+                <View style={styles.filterButtonContent}>
+                  <View style={styles.filterIconContainer}>
+                    {item === 'Today' ? (
+                      <Image
+                        source={require('../../assets/images/today-filter-sliders.png')}
+                        style={styles.todayFilterIcon}
+                        resizeMode="contain"
+                      />
+                    ) : null}
+                    {item === 'All' ? (
+                      <Image
+                        source={require('../../assets/images/all-tasks-planner.png')}
+                        style={styles.allFilterIcon}
+                        resizeMode="contain"
+                      />
+                    ) : null}
+                    {item === 'In progress' ? (
+                      <Image
+                        source={require('../../assets/images/in-progress-laptop.png')}
+                        style={styles.progressFilterIcon}
+                        resizeMode="contain"
+                      />
+                    ) : null}
+                    {item === 'Completed' ? (
+                      <Image
+                        source={require('../../assets/images/completed-party-popper.png')}
+                        style={styles.completedFilterIcon}
+                        resizeMode="contain"
+                      />
+                    ) : null}
+                  </View>
+                  <View style={styles.filterButtonDivider} />
+                  <View style={styles.filterButtonText}>
+                    <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      allowFontScaling={false}
+                      style={[
+                        styles.filterButtonTitle,
+                        isActive && styles.filterButtonTitleActive,
+                      ]}>
+                      {title}
+                    </Text>
+                    <Text
+                      numberOfLines={2}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.65}
+                      allowFontScaling={false}
+                      style={[
+                        styles.filterButtonDescription,
+                        isActive && styles.filterButtonDescriptionActive,
+                      ]}>
+                      {description}
+                    </Text>
+                  </View>
+                </View>
+              </Pressable>
+            );
+          })}
         </ScrollView>
 
         <View style={styles.taskSection}>
-          <View style={styles.sectionTitleRow}>
-            <View style={styles.sectionTitleCopy}>
-              <Text style={styles.sectionTitle}>
-                {filter === 'All' ? 'Assigned to me' : filter}
-              </Text>
-              <Text style={styles.taskCount}>
-                {visibleTasks.length} task{visibleTasks.length === 1 ? '' : 's'}
-              </Text>
-            </View>
-            <View style={styles.sectionActions}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={searchOpen ? 'Close task search' : 'Search tasks'}
-                onPress={toggleSearch}
-                style={styles.searchAction}>
-                <Icon name="search" size={16} />
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Sort by due date${dueDateAscending === null
-                  ? ''
-                  : `, currently ${dueDateAscending ? 'ascending' : 'descending'}`}`}
-                onPress={() => setDueDateAscending((ascending) => ascending === null || !ascending)}
-                style={styles.sortButton}>
-                <Text style={styles.sortText}>Due date</Text>
-                <View style={dueDateAscending === true && styles.sortChevronUp}>
-                  <Icon name="chevron" size={14} color="#79827E" />
-                </View>
-              </Pressable>
-            </View>
-          </View>
-
           {loading ? (
             <View style={styles.emptyState}>
               <ActivityIndicator color="#245D4D" />
@@ -540,19 +609,19 @@ export default function TodoScreen() {
                 />
               ))}
               {visibleTasks.length === 0 ? (
-              <View style={styles.emptyState}>
-                <View style={styles.emptyIcon}>
-                  <Icon name="check" size={24} color="#39816C" />
+                <View style={styles.emptyState}>
+                  <View style={styles.emptyIcon}>
+                    <Icon name="check" size={24} color="#39816C" />
+                  </View>
+                  <Text style={styles.emptyTitle}>
+                    {tasks.length === 0 ? 'No tasks assigned to you' : 'No tasks here'}
+                  </Text>
+                  <Text style={styles.emptyDescription}>
+                    {tasks.length === 0
+                      ? 'Tasks assigned to your account will appear here.'
+                      : 'You’re clear for this view. Try another filter.'}
+                  </Text>
                 </View>
-                <Text style={styles.emptyTitle}>
-                  {tasks.length === 0 ? 'No tasks assigned to you' : 'No tasks here'}
-                </Text>
-                <Text style={styles.emptyDescription}>
-                  {tasks.length === 0
-                    ? 'Tasks assigned to your account will appear here.'
-                    : 'You’re clear for this view. Try another filter.'}
-                </Text>
-              </View>
               ) : null}
             </View>
           )}
@@ -636,10 +705,10 @@ export default function TodoScreen() {
                   ? <ActivityIndicator color="#FFFFFF" />
                   : <Text style={styles.primaryActionText}>
                     {selectedTask.status.trim().toLowerCase() === 'done'
-                    ? 'Reopen task'
-                    : selectedTask.status.trim().toLowerCase() === 'in progress'
-                      ? 'Mark as complete'
-                      : 'Start task'}
+                      ? 'Reopen task'
+                      : selectedTask.status.trim().toLowerCase() === 'in progress'
+                        ? 'Mark as complete'
+                        : 'Start task'}
                   </Text>}
                 {busyTaskId !== selectedTask.id ? (
                   <Icon
@@ -660,15 +729,7 @@ export default function TodoScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F7F8F5' },
   taskContent: { flexGrow: 1, gap: 22, paddingHorizontal: 3, paddingTop: 24 },
-  welcomeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  welcomeCopy: { flex: 1 },
-  dateLabel: { marginBottom: 7, color: '#939B96', fontSize: 11, fontWeight: '800', letterSpacing: 0.8 },
-  heading: { color: '#17352D', fontSize: 31, lineHeight: 36, fontWeight: '800', letterSpacing: -1.2 },
-  welcomeSubtitle: { marginTop: 8, color: '#77817C', fontSize: 14, lineHeight: 20 },
-  weekBadge: { width: 60, height: 60, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#DBE3DD', borderRadius: 18, backgroundColor: '#EDF6F1' },
-  weekBadgeNumber: { color: '#255F50', fontSize: 21, lineHeight: 24, fontWeight: '800' },
-  weekBadgeLabel: { marginTop: 3, color: '#73847D', fontSize: 10, fontWeight: '700' },
-  searchBox: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 12, backgroundColor: '#FFFFFF' },
+  searchBox: { minHeight: 48, marginTop: 30, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 50, backgroundColor: '#FFFFFF' },
   searchInput: { flex: 1, minWidth: 0, paddingVertical: 9, color: '#26352F', fontSize: 14 },
   clearSearchButton: { padding: 6 },
   progressCard: {
@@ -697,13 +758,55 @@ const styles = StyleSheet.create({
   loadErrorBanner: { padding: 13, borderRadius: 11, backgroundColor: '#FFF0EF' },
   loadErrorText: { color: '#9F2D25', fontSize: 13, lineHeight: 19 },
   warningText: { color: '#806700', fontSize: 13, lineHeight: 19 },
-  filterTabs: { gap: 8, paddingBottom: 4 },
-  filterButton: { height: 40, justifyContent: 'center', paddingHorizontal: 15, borderWidth: 1, borderColor: '#DFE3DF', borderRadius: 999, backgroundColor: '#FFFFFF' },
-  filterButtonActive: { borderColor: '#224C40', backgroundColor: '#224C40' },
-  filterText: { color: '#747D78', fontSize: 12, fontWeight: '700' },
-  filterTextActive: { color: '#FFFFFF' },
-  taskSection: { gap: 13, marginTop: -4 },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 9 },
+  filterTabs: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 4, paddingVertical: 12 },
+  filterButton: {
+    position: 'relative',
+    width:75,
+    height: 30,
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 2,
+    borderWidth: 1,
+    borderColor: '#30313A',
+    borderRadius: 15,
+    backgroundColor: '#17181F',
+    shadowColor: '#090A0E',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.9,
+    shadowRadius: 0,
+    elevation: 5,
+    marginTop: -145,
+  },
+  filterButtonActive: {
+    borderColor: '#65B5FF',
+    shadowColor: '#0646C8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.95,
+    shadowRadius: 1,
+    elevation: 7,
+  },
+  filterButtonGradient: { ...StyleSheet.absoluteFill, borderRadius: 14 },
+  filterButtonPressed: {
+    opacity: 0.96,
+    transform: [{ translateY: 2 }],
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  filterButtonContent: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 },
+  filterIconContainer: { width: 13, alignItems: 'center', justifyContent: 'center' },
+  todayFilterIcon: { width: 13, height: 13 },
+  allFilterIcon: { width: 13, height: 13 },
+  completedFilterIcon: { width: 13, height: 13 },
+  progressFilterIcon: { width: 13, height: 13 },
+  filterButtonDivider: { width: 1, height: 16, backgroundColor: 'rgba(190,198,219,0.42)' },
+  filterButtonText: { flex: 1, minWidth: 0, gap: 0 },
+  filterButtonTitle: { color: '#F4F5FA', fontSize: 7, lineHeight: 8, fontWeight: '700' },
+  filterButtonTitleActive: { color: '#FFFFFF' },
+  filterButtonDescription: { color: '#B5B9C8', fontSize: 5.5, lineHeight: 6, fontWeight: '400' },
+  filterButtonDescriptionActive: { color: '#FFFFFF' },
+  taskSection: { gap: 13, marginTop: 0 },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 9, paddingHorizontal: 2, marginBottom: -30, marginTop: -25 },
   sectionTitleCopy: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
   sectionTitle: { color: '#26352F', fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
   taskCount: { color: '#98A09C', fontSize: 12 },
@@ -713,7 +816,7 @@ const styles = StyleSheet.create({
   sortText: { color: '#79827E', fontSize: 12, fontWeight: '700' },
   sortChevronUp: { transform: [{ rotate: '-90deg' }] },
   taskList: { gap: 13 },
-  taskCard: { paddingHorizontal: 17, paddingTop: 17, paddingBottom: 15, borderWidth: 1, borderColor: '#E0E4E0', borderRadius: 17, backgroundColor: '#FFFFFF' },
+  taskCard: { paddingHorizontal: 17, paddingTop: 17, paddingBottom: 15, borderWidth: 1, borderColor: '#E0E4E0', borderRadius: 17, backgroundColor: '#FFFFFF', },
   taskCardDone: { opacity: 0.72 },
   cardMain: { gap: 0 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
