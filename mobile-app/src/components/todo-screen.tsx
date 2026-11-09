@@ -388,25 +388,41 @@ function TaskCard({
   onOpen,
   onAdvance,
   busy,
+<<<<<<< HEAD
   isOnlyTask,
+=======
+  isFirst,
+>>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
 }: {
   task: Task;
   onOpen: () => void;
   onAdvance: () => void;
   busy: boolean;
+<<<<<<< HEAD
   isOnlyTask: boolean;
+=======
+  isFirst: boolean;
+>>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
 }) {
   const status = task.status.trim().toLowerCase();
   const done = status === 'done';
   const inProgress = status === 'in progress';
 
   return (
+<<<<<<< HEAD
     <View
       style={[
         styles.taskCard,
         isOnlyTask && styles.taskCardFirst,
         done && styles.taskCardDone,
       ]}>
+=======
+    <View style={[
+      styles.taskCard,
+      isFirst && styles.taskCardFirst,
+      done && styles.taskCardDone,
+    ]}>
+>>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`View details for ${task.title}`}
@@ -797,11 +813,23 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                     isActive && styles.filterButtonActive,
                     pressed && styles.filterButtonPressed,
                   ]}>
+<<<<<<< HEAD
                   <View
                     style={[
                       styles.filterButtonContent,
                       styles.allFilterButtonContent,
                     ]}>
+=======
+                  {isActive ? (
+                    <LinearGradient
+                      colors={['#258EFF', '#0755ED']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.filterButtonGradient}
+                    />
+                  ) : null}
+                  <View style={styles.filterButtonContent}>
+>>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
                     <View style={styles.filterIconContainer}>
                       {item === 'Today' ? (
                         <Image
@@ -832,6 +860,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                         />
                       ) : null}
                     </View>
+<<<<<<< HEAD
                     <View
                       style={[
                         styles.filterButtonDivider,
@@ -843,6 +872,10 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                         styles.filterButtonText,
                         item === 'In progress' && styles.progressTextOffset,
                       ]}>
+=======
+                    <View style={styles.filterButtonDivider} />
+                    <View style={styles.filterButtonText}>
+>>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
                       <Text
                         numberOfLines={1}
                         adjustsFontSizeToFit
@@ -879,11 +912,15 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
             </View>
           ) : (
             <View style={styles.taskList}>
-              {visibleTasks.map((task) => (
+              {visibleTasks.map((task, index) => (
                 <TaskCard
                   key={task.id}
                   task={task}
+<<<<<<< HEAD
                   isOnlyTask={visibleTasks.length === 1}
+=======
+                  isFirst={index === 0}
+>>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
                   busy={busyTaskId === task.id}
                   onOpen={() => setSelectedTaskId(task.id)}
                   onAdvance={() => { void nextStatus(task); }}
@@ -1230,6 +1267,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.9,
     shadowRadius: 0,
     elevation: 5,
+<<<<<<< HEAD
+=======
+    marginTop: -135,
+>>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
   },
   filterButtonActive: {
     borderColor: '#333333',
@@ -1272,6 +1313,7 @@ const styles = StyleSheet.create({
   sortText: { color: '#79827E', fontSize: 12, fontWeight: '700' },
   sortChevronUp: { transform: [{ rotate: '-90deg' }] },
   taskList: { gap: 13 },
+<<<<<<< HEAD
   taskCard: {
     minHeight: 200,
     paddingHorizontal: 15,
@@ -1411,6 +1453,40 @@ const styles = StyleSheet.create({
   },
   statusButtonInProgress: { backgroundColor: '#F0444F' },
   statusButtonDone: { backgroundColor: '#D6D6D6' },
+=======
+  taskCard: { paddingHorizontal: 17, paddingTop: 17, paddingBottom: 15, borderWidth: 1, borderColor: '#E0E4E0', borderRadius: 17, backgroundColor: '#FFFFFF', },
+  taskCardFirst: { transform: [{ translateY: -150 }] },
+  taskCardDone: { opacity: 0.72 },
+  cardMain: { gap: 0 },
+  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  taskPills: { flexDirection: 'row', gap: 7 },
+  estimatePill: { overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, color: '#5C42D0', backgroundColor: '#F0EDFF', fontSize: 11, lineHeight: 14, fontWeight: '800' },
+  priorityPill: { overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, color: '#6F746F', backgroundColor: '#F1F2F0', fontSize: 11, lineHeight: 14, fontWeight: '800' },
+  priorityHigh: { color: '#A64039', backgroundColor: '#FDEBEA' },
+  priorityLow: { color: '#34745F', backgroundColor: '#E8F5EF' },
+  moreButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  taskTitle: { maxWidth: 300, marginTop: 9, marginBottom: 7, color: '#242C28', fontSize: 17, lineHeight: 23, fontWeight: '800', letterSpacing: -0.3 },
+  taskTitleDone: { color: '#8B938F', textDecorationLine: 'line-through' },
+  projectName: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  projectNameText: { color: '#8A938E', fontSize: 12 },
+  taskMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 13 },
+  taskMetaPill: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: '#F6F7F5' },
+  taskMetaText: { color: '#7E8682', fontSize: 11, fontWeight: '600' },
+  dueToday: { backgroundColor: '#FFF0EE' },
+  dueTodayText: { color: '#A24740' },
+  sprintPill: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: '#EAF3EF' },
+  sprintText: { color: '#3C705E', fontSize: 11, fontWeight: '600' },
+  cardFooter: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 13, marginTop: 14, paddingTop: 13, borderTopWidth: 1, borderTopColor: '#EDF0ED' },
+  assignee: { position: 'relative', flexShrink: 0 },
+  avatarRing: { width: 36, height: 36, overflow: 'hidden', textAlign: 'center', textAlignVertical: 'center', borderWidth: 2, borderColor: '#FFFFFF', borderRadius: 19, color: '#FFFFFF', backgroundColor: '#285F50', fontSize: 9, fontWeight: '800', lineHeight: 32 },
+  statusDot: { position: 'absolute', right: -1, bottom: 0, width: 10, height: 10, borderWidth: 2, borderColor: '#FFFFFF', borderRadius: 6, backgroundColor: '#38A579' },
+  taskProgress: { flex: 1, height: 7, overflow: 'hidden', borderRadius: 999, backgroundColor: '#E6E8E6' },
+  taskProgressFill: { height: '100%', borderRadius: 999, backgroundColor: '#55A087' },
+  statusButton: { minWidth: 62, height: 36, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 11, borderRadius: 8, backgroundColor: '#EAF3EF' },
+  statusButtonInProgress: { backgroundColor: '#EAF3EF' },
+  statusButtonDone: { backgroundColor: '#F0F2F0' },
+  statusButtonText: { color: '#326D5C', fontSize: 11, fontWeight: '800' },
+>>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
   emptyState: { alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 40, paddingHorizontal: 22, borderWidth: 1, borderStyle: 'dashed', borderColor: '#D8DEDA', borderRadius: 17, backgroundColor: '#FFFFFF' },
   emptyIcon: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 27, backgroundColor: '#EAF4EF' },
   emptyTitle: { marginTop: 13, color: '#35433D', fontSize: 16, fontWeight: '800' },
