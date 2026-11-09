@@ -40,7 +40,7 @@ export async function setUserPresence(user: User, isOnline: boolean): Promise<vo
   const baseUrl = (
     process.env.EXPO_PUBLIC_API_BASE_URL || 'https://collab-y7pb.onrender.com'
   ).replace(/\/+$/, '');
-  const response = await fetch(`${baseUrl}/api/messages/presence`, {
+  let response = await fetch(`${baseUrl}/api/messages/presence`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${await user.getIdToken()}`,
@@ -48,9 +48,23 @@ export async function setUserPresence(user: User, isOnline: boolean): Promise<vo
     },
     body: JSON.stringify({ isOnline }),
   });
+  if (response.status === 401) {
+    response = await fetch(`${baseUrl}/api/messages/presence`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${await user.getIdToken(true)}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ isOnline }),
+    });
+  }
   if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    throw new Error(payload?.message || 'Presence could not be updated.');
+    const payload = await response.json().catch(() => null) as {
+      code?: string;
+      message?: string;
+    } | null;
+    const details = payload?.code ? ` (${payload.code})` : ` (HTTP ${response.status})`;
+    throw new Error(`${payload?.message || 'Presence could not be updated.'}${details}`);
   }
 }
 

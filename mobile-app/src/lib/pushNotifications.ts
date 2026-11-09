@@ -1,3 +1,6 @@
+
+import * as Application from 'expo-application';
+import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { isRunningInExpoGo } from 'expo';
@@ -40,6 +43,13 @@ export async function sendPushTokenToBackend(token: string, user: User): Promise
 
 export async function registerForPushNotificationsAsync(user: User): Promise<string | null> {
   if (Platform.OS !== 'android' || !Device.isDevice) return null;
+  if (
+    Constants.executionEnvironment === Constants.ExecutionEnvironment.StoreClient &&
+    Constants.expoVersion !== null
+  ) {
+    console.info('Remote Android push notifications require an Expo development build; skipping Expo Go registration.');
+    return null;
+  }
 
   if (isRunningInExpoGo()) {
     console.warn(
