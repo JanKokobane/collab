@@ -911,13 +911,6 @@ const createMeeting = async (req, res) => {
             req.firebaseUser?.displayName ||
             req.firebaseEmail ||
             'Project member';
-        const hostInitials = hostName
-            .trim()
-            .split(/\s+/)
-            .map(part => part[0])
-            .join('')
-            .slice(0, 2)
-            .toUpperCase() || '📅';
         const client = await pool.connect();
         let result;
         try {
@@ -992,7 +985,15 @@ const createMeeting = async (req, res) => {
                             'meeting_invitation',
                             'You are invited to a project meeting',
                             $3,
-                            $4,
+                            COALESCE(
+                                NULLIF((
+                                    SELECT profile_image
+                                    FROM user_profiles
+                                    WHERE firebase_uid = $4
+                                ), ''),
+                                NULLIF($5, ''),
+                                ''
+                            ),
                             'blue-bg'
                         FROM unnest($1::text[]) AS recipient_uid
                     `,
@@ -1000,7 +1001,8 @@ const createMeeting = async (req, res) => {
                         notificationRecipients,
                         project.project_id,
                         `${hostName} invited you to "${title}" for ${date}, ${startTime}–${endTime} in ${project.name}.`,
-                        hostInitials
+                        req.firebaseUid,
+                        typeof req.firebaseUser?.picture === 'string' ? req.firebaseUser.picture : ''
                     ]
                 );
             }

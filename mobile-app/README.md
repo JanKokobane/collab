@@ -49,7 +49,9 @@ On a physical Android device, `src/lib/pushNotifications.ts` requests notificati
 permission, retrieves the native FCM token (not an Expo push token), and sends it
 to the authenticated `POST /api/users/push-token` endpoint. The root layout
 registers the signed-in user's device. Rebuild the native app after adding or
-changing `google-services.json`:
+changing `google-services.json` or the notifications plugin configuration.
+Android remote push notifications do not work in Expo Go; install and open the
+custom development build instead:
 
 ```bash
 npx expo prebuild --platform android
