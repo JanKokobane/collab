@@ -1,5 +1,4 @@
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import { isRunningInExpoGo } from 'expo';
 import { Platform } from 'react-native';
 import type { User } from 'firebase/auth';
@@ -7,15 +6,6 @@ import type { User } from 'firebase/auth';
 const apiBaseUrl = (
   process.env.EXPO_PUBLIC_API_BASE_URL || 'https://collab-y7pb.onrender.com'
 ).replace(/\/+$/, '');
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
 
 export async function sendPushTokenToBackend(token: string, user: User): Promise<void> {
   const send = async (idToken: string) => fetch(`${apiBaseUrl}/api/users/push-token`, {
@@ -42,12 +32,18 @@ export async function registerForPushNotificationsAsync(user: User): Promise<str
   if (Platform.OS !== 'android' || !Device.isDevice) return null;
 
   if (isRunningInExpoGo()) {
-    console.warn(
-      'FCM push notifications on Android require a custom development build. ' +
-      'Run `npx expo run:android` and open the installed app instead of Expo Go.',
-    );
     return null;
   }
+
+  const Notifications = await import('expo-notifications');
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
 
   try {
     await Notifications.setNotificationChannelAsync('default', {

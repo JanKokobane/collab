@@ -27,13 +27,19 @@ type TaskFilter = 'All' | 'Today' | 'In progress' | 'Completed';
 type IconName =
   | 'search'
   | 'calendar'
+  | 'calendarSolid'
   | 'lock'
   | 'more'
   | 'chevron'
   | 'check'
   | 'close'
   | 'arrow'
+  | 'arrowUp'
+  | 'chevronDown'
   | 'folder'
+  | 'select'
+  | 'tag'
+  | 'users'
   | 'filterCalendar'
   | 'listCheck'
   | 'coloredTaskList'
@@ -53,12 +59,13 @@ type Task = {
   category: string | null;
   description: string | null;
   assignee: string;
+  assignedSprintCount: number;
 };
 
 const filters: TaskFilter[] = ['Today', 'All', 'In progress', 'Completed'];
 const filterCopy: Record<TaskFilter, { title: string; description: string }> = {
   All: { title: 'All', description: 'Available tasks' },
-  Today: { title: 'Today', description: 'Tasks due today' },
+  Today: { title: 'Today', description: 'Due today' },
   'In progress': { title: 'In Progress', description: 'Tasks in progress' },
   Completed: { title: 'Completed', description: 'Complete tasks' },
 };
@@ -84,6 +91,13 @@ function Icon({
         <Rect x="3" y="5" width="18" height="16" rx="2" />
         <Path d="M16 3v4M8 3v4M3 10h18" />
       </>
+    ),
+    calendarSolid: (
+      <Path
+        d="M6 1h2v1H6zm10 0h2v1h-2zm6 4V4h-3V2h-1v5h-2V2h-1v2H9V2H8v5H6V2H5v2H2v1H1v17h1v1h20v-1h1V5zm-1 3v3h-3V8zm0 8h-3v-3h3zm0 5h-3v-3h3zM3 18h3v3H3zm0-5h3v3H3zm13 3h-3v-3h3zm-5 0H8v-3h3zm-3 2h3v3H8zm5 0h3v3h-3zm3-7h-3V8h3zm-5-3v3H8V8zm-5 3H3V8h3z"
+        fill={color}
+        stroke="none"
+      />
     ),
     filterCalendar: (
       <>
@@ -111,12 +125,40 @@ function Icon({
       </>
     ),
     chevron: <Path d="m9 18 6-6-6-6" />,
+    chevronDown: <Path d="m6 9 6 6 6-6" />,
     check: <Path d="m5 12 4 4L19 6" />,
     close: <Path d="m6 6 12 12M18 6 6 18" />,
     arrow: <Path d="M5 12h14M13 6l6 6-6 6" />,
+    arrowUp: <Path d="M12 19V5m-7 7 7-7 7 7" />,
     folder: <Path d="M3 6h7l2 2h9v11H3Z" />,
+    select: (
+      <Path
+        d="M15 4H1c-.6 0-1 .4-1 1v6c0 .6.4 1 1 1h14c.6 0 1-.4 1-1V5c0-.6-.4-1-1-1m-3 5-2-2h4z"
+        fill={color}
+        stroke="none"
+      />
+    ),
+    tag: (
+      <Path
+        d="M20 2.007h-7.087a2 2 0 0 0-1.414.586l-8.906 8.906a2 2 0 0 0 0 2.828l7.086 7.086a2 2 0 0 0 2.828 0l8.906-8.906c.376-.374.587-.883.587-1.413V4.007a2 2 0 0 0-2-2M17.007 9a2 2 0 1 1-.001-3.999A2 2 0 0 1 17.007 9"
+        fill={color}
+        stroke="none"
+      />
+    ),
+    users: (
+      <Path
+        d="M20.966 21.259c-.262.978-1.67.978-1.932 0L19 21v-1.971c-.05-1.736-1.293-2.979-3.029-3.029H8.029C6.293 16.05 5.05 17.293 5 19.029V21c-.03.451-.288.844-.741.966-.656.176-1.217-.327-1.259-.966v-2.029l.032-.553c.297-2.562 2.403-4.345 4.939-4.418h8.058c2.811.081 4.89 2.16 4.971 4.971V21ZM21 12c0 .352.096 1.102-.134 1.5c-.436.755-1.606.601-1.832-.241L19 13v-1c-.352 0-1.102.096-1.5-.134c-.755-.436-.601-1.606.241-1.832L18 10h1V9l.034-.259c.226-.842 1.396-.996 1.832-.241c.23.398.134 1.148.134 1.5h1l.259.034c.842.226.996 1.396.241 1.832c-.398.23-1.148.134-1.5.134m-9.582-.032a5.03 5.03 0 0 1-2.955-1.431A5.03 5.03 0 0 1 7.13 8.146c-.787-3.362 2.024-6.511 5.452-6.114a5.03 5.03 0 0 1 2.955 1.431a5.03 5.03 0 0 1 1.333 2.391c.787 3.362-2.024 6.511-5.452 6.114m.231-7.946a3 3 0 0 0-1.524.638c-2.339 1.876-.751 5.663 2.226 5.318a3 3 0 0 0 1.524-.638c2.339-1.876.751-5.663-2.226-5.318"
+        fill={color}
+        stroke="none"
+      />
+    ),
     listCheck: (
-      <Path d="m2 5 2.5 2.5L9 3m3 2h10M2 12l2.5 2.5L9 10m3 2h10M2 19l2.5 2.5L9 17m3 2h10" />
+      <>
+        <Circle cx="4" cy="6" r="1" fill={color} stroke="none" />
+        <Circle cx="4" cy="12" r="1" fill={color} stroke="none" />
+        <Circle cx="4" cy="18" r="1" fill={color} stroke="none" />
+        <Path d="M9 6h11M9 12h11M9 18h11" />
+      </>
     ),
     coloredTaskList: (
       <>
@@ -146,7 +188,7 @@ function Icon({
       accessibilityElementsHidden
       width={size}
       height={size}
-      viewBox="0 0 24 24"
+      viewBox={name === 'select' ? '0 0 16 16' : '0 0 24 24'}
       fill="none"
       stroke={color}
       strokeWidth={1.8}
@@ -169,6 +211,19 @@ function isDueToday(value: string | null) {
   if (!value) return false;
   const date = new Date(`${value.slice(0, 10)}T00:00:00`);
   return !Number.isNaN(date.getTime()) && date.toDateString() === new Date().toDateString();
+}
+
+function formatTaskCardDueDate(value: string | null) {
+  if (!value) return formatDueDate(value);
+  const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return formatDueDate(value);
+
+  const tomorrow = new Date();
+  tomorrow.setHours(0, 0, 0, 0);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return date.toDateString() === tomorrow.toDateString()
+    ? 'Tomorrow'
+    : formatDueDate(value);
 }
 
 function taskFromHomeTask(
@@ -196,7 +251,48 @@ function taskFromHomeTask(
     category: task.category || null,
     description: task.description || null,
     assignee: task.assigneeName || task.assigneeEmail || currentUserName,
+    assignedSprintCount: project.sprints?.filter(
+      (sprint) => sprint.assigneeFirebaseUid === task.assigneeFirebaseUid,
+    ).length || 0,
   };
+}
+
+function formatTaskCountdown(remainingMs: number) {
+  const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${hours}h ${minutes}m ${seconds}s`;
+}
+
+function TaskCountdown({ due, status }: { due: string | null; status: string }) {
+  const [now, setNow] = useState(Date.now);
+  const normalizedStatus = status.trim().toLowerCase();
+  const deadline = due
+    ? new Date(`${due.slice(0, 10)}T23:59:59`).getTime()
+    : Number.NaN;
+  const hasCountdown = Number.isFinite(deadline) &&
+    normalizedStatus !== 'done' &&
+    normalizedStatus !== 'blocked';
+
+  useEffect(() => {
+    if (!hasCountdown) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [hasCountdown, due]);
+
+  if (!hasCountdown) return null;
+
+  const countdown = formatTaskCountdown(deadline - now);
+  return (
+    <Text
+      accessibilityLabel={`Time remaining: ${countdown}`}
+      numberOfLines={1}
+      style={styles.taskCountdown}>
+      {countdown}
+    </Text>
+  );
 }
 
 function TaskCard({
@@ -212,88 +308,106 @@ function TaskCard({
   busy: boolean;
   isFirst: boolean;
 }) {
-  const done = task.status.trim().toLowerCase() === 'done';
+  const status = task.status.trim().toLowerCase();
+  const done = status === 'done';
+  const inProgress = status === 'in progress';
 
   return (
-    <View style={[
-      styles.taskCard,
-      isFirst && styles.taskCardFirst,
-      done && styles.taskCardDone,
-    ]}>
+    <View
+      style={[
+        styles.taskCard,
+        isFirst && styles.taskCardFirst,
+        done && styles.taskCardDone,
+      ]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`View details for ${task.title}`}
         onPress={onOpen}
         style={styles.cardMain}>
-        <View style={styles.cardTop}>
-          <View style={styles.taskPills}>
-            {task.category ? (
-              <Text style={styles.estimatePill}>{task.category}</Text>
-            ) : null}
-            <Text style={[
-              styles.priorityPill,
-              task.priority.toLowerCase() === 'high' && styles.priorityHigh,
-              task.priority.toLowerCase() === 'low' && styles.priorityLow,
-            ]}>
-              {task.priority} priority
+        <View style={styles.taskTitleRow}>
+          <Icon name="select" size={16} color="#000000" />
+          <Text
+            numberOfLines={2}
+            style={[styles.taskTitle, done && styles.taskTitleDone]}>
+            {task.title}
+          </Text>
+          <TaskCountdown due={task.due} status={task.status} />
+        </View>
+
+        {task.description ? (
+          <View style={styles.taskDescriptionContainer}>
+            <Text numberOfLines={4} style={styles.taskDescription}>
+              {task.description}
             </Text>
           </View>
-          <View style={styles.moreButton}>
-            <Icon name="more" size={22} color="#9AA19D" />
-          </View>
-        </View>
-        <Text style={[styles.taskTitle, done && styles.taskTitleDone]}>{task.title}</Text>
-        <View style={styles.projectName}>
-          <Icon name="folder" size={17} color="#8A938E" />
-          <Text style={styles.projectNameText}>{task.project}</Text>
-        </View>
+        ) : null}
+
         <View style={styles.taskMeta}>
-          <View style={[styles.taskMetaPill, isDueToday(task.due) && styles.dueToday]}>
+          <View
+            style={[
+              styles.taskMetaPill,
+              isDueToday(task.due) && styles.dueToday,
+            ]}>
             <Icon
-              name="calendar"
-              size={18}
-              color={isDueToday(task.due) ? '#A24740' : '#7E8682'}
+              name="calendarSolid"
+              size={15}
+              color={isDueToday(task.due) ? '#FF7868' : '#929292'}
             />
-            <Text style={[styles.taskMetaText, isDueToday(task.due) && styles.dueTodayText]}>
-              {formatDueDate(task.due)}
+            <Text
+              style={[
+                styles.taskMetaText,
+                isDueToday(task.due) && styles.dueTodayText,
+              ]}>
+              {formatTaskCardDueDate(task.due)}
             </Text>
           </View>
-          <View style={styles.sprintPill}>
-            <Icon name="lock" size={17} color="#3C705E" />
-            <Text style={styles.sprintText}>{task.sprint || 'No sprint'}</Text>
+
+          <View style={styles.metaIcons}>
+            <View style={styles.metaIconButton}>
+              <Icon name="listCheck" size={17} color="#858585" />
+            </View>
+            <View style={styles.metaIconButton}>
+              <Icon name="tag" size={17} color="#858585" />
+            </View>
+            <View style={styles.metaIconButton}>
+              <Icon name="users" size={17} color="#858585" />
+            </View>
           </View>
         </View>
       </Pressable>
 
       <View style={styles.cardFooter}>
-        <View accessibilityLabel={`Assigned to ${task.assignee}`} style={styles.assignee}>
-          <Text style={styles.avatarRing}>
-            {task.assignee.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('')}
-          </Text>
-          <View style={styles.statusDot} />
-        </View>
+        <Text
+          accessibilityLabel={`${task.assignedSprintCount} sprints assigned`}
+          numberOfLines={1}
+          style={styles.sprintCount}>
+          {`Sprints assigned: ${task.assignedSprintCount}`}
+        </Text>
+
         <View
-          accessibilityLabel={`${task.progress}% complete`}
-          style={styles.taskProgress}>
-          <View style={[styles.taskProgressFill, { width: `${task.progress}%` }]} />
+          accessibilityLabel={`Project ${task.project}`}
+          style={styles.assigneeRow}>
+          <Text style={styles.projectEmoji}>🎒</Text>
+          <Text numberOfLines={1} style={styles.assigneeName}>{task.project}</Text>
+          <Icon name="chevronDown" size={13} color="#858585" />
         </View>
+
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={done ? 'Task completed' : inProgress ? 'Finish task' : 'Start task'}
           disabled={busy}
           onPress={onAdvance}
           style={[
             styles.statusButton,
+            inProgress && styles.statusButtonInProgress,
             done && styles.statusButtonDone,
-            task.status.trim().toLowerCase() === 'in progress' && styles.statusButtonInProgress,
           ]}>
           {busy ? (
-            <ActivityIndicator size="small" color="#397B69" />
+            <ActivityIndicator size="small" color="#FFFFFF" />
           ) : done ? (
-            <Icon name="check" size={17} color="#4D655D" />
+            <Icon name="check" size={17} color="#BEBEBE" />
           ) : (
-            <Text style={styles.statusButtonText}>
-              {task.status.trim().toLowerCase() === 'in progress' ? 'Finish' : 'Start'}
-            </Text>
+            <Icon name="arrow" size={19} color="#FFFFFF" />
           )}
         </Pressable>
       </View>
@@ -663,78 +777,115 @@ export default function TodoScreen() {
               { paddingBottom: Math.max(insets.bottom, 23) },
             ]}>
               <View style={styles.drawerHandle} />
-              <View style={styles.drawerHeader}>
-                <Text style={[
-                  styles.detailStatus,
-                  selectedTask.status === 'Done' && styles.detailStatusDone,
-                ]}>
-                  {selectedTask.status}
+              <ScrollView
+                style={styles.drawerScroll}
+                contentContainerStyle={styles.drawerContent}
+                showsVerticalScrollIndicator>
+                <View style={styles.drawerHeader}>
+                  <Text style={[
+                    styles.detailStatus,
+                    selectedTask.status === 'Done' && styles.detailStatusDone,
+                  ]}>
+                    {selectedTask.status}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Close task details"
+                    onPress={() => setSelectedTaskId(null)}
+                    style={styles.drawerCloseButton}>
+                    <Icon name="close" size={20} color="#6F7A75" />
+                  </Pressable>
+                </View>
+                <Text style={styles.detailProject}>
+                  {[selectedTask.project, selectedTask.sprint].filter(Boolean).join(' · ')}
                 </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Close task details"
-                  onPress={() => setSelectedTaskId(null)}
-                  style={styles.drawerCloseButton}>
-                  <Icon name="close" size={20} color="#6F7A75" />
-                </Pressable>
-              </View>
-              <Text style={styles.detailProject}>
-                {[selectedTask.project, selectedTask.sprint].filter(Boolean).join(' · ')}
-              </Text>
-              <Text style={styles.detailTitle}>{selectedTask.title}</Text>
-              <Text style={styles.detailDescription}>
-                {selectedTask.description || 'No description provided.'}
-              </Text>
-              <View style={styles.detailGrid}>
-                <View style={styles.detailField}>
-                  <Text style={styles.detailLabel}>DUE DATE</Text>
-                  <View style={styles.detailValueRow}>
-                    <Icon name="calendar" size={15} color="#40504A" />
-                    <Text style={styles.detailValue}>{formatDueDate(selectedTask.due)}</Text>
+                <Text style={styles.detailTitle}>{selectedTask.title}</Text>
+                <Text style={styles.detailDescription}>
+                  {selectedTask.description || 'No description provided.'}
+                </Text>
+                <View style={styles.detailGrid}>
+                  <View style={styles.detailField}>
+                    <Text style={styles.detailLabel}>DUE DATE</Text>
+                    <View style={styles.detailValueRow}>
+                      <Icon name="calendar" size={15} color="#40504A" />
+                      <Text style={styles.detailValue}>{formatDueDate(selectedTask.due)}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.detailField}>
+                    <Text style={styles.detailLabel}>PRIORITY</Text>
+                    <Text style={styles.detailValue}>{selectedTask.priority}</Text>
+                  </View>
+                  <View style={styles.detailField}>
+                    <Text style={styles.detailLabel}>SPRINT</Text>
+                    <Text style={styles.detailValue}>{selectedTask.sprint || 'No sprint'}</Text>
+                  </View>
+                  <View style={styles.detailField}>
+                    <Text style={styles.detailLabel}>CATEGORY</Text>
+                    <Text style={styles.detailValue}>{selectedTask.category || 'General'}</Text>
                   </View>
                 </View>
-                <View style={styles.detailField}>
-                  <Text style={styles.detailLabel}>PRIORITY</Text>
-                  <Text style={styles.detailValue}>{selectedTask.priority}</Text>
+                <View style={styles.assignedRow}>
+                  <Text style={[styles.avatarRing, styles.avatarRingLarge]}>AM</Text>
+                  <View style={styles.assignedCopy}>
+                    <Text style={styles.detailLabel}>ASSIGNED TO</Text>
+                    <Text style={styles.assignedName}>{selectedTask.assignee}</Text>
+                  </View>
                 </View>
-                <View style={styles.detailField}>
-                  <Text style={styles.detailLabel}>SPRINT</Text>
-                  <Text style={styles.detailValue}>{selectedTask.sprint || 'No sprint'}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={busyTaskId === selectedTask.id}
+                  onPress={() => { void nextStatus(selectedTask); }}
+                  style={styles.primaryAction}>
+                  {busyTaskId === selectedTask.id
+                    ? <ActivityIndicator color="#FFFFFF" />
+                    : <Text style={styles.primaryActionText}>
+                      {selectedTask.status.trim().toLowerCase() === 'done'
+                        ? 'Reopen task'
+                        : selectedTask.status.trim().toLowerCase() === 'in progress'
+                          ? 'Mark as complete'
+                          : 'Start task'}
+                    </Text>}
+                  {busyTaskId !== selectedTask.id ? (
+                    <Icon
+                      name={selectedTask.status.trim().toLowerCase() === 'in progress' ? 'check' : 'arrow'}
+                      size={18}
+                      color="#FFFFFF"
+                    />
+                  ) : null}
+                </Pressable>
+                <View style={styles.assignedTasksSection}>
+                  <View style={styles.assignedTasksHeading}>
+                    <Text style={styles.assignedTasksTitle}>Your assigned tasks</Text>
+                    <Text style={styles.assignedTasksCount}>{tasks.length}</Text>
+                  </View>
+                  {tasks.length ? tasks.map((task) => (
+                    <Pressable
+                      key={`${task.projectId}:${task.id}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`View ${task.title}, ${task.status}, ${task.project}`}
+                      accessibilityState={{ selected: task.id === selectedTask.id }}
+                      onPress={() => setSelectedTaskId(task.id)}
+                      style={[
+                        styles.assignedTaskItem,
+                        task.id === selectedTask.id && styles.assignedTaskItemSelected,
+                      ]}>
+                      <View style={styles.assignedTaskCopy}>
+                        <Text numberOfLines={1} style={styles.assignedTaskTitle}>
+                          {task.title}
+                        </Text>
+                        <Text numberOfLines={1} style={styles.assignedTaskProject}>
+                          {task.project}
+                        </Text>
+                      </View>
+                      <Text style={styles.assignedTaskStatus}>{task.status}</Text>
+                    </Pressable>
+                  )) : (
+                    <Text style={styles.assignedTasksEmpty}>
+                      No tasks are currently assigned to you.
+                    </Text>
+                  )}
                 </View>
-                <View style={styles.detailField}>
-                  <Text style={styles.detailLabel}>CATEGORY</Text>
-                  <Text style={styles.detailValue}>{selectedTask.category || 'General'}</Text>
-                </View>
-              </View>
-              <View style={styles.assignedRow}>
-                <Text style={[styles.avatarRing, styles.avatarRingLarge]}>AM</Text>
-                <View style={styles.assignedCopy}>
-                  <Text style={styles.detailLabel}>ASSIGNED TO</Text>
-                  <Text style={styles.assignedName}>{selectedTask.assignee}</Text>
-                </View>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                disabled={busyTaskId === selectedTask.id}
-                onPress={() => { void nextStatus(selectedTask); }}
-                style={styles.primaryAction}>
-                {busyTaskId === selectedTask.id
-                  ? <ActivityIndicator color="#FFFFFF" />
-                  : <Text style={styles.primaryActionText}>
-                    {selectedTask.status.trim().toLowerCase() === 'done'
-                      ? 'Reopen task'
-                      : selectedTask.status.trim().toLowerCase() === 'in progress'
-                        ? 'Mark as complete'
-                        : 'Start task'}
-                  </Text>}
-                {busyTaskId !== selectedTask.id ? (
-                  <Icon
-                    name={selectedTask.status.trim().toLowerCase() === 'in progress' ? 'check' : 'arrow'}
-                    size={18}
-                    color="#FFFFFF"
-                  />
-                ) : null}
-              </Pressable>
+              </ScrollView>
             </View>
           </View>
         ) : null}
@@ -746,7 +897,7 @@ export default function TodoScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F7F8F5' },
   taskContent: { flexGrow: 1, gap: 22, paddingHorizontal: 3, paddingTop: 24 },
-  searchBox: { minHeight: 48, marginTop: 30, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 50, backgroundColor: '#FFFFFF' },
+  searchBox: { minHeight: 48, marginTop: 20, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 50, backgroundColor: '#FFFFFF' },
   searchInput: { flex: 1, minWidth: 0, paddingVertical: 9, color: '#26352F', fontSize: 14 },
   clearSearchButton: { padding: 6 },
   progressCard: {
@@ -793,7 +944,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.9,
     shadowRadius: 0,
     elevation: 5,
-    marginTop: -135,
+    marginTop: -150,
   },
   filterButtonActive: {
     borderColor: '#65B5FF',
@@ -833,44 +984,151 @@ const styles = StyleSheet.create({
   sortText: { color: '#79827E', fontSize: 12, fontWeight: '700' },
   sortChevronUp: { transform: [{ rotate: '-90deg' }] },
   taskList: { gap: 13 },
-  taskCard: { paddingHorizontal: 17, paddingTop: 17, paddingBottom: 15, borderWidth: 1, borderColor: '#E0E4E0', borderRadius: 17, backgroundColor: '#FFFFFF', },
-  taskCardFirst: { transform: [{ translateY: -150 }] },
-  taskCardDone: { opacity: 0.72 },
-  cardMain: { gap: 0 },
-  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  taskPills: { flexDirection: 'row', gap: 7 },
-  estimatePill: { overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, color: '#5C42D0', backgroundColor: '#F0EDFF', fontSize: 11, lineHeight: 14, fontWeight: '800' },
-  priorityPill: { overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, color: '#6F746F', backgroundColor: '#F1F2F0', fontSize: 11, lineHeight: 14, fontWeight: '800' },
-  priorityHigh: { color: '#A64039', backgroundColor: '#FDEBEA' },
-  priorityLow: { color: '#34745F', backgroundColor: '#E8F5EF' },
-  moreButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  taskTitle: { maxWidth: 300, marginTop: 9, marginBottom: 7, color: '#242C28', fontSize: 17, lineHeight: 23, fontWeight: '800', letterSpacing: -0.3 },
-  taskTitleDone: { color: '#8B938F', textDecorationLine: 'line-through' },
-  projectName: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  projectNameText: { color: '#8A938E', fontSize: 12 },
-  taskMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 13 },
-  taskMetaPill: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: '#F6F7F5' },
-  taskMetaText: { color: '#7E8682', fontSize: 11, fontWeight: '600' },
-  dueToday: { backgroundColor: '#FFF0EE' },
-  dueTodayText: { color: '#A24740' },
-  sprintPill: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: '#EAF3EF' },
-  sprintText: { color: '#3C705E', fontSize: 11, fontWeight: '600' },
-  cardFooter: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 13, marginTop: 14, paddingTop: 13, borderTopWidth: 1, borderTopColor: '#EDF0ED' },
-  assignee: { position: 'relative', flexShrink: 0 },
-  avatarRing: { width: 36, height: 36, overflow: 'hidden', textAlign: 'center', textAlignVertical: 'center', borderWidth: 2, borderColor: '#FFFFFF', borderRadius: 19, color: '#FFFFFF', backgroundColor: '#285F50', fontSize: 9, fontWeight: '800', lineHeight: 32 },
-  statusDot: { position: 'absolute', right: -1, bottom: 0, width: 10, height: 10, borderWidth: 2, borderColor: '#FFFFFF', borderRadius: 6, backgroundColor: '#38A579' },
-  taskProgress: { flex: 1, height: 7, overflow: 'hidden', borderRadius: 999, backgroundColor: '#E6E8E6' },
-  taskProgressFill: { height: '100%', borderRadius: 999, backgroundColor: '#55A087' },
-  statusButton: { minWidth: 62, height: 36, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 11, borderRadius: 8, backgroundColor: '#EAF3EF' },
-  statusButtonInProgress: { backgroundColor: '#EAF3EF' },
-  statusButtonDone: { backgroundColor: '#F0F2F0' },
-  statusButtonText: { color: '#326D5C', fontSize: 11, fontWeight: '800' },
+  taskCard: {
+    minHeight: 200,
+    paddingHorizontal: 15,
+    paddingTop: 15,
+    paddingBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 9 },
+    shadowOpacity: 0.42,
+    shadowRadius: 14,
+    elevation: 5,
+  },
+  taskCardFirst: { transform: [{ translateY: -175 }] },
+  taskCardDone: { opacity: 1 },
+  cardMain: { flex: 1 },
+  taskTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  taskTitle: {
+    flex: 1,
+    marginTop: -2,
+    color: '#555555',
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  taskCountdown: {
+    flexShrink: 0,
+    marginTop: 1,
+    color: '#777777',
+    fontSize: 9,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  taskTitleDone: { color: '#898989', textDecorationLine: 'line-through' },
+  taskDescriptionContainer: {
+    marginTop: 0,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#D9D9D9',
+  },
+  taskDescription: {
+    color: '#A6A6A6',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  taskMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 'auto',
+    paddingTop: 13,
+  },
+  taskMetaPill: {
+    minHeight: 27,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 9,
+    borderRadius: 999,
+    backgroundColor: '#242424',
+  },
+  taskMetaText: { color: '#D0D0D0', fontSize: 10, fontWeight: '700' },
+  dueToday: { backgroundColor: '#3A211F' },
+  dueTodayText: { color: '#FF968A' },
+  metaIcons: { flexDirection: 'row', alignItems: 'center', gap: 14, marginLeft: 'auto' },
+  metaIconButton: {
+    width: 18,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sprintCount: {
+    position: 'absolute',
+    left: 0,
+    top: 8,
+    bottom: 0,
+    width: '32%',
+    textAlignVertical: 'center',
+    minWidth: 0,
+    color: '#666666',
+    fontSize: 9,
+    fontWeight: '700',
+    textAlign: 'left',
+  },
+  cardFooter: {
+    position: 'relative',
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#D9D9D9',
+  },
+  assigneeRow: {
+    position: 'absolute',
+    left: '25%',
+    top: 8,
+    bottom: 0,
+    width: '50%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minWidth: 0,
+  },
+  assigneeName: { maxWidth: '75%', flexShrink: 1, color: '#666666', fontSize: 11, fontWeight: '600' },
+  projectEmoji: { fontSize: 12, lineHeight: 16 },
+  avatarRing: {
+    width: 36,
+    height: 36,
+    overflow: 'hidden',
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    borderRadius: 19,
+    color: '#FFFFFF',
+    backgroundColor: '#285F50',
+    fontSize: 9,
+    fontWeight: '800',
+    lineHeight: 32,
+  },
+  statusButton: {
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 15,
+    backgroundColor: '#F0444F',
+  },
+  statusButtonInProgress: { backgroundColor: '#F0444F' },
+  statusButtonDone: { backgroundColor: '#D6D6D6' },
   emptyState: { alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 40, paddingHorizontal: 22, borderWidth: 1, borderStyle: 'dashed', borderColor: '#D8DEDA', borderRadius: 17, backgroundColor: '#FFFFFF' },
   emptyIcon: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 27, backgroundColor: '#EAF4EF' },
   emptyTitle: { marginTop: 13, color: '#35433D', fontSize: 16, fontWeight: '800' },
   emptyDescription: { marginTop: 4, color: '#82908A', fontSize: 12, lineHeight: 17, textAlign: 'center' },
   modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(21,35,29,0.42)' },
-  taskDrawer: { gap: 15, paddingTop: 11, paddingHorizontal: 22, borderTopLeftRadius: 26, borderTopRightRadius: 26, backgroundColor: '#FFFFFF' },
+  taskDrawer: { maxHeight: '90%', gap: 15, paddingTop: 11, paddingHorizontal: 22, borderTopLeftRadius: 26, borderTopRightRadius: 26, backgroundColor: '#FFFFFF' },
+  drawerScroll: { flexShrink: 1 },
+  drawerContent: { gap: 15, paddingBottom: 8 },
   drawerHandle: { width: 36, height: 4, alignSelf: 'center', marginBottom: 4, borderRadius: 99, backgroundColor: '#DCE1DD' },
   drawerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   detailStatus: { overflow: 'hidden', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 8, color: '#376B5B', backgroundColor: '#EAF3EF', fontSize: 11, fontWeight: '800' },
@@ -885,6 +1143,17 @@ const styles = StyleSheet.create({
   detailValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   detailValue: { color: '#40504A', fontSize: 13, fontWeight: '700' },
   assignedRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 2, paddingVertical: 14, borderTopWidth: 1, borderTopColor: '#EDF0ED' },
+  assignedTasksSection: { gap: 8, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#EDF0ED' },
+  assignedTasksHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
+  assignedTasksTitle: { color: '#34433D', fontSize: 15, fontWeight: '800' },
+  assignedTasksCount: { minWidth: 24, overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 12, backgroundColor: '#F0F2F0', color: '#64736D', fontSize: 11, fontWeight: '700', textAlign: 'center' },
+  assignedTaskItem: { minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#E8ECE9', borderRadius: 10, backgroundColor: '#FFFFFF' },
+  assignedTaskItemSelected: { borderColor: '#A8CDBE', backgroundColor: '#F3F8F5' },
+  assignedTaskCopy: { flex: 1, gap: 3 },
+  assignedTaskTitle: { color: '#34433D', fontSize: 13, fontWeight: '700' },
+  assignedTaskProject: { color: '#82908A', fontSize: 11 },
+  assignedTaskStatus: { color: '#64736D', fontSize: 10, fontWeight: '700' },
+  assignedTasksEmpty: { paddingVertical: 10, color: '#82908A', fontSize: 13 },
   avatarRingLarge: { width: 42, height: 42, borderRadius: 23, fontSize: 10, lineHeight: 38 },
   assignedCopy: { gap: 4 },
   assignedName: { color: '#34433D', fontSize: 13, fontWeight: '700' },
