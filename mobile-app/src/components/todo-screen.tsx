@@ -434,6 +434,7 @@ function TaskCard({
         style={styles.cardMain}>
         <View style={styles.taskTitleRow}>
 <<<<<<< HEAD
+<<<<<<< HEAD
           <View style={styles.taskTitleIcon}>
             <Icon name="campaign" size={20} color="#000000" />
           </View>
@@ -450,6 +451,18 @@ function TaskCard({
             numberOfLines={2}
             style={[styles.taskTitle, done && styles.taskTitleDone]}>
 >>>>>>> 2784bfd (Restore original task filter button styling)
+=======
+          <View style={styles.taskTitleIcon}>
+            <Icon name="campaign" size={20} color="#000000" />
+          </View>
+          <Text
+            numberOfLines={2}
+            style={[
+              styles.taskTitle,
+              styles.taskTitleShift,
+              done && styles.taskTitleDone,
+            ]}>
+>>>>>>> 30539ed (Polish task screen UI)
             {task.title}
           </Text>
           <TaskCountdown due={task.due} status={task.status} />
@@ -473,10 +486,14 @@ function TaskCard({
               name="calendarSolid"
               size={15}
 <<<<<<< HEAD
+<<<<<<< HEAD
               color="#929292"
 =======
               color={isDueToday(task.due) ? '#FF7868' : '#929292'}
 >>>>>>> 2784bfd (Restore original task filter button styling)
+=======
+              color="#929292"
+>>>>>>> 30539ed (Polish task screen UI)
             />
             <Text
               style={[
@@ -513,9 +530,12 @@ function TaskCard({
           accessibilityLabel={`Project ${task.project}`}
           style={styles.assigneeRow}>
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
           <Text style={styles.projectEmoji}>🎒</Text>
 >>>>>>> 2784bfd (Restore original task filter button styling)
+=======
+>>>>>>> 30539ed (Polish task screen UI)
           <Text numberOfLines={1} style={styles.assigneeName}>{task.project}</Text>
           <Icon name="chevronDown" size={13} color="#858585" />
         </View>
@@ -833,11 +853,15 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                     pressed && styles.filterButtonPressed,
                   ]}>
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 30539ed (Polish task screen UI)
                   <View
                     style={[
                       styles.filterButtonContent,
                       styles.allFilterButtonContent,
                     ]}>
+<<<<<<< HEAD
 =======
                   {isActive ? (
                     <LinearGradient
@@ -849,6 +873,8 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   ) : null}
                   <View style={styles.filterButtonContent}>
 >>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
+=======
+>>>>>>> 30539ed (Polish task screen UI)
                     <View style={styles.filterIconContainer}>
                       {item === 'Today' ? (
                         <Image
@@ -880,6 +906,9 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                       ) : null}
                     </View>
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 30539ed (Polish task screen UI)
                     <View
                       style={[
                         styles.filterButtonDivider,
@@ -891,10 +920,13 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                         styles.filterButtonText,
                         item === 'In progress' && styles.progressTextOffset,
                       ]}>
+<<<<<<< HEAD
 =======
                     <View style={styles.filterButtonDivider} />
                     <View style={styles.filterButtonText}>
 >>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
+=======
+>>>>>>> 30539ed (Polish task screen UI)
                       <Text
                         numberOfLines={1}
                         adjustsFontSizeToFit
@@ -1476,10 +1508,15 @@ const styles = StyleSheet.create({
   cardMain: { flex: 1 },
   taskTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
 <<<<<<< HEAD
+<<<<<<< HEAD
   taskTitleIcon: { transform: [{ translateY: -5 }] },
   taskTitleShift: { transform: [{ translateX: -7 }] },
 =======
 >>>>>>> 2784bfd (Restore original task filter button styling)
+=======
+  taskTitleIcon: { transform: [{ translateY: -5 }] },
+  taskTitleShift: { transform: [{ translateX: -7 }] },
+>>>>>>> 30539ed (Polish task screen UI)
   taskTitle: {
     flex: 1,
     marginTop: -2,
@@ -1531,12 +1568,17 @@ const styles = StyleSheet.create({
   },
   taskMetaText: { color: '#D0D0D0', fontSize: 10, fontWeight: '700' },
 <<<<<<< HEAD
+<<<<<<< HEAD
   dueToday: { backgroundColor: '#333333' },
   dueTodayText: { color: '#FF4D4F' },
 =======
   dueToday: { backgroundColor: '#3A211F' },
   dueTodayText: { color: '#FF968A' },
 >>>>>>> 2784bfd (Restore original task filter button styling)
+=======
+  dueToday: { backgroundColor: '#333333' },
+  dueTodayText: { color: '#FF4D4F' },
+>>>>>>> 30539ed (Polish task screen UI)
   metaIcons: { flexDirection: 'row', alignItems: 'center', gap: 14, marginLeft: 'auto' },
   metaIconButton: {
     width: 18,
@@ -1582,9 +1624,12 @@ const styles = StyleSheet.create({
   },
   assigneeName: { maxWidth: '75%', flexShrink: 1, color: '#666666', fontSize: 11, fontWeight: '600' },
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
   projectEmoji: { fontSize: 12, lineHeight: 16 },
 >>>>>>> 2784bfd (Restore original task filter button styling)
+=======
+>>>>>>> 30539ed (Polish task screen UI)
   avatarRing: {
     width: 36,
     height: 36,
