@@ -10,7 +10,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { firebaseAuth } from '@/lib/firebase';
@@ -38,6 +37,7 @@ type IconName =
   | 'chevronDown'
   | 'folder'
   | 'select'
+  | 'campaign'
   | 'tag'
   | 'users'
   | 'filterCalendar'
@@ -134,6 +134,13 @@ function Icon({
     select: (
       <Path
         d="M15 4H1c-.6 0-1 .4-1 1v6c0 .6.4 1 1 1h14c.6 0 1-.4 1-1V5c0-.6-.4-1-1-1m-3 5-2-2h4z"
+        fill={color}
+        stroke="none"
+      />
+    ),
+    campaign: (
+      <Path
+        d="M17.923 12.5v-1h3.23v1zm1.085 6.462l-2.585-1.939l.623-.792l2.585 1.938zm-2.039-11.27l-.623-.792l2.585-1.939l.623.793zM5.5 17.962v-3.808H2.846V9.846h5.346L12.154 7.5v9l-3.962-2.346H6.5v3.808zm5.654-3.243V9.281l-2.681 1.565H3.846v2.308h4.627zm2.769.17V9.112q.502.465.809 1.222T15.038 12t-.306 1.666t-.809 1.222M7.5 12"
         fill={color}
         stroke="none"
       />
@@ -325,10 +332,16 @@ function TaskCard({
         onPress={onOpen}
         style={styles.cardMain}>
         <View style={styles.taskTitleRow}>
-          <Icon name="select" size={16} color="#000000" />
+          <View style={styles.taskTitleIcon}>
+            <Icon name="campaign" size={20} color="#000000" />
+          </View>
           <Text
             numberOfLines={2}
-            style={[styles.taskTitle, done && styles.taskTitleDone]}>
+            style={[
+              styles.taskTitle,
+              styles.taskTitleShift,
+              done && styles.taskTitleDone,
+            ]}>
             {task.title}
           </Text>
           <TaskCountdown due={task.due} status={task.status} />
@@ -351,7 +364,7 @@ function TaskCard({
             <Icon
               name="calendarSolid"
               size={15}
-              color={isDueToday(task.due) ? '#FF7868' : '#929292'}
+              color="#929292"
             />
             <Text
               style={[
@@ -387,7 +400,6 @@ function TaskCard({
         <View
           accessibilityLabel={`Project ${task.project}`}
           style={styles.assigneeRow}>
-          <Text style={styles.projectEmoji}>🎒</Text>
           <Text numberOfLines={1} style={styles.assigneeName}>{task.project}</Text>
           <Icon name="chevronDown" size={13} color="#858585" />
         </View>
@@ -652,15 +664,11 @@ export default function TodoScreen() {
                     isActive && styles.filterButtonActive,
                     pressed && styles.filterButtonPressed,
                   ]}>
-                  {isActive ? (
-                    <LinearGradient
-                      colors={['#258EFF', '#0755ED']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.filterButtonGradient}
-                    />
-                  ) : null}
-                  <View style={styles.filterButtonContent}>
+                  <View
+                    style={[
+                      styles.filterButtonContent,
+                      styles.allFilterButtonContent,
+                    ]}>
                     <View style={styles.filterIconContainer}>
                       {item === 'Today' ? (
                         <Image
@@ -691,8 +699,17 @@ export default function TodoScreen() {
                         />
                       ) : null}
                     </View>
-                    <View style={styles.filterButtonDivider} />
-                    <View style={styles.filterButtonText}>
+                    <View
+                      style={[
+                        styles.filterButtonDivider,
+                        item === 'In progress' && styles.progressDividerOffset,
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.filterButtonText,
+                        item === 'In progress' && styles.progressTextOffset,
+                      ]}>
                       <Text
                         numberOfLines={1}
                         adjustsFontSizeToFit
@@ -936,9 +953,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 2,
     borderWidth: 1,
-    borderColor: '#30313A',
+    borderColor: '#E0E4DF',
     borderRadius: 15,
-    backgroundColor: '#17181F',
+    backgroundColor: '#FFFFFF',
     shadowColor: '#090A0E',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.9,
@@ -947,14 +964,14 @@ const styles = StyleSheet.create({
     marginTop: -150,
   },
   filterButtonActive: {
-    borderColor: '#65B5FF',
-    shadowColor: '#0646C8',
+    borderColor: '#333333',
+    backgroundColor: '#333333',
+    shadowColor: '#111827',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.95,
     shadowRadius: 1,
     elevation: 7,
   },
-  filterButtonGradient: { ...StyleSheet.absoluteFill, borderRadius: 14 },
   filterButtonPressed: {
     opacity: 0.96,
     transform: [{ translateY: 2 }],
@@ -962,16 +979,19 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   filterButtonContent: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 },
+  allFilterButtonContent: { transform: [{ translateX: 5 }] },
   filterIconContainer: { width: 13, alignItems: 'center', justifyContent: 'center' },
   todayFilterIcon: { width: 13, height: 13 },
   allFilterIcon: { width: 13, height: 13 },
   completedFilterIcon: { width: 13, height: 13 },
   progressFilterIcon: { width: 13, height: 13 },
   filterButtonDivider: { width: 1, height: 16, backgroundColor: 'rgba(190,198,219,0.42)' },
+  progressDividerOffset: { transform: [{ translateX: -1 }] },
   filterButtonText: { flex: 1, minWidth: 0, gap: 0 },
-  filterButtonTitle: { color: '#F4F5FA', fontSize: 7, lineHeight: 8, fontWeight: '700' },
+  progressTextOffset: { transform: [{ translateX: -1 }] },
+  filterButtonTitle: { color: '#26352F', fontSize: 7, lineHeight: 8, fontWeight: '700' },
   filterButtonTitleActive: { color: '#FFFFFF' },
-  filterButtonDescription: { color: '#B5B9C8', fontSize: 5.5, lineHeight: 6, fontWeight: '400' },
+  filterButtonDescription: { color: '#79827E', fontSize: 5.5, lineHeight: 6, fontWeight: '400' },
   filterButtonDescriptionActive: { color: '#FFFFFF' },
   taskSection: { gap: 13, marginTop: 0 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 9, paddingHorizontal: 2, marginBottom: -30, marginTop: -25 },
@@ -1003,6 +1023,8 @@ const styles = StyleSheet.create({
   taskCardDone: { opacity: 1 },
   cardMain: { flex: 1 },
   taskTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  taskTitleIcon: { transform: [{ translateY: -5 }] },
+  taskTitleShift: { transform: [{ translateX: -7 }] },
   taskTitle: {
     flex: 1,
     marginTop: -2,
@@ -1049,8 +1071,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#242424',
   },
   taskMetaText: { color: '#D0D0D0', fontSize: 10, fontWeight: '700' },
-  dueToday: { backgroundColor: '#3A211F' },
-  dueTodayText: { color: '#FF968A' },
+  dueToday: { backgroundColor: '#333333' },
+  dueTodayText: { color: '#FF4D4F' },
   metaIcons: { flexDirection: 'row', alignItems: 'center', gap: 14, marginLeft: 'auto' },
   metaIconButton: {
     width: 18,
@@ -1095,7 +1117,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   assigneeName: { maxWidth: '75%', flexShrink: 1, color: '#666666', fontSize: 11, fontWeight: '600' },
-  projectEmoji: { fontSize: 12, lineHeight: 16 },
   avatarRing: {
     width: 36,
     height: 36,
