@@ -9,17 +9,20 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { firebaseAuth } from '@/lib/firebase';
 import {
+  fetchHomeMembers,
   fetchHomeProjects,
   fetchHomeTasks,
   HomeApiError,
   updateHomeTaskStatus,
   type HomeProject,
   type HomeTask,
+  type HomeTaskAttachment,
 } from '@/lib/homeApi';
 
 type TaskFilter = 'All' | 'Today' | 'In progress' | 'Completed';
@@ -51,14 +54,22 @@ type Task = {
   title: string;
   project: string;
   sprint: string | null;
+  updatedAt: string | null;
   priority: string;
   due: string | null;
   status: string;
   projectSprintsComplete: boolean;
   progress: number;
   category: string | null;
+  tags: string[];
   description: string | null;
+  attachments: HomeTaskAttachment[];
   assignee: string;
+  assigneeFirebaseUid: string | null;
+  assigneeProfileImage: string | null;
+  createdBy: string;
+  createdByFirebaseUid: string | null;
+  createdByProfileImage: string | null;
   assignedSprintCount: number;
 };
 
@@ -214,6 +225,34 @@ function formatDueDate(value: string | null) {
   return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
+function formatTaskUpdatedAt(value: string | null) {
+  if (!value) return 'Not available';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not available';
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function formatAttachmentSize(size: number | null) {
+  if (size === null) return '';
+  if (size < 1024) return `${size} B`;
+  return `${(size / 1024).toFixed(size < 10 * 1024 ? 1 : 0)} KB`;
+}
+
+function getAttachmentKind(attachment: HomeTaskAttachment) {
+  if (attachment.isVoiceNote) return 'Voice note';
+  const mediaType = attachment.mediaType.toLowerCase();
+  if (mediaType.startsWith('video/')) return 'Video';
+  if (mediaType.startsWith('image/')) return 'Image';
+  if (mediaType.startsWith('audio/')) return 'Audio';
+  return 'Document';
+}
+
 function isDueToday(value: string | null) {
   if (!value) return false;
   const date = new Date(`${value.slice(0, 10)}T00:00:00`);
@@ -233,18 +272,37 @@ function formatTaskCardDueDate(value: string | null) {
     : formatDueDate(value);
 }
 
+function getInitials(value: string | null | undefined) {
+  if (typeof value !== 'string') return '';
+  return value
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
+}
+
 function taskFromHomeTask(
   task: HomeTask,
   project: HomeProject,
   currentUserName: string,
 ): Task {
   const normalizedStatus = task.status.trim().toLowerCase();
+  const taskCreator = project.acceptedMembers?.find(
+    (member) => member.firebaseUid === task.createdByFirebaseUid,
+  );
+  const taskCreatorIsProjectOwner =
+    task.createdByFirebaseUid === project.creatorFirebaseUid;
+  const createdBy = task.createdByFirebaseUid === project.creatorFirebaseUid
+    ? project.creatorName || project.creatorEmail
+    : taskCreator?.name;
   return {
     id: task.id,
     projectId: task.projectId,
     title: task.title,
     project: project.name,
     sprint: task.sprintName || null,
+    updatedAt: task.updatedAt || null,
     priority: task.priority || 'No priority',
     due: task.dueDate,
     status: task.status || 'To do',
@@ -256,8 +314,17 @@ function taskFromHomeTask(
       ? 100
       : normalizedStatus === 'in progress' ? 50 : 0,
     category: task.category || null,
+    tags: task.tags || [],
     description: task.description || null,
+    attachments: task.descriptionAttachments || [],
     assignee: task.assigneeName || task.assigneeEmail || currentUserName,
+    assigneeFirebaseUid: task.assigneeFirebaseUid || null,
+    assigneeProfileImage: task.assigneeProfileImage || null,
+    createdBy: createdBy || project.creatorName || project.creatorEmail || 'Project owner',
+    createdByFirebaseUid: task.createdByFirebaseUid || null,
+    createdByProfileImage: taskCreatorIsProjectOwner
+      ? project.creatorProfileImage || null
+      : taskCreator?.profileImage || project.creatorProfileImage || null,
     assignedSprintCount: project.sprints?.filter(
       (sprint) => sprint.assigneeFirebaseUid === task.assigneeFirebaseUid,
     ).length || 0,
@@ -273,31 +340,44 @@ function formatTaskCountdown(remainingMs: number) {
   return `${hours}h ${minutes}m ${seconds}s`;
 }
 
+function getLocalDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function TaskCountdown({ due, status }: { due: string | null; status: string }) {
   const [now, setNow] = useState(Date.now);
   const normalizedStatus = status.trim().toLowerCase();
+  const dueDateKey = due?.slice(0, 10) || '';
   const deadline = due
-    ? new Date(`${due.slice(0, 10)}T23:59:59`).getTime()
+    ? new Date(`${dueDateKey}T23:59:59`).getTime()
     : Number.NaN;
+  const isOverdue = Number.isFinite(deadline) &&
+    (dueDateKey < getLocalDateKey(new Date(now)) || deadline <= now);
   const hasCountdown = Number.isFinite(deadline) &&
-    normalizedStatus !== 'done' &&
-    normalizedStatus !== 'blocked';
+    normalizedStatus !== 'done';
 
   useEffect(() => {
-    if (!hasCountdown) return undefined;
+    if (!hasCountdown || isOverdue) return undefined;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [hasCountdown, due]);
+  }, [hasCountdown, isOverdue, due]);
 
   if (!hasCountdown) return null;
 
-  const countdown = formatTaskCountdown(deadline - now);
+  if (normalizedStatus === 'blocked' && !isOverdue) return null;
+
+  const label = isOverdue
+    ? 'OVERDUE'
+    : formatTaskCountdown(deadline - now);
   return (
     <Text
-      accessibilityLabel={`Time remaining: ${countdown}`}
+      accessibilityLabel={isOverdue ? 'Task overdue' : `Time remaining: ${label}`}
       numberOfLines={1}
-      style={styles.taskCountdown}>
-      {countdown}
+      style={[styles.taskCountdown, isOverdue && styles.taskCountdownOverdue]}>
+      {label}
     </Text>
   );
 }
@@ -307,13 +387,13 @@ function TaskCard({
   onOpen,
   onAdvance,
   busy,
-  isFirst,
+  isOnlyTask,
 }: {
   task: Task;
   onOpen: () => void;
   onAdvance: () => void;
   busy: boolean;
-  isFirst: boolean;
+  isOnlyTask: boolean;
 }) {
   const status = task.status.trim().toLowerCase();
   const done = status === 'done';
@@ -323,7 +403,7 @@ function TaskCard({
     <View
       style={[
         styles.taskCard,
-        isFirst && styles.taskCardFirst,
+        isOnlyTask && styles.taskCardFirst,
         done && styles.taskCardDone,
       ]}>
       <Pressable
@@ -427,8 +507,9 @@ function TaskCard({
   );
 }
 
-export default function TodoScreen() {
+export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -439,6 +520,7 @@ export default function TodoScreen() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [dueDateAscending, setDueDateAscending] = useState<boolean | null>(null);
+  const [profileImagesByUid, setProfileImagesByUid] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let active = true;
@@ -529,6 +611,37 @@ export default function TodoScreen() {
   const doneCount = tasks.length - openCount;
   const completionPercent = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) || null;
+  const selectedCreatorProfileImage = selectedTask
+    ? (selectedTask.createdByFirebaseUid
+      ? profileImagesByUid[selectedTask.createdByFirebaseUid]
+      : undefined) ?? selectedTask.createdByProfileImage
+    : null;
+  const selectedAssigneeProfileImage = selectedTask
+    ? (selectedTask.assigneeFirebaseUid
+      ? profileImagesByUid[selectedTask.assigneeFirebaseUid]
+      : undefined) ?? selectedTask.assigneeProfileImage
+    : null;
+
+  useEffect(() => {
+    if (!selectedTaskId) return undefined;
+    let active = true;
+
+    async function refreshTaskModalProfiles() {
+      try {
+        const members = await fetchHomeMembers();
+        if (!active) return;
+        setProfileImagesByUid((current) => ({
+          ...current,
+          ...Object.fromEntries(members.map((member) => [member.id, member.profileImage || ''])),
+        }));
+      } catch (error) {
+        console.error('Unable to refresh task modal profile pictures:', error);
+      }
+    }
+
+    void refreshTaskModalProfiles();
+    return () => { active = false; };
+  }, [selectedTaskId]);
 
   async function nextStatus(task: Task) {
     if (busyTaskId) return;
@@ -645,6 +758,7 @@ export default function TodoScreen() {
 
         <ScrollView
           horizontal
+          style={styles.filterTabsScroll}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterTabs}
           accessibilityLabel="Filter tasks">
@@ -746,11 +860,11 @@ export default function TodoScreen() {
             </View>
           ) : (
             <View style={styles.taskList}>
-              {visibleTasks.map((task, index) => (
+              {visibleTasks.map((task) => (
                 <TaskCard
                   key={task.id}
                   task={task}
-                  isFirst={index === 0}
+                  isOnlyTask={visibleTasks.length === 1}
                   busy={busyTaskId === task.id}
                   onOpen={() => setSelectedTaskId(task.id)}
                   onAdvance={() => { void nextStatus(task); }}
@@ -779,7 +893,8 @@ export default function TodoScreen() {
       <Modal
         visible={selectedTask !== null}
         transparent
-        animationType="slide"
+        animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => setSelectedTaskId(null)}>
         {selectedTask ? (
           <View style={styles.modalBackdrop}>
@@ -789,90 +904,210 @@ export default function TodoScreen() {
               onPress={() => setSelectedTaskId(null)}
               style={StyleSheet.absoluteFill}
             />
-            <View style={[
-              styles.taskDrawer,
-              { paddingBottom: Math.max(insets.bottom, 23) },
-            ]}>
-              <View style={styles.drawerHandle} />
-              <ScrollView
-                style={styles.drawerScroll}
-                contentContainerStyle={styles.drawerContent}
-                showsVerticalScrollIndicator>
-                <View style={styles.drawerHeader}>
-                  <Text style={[
-                    styles.detailStatus,
-                    selectedTask.status === 'Done' && styles.detailStatusDone,
-                  ]}>
-                    {selectedTask.status}
-                  </Text>
+            <View
+              style={[
+                styles.taskDetailsCard,
+                { height: windowHeight },
+                { paddingBottom: Math.max(insets.bottom, 12) },
+              ]}>
+              <View style={styles.detailsHeader}>
+                <View style={styles.modalBrand}>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="Close task details"
-                    onPress={() => setSelectedTaskId(null)}
-                    style={styles.drawerCloseButton}>
-                    <Icon name="close" size={20} color="#6F7A75" />
+                    accessibilityLabel="Open menu"
+                    onPress={onOpenMenu}
+                    style={styles.menuButton}>
+                    <Svg width={30} height={30} viewBox="0 0 24 24" fill="none">
+                      <Path
+                        d="M3.75 6h16.5M3.75 18h16.5m-16.5-6h10.5"
+                        stroke="#29292D"
+                        strokeWidth={1.5}
+                        strokeLinecap="square"
+                        strokeMiterlimit={2}
+                      />
+                    </Svg>
                   </Pressable>
+                  <Image
+                    source={require('../../assets/images/logo.png')}
+                    resizeMode="contain"
+                    style={styles.modalLogo}
+                    accessibilityLabel="Collab"
+                  />
                 </View>
-                <Text style={styles.detailProject}>
-                  {[selectedTask.project, selectedTask.sprint].filter(Boolean).join(' · ')}
-                </Text>
-                <Text style={styles.detailTitle}>{selectedTask.title}</Text>
-                <Text style={styles.detailDescription}>
-                  {selectedTask.description || 'No description provided.'}
-                </Text>
-                <View style={styles.detailGrid}>
-                  <View style={styles.detailField}>
-                    <Text style={styles.detailLabel}>DUE DATE</Text>
-                    <View style={styles.detailValueRow}>
-                      <Icon name="calendar" size={15} color="#40504A" />
-                      <Text style={styles.detailValue}>{formatDueDate(selectedTask.due)}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Close task details"
+                  onPress={() => setSelectedTaskId(null)}
+                  style={styles.closeButton}>
+                  <Text style={styles.closeIcon}>×</Text>
+                </Pressable>
+              </View>
+              <ScrollView
+                style={styles.detailsScroll}
+                contentContainerStyle={styles.detailsContent}
+                showsVerticalScrollIndicator={false}>
+                <View style={styles.titleSection}>
+                  <Text style={styles.detailTitle}>{selectedTask.title}</Text>
+                  <Text style={styles.detailProject}>
+                    {[selectedTask.project, selectedTask.sprint]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
+                </View>
+
+                <View style={styles.metadataSection}>
+                  <View style={styles.metadataRow}>
+                    <Text style={styles.metadataLabel}>Created by</Text>
+                    <View style={styles.metadataValueContainer}>
+                      <View style={styles.creatorAvatar}>
+                        {selectedCreatorProfileImage ? (
+                          <Image
+                            source={{ uri: selectedCreatorProfileImage }}
+                            style={styles.creatorAvatarImage}
+                            accessibilityLabel={`${selectedTask.createdBy} profile picture`}
+                          />
+                        ) : (
+                          <Text style={styles.creatorAvatarText}>
+                            {getInitials(selectedTask.createdBy) || '?'}
+                          </Text>
+                        )}
+                      </View>
+                      <Text style={styles.metadataValue}>
+                        {selectedTask.createdBy || 'Project owner'}
+                      </Text>
                     </View>
                   </View>
-                  <View style={styles.detailField}>
-                    <Text style={styles.detailLabel}>PRIORITY</Text>
-                    <Text style={styles.detailValue}>{selectedTask.priority}</Text>
+
+                  <View style={styles.metadataRow}>
+                    <Text style={styles.metadataLabel}>Assignee</Text>
+                    <View style={styles.metadataValueContainer}>
+                      <View style={styles.creatorAvatar}>
+                        {selectedAssigneeProfileImage ? (
+                          <Image
+                            source={{ uri: selectedAssigneeProfileImage }}
+                            style={styles.creatorAvatarImage}
+                            accessibilityLabel={`${selectedTask.assignee} profile picture`}
+                          />
+                        ) : (
+                          <Text style={styles.creatorAvatarText}>
+                            {getInitials(selectedTask.assignee) || '?'}
+                          </Text>
+                        )}
+                      </View>
+                      <Text style={styles.metadataValue}>
+                        {selectedTask.assignee || 'You'}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.detailField}>
-                    <Text style={styles.detailLabel}>SPRINT</Text>
-                    <Text style={styles.detailValue}>{selectedTask.sprint || 'No sprint'}</Text>
+
+                  <View style={styles.metadataRow}>
+                    <Text style={styles.metadataLabel}>Last modified</Text>
+                    <View style={styles.metadataValueContainer}>
+                      <Text style={styles.metadataIcon}>▦</Text>
+                      <Text style={styles.metadataValue}>
+                        {formatTaskUpdatedAt(selectedTask.updatedAt)}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.detailField}>
-                    <Text style={styles.detailLabel}>CATEGORY</Text>
-                    <Text style={styles.detailValue}>{selectedTask.category || 'General'}</Text>
+
+                  <View style={styles.metadataRow}>
+                    <Text style={styles.metadataLabel}>Due date</Text>
+                    <View style={styles.metadataValueContainer}>
+                      <Icon name="calendar" size={16} color="#59665F" />
+                      <Text style={styles.metadataValue}>
+                        {formatDueDate(selectedTask.due)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.metadataRow}>
+                    <Text style={styles.metadataLabel}>Tags</Text>
+                    <View style={styles.tagsContainer}>
+                      {selectedTask.tags.length ? (
+                        selectedTask.tags.map((tag) => (
+                          <Text key={tag} style={styles.categoryTag}>{tag}</Text>
+                        ))
+                      ) : (
+                        <Text style={styles.metadataMuted}>No tags</Text>
+                      )}
+                    </View>
+                  </View>
+
+                  <View style={styles.metadataRow}>
+                    <Text style={styles.metadataLabel}>Priority</Text>
+                    <View style={styles.priorityBadge}>
+                      <Text style={styles.priorityText}>
+                        # {selectedTask.priority || 'Normal'}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-                <View style={styles.assignedRow}>
-                  <Text style={[styles.avatarRing, styles.avatarRingLarge]}>AM</Text>
-                  <View style={styles.assignedCopy}>
-                    <Text style={styles.detailLabel}>ASSIGNED TO</Text>
-                    <Text style={styles.assignedName}>{selectedTask.assignee}</Text>
-                  </View>
+
+                <View style={styles.descriptionSection}>
+                  <Text style={styles.sectionLabel}>Description</Text>
+                  <Text style={styles.descriptionText}>
+                    {selectedTask.description || 'No description provided.'}
+                  </Text>
                 </View>
+
+                <View style={styles.attachmentSection}>
+                  <Text style={styles.sectionLabel}>
+                    Attachments ({selectedTask.attachments.length})
+                  </Text>
+                  {selectedTask.attachments.length ? (
+                    selectedTask.attachments.map((attachment, index) => {
+                      const size = formatAttachmentSize(attachment.size);
+                      return (
+                        <View key={`${attachment.fileName}-${index}`} style={styles.taskAttachment}>
+                          <Text numberOfLines={1} style={styles.taskAttachmentName}>
+                            {attachment.fileName}
+                          </Text>
+                          <Text style={styles.taskAttachmentDetails}>
+                            {[getAttachmentKind(attachment), size].filter(Boolean).join(' · ')}
+                          </Text>
+                        </View>
+                      );
+                    })
+                  ) : (
+                    <Text style={styles.metadataMuted}>No attachments available.</Text>
+                  )}
+                </View>
+
                 <Pressable
                   accessibilityRole="button"
                   disabled={busyTaskId === selectedTask.id}
                   onPress={() => { void nextStatus(selectedTask); }}
-                  style={styles.primaryAction}>
-                  {busyTaskId === selectedTask.id
-                    ? <ActivityIndicator color="#FFFFFF" />
-                    : <Text style={styles.primaryActionText}>
-                      {selectedTask.status.trim().toLowerCase() === 'done'
-                        ? 'Reopen task'
-                        : selectedTask.status.trim().toLowerCase() === 'in progress'
-                          ? 'Mark as complete'
-                          : 'Start task'}
-                    </Text>}
-                  {busyTaskId !== selectedTask.id ? (
-                    <Icon
-                      name={selectedTask.status.trim().toLowerCase() === 'in progress' ? 'check' : 'arrow'}
-                      size={18}
-                      color="#FFFFFF"
-                    />
-                  ) : null}
+                  style={[
+                    styles.primaryAction,
+                    busyTaskId === selectedTask.id && styles.primaryActionDisabled,
+                  ]}>
+                  {busyTaskId === selectedTask.id ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Text style={styles.primaryActionText}>
+                        {selectedTask.status.trim().toLowerCase() === 'done'
+                          ? 'Reopen task'
+                          : selectedTask.status.trim().toLowerCase() === 'in progress'
+                            ? 'Mark as complete'
+                            : 'Start task'}
+                      </Text>
+                      <Icon
+                        name={selectedTask.status.trim().toLowerCase() === 'in progress'
+                          ? 'check'
+                          : 'arrow'}
+                        size={18}
+                        color="#FFFFFF"
+                      />
+                    </>
+                  )}
                 </Pressable>
+
                 <View style={styles.assignedTasksSection}>
                   <View style={styles.assignedTasksHeading}>
-                    <Text style={styles.assignedTasksTitle}>Your assigned tasks</Text>
+                    <Text style={styles.assignedTasksTitle}>
+                      Your assigned tasks
+                    </Text>
                     <Text style={styles.assignedTasksCount}>{tasks.length}</Text>
                   </View>
                   {tasks.length ? tasks.map((task) => (
@@ -886,6 +1121,16 @@ export default function TodoScreen() {
                         styles.assignedTaskItem,
                         task.id === selectedTask.id && styles.assignedTaskItemSelected,
                       ]}>
+                      <View
+                        style={[
+                          styles.taskStatusDot,
+                          task.status.trim().toLowerCase() === 'done'
+                            ? styles.statusDotDone
+                            : task.status.trim().toLowerCase() === 'in progress'
+                              ? styles.statusDotInProgress
+                              : styles.statusDotDefault,
+                        ]}
+                      />
                       <View style={styles.assignedTaskCopy}>
                         <Text numberOfLines={1} style={styles.assignedTaskTitle}>
                           {task.title}
@@ -895,6 +1140,7 @@ export default function TodoScreen() {
                         </Text>
                       </View>
                       <Text style={styles.assignedTaskStatus}>{task.status}</Text>
+                      <Text style={styles.assignedTaskArrow}>›</Text>
                     </Pressable>
                   )) : (
                     <Text style={styles.assignedTasksEmpty}>
@@ -943,7 +1189,8 @@ const styles = StyleSheet.create({
   loadErrorBanner: { padding: 13, borderRadius: 11, backgroundColor: '#FFF0EF' },
   loadErrorText: { color: '#9F2D25', fontSize: 13, lineHeight: 19 },
   warningText: { color: '#806700', fontSize: 13, lineHeight: 19 },
-  filterTabs: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 4, paddingVertical: 12 },
+  filterTabsScroll: { height: 54, flexGrow: 0, flexShrink: 0 },
+  filterTabs: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 4 },
   filterButton: {
     position: 'relative',
     width:75,
@@ -961,7 +1208,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.9,
     shadowRadius: 0,
     elevation: 5,
-    marginTop: -150,
   },
   filterButtonActive: {
     borderColor: '#333333',
@@ -1042,6 +1288,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
+  taskCountdownOverdue: { color: '#B91C1C' },
   taskTitleDone: { color: '#898989', textDecorationLine: 'line-through' },
   taskDescriptionContainer: {
     marginTop: 0,
@@ -1146,38 +1393,187 @@ const styles = StyleSheet.create({
   emptyIcon: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 27, backgroundColor: '#EAF4EF' },
   emptyTitle: { marginTop: 13, color: '#35433D', fontSize: 16, fontWeight: '800' },
   emptyDescription: { marginTop: 4, color: '#82908A', fontSize: 12, lineHeight: 17, textAlign: 'center' },
-  modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(21,35,29,0.42)' },
-  taskDrawer: { maxHeight: '90%', gap: 15, paddingTop: 11, paddingHorizontal: 22, borderTopLeftRadius: 26, borderTopRightRadius: 26, backgroundColor: '#FFFFFF' },
-  drawerScroll: { flexShrink: 1 },
-  drawerContent: { gap: 15, paddingBottom: 8 },
-  drawerHandle: { width: 36, height: 4, alignSelf: 'center', marginBottom: 4, borderRadius: 99, backgroundColor: '#DCE1DD' },
-  drawerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  detailStatus: { overflow: 'hidden', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 8, color: '#376B5B', backgroundColor: '#EAF3EF', fontSize: 11, fontWeight: '800' },
-  detailStatusDone: { color: '#507166', backgroundColor: '#EEF2EF' },
-  drawerCloseButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E1E5E1', borderRadius: 20, backgroundColor: '#FFFFFF' },
-  detailProject: { marginTop: 4, color: '#84908A', fontSize: 11, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase' },
-  detailTitle: { color: '#1D302A', fontSize: 27, lineHeight: 33, fontWeight: '800', letterSpacing: -0.7 },
-  detailDescription: { marginTop: -2, color: '#6F7A75', fontSize: 14, lineHeight: 21 },
-  detailGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
-  detailField: { width: '47%', minHeight: 70, justifyContent: 'center', gap: 6, padding: 13, borderRadius: 11, backgroundColor: '#F6F7F5' },
-  detailLabel: { color: '#939B97', fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
-  detailValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  detailValue: { color: '#40504A', fontSize: 13, fontWeight: '700' },
-  assignedRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 2, paddingVertical: 14, borderTopWidth: 1, borderTopColor: '#EDF0ED' },
-  assignedTasksSection: { gap: 8, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#EDF0ED' },
-  assignedTasksHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
-  assignedTasksTitle: { color: '#34433D', fontSize: 15, fontWeight: '800' },
-  assignedTasksCount: { minWidth: 24, overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 12, backgroundColor: '#F0F2F0', color: '#64736D', fontSize: 11, fontWeight: '700', textAlign: 'center' },
-  assignedTaskItem: { minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#E8ECE9', borderRadius: 10, backgroundColor: '#FFFFFF' },
-  assignedTaskItemSelected: { borderColor: '#A8CDBE', backgroundColor: '#F3F8F5' },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    backgroundColor: 'rgba(24,35,29,0.42)',
+  },
+  taskDetailsCard: {
+    width: '100%',
+    overflow: 'hidden',
+    borderRadius: 0,
+    backgroundColor: '#FFFFFF',
+    paddingTop: 22,
+    paddingHorizontal: 20,
+    shadowColor: '#17241D',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 25,
+    elevation: 12,
+  },
+  detailsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 27,
+  },
+  modalBrand: { flexDirection: 'row', alignItems: 'center' },
+  menuButton: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 2,
+    borderRadius: 10,
+  },
+  modalLogo: { width: 116, height: 35, marginLeft: -18 },
+  closeButton: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+    backgroundColor: '#F7F8F6',
+  },
+  closeIcon: { color: '#64716A', fontSize: 27, lineHeight: 30 },
+  detailsScroll: { flex: 1 },
+  detailsContent: { paddingBottom: 24, gap: 23 },
+  titleSection: { gap: 13 },
+  statusDot: { width: 9, height: 9, borderRadius: 5 },
+  statusDotDone: { backgroundColor: '#35A765' },
+  statusDotInProgress: { backgroundColor: '#3185E8' },
+  statusDotDefault: { backgroundColor: '#B7BFBA' },
+  detailProject: { color: '#858C87', fontSize: 13, fontWeight: '600' },
+  detailTitle: {
+    color: '#171B18',
+    fontSize: 29,
+    lineHeight: 36,
+    fontWeight: '800',
+    letterSpacing: -0.9,
+  },
+  metadataSection: { gap: 8 },
+  metadataRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    minHeight: 25,
+    columnGap: 12,
+    rowGap: 7,
+  },
+  metadataLabel: { width: 83, color: '#858C87', fontSize: 12, fontWeight: '500' },
+  metadataValueContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,
+  },
+  metadataValue: { flexShrink: 1, color: '#202622', fontSize: 12, fontWeight: '700' },
+  metadataIcon: { color: '#59665F', fontSize: 17, fontWeight: '700' },
+  creatorAvatar: {
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderRadius: 10,
+    backgroundColor: '#DCEBE4',
+  },
+  creatorAvatarImage: { width: '100%', height: '100%' },
+  creatorAvatarText: { color: '#245D4D', fontSize: 9, fontWeight: '800' },
+  metadataMuted: { color: '#9BA29D', fontSize: 12, fontWeight: '500' },
+  tagsContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  categoryTag: {
+    overflow: 'hidden',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: '#EAF3EF',
+    color: '#376B5B',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  priorityBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: '#E8F4FB',
+  },
+  priorityText: { color: '#2385C8', fontSize: 11, fontWeight: '800' },
+  descriptionSection: { gap: 11 },
+  sectionLabel: { color: '#858C87', fontSize: 12, fontWeight: '600' },
+  descriptionText: { color: '#272D29', fontSize: 13, lineHeight: 22, fontWeight: '400' },
+  attachmentSection: { gap: 9 },
+  taskAttachment: {
+    gap: 3,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: '#F6F7F5',
+  },
+  taskAttachmentName: { color: '#34433D', fontSize: 12, fontWeight: '700' },
+  taskAttachmentDetails: { color: '#858C87', fontSize: 10, fontWeight: '500' },
+  primaryAction: {
+    minHeight: 49,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 3,
+    borderRadius: 13,
+    backgroundColor: '#245D4D',
+  },
+  primaryActionDisabled: { opacity: 0.65 },
+  primaryActionText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  assignedTasksSection: {
+    gap: 14,
+    paddingTop: 18,
+    borderTopWidth: 1,
+    borderTopColor: '#EDF0ED',
+  },
+  assignedTasksHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  assignedTasksTitle: { color: '#202820', fontSize: 16, fontWeight: '800' },
+  assignedTasksCount: {
+    minWidth: 27,
+    height: 27,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    overflow: 'hidden',
+    borderRadius: 15,
+    backgroundColor: '#EEF1EF',
+    color: '#40504A',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  assignedTaskItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 58,
+    paddingVertical: 7,
+  },
+  assignedTaskItemSelected: {
+    backgroundColor: '#F7F9F7',
+    borderRadius: 10,
+    paddingHorizontal: 7,
+  },
+  taskStatusDot: { width: 10, height: 10, borderRadius: 6 },
   assignedTaskCopy: { flex: 1, gap: 3 },
-  assignedTaskTitle: { color: '#34433D', fontSize: 13, fontWeight: '700' },
-  assignedTaskProject: { color: '#82908A', fontSize: 11 },
-  assignedTaskStatus: { color: '#64736D', fontSize: 10, fontWeight: '700' },
-  assignedTasksEmpty: { paddingVertical: 10, color: '#82908A', fontSize: 13 },
-  avatarRingLarge: { width: 42, height: 42, borderRadius: 23, fontSize: 10, lineHeight: 38 },
-  assignedCopy: { gap: 4 },
-  assignedName: { color: '#34433D', fontSize: 13, fontWeight: '700' },
-  primaryAction: { height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 12, backgroundColor: '#245D4D' },
-  primaryActionText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  assignedTaskTitle: { color: '#242C26', fontSize: 12, fontWeight: '700' },
+  assignedTaskProject: { color: '#8A938D', fontSize: 11 },
+  assignedTaskStatus: { color: '#527565', fontSize: 10, fontWeight: '700' },
+  assignedTaskArrow: { color: '#89918C', fontSize: 22 },
+  assignedTasksEmpty: { color: '#929A95', fontSize: 12 },
 });

@@ -516,7 +516,7 @@ export default function WorkspaceScreen() {
           </View>
         ) : activeSection === 'To-do' ? (
           <View style={styles.homeContent}>
-            <TodoScreen />
+            <TodoScreen onOpenMenu={() => setMenuOpen(true)} />
           </View>
         ) : (
           <View style={styles.content}>

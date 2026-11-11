@@ -4028,7 +4028,7 @@ body.dark-mode .project-task-status-lock,
 }
 
 .task-deadline-badge.is-expired {
-    background: #FEE2E2;
+    background: transparent;
     color: #B91C1C;
 }
 
@@ -6566,6 +6566,104 @@ body.dark-mode .admin-table tr:hover td,
     gap: 7px;
 }
 
+.project-task-tag-field {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.project-task-tag-label {
+    color: #52525B;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.project-task-tag-picker {
+    position: relative;
+}
+
+.project-task-tag-picker-summary {
+    display: flex;
+    min-height: 38px;
+    align-items: center;
+    justify-content: space-between;
+    box-sizing: border-box;
+    padding: 8px 11px;
+    border: 1px solid #DCE5E2;
+    border-radius: 9px;
+    color: #475467;
+    background: #FFFFFF;
+    cursor: pointer;
+    font-size: 12px;
+    list-style: none;
+}
+
+.project-task-tag-picker-summary::-webkit-details-marker {
+    display: none;
+}
+
+.project-task-tag-picker-summary::after {
+    content: '▾';
+    color: #71717A;
+}
+
+.project-task-tag-picker[open] .project-task-tag-picker-summary::after {
+    content: '▴';
+}
+
+.project-task-tag-options {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 4px);
+    left: 0;
+    display: grid;
+    width: 100%;
+    max-height: 210px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3px 8px;
+    overflow: auto;
+    box-sizing: border-box;
+    padding: 9px;
+    border: 1px solid #DCE5E2;
+    border-radius: 9px;
+    background: #FFFFFF;
+    box-shadow: 0 8px 24px rgba(24, 24, 27, .14);
+}
+
+.project-task-tag-option {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 3px;
+    color: #475467;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.project-task-tag-option input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: #218779;
+}
+
+body.dark-mode .project-task-tag-label,
+[data-theme="dark"] .project-task-tag-label {
+    color: #D4D4D8;
+}
+
+body.dark-mode .project-task-tag-picker-summary,
+body.dark-mode .project-task-tag-options,
+body.dark-mode .project-task-tag-option,
+[data-theme="dark"] .project-task-tag-picker-summary,
+[data-theme="dark"] .project-task-tag-options,
+[data-theme="dark"] .project-task-tag-option {
+    border-color: #3F3F46;
+    background: #24242F;
+    color: #E4E4E7;
+}
+
 .project-task-create-sprint-toggle {
     min-height: 38px;
     padding: 7px 11px;
@@ -6682,6 +6780,15 @@ body.dark-mode .project-task-close-sprint:hover,
     font-size: 11px;
 }
 
+.project-task-draft-sprint-description {
+    margin: 2px 0 0;
+    color: #52525B;
+    font-size: 11px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 .project-task-draft-sprint-actions {
     display: inline-flex;
     flex: 0 0 auto;
@@ -6719,7 +6826,8 @@ body.dark-mode .project-task-close-sprint:hover,
 }
 
 .project-task-create-sprint-panel input,
-.project-task-create-sprint-panel select {
+.project-task-create-sprint-panel select,
+.project-task-create-sprint-panel textarea {
     width: 100%;
     min-width: 0;
     min-height: 42px;
@@ -6730,6 +6838,11 @@ body.dark-mode .project-task-close-sprint:hover,
     background: #FBFCFD;
     color: #182230;
     font: 13px 'DM Sans', sans-serif;
+}
+
+.project-task-create-sprint-panel textarea {
+    min-height: 76px;
+    resize: vertical;
 }
 
 .project-task-save-sprint {
@@ -6746,6 +6859,11 @@ body.dark-mode .project-task-draft-action,
     border-color: #3F3F46;
     background: #24242F;
     color: #E4E4E7;
+}
+
+body.dark-mode .project-task-draft-sprint-description,
+[data-theme="dark"] .project-task-draft-sprint-description {
+    color: #CAD2CB;
 }
 
 body.dark-mode .project-task-draft-action:hover,
@@ -6940,8 +7058,10 @@ body.dark-mode .project-task-create-sprint-panel label,
 
 body.dark-mode .project-task-create-sprint-panel input,
 body.dark-mode .project-task-create-sprint-panel select,
+body.dark-mode .project-task-create-sprint-panel textarea,
 [data-theme="dark"] .project-task-create-sprint-panel input,
-[data-theme="dark"] .project-task-create-sprint-panel select {
+[data-theme="dark"] .project-task-create-sprint-panel select,
+[data-theme="dark"] .project-task-create-sprint-panel textarea {
     border-color: #3F3F46;
     background: #24242F;
     color: #FFFFFF;

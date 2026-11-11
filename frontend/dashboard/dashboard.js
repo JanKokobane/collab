@@ -54,7 +54,7 @@ import {
   moveTaskStatus,
   taskCard,
   setupDragAndDrop
-} from './js/tasks.js?v=20261028-task-status-menu'
+} from './js/tasks.js?v=20261111-overdue-task-badge'
 
 import {
   renderCalendarPanel,
@@ -78,7 +78,7 @@ import {
   openProjectTaskModal,
   openAdminEditTaskModal,
   openInviteModal
-} from './js/admin.js?v=20261028-dedicated-file-picker'
+} from './js/admin.js?v=20261112-task-tags'
 
 import {
   switchView,

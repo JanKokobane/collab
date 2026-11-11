@@ -630,12 +630,20 @@ export async function renderAdminTasksTable({ silent = false, canApply = () => t
 export async function openProjectTaskModal(project, task = null, defaults = {}) {
   if (task?.task_id || task?.taskId) {
     try {
-      const response = await api.get(
-        `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(task.task_id || task.taskId)}`
-      )
-      task = { ...task, ...(response?.data?.task || {}) }
+      const [taskResponse, projectResponse] = await Promise.all([
+        api.get(
+          `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(task.task_id || task.taskId)}`
+        ),
+        api.get(`/projects/${encodeURIComponent(project.projectId)}`)
+      ])
+      task = { ...task, ...(taskResponse?.data?.task || {}) }
+      const latestProject = projectResponse?.data?.project
+      if (!Array.isArray(latestProject?.sprints)) {
+        throw new Error('Project sprints could not be loaded.')
+      }
+      project.sprints = latestProject.sprints
     } catch (error) {
-      showDashboardToast(error.message || 'Task details could not be loaded.', 'error')
+      showDashboardToast(error.message || 'Task and project sprint details could not be loaded.', 'error')
       return
     }
   }
@@ -662,6 +670,8 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     ...acceptedMembers.filter(member => member.firebaseUid !== projectOwner?.firebaseUid)
   ]
   let sprints = Array.isArray(project.sprints) ? project.sprints : []
+  const originalSprints = sprints.map(sprint => ({ ...sprint }))
+  let sprintsChanged = false
   const backdrop = make('div', 'modal-backdrop')
   const form = make('form', 'modal project-task-parent-form')
   const close = make('button', 'close-modal', '×')
@@ -735,6 +745,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   }
   const draftSprints = []
   let editingDraftSprintId = null
+  let editingExistingSprint = null
   let selectedDraftSprintId = null
 
   const createSprintToggle = make('button', 'primary-button gold project-task-create-sprint-toggle', '+ Add Sprint')
@@ -751,8 +762,8 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   const sprintPanelHeader = make('div', 'project-task-sprint-panel-header')
   sprintPanelHeader.append(sprintCreateTitle, closeSprintPanel)
   const sprintCreateCopy = make('p', 'modal-copy', task
-    ? 'Add sprint drafts here. They will be added to the project when you save this task; edit or remove them first if needed.'
-    : 'Add sprint drafts here. They will be added to the project when you create the task; edit or remove them first if needed.')
+    ? 'Edit existing sprints or add sprint drafts. Changes will be saved with this task.'
+    : 'Edit existing sprints or add sprint drafts. Changes will be saved when you create the task.')
   if (isOwner && !task && !sprints.length) {
     copy.textContent = `Create a sprint and assign a project member before creating a task for ${project.name}.`
   } else if (isOwner && selectedSprintNeedsOwnerAssignment) {
@@ -761,11 +772,21 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   const draftSprintList = make('div', 'project-task-draft-sprint-list')
   const draftSprintListHeading = make('h4', 'project-task-draft-sprint-heading', 'Sprints to add when the task is saved')
   draftSprintList.hidden = true
+  const existingSprintList = make('div', 'project-task-draft-sprint-list')
+  const existingSprintListHeading = make('h4', 'project-task-draft-sprint-heading', 'Existing project sprints')
+  existingSprintList.hidden = true
   const newSprintNameLabel = make('label', 'no-input-icon', 'Sprint title')
   const newSprintNameInput = make('input')
   newSprintNameInput.maxLength = 240
   newSprintNameInput.placeholder = `Sprint ${sprints.length + 1}: Your title`
   newSprintNameLabel.append(newSprintNameInput)
+
+  const newSprintDescriptionLabel = make('label', 'no-input-icon', 'Sprint description (optional)')
+  const newSprintDescriptionInput = document.createElement('textarea')
+  newSprintDescriptionInput.maxLength = 2000
+  newSprintDescriptionInput.rows = 3
+  newSprintDescriptionInput.placeholder = 'Describe the sprint goals and what the team will deliver.'
+  newSprintDescriptionLabel.append(newSprintDescriptionInput)
 
   const newSprintAssigneeLabel = make('label', 'no-input-icon', `Assign sprint to project member${task ? ' (optional)' : ''}`)
   const newSprintAssigneeSelect = document.createElement('select')
@@ -798,6 +819,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     sprintPanelHeader,
     sprintCreateCopy,
     newSprintNameLabel,
+    newSprintDescriptionLabel,
     sprintCreateRow,
     sprintCreateError,
     saveSprintButton
@@ -821,6 +843,41 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
       sprint.name = `Sprint ${index + 1}: ${title}`
     })
 
+    existingSprintList.replaceChildren()
+    existingSprintList.hidden = sprints.length === 0
+    if (sprints.length) existingSprintList.append(existingSprintListHeading)
+    sprints.forEach(sprint => {
+      const item = make('article', 'project-task-draft-sprint')
+      const details = make('div', 'project-task-draft-sprint-details')
+      const lead = assignmentMembers.find(member => member.firebaseUid === sprint.assigneeFirebaseUid)
+      details.append(
+        make('strong', '', sprint.name),
+        make('small', '', `${sprint.status || 'Upcoming'}${lead ? ` · ${lead.name || lead.email}` : ''}`)
+      )
+      if (sprint.description) {
+        details.append(make('p', 'project-task-draft-sprint-description', sprint.description))
+      }
+      const editButton = make('button', 'project-task-draft-action', 'Edit')
+      editButton.type = 'button'
+      editButton.setAttribute('aria-label', `Edit ${sprint.name}`)
+      editButton.addEventListener('click', () => {
+        editingExistingSprint = sprint
+        editingDraftSprintId = null
+        newSprintNameInput.value = sprint.name.replace(/^Sprint\s+\d+\s*:\s*/i, '')
+        newSprintDescriptionInput.value = sprint.description || ''
+        newSprintAssigneeSelect.value = sprint.assigneeFirebaseUid || ''
+        newSprintStatusSelect.value = sprint.status || 'Upcoming'
+        saveSprintButton.textContent = 'Save Sprint'
+        sprintCreateError.hidden = true
+        setSprintPanelOpen(true)
+        newSprintNameInput.focus()
+      })
+      const actions = make('div', 'project-task-draft-sprint-actions')
+      actions.append(editButton)
+      item.append(details, actions)
+      existingSprintList.append(item)
+    })
+
     draftSprintList.replaceChildren()
     draftSprintList.hidden = draftSprints.length === 0
     if (draftSprints.length) draftSprintList.append(draftSprintListHeading)
@@ -832,12 +889,17 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
         make('strong', '', sprint.name),
         make('small', '', `${sprint.status}${lead ? ` · ${lead.name || lead.email}` : ''}`)
       )
+      if (sprint.description) {
+        details.append(make('p', 'project-task-draft-sprint-description', sprint.description))
+      }
       const actions = make('div', 'project-task-draft-sprint-actions')
       const editButton = make('button', 'project-task-draft-action', 'Edit')
       editButton.type = 'button'
       editButton.addEventListener('click', () => {
+        editingExistingSprint = null
         editingDraftSprintId = sprint.id
         newSprintNameInput.value = sprint.name.replace(/^Sprint\s+\d+\s*:\s*/i, '')
+        newSprintDescriptionInput.value = sprint.description || ''
         newSprintAssigneeSelect.value = sprint.assigneeFirebaseUid || ''
         newSprintStatusSelect.value = sprint.status
         saveSprintButton.textContent = 'Update Sprint'
@@ -852,8 +914,10 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
         if (removedSelectedSprint) selectedDraftSprintId = draftSprints.at(-1)?.id || null
         if (editingDraftSprintId === sprint.id) {
           editingDraftSprintId = null
+          editingExistingSprint = null
           saveSprintButton.textContent = 'Add Sprint'
           newSprintNameInput.value = ''
+          newSprintDescriptionInput.value = ''
           newSprintAssigneeSelect.value = ''
           newSprintStatusSelect.value = 'Upcoming'
         }
@@ -874,6 +938,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     const selectedDraftSprint = draftSprints.find(sprint => sprint.id === selectedDraftSprintId)
     if (selectedDraftSprint) selectedSprintName = selectedDraftSprint.name
   }
+  updateSprintDrafts()
 
   saveSprintButton.addEventListener('click', () => {
     const title = newSprintNameInput.value.trim().replace(/^Sprint\s+\d+\s*:\s*/i, '')
@@ -882,15 +947,24 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
       return
     }
 
+    const isEditingExistingSprint = Boolean(editingExistingSprint)
     const draftToUpdate = draftSprints.find(sprint => sprint.id === editingDraftSprintId)
     const draftPosition = draftToUpdate
       ? draftSprints.findIndex(sprint => sprint.id === editingDraftSprintId)
       : draftSprints.length
-    const sprintName = `Sprint ${draftPosition + 1}: ${title}`
-    const persistedSprintName = `Sprint ${sprints.length + draftPosition + 1}: ${title}`
-    const duplicate = sprints.some(sprint => sprint.name.trim().toLowerCase() === persistedSprintName.toLowerCase()) ||
+    const sprintName = editingExistingSprint
+      ? `${editingExistingSprint.name.match(/^Sprint\s+\d+\s*:/i)?.[0] || ''} ${title}`.trim()
+      : `Sprint ${draftPosition + 1}: ${title}`
+    const persistedSprintName = editingExistingSprint
+      ? sprintName
+      : `Sprint ${sprints.length + draftPosition + 1}: ${title}`
+    const duplicate = sprints.some(sprint =>
+      sprint !== editingExistingSprint &&
+      sprint.name.trim().toLowerCase() === persistedSprintName.toLowerCase()
+    ) ||
       draftSprints.some((sprint, index) =>
-        index !== draftPosition && sprint.name.replace(/^Sprint\s+\d+\s*:/i, '').trim().toLowerCase() === title.toLowerCase()
+        index !== draftPosition &&
+        sprint.name.trim().toLowerCase() === sprintName.toLowerCase()
       )
     if (duplicate) {
       sprintCreateError.textContent = 'A sprint with this title already exists in the project.'
@@ -906,15 +980,30 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     }
 
     const draftSprint = {
-      id: draftToUpdate?.id || `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      ...(editingExistingSprint ? editingExistingSprint : {}),
+      id: editingExistingSprint?.id || draftToUpdate?.id || `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       name: sprintName,
+      description: newSprintDescriptionInput.value.trim(),
       status: newSprintStatusSelect.value,
       ...(selectedSprintMember ? {
         assigneeFirebaseUid: selectedSprintMember.firebaseUid,
         assigneeName: selectedSprintMember.name || selectedSprintMember.email
+      } : isEditingExistingSprint ? {
+        assigneeFirebaseUid: '',
+        assigneeName: ''
       } : {})
     }
-    if (draftToUpdate) {
+    if (editingExistingSprint) {
+      const previousName = editingExistingSprint.name
+      Object.assign(editingExistingSprint, draftSprint)
+      sprintsChanged = true
+      if (selectedSprintName === previousName) {
+        selectedSprintName = editingExistingSprint.name
+        selectedAssigneeFirebaseUid = editingExistingSprint.assigneeFirebaseUid ||
+          task?.assignee_firebase_uid ||
+          ''
+      }
+    } else if (draftToUpdate) {
       delete draftToUpdate.assigneeFirebaseUid
       delete draftToUpdate.assigneeName
       Object.assign(draftToUpdate, draftSprint)
@@ -923,14 +1012,18 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     }
 
     updateSprintDrafts()
-    selectedDraftSprintId = draftSprint.id
-    selectedSprintName = draftSprint.name
-    selectedAssigneeFirebaseUid = draftSprint.assigneeFirebaseUid || task?.assignee_firebase_uid || ''
-    selectedSprintIsInProject = true
-    selectedSprintNeedsOwnerAssignment = false
+    if (!isEditingExistingSprint) {
+      selectedDraftSprintId = draftSprint.id
+      selectedSprintName = draftSprint.name
+      selectedAssigneeFirebaseUid = draftSprint.assigneeFirebaseUid || task?.assignee_firebase_uid || ''
+      selectedSprintIsInProject = true
+      selectedSprintNeedsOwnerAssignment = false
+    }
     submit.disabled = !selectedSprintName || !selectedAssigneeFirebaseUid
     editingDraftSprintId = null
+    editingExistingSprint = null
     newSprintNameInput.value = ''
+    newSprintDescriptionInput.value = ''
     newSprintAssigneeSelect.value = ''
     newSprintStatusSelect.value = 'Upcoming'
     saveSprintButton.textContent = 'Add Sprint'
@@ -1006,6 +1099,61 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   })
   categoryLabel.append(categorySelect)
 
+  const taskTagOptions = [
+    'Accessibility',
+    'Blocked',
+    'Bug',
+    'Content',
+    'Customer Request',
+    'Design',
+    'Documentation',
+    'Enhancement',
+    'Feature',
+    'Follow-up',
+    'Infrastructure',
+    'Needs Review',
+    'Performance',
+    'Release',
+    'Research',
+    'Security',
+    'Technical Debt',
+    'Testing',
+    'Urgent',
+    'UX/UI'
+  ]
+  const selectedTags = new Set(
+    Array.isArray(task?.tags) ? task.tags.filter(tag => taskTagOptions.includes(tag)) : []
+  )
+  const tagField = make('div', 'project-task-tag-field')
+  const tagLabel = make('span', 'project-task-tag-label', 'Tags')
+  const tagPicker = make('details', 'project-task-tag-picker')
+  const tagPickerSummary = make('summary', 'project-task-tag-picker-summary')
+  const updateTagSummary = () => {
+    const selectedTagNames = [...selectedTags]
+    const visibleNames = selectedTagNames.slice(0, 2).join(', ')
+    tagPickerSummary.textContent = selectedTagNames.length > 2
+      ? `${visibleNames}, +${selectedTagNames.length - 2}`
+      : visibleNames || 'Choose tags'
+  }
+  updateTagSummary()
+  const tagOptions = make('div', 'project-task-tag-options')
+  taskTagOptions.forEach(tag => {
+    const optionLabel = make('label', 'project-task-tag-option')
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    checkbox.value = tag
+    checkbox.checked = selectedTags.has(tag)
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) selectedTags.add(tag)
+      else selectedTags.delete(tag)
+      updateTagSummary()
+    })
+    optionLabel.append(checkbox, document.createTextNode(tag))
+    tagOptions.append(optionLabel)
+  })
+  tagPicker.append(tagPickerSummary, tagOptions)
+  tagField.append(tagLabel, tagPicker)
+
   const statusLabel = make('label', 'no-input-icon', 'Status')
   const statusSelect = document.createElement('select')
   ;(task ? ['Backlog', 'To do', 'In progress', 'Blocked', 'Done'] : ['To do']).forEach(status => {
@@ -1061,6 +1209,8 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     descriptionMedia.element,
     ...(discussionButton ? [discussionButton] : []),
     assignmentRow,
+    tagField,
+    ...(isOwner ? [existingSprintList] : []),
     priorityRow,
     ...(isOwner ? [sprintCreatePanel, draftSprintList] : []),
     schedulePicker.element,
@@ -1077,6 +1227,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
       title: titleInput.value.trim(),
       description: descriptionInput.value.trim(),
       category: categorySelect.value,
+      tags: [...selectedTags],
       sprintName: selectedSprintName,
       assigneeFirebaseUid: selectedAssigneeFirebaseUid,
       status: task ? statusSelect.value : 'To do',
@@ -1090,7 +1241,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     try {
       payload.descriptionAttachments = await descriptionMedia.getAttachments()
       const projectId = encodeURIComponent(project.projectId)
-      if (draftSprints.length || selectedSprintNeedsOwnerAssignment) {
+      if (draftSprints.length || selectedSprintNeedsOwnerAssignment || sprintsChanged) {
         const persistedDraftSprints = draftSprints.map((draft, index) => ({
           ...draft,
           name: draft.name.replace(/^Sprint\s+\d+\s*:\s*/i, `Sprint ${sprints.length + index + 1}: `)
@@ -1099,7 +1250,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
         const persistedSelectedSprintName = selectedDraftIndex >= 0
           ? persistedDraftSprints[selectedDraftIndex].name
           : selectedSprintName
-        const updatedSprints = selectedSprintNeedsOwnerAssignment
+        const updatedExistingSprints = selectedSprintNeedsOwnerAssignment
           ? sprints.map(sprint => sprint.name === selectedSprintName
             ? {
               ...sprint,
@@ -1107,8 +1258,18 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
               assigneeName: projectOwner.name || projectOwner.email
             }
             : sprint)
-          : [...sprints, ...persistedDraftSprints]
-        await api.put(`/projects/${projectId}`, { sprints: updatedSprints })
+          : sprints
+        const updatedSprints = [...updatedExistingSprints, ...persistedDraftSprints]
+        const sprintNameMap = sprintsChanged
+          ? Object.fromEntries(originalSprints.map((sprint, index) => [
+            sprint.name,
+            updatedSprints[index]?.name || sprint.name
+          ]))
+          : null
+        await api.put(`/projects/${projectId}`, {
+          sprints: updatedSprints,
+          ...(sprintNameMap ? { sprint_name_map: sprintNameMap } : {})
+        })
         project.sprints = updatedSprints
         sprints = updatedSprints
         selectedSprintName = persistedSelectedSprintName

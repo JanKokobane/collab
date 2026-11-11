@@ -21,6 +21,7 @@ export interface HomeProject {
   creatorFirebaseUid?: string;
   creatorName?: string;
   creatorEmail?: string;
+  creatorProfileImage?: string | null;
   acceptedMembers?: HomeProjectMember[];
   sprints?: HomeProjectSprint[];
 }
@@ -41,6 +42,7 @@ export interface HomeProjectSprint {
   assigneeFirebaseUid?: string;
   assigneeName?: string;
   assigneeEmail?: string;
+  assigneeProfileImage?: string | null;
   submissionNote?: string;
   reviewComment?: string;
   submittedAt?: string;
@@ -50,15 +52,27 @@ export interface HomeTask {
   id: string;
   title: string;
   status: string;
+  updatedAt?: string;
   dueDate: string | null;
   projectId: string;
   description?: string;
   category?: string;
   sprintName?: string;
+  createdByFirebaseUid?: string;
   assigneeFirebaseUid?: string;
   assigneeName?: string;
   assigneeEmail?: string;
+  assigneeProfileImage?: string | null;
+  descriptionAttachments?: HomeTaskAttachment[];
+  tags?: string[];
   priority?: string;
+}
+
+export interface HomeTaskAttachment {
+  fileName: string;
+  mediaType: string;
+  size: number | null;
+  isVoiceNote: boolean;
 }
 
 export interface HomeMeeting {
@@ -254,6 +268,9 @@ function parseHomeProject(value: unknown): HomeProject | null {
     creatorFirebaseUid: asText(row.creator_firebase_uid, asText(row.creatorFirebaseUid)),
     creatorName: asText(row.creator_name, asText(row.creatorName)),
     creatorEmail: asText(row.creator_email, asText(row.creatorEmail)),
+    creatorProfileImage: typeof row.creator_profile_image === 'string'
+      ? row.creator_profile_image
+      : typeof row.creatorProfileImage === 'string' ? row.creatorProfileImage : null,
     acceptedMembers,
     sprints,
   };
@@ -279,18 +296,42 @@ export async function fetchHomeTasks(
     const row = asRecord(value);
     const id = asText(row.task_id);
     if (!id) return [];
+    const descriptionAttachments = Array.isArray(row.description_attachments)
+      ? row.description_attachments.flatMap((attachmentValue) => {
+        const attachment = asRecord(attachmentValue);
+        const fileName = asText(attachment.fileName);
+        if (!fileName) return [];
+        return [{
+          fileName,
+          mediaType: asText(attachment.mediaType),
+          size: typeof attachment.size === 'number' && Number.isFinite(attachment.size)
+            ? attachment.size
+            : null,
+          isVoiceNote: attachment.is_voice_note === true || attachment.isVoiceNote === true,
+        }];
+      })
+      : [];
     return [{
       id,
       title: asText(row.title, 'Untitled task'),
       status: asText(row.status),
+      updatedAt: asText(row.updated_at) || undefined,
       dueDate: typeof row.due_date === 'string' ? row.due_date : null,
       projectId: project.id,
       description: asText(row.description),
       category: asText(row.category),
+      tags: Array.isArray(row.tags)
+        ? row.tags.filter((tag): tag is string => typeof tag === 'string')
+        : [],
       sprintName: asText(row.sprint_name, asText(row.sprintName)),
+      createdByFirebaseUid: asText(row.created_by_firebase_uid) || undefined,
       assigneeFirebaseUid: asText(row.assignee_firebase_uid) || undefined,
       assigneeName: asText(row.assignee_name) || undefined,
       assigneeEmail: asText(row.assignee_email) || undefined,
+      assigneeProfileImage: typeof row.assignee_profile_image === 'string'
+        ? row.assignee_profile_image
+        : null,
+      descriptionAttachments,
       priority: asText(row.priority),
     }];
   });

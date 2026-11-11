@@ -2282,21 +2282,44 @@ body.dark-mode .notification-confirmation-body {
     overflow: hidden;
     border: 2px solid #FFFFFF;
     border-radius: 50%;
-    background: linear-gradient(145deg, #DBEAFE, #BFDBFE);
-    box-shadow: 0 0 0 1px #93C5FD, 0 2px 6px rgba(37, 99, 235, 0.16);
-    color: #1D4ED8;
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 0.04em;
+    box-shadow: 0 1px 5px rgba(15, 23, 42, 0.12);
     line-height: 1;
 }
 
-.notification-person-avatar img {
+.notification-person-avatar svg {
     display: block;
-    width: 100%;
-    height: 100%;
-    border-radius: inherit;
-    object-fit: cover;
+    width: 21px;
+    height: 21px;
+}
+
+.notification-person-avatar.notification-user-tone-0 {
+    background: #E5EAF2;
+    color: #58677D;
+}
+
+.notification-person-avatar.notification-user-tone-1 {
+    background: #E5EEE9;
+    color: #557365;
+}
+
+.notification-person-avatar.notification-user-tone-2 {
+    background: #ECE7F1;
+    color: #6C5B7B;
+}
+
+.notification-person-avatar.notification-user-tone-3 {
+    background: #F1EBDD;
+    color: #806B48;
+}
+
+.notification-person-avatar.notification-user-tone-4 {
+    background: #F1E5E7;
+    color: #825E65;
+}
+
+.notification-person-avatar.notification-user-tone-5 {
+    background: #E2ECEC;
+    color: #527174;
 }
 
 .settings-notification-title strong {
@@ -4085,10 +4108,38 @@ body.dark-mode .notification-row-unread {
 }
 
 body.dark-mode .notification-settings-table .settings-notification-title .notif-avatar.notification-person-avatar {
-    border-color: #27272F;
-    background: linear-gradient(145deg, #1E3A8A, #1D4ED8);
-    box-shadow: 0 0 0 1px #60A5FA, 0 2px 7px rgba(0, 0, 0, 0.3);
-    color: #EFF6FF;
+    border-color: #34343F;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.3);
+}
+
+body.dark-mode .notification-person-avatar.notification-user-tone-0 {
+    background: #343B49;
+    color: #C0CBDD;
+}
+
+body.dark-mode .notification-person-avatar.notification-user-tone-1 {
+    background: #304139;
+    color: #B5CCBE;
+}
+
+body.dark-mode .notification-person-avatar.notification-user-tone-2 {
+    background: #403747;
+    color: #CCBEDA;
+}
+
+body.dark-mode .notification-person-avatar.notification-user-tone-3 {
+    background: #494133;
+    color: #D8C6A3;
+}
+
+body.dark-mode .notification-person-avatar.notification-user-tone-4 {
+    background: #49373B;
+    color: #D8B9BF;
+}
+
+body.dark-mode .notification-person-avatar.notification-user-tone-5 {
+    background: #304244;
+    color: #B3CCCE;
 }
 
 body.dark-mode .notification-status.read {

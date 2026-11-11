@@ -32,7 +32,7 @@ import {
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   openInviteModal
-} from './admin.js?v=20261028-dedicated-file-picker'
+} from './admin.js?v=20261112-task-tags'
 import {
   currentTheme,
   applyTheme,
