@@ -627,6 +627,8 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
 
   useEffect(() => {
     if (!selectedTaskId || !selectedTaskProjectId) return undefined;
+    const taskId = selectedTaskId;
+    const projectId = selectedTaskProjectId;
     let active = true;
     setTaskTagsRefreshFailed(false);
 
@@ -647,10 +649,10 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
 
     async function refreshSelectedTaskTags() {
       try {
-        const tags = await fetchHomeTaskTags(selectedTaskProjectId, selectedTaskId);
+        const tags = await fetchHomeTaskTags(projectId, taskId);
         if (!active || tags === null) return;
         setTasks((current) => current.map((item) => (
-          item.id === selectedTaskId ? { ...item, tags } : item
+          item.id === taskId ? { ...item, tags } : item
         )));
       } catch (error) {
         console.error('Unable to refresh task modal tags:', error);
