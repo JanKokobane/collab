@@ -20,6 +20,7 @@ const {
     getProjectTaskDependencies,
     getProjectTaskComments,
     getProjectTaskDetails,
+    getProjectTaskAttachment,
     getProjectTasks,
     updateProjectTaskDependencies,
     updateProjectTask,
@@ -98,6 +99,7 @@ router.post('/:projectId/tasks', createProjectTask);
 router.post('/:projectId/sprints/:sprintName/submit', submitProjectSprint);
 router.post('/:projectId/sprints/:sprintName/complete', submitProjectSprint);
 router.post('/:projectId/sprints/:sprintName/review', reviewProjectSprint);
+router.get('/:projectId/tasks/:taskId/attachments/:attachmentIndex', getProjectTaskAttachment);
 router.get('/:projectId/tasks/:taskId', getProjectTaskDetails);
 router.get('/:projectId/tasks/:taskId/comments', getProjectTaskComments);
 router.post('/:projectId/tasks/:taskId/comments', createProjectTaskComment);

@@ -69,10 +69,12 @@ export interface HomeTask {
 }
 
 export interface HomeTaskAttachment {
+  index: number;
   fileName: string;
   mediaType: string;
   size: number | null;
   isVoiceNote: boolean;
+  data?: string;
 }
 
 export interface HomeMeeting {
@@ -297,12 +299,16 @@ export async function fetchHomeTasks(
     const id = asText(row.task_id);
     if (!id) return [];
     const descriptionAttachments = Array.isArray(row.description_attachments)
-      ? row.description_attachments.flatMap((attachmentValue) => {
+      ? row.description_attachments.flatMap((attachmentValue, index) => {
         const attachment = asRecord(attachmentValue);
         const fileName = asText(attachment.fileName);
         if (!fileName) return [];
         return [{
           fileName,
+          index: typeof attachment.attachment_index === 'number' &&
+              Number.isSafeInteger(attachment.attachment_index)
+            ? attachment.attachment_index
+            : index,
           mediaType: asText(attachment.mediaType),
           size: typeof attachment.size === 'number' && Number.isFinite(attachment.size)
             ? attachment.size
@@ -342,11 +348,38 @@ export async function fetchHomeTaskTags(
   taskId: string,
 ): Promise<string[] | null> {
   const data = await request<{ task?: unknown }>(
-    `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}`,
+    `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}?metadataOnly=true`,
   );
   const task = asRecord(data.task);
   if (!Array.isArray(task.tags)) return null;
   return task.tags.filter((tag): tag is string => typeof tag === 'string');
+}
+
+export async function fetchHomeTaskAttachment(
+  projectId: string,
+  taskId: string,
+  attachmentIndex: number,
+): Promise<HomeTaskAttachment> {
+  const data = await request<{ attachment?: unknown }>(
+    `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}` +
+      `/attachments/${attachmentIndex}`,
+  );
+  const attachment = asRecord(data.attachment);
+  const fileName = asText(attachment.fileName);
+  const payload = asText(attachment.data);
+  if (!fileName || !payload) {
+    throw new HomeApiError('The server did not return this task attachment.', 502);
+  }
+  return {
+    index: attachmentIndex,
+    fileName,
+    mediaType: asText(attachment.mediaType, 'application/octet-stream'),
+    size: typeof attachment.size === 'number' && Number.isFinite(attachment.size)
+      ? attachment.size
+      : null,
+    isVoiceNote: attachment.is_voice_note === true || attachment.isVoiceNote === true,
+    data: payload,
+  };
 }
 
 export interface HomeUserSearchResult {

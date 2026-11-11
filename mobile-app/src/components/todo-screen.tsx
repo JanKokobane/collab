@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  Alert,
   ActivityIndicator,
   Image,
   Modal,
@@ -11,12 +12,26 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import { Directory, File, Paths } from 'expo-file-system';
+import {
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+} from 'expo-audio';
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient,
+  Path,
+  Rect,
+  Stop,
+} from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { firebaseAuth } from '@/lib/firebase';
 import {
   fetchHomeMembers,
   fetchHomeProjects,
+  fetchHomeTaskAttachment,
   fetchHomeTaskTags,
   fetchHomeTasks,
   HomeApiError,
@@ -38,6 +53,9 @@ type IconName =
   | 'close'
   | 'arrow'
   | 'arrowUp'
+  | 'download'
+  | 'play'
+  | 'pause'
   | 'chevronDown'
   | 'folder'
   | 'select'
@@ -47,7 +65,8 @@ type IconName =
   | 'filterCalendar'
   | 'listCheck'
   | 'coloredTaskList'
-  | 'doneCircle';
+  | 'doneCircle'
+  | 'workUpdate';
 
 type Task = {
   id: string;
@@ -142,6 +161,13 @@ function Icon({
     close: <Path d="m6 6 12 12M18 6 6 18" />,
     arrow: <Path d="M5 12h14M13 6l6 6-6 6" />,
     arrowUp: <Path d="M12 19V5m-7 7 7-7 7 7" />,
+    download: <Path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4" />,
+    play: <Path d="m8 5 11 7-11 7z" fill={color} stroke="none" />,
+    pause: (
+      <>
+        <Path d="M8 5v14M16 5v14" strokeWidth={3} />
+      </>
+    ),
     folder: <Path d="M3 6h7l2 2h9v11H3Z" />,
     select: (
       <Path
@@ -200,6 +226,13 @@ function Icon({
         />
       </>
     ),
+    workUpdate: (
+      <Path
+        d="m18 20.596l2.539-2.538l-.547-.546l-1.608 1.607v-3.715h-.769v3.715l-1.607-1.607l-.547.546zM10 7h4V5.615q0-.269-.173-.442T13.385 5h-2.77q-.269 0-.442.173T10 5.615zm5.165 13.836Q14 19.67 14 18t1.165-2.835T18 14t2.836 1.165T22 18t-1.164 2.836T18 22t-2.835-1.164M4.615 20q-.69 0-1.152-.462T3 18.384V8.616q0-.691.463-1.153T4.615 7H9V5.615q0-.69.463-1.153T10.616 4h2.769q.69 0 1.153.462T15 5.615V7h4.385q.69 0 1.152.463T21 8.616v4.198q-.683-.414-1.448-.614T18 12q-2.496 0-4.248 1.752T12 18q0 .506.086 1.009t.262.991z"
+        fill={color}
+        stroke="none"
+      />
+    ),
   };
 
   return (
@@ -242,7 +275,11 @@ function formatTaskUpdatedAt(value: string | null) {
 function formatAttachmentSize(size: number | null) {
   if (size === null) return '';
   if (size < 1024) return `${size} B`;
-  return `${(size / 1024).toFixed(size < 10 * 1024 ? 1 : 0)} KB`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(size < 10 * 1024 ? 1 : 0)} KB`;
+  if (size < 1024 * 1024 * 1024) {
+    return `${(size / (1024 * 1024)).toFixed(size < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+  }
+  return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 function getAttachmentKind(attachment: HomeTaskAttachment) {
@@ -252,6 +289,411 @@ function getAttachmentKind(attachment: HomeTaskAttachment) {
   if (mediaType.startsWith('image/')) return 'Image';
   if (mediaType.startsWith('audio/')) return 'Audio';
   return 'Document';
+}
+
+let activeTaskAttachmentPlayer: ReturnType<typeof useAudioPlayer> | null = null;
+
+function formatAudioTime(value: number) {
+  const seconds = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function getSafeTaskAttachmentName(fileName: string) {
+  const safeName = fileName.replace(/[\\/:*?"<>|\u0000-\u001F]/g, '_').trim();
+  return safeName && safeName !== '.' && safeName !== '..' ? safeName : 'attachment';
+}
+
+function getTaskAttachmentBase64(dataUrl: string) {
+  const match = dataUrl.match(/^data:[^,]*;base64,([A-Za-z0-9+/]*={0,2})$/);
+  if (!match) throw new Error('This attachment has an invalid file payload.');
+  return match[1];
+}
+
+function TaskAttachmentFileIcon({ extension }: { extension: string }) {
+  const type = extension || 'FILE';
+  if (['doc', 'docx', 'odt'].includes(extension)) {
+    return (
+      <View style={styles.attachmentFileIcon}>
+        <Svg width={29} height={29} viewBox="0 0 24 24">
+          <Path
+            fill="#01579B"
+            stroke="none"
+            d="M6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2m7 1.5V9h5.5zM7 13l1.5 7h2l1.5-3l1.5 3h2l1.5-7h1v-2h-4v2h1l-.9 4.2L13 15h-2l-1.1 2.2L9 13h1v-2H6v2z"
+          />
+        </Svg>
+      </View>
+    );
+  }
+  if (['xls', 'xlsx', 'csv'].includes(extension)) {
+    return (
+      <View style={styles.attachmentFileIcon}>
+        <Svg width={29} height={29} viewBox="0 0 32 32">
+          <Defs>
+            <LinearGradient
+              id="taskExcelIconGradient"
+              x1="4.494"
+              x2="13.832"
+              y1="-2092.086"
+              y2="-2075.914"
+              gradientTransform="translate(0 2100)"
+              gradientUnits="userSpaceOnUse">
+              <Stop offset="0" stopColor="#18884F" />
+              <Stop offset="0.5" stopColor="#117E43" />
+              <Stop offset="1" stopColor="#0B6631" />
+            </LinearGradient>
+          </Defs>
+          <Path d="M19.581 15.35L8.512 13.4v14.409A1.19 1.19 0 0 0 9.705 29h19.1A1.19 1.19 0 0 0 30 27.809V22.5Z" fill="#185C37" />
+          <Path d="M19.581 3H9.705a1.19 1.19 0 0 0-1.193 1.191V9.5L19.581 16l5.861 1.95L30 16V9.5Z" fill="#21A366" />
+          <Path d="M8.512 9.5h11.069V16H8.512Z" fill="#107C41" />
+          <Path d="M16.434 8.2H8.512v16.25h7.922a1.2 1.2 0 0 0 1.194-1.191V9.391A1.2 1.2 0 0 0 16.434 8.2" opacity={0.1} />
+          <Path d="M15.783 8.85H8.512V25.1h7.271a1.2 1.2 0 0 0 1.194-1.191V10.041a1.2 1.2 0 0 0-1.194-1.191" opacity={0.2} />
+          <Path d="M15.783 8.85H8.512V23.8h7.271a1.2 1.2 0 0 0 1.194-1.191V10.041a1.2 1.2 0 0 0-1.194-1.191" opacity={0.2} />
+          <Path d="M15.132 8.85h-6.62V23.8h6.62a1.2 1.2 0 0 0 1.194-1.191V10.041a1.2 1.2 0 0 0-1.194-1.191" opacity={0.2} />
+          <Path d="M3.194 8.85h11.938a1.193 1.193 0 0 1 1.194 1.191v11.918a1.193 1.193 0 0 1-1.194 1.191H3.194A1.19 1.19 0 0 1 2 21.959V10.041A1.19 1.19 0 0 1 3.194 8.85" fill="url(#taskExcelIconGradient)" />
+          <Path d="m5.7 19.873l2.511-3.884l-2.3-3.862h1.847L9.013 14.6c.116.234.2.408.238.524h.017q.123-.281.26-.546l1.342-2.447h1.7l-2.359 3.84l2.419 3.905h-1.809l-1.45-2.711A2.4 2.4 0 0 1 9.2 16.8h-.024a1.7 1.7 0 0 1-.168.351l-1.493 2.722Z" fill="#FFFFFF" />
+          <Path d="M28.806 3h-9.225v6.5H30V4.191A1.19 1.19 0 0 0 28.806 3" fill="#33C481" />
+          <Path d="M19.581 16H30v6.5H19.581Z" fill="#107C41" />
+        </Svg>
+      </View>
+    );
+  }
+  if (['ppt', 'pptx'].includes(extension)) {
+    return (
+      <View style={styles.attachmentFileIcon}>
+        <Svg width={29} height={29} viewBox="0 0 32 32">
+          <Path
+            d="M17 3h7a2 2 0 0 1 2 2v3h2a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2v-2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2-2Z"
+            fill="#D35230"
+          />
+          <Path d="M17 3v6h9" fill="#F07A55" />
+          <Path
+            d="M7.5 11h4.2c2.4 0 3.8 1.2 3.8 3.3s-1.4 3.4-3.8 3.4h-1.5V22h-2.7zm2.7 4.6h1.3c.9 0 1.4-.4 1.4-1.2s-.5-1.2-1.4-1.2h-1.3z"
+            fill="#FFFFFF"
+          />
+          <Path d="M19 14h8m-4-4v8" stroke="#FFFFFF" strokeWidth={1.5} />
+        </Svg>
+      </View>
+    );
+  }
+
+  if (extension === 'pdf') {
+    return (
+      <View style={styles.attachmentFileIcon}>
+        <Svg width={29} height={29} viewBox="0 0 24 24">
+          <Path
+            fill="#EF5350"
+            stroke="none"
+            d="M13 9h5.5L13 3.5zM6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2m4.93 10.44c.41.9.93 1.64 1.53 2.15l.41.32c-.87.16-2.07.44-3.34.93l-.11.04l.5-1.04c.45-.87.78-1.66 1.01-2.4m6.48 3.81c.18-.18.27-.41.28-.66c.03-.2-.02-.39-.12-.55c-.29-.47-1.04-.69-2.28-.69l-1.29.07l-.87-.58c-.63-.52-1.2-1.43-1.6-2.56l.04-.14c.33-1.33.64-2.94-.02-3.6a.85.85 0 0 0-.61-.24h-.24c-.37 0-.7.39-.79.77c-.37 1.33-.15 2.06.22 3.27v.01c-.25.88-.57 1.9-1.08 2.93l-.96 1.8l-.89.49c-1.2.75-1.77 1.59-1.88 2.12c-.04.19-.02.36.05.54l.03.05l.48.31l.44.11c.81 0 1.73-.95 2.97-3.07l.18-.07c1.03-.33 2.31-.56 4.03-.75c1.03.51 2.24.74 3 .74c.44 0 .74-.11.91-.3m-.41-.71l.09.11c-.01.1-.04.11-.09.13h-.04l-.19.02c-.46 0-1.17-.19-1.9-.51c.09-.1.13-.1.23-.1c1.4 0 1.8.25 1.9.35M7.83 17c-.65 1.19-1.24 1.85-1.69 2c.05-.38.5-1.04 1.21-1.69zm3.02-6.91c-.23-.9-.24-1.63-.07-2.05l.07-.12l.15.05c.17.24.19.56.09 1.1l-.03.16l-.16.82z"
+          />
+        </Svg>
+      </View>
+    );
+  }
+
+  const color = '#64748B';
+
+  return (
+    <View style={styles.attachmentFileIcon}>
+      <Svg width={29} height={29} viewBox="0 0 58 58">
+        <Path
+          d="M17 5h16l10 10v33a4 4 0 0 1-4 4H17a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4Z"
+          fill="#FFFFFF"
+          stroke={color}
+          strokeWidth={2}
+          strokeLinejoin="round"
+        />
+        <Path d="M33 5v10h10" fill={color} fillOpacity={0.18} stroke={color} strokeWidth={2} />
+        <Rect x="18" y="27" width="24" height="13" rx="3" fill={color} />
+      </Svg>
+      <Text numberOfLines={1} adjustsFontSizeToFit style={styles.attachmentFileType}>
+        {type.toUpperCase()}
+      </Text>
+    </View>
+  );
+}
+
+async function writeTaskAttachment(
+  directory: Directory,
+  attachment: HomeTaskAttachment,
+) {
+  if (!attachment.data) throw new Error('The attachment data is not available.');
+  const originalName = getSafeTaskAttachmentName(attachment.fileName);
+  const extensionIndex = originalName.lastIndexOf('.');
+  const basename = extensionIndex > 0 ? originalName.slice(0, extensionIndex) : originalName;
+  const extension = extensionIndex > 0 ? originalName.slice(extensionIndex) : '';
+  let name = originalName;
+  let suffix = 2;
+  while (new File(directory, name).exists) {
+    name = `${basename} (${suffix})${extension}`;
+    suffix += 1;
+  }
+  const file = directory.createFile(name, attachment.mediaType || 'application/octet-stream');
+  try {
+    await file.write(getTaskAttachmentBase64(attachment.data), { encoding: 'base64' });
+  } catch (error) {
+    if (file.exists) file.delete();
+    throw error;
+  }
+  return file;
+}
+
+function TaskAttachmentCard({
+  attachment,
+  projectId,
+  taskId,
+}: {
+  attachment: HomeTaskAttachment;
+  projectId: string;
+  taskId: string;
+}) {
+  const kind = getAttachmentKind(attachment);
+  const isImage = kind === 'Image';
+  const isAudio = kind === 'Audio' || kind === 'Voice note';
+  const extension = attachment.fileName.split('.').pop()?.toLowerCase() || '';
+  const [imagePreviewUri, setImagePreviewUri] = useState<string | null>(null);
+  const [attachmentError, setAttachmentError] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
+  const [audioBusy, setAudioBusy] = useState(false);
+  const player = useAudioPlayer(null, { updateInterval: 250 });
+  const status = useAudioPlayerStatus(player);
+  const mountedRef = useRef(true);
+  const requestRef = useRef<Promise<HomeTaskAttachment> | null>(null);
+  const imagePreviewFile = useRef<File | null>(null);
+  const playbackFile = useRef<File | null>(null);
+  const sourceLoaded = useRef(false);
+  const duration = status.duration || 0;
+  const progress = duration > 0 ? Math.min(1, status.currentTime / duration) : 0;
+
+  const ensureAttachmentData = useCallback(async () => {
+    if (!requestRef.current) {
+      requestRef.current = fetchHomeTaskAttachment(projectId, taskId, attachment.index);
+    }
+    try {
+      return await requestRef.current;
+    } catch (error) {
+      if (mountedRef.current) {
+        setAttachmentError(error instanceof Error ? error.message : 'Attachment could not be loaded.');
+      }
+      throw error;
+    } finally {
+      requestRef.current = null;
+    }
+  }, [attachment.index, projectId, taskId]);
+
+  useEffect(() => {
+    if (!isImage) return undefined;
+    let active = true;
+    void ensureAttachmentData()
+      .then(async (data) => {
+        const previewDirectory = new Directory(Paths.cache, 'task-image-previews');
+        if (!previewDirectory.exists) previewDirectory.create({ intermediates: true });
+        const file = await writeTaskAttachment(previewDirectory, data);
+        if (!active) {
+          if (file.exists) file.delete();
+          return;
+        }
+        imagePreviewFile.current = file;
+        setImagePreviewUri(file.uri);
+        setAttachmentError('');
+      })
+      .catch((error) => {
+        console.error('Unable to load task image attachment:', error);
+        if (active) setAttachmentError('Image preview could not be loaded.');
+      });
+    return () => { active = false; };
+  }, [ensureAttachmentData, isImage]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (activeTaskAttachmentPlayer === player) activeTaskAttachmentPlayer = null;
+      player.pause();
+      try {
+        if (playbackFile.current?.exists) playbackFile.current.delete();
+        if (imagePreviewFile.current?.exists) imagePreviewFile.current.delete();
+      } catch (error) {
+        console.error('Unable to remove temporary task attachment files:', error);
+      }
+    };
+  }, [player]);
+
+  async function saveAttachment() {
+    setActionBusy(true);
+    try {
+      const data = await ensureAttachmentData();
+      const downloadsDirectory = new Directory(Paths.document, 'Downloads');
+      if (!downloadsDirectory.exists) downloadsDirectory.create({ intermediates: true });
+      await writeTaskAttachment(downloadsDirectory, data);
+      Alert.alert('Download complete', `${attachment.fileName} was saved to the app's Downloads.`);
+    } catch (error) {
+      console.error('Unable to download task attachment:', error);
+      Alert.alert(
+        'Download failed',
+        error instanceof Error ? error.message : 'Please try again.',
+      );
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function previewAttachment() {
+    setActionBusy(true);
+    let previewFile: File | null = null;
+    try {
+      const data = await ensureAttachmentData();
+      const previewDirectory = new Directory(Paths.cache, 'task-attachments');
+      if (!previewDirectory.exists) previewDirectory.create({ intermediates: true });
+      previewFile = await writeTaskAttachment(previewDirectory, data);
+      await previewFile.preview({
+        title: attachment.fileName,
+        mimeType: attachment.mediaType,
+      });
+    } catch (error) {
+      console.error('Unable to preview task attachment:', error);
+      Alert.alert(
+        'Preview unavailable',
+        error instanceof Error ? error.message : 'This file could not be opened.',
+      );
+    } finally {
+      if (previewFile?.exists) {
+        try {
+          previewFile.delete();
+        } catch (error) {
+          console.error('Unable to remove the temporary task preview file:', error);
+        }
+      }
+      setActionBusy(false);
+    }
+  }
+
+  async function toggleAudio() {
+    if (status.playing) {
+      player.pause();
+      return;
+    }
+    setAudioBusy(true);
+    try {
+      if (activeTaskAttachmentPlayer && activeTaskAttachmentPlayer !== player) {
+        activeTaskAttachmentPlayer.pause();
+        void activeTaskAttachmentPlayer.seekTo(0).catch((error) => {
+          console.error('Unable to reset the previous task audio attachment:', error);
+        });
+      }
+      const data = await ensureAttachmentData();
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      if (!sourceLoaded.current) {
+        const file = new File(
+          Paths.cache,
+          `${Date.now()}-${Math.random().toString(36).slice(2)}-${getSafeTaskAttachmentName(attachment.fileName)}`,
+        );
+        try {
+          await file.write(getTaskAttachmentBase64(data.data || ''), { encoding: 'base64' });
+        } catch (error) {
+          if (file.exists) file.delete();
+          throw error;
+        }
+        playbackFile.current = file;
+        player.replace(file.uri);
+        sourceLoaded.current = true;
+      }
+      if (status.didJustFinish || (duration > 0 && status.currentTime >= duration - 0.1)) {
+        await player.seekTo(0);
+      }
+      activeTaskAttachmentPlayer = player;
+      player.play();
+    } catch (error) {
+      console.error('Unable to play task audio attachment:', error);
+      Alert.alert('Audio unavailable', 'This audio file could not be played.');
+    } finally {
+      setAudioBusy(false);
+    }
+  }
+
+  return (
+    <View style={styles.taskAttachmentCard}>
+      {isImage ? (
+        <View style={styles.attachmentImagePreview}>
+          {imagePreviewUri ? (
+            <Image
+              source={{ uri: imagePreviewUri }}
+              style={styles.attachmentImage}
+              resizeMode="cover"
+              onError={() => setAttachmentError('Image preview could not be displayed.')}
+            />
+          ) : attachmentError ? (
+            <Text style={styles.attachmentImageUnavailable}>!</Text>
+          ) : (
+            <ActivityIndicator size="small" color="#527565" />
+          )}
+        </View>
+      ) : isAudio ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={status.playing ? 'Pause audio attachment' : 'Play audio attachment'}
+          disabled={audioBusy}
+          onPress={() => { void toggleAudio(); }}
+          style={[styles.attachmentAudioTile, audioBusy && styles.attachmentActionDisabled]}>
+          <Svg width={20} height={20} viewBox="0 0 24 24">
+            <Path
+              fill="#000000"
+              stroke="none"
+              d="M7.01 2a3 3 0 0 1 1.502.41l11.994 6.995A3 3 0 0 1 22 11.998a3 3 0 0 1-1.323 2.49l-.166.105l-12 7A3.002 3.002 0 0 1 4 19V5.001A3 3 0 0 1 7.01 2"
+            />
+          </Svg>
+        </Pressable>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Preview ${attachment.fileName}`}
+          disabled={actionBusy}
+          onPress={() => { void previewAttachment(); }}
+          style={styles.attachmentFileIconButton}>
+          <TaskAttachmentFileIcon extension={extension} />
+        </Pressable>
+      )}
+
+      <Pressable
+        accessibilityRole={isAudio ? undefined : 'button'}
+        accessibilityLabel={isAudio ? undefined : `Open ${attachment.fileName}`}
+        disabled={isAudio || actionBusy}
+        onPress={isAudio ? undefined : () => { void previewAttachment(); }}
+        style={styles.taskAttachmentCopy}>
+        <Text numberOfLines={1} style={styles.taskAttachmentName}>
+          {attachment.fileName}
+        </Text>
+        <Text numberOfLines={1} style={styles.taskAttachmentDetails}>
+          {[kind, formatAttachmentSize(attachment.size)].filter(Boolean).join(' · ')}
+        </Text>
+        {isAudio ? (
+          <>
+            <View style={styles.attachmentAudioProgressTrack}>
+              <View style={[styles.attachmentAudioProgress, { width: `${progress * 100}%` }]} />
+            </View>
+            <Text style={styles.attachmentAudioTime}>
+              {formatAudioTime(status.currentTime)} / {formatAudioTime(duration)}
+            </Text>
+          </>
+        ) : null}
+        {attachmentError ? (
+          <Text numberOfLines={1} style={styles.attachmentError}>{attachmentError}</Text>
+        ) : null}
+      </Pressable>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Download ${attachment.fileName}`}
+        disabled={actionBusy}
+        onPress={() => { void saveAttachment(); }}
+        style={[styles.attachmentDownloadButton, actionBusy && styles.attachmentActionDisabled]}>
+        {actionBusy ? (
+          <ActivityIndicator size="small" color="#33443B" />
+        ) : (
+          <Icon name="download" size={14} color="#33443B" />
+        )}
+      </Pressable>
+    </View>
+  );
 }
 
 function isDueToday(value: string | null) {
@@ -627,6 +1069,8 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
 
   useEffect(() => {
     if (!selectedTaskId || !selectedTaskProjectId) return undefined;
+    const taskId = selectedTaskId;
+    const projectId = selectedTaskProjectId;
     let active = true;
     setTaskTagsRefreshFailed(false);
 
@@ -647,10 +1091,10 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
 
     async function refreshSelectedTaskTags() {
       try {
-        const tags = await fetchHomeTaskTags(selectedTaskProjectId, selectedTaskId);
+        const tags = await fetchHomeTaskTags(projectId, taskId);
         if (!active || tags === null) return;
         setTasks((current) => current.map((item) => (
-          item.id === selectedTaskId ? { ...item, tags } : item
+          item.id === taskId ? { ...item, tags } : item
         )));
       } catch (error) {
         console.error('Unable to refresh task modal tags:', error);
@@ -1022,7 +1466,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   <View style={styles.metadataRow}>
                     <Text style={styles.metadataLabel}>Last modified</Text>
                     <View style={styles.metadataValueContainer}>
-                      <Text style={styles.metadataIcon}>▦</Text>
+                      <Icon name="workUpdate" size={16} color="#59665F" />
                       <Text style={styles.metadataValue}>
                         {formatTaskUpdatedAt(selectedTask.updatedAt)}
                       </Text>
@@ -1040,11 +1484,39 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   </View>
 
                   <View style={styles.metadataRow}>
-                    <Text style={styles.metadataLabel}>Tags</Text>
+                    <Text style={styles.metadataLabel}>Status</Text>
+                    <View style={styles.metadataValueContainer}>
+                      <Text style={styles.metadataValue}>{selectedTask.status}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.metadataRow}>
+                    <Text style={styles.metadataLabel}>Priority</Text>
+                    <View style={styles.metadataValueContainer}>
+                      <Text
+                        style={[
+                          styles.priorityText,
+                          {
+                            color: selectedTask.priority.trim().toLowerCase() === 'high'
+                              ? '#DC2626'
+                              : selectedTask.priority.trim().toLowerCase() === 'medium'
+                                ? '#D97706'
+                                : selectedTask.priority.trim().toLowerCase() === 'low'
+                                  ? '#16A34A'
+                                  : '#6B7280',
+                          },
+                        ]}>
+                        {selectedTask.priority || 'Normal'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.metadataRow}>
+                    <Text style={[styles.metadataLabel, styles.tagsMetadataLabel]}>Tags</Text>
                     <View style={styles.tagsContainer}>
                       {selectedTask.tags.length ? (
                         selectedTask.tags.map((tag) => (
-                          <Text key={tag} style={styles.categoryTag}>{tag}</Text>
+                          <Text key={tag} style={styles.categoryTag}>#{tag}</Text>
                         ))
                       ) : (
                         <Text style={styles.metadataMuted}>No tags</Text>
@@ -1052,15 +1524,6 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                       {taskTagsRefreshFailed ? (
                         <Text style={styles.metadataMuted}>Could not refresh tags</Text>
                       ) : null}
-                    </View>
-                  </View>
-
-                  <View style={styles.metadataRow}>
-                    <Text style={styles.metadataLabel}>Priority</Text>
-                    <View style={styles.priorityBadge}>
-                      <Text style={styles.priorityText}>
-                        # {selectedTask.priority || 'Normal'}
-                      </Text>
                     </View>
                   </View>
                 </View>
@@ -1077,19 +1540,14 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                     Attachments ({selectedTask.attachments.length})
                   </Text>
                   {selectedTask.attachments.length ? (
-                    selectedTask.attachments.map((attachment, index) => {
-                      const size = formatAttachmentSize(attachment.size);
-                      return (
-                        <View key={`${attachment.fileName}-${index}`} style={styles.taskAttachment}>
-                          <Text numberOfLines={1} style={styles.taskAttachmentName}>
-                            {attachment.fileName}
-                          </Text>
-                          <Text style={styles.taskAttachmentDetails}>
-                            {[getAttachmentKind(attachment), size].filter(Boolean).join(' · ')}
-                          </Text>
-                        </View>
-                      );
-                    })
+                    selectedTask.attachments.map((attachment) => (
+                      <TaskAttachmentCard
+                        key={`${selectedTask.id}-${attachment.index}-${attachment.fileName}`}
+                        attachment={attachment}
+                        projectId={selectedTask.projectId}
+                        taskId={selectedTask.id}
+                      />
+                    ))
                   ) : (
                     <Text style={styles.metadataMuted}>No attachments available.</Text>
                   )}
@@ -1469,8 +1927,8 @@ const styles = StyleSheet.create({
   detailProject: { color: '#858C87', fontSize: 13, fontWeight: '600' },
   detailTitle: {
     color: '#171B18',
-    fontSize: 29,
-    lineHeight: 36,
+    fontSize: 24,
+    lineHeight: 30,
     fontWeight: '800',
     letterSpacing: -0.9,
   },
@@ -1485,6 +1943,7 @@ const styles = StyleSheet.create({
     rowGap: 7,
   },
   metadataLabel: { width: 83, color: '#858C87', fontSize: 12, fontWeight: '500' },
+  tagsMetadataLabel: { width: 83 },
   metadataValueContainer: {
     flex: 1,
     flexDirection: 'row',
@@ -1515,34 +1974,91 @@ const styles = StyleSheet.create({
   },
   categoryTag: {
     overflow: 'hidden',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 2,
+    paddingVertical: 2,
     borderRadius: 12,
-    backgroundColor: '#EAF3EF',
-    color: '#376B5B',
+    backgroundColor: 'transparent',
+    color: '#6B7280',
     fontSize: 11,
     fontWeight: '700',
   },
-  priorityBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    backgroundColor: '#E8F4FB',
-  },
-  priorityText: { color: '#2385C8', fontSize: 11, fontWeight: '800' },
+  priorityText: { fontSize: 12, fontWeight: '700' },
   descriptionSection: { gap: 11 },
-  sectionLabel: { color: '#858C87', fontSize: 12, fontWeight: '600' },
+  sectionLabel: { color: '#858C87', fontSize: 12, fontWeight: '700' },
   descriptionText: { color: '#272D29', fontSize: 13, lineHeight: 22, fontWeight: '400' },
-  attachmentSection: { gap: 9 },
-  taskAttachment: {
-    gap: 3,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    backgroundColor: '#F6F7F5',
+  attachmentSection: { gap: 7 },
+  taskAttachmentCard: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 3,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F3',
   },
-  taskAttachmentName: { color: '#34433D', fontSize: 12, fontWeight: '700' },
-  taskAttachmentDetails: { color: '#858C87', fontSize: 10, fontWeight: '500' },
+  attachmentImagePreview: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderRadius: 8,
+    backgroundColor: '#F0F3F0',
+  },
+  attachmentImage: { width: '100%', height: '100%' },
+  attachmentImageUnavailable: { color: '#A33A32', fontSize: 17, fontWeight: '800' },
+  attachmentAudioTile: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentFileIconButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentFileIcon: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentFileType: {
+    position: 'absolute',
+    top: 24,
+    width: 24,
+    textAlign: 'center',
+    color: '#FFFFFF',
+    fontSize: 6,
+    fontWeight: '800',
+  },
+  taskAttachmentCopy: { flex: 1, minWidth: 0, gap: 2 },
+  taskAttachmentName: { color: '#34433D', fontSize: 11, fontWeight: '700' },
+  taskAttachmentDetails: { color: '#858C87', fontSize: 9, fontWeight: '500' },
+  attachmentAudioProgressTrack: {
+    height: 3,
+    overflow: 'hidden',
+    borderRadius: 2,
+    backgroundColor: '#E8ECE9',
+  },
+  attachmentAudioProgress: { height: '100%', borderRadius: 2, backgroundColor: '#315F4D' },
+  attachmentAudioTime: {
+    alignSelf: 'flex-end',
+    color: '#858C87',
+    fontSize: 8,
+    fontWeight: '500',
+  },
+  attachmentError: { color: '#B42318', fontSize: 8, fontWeight: '500' },
+  attachmentDownloadButton: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentActionDisabled: { opacity: 0.55 },
   primaryAction: {
     minHeight: 49,
     flexDirection: 'row',
