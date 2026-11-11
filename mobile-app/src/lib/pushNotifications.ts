@@ -1,6 +1,3 @@
-
-import * as Application from 'expo-application';
-import { isRunningInExpoGo } from 'expo';
 import * as Device from 'expo-device';
 import { isRunningInExpoGo } from 'expo';
 import { Platform } from 'react-native';
@@ -33,6 +30,7 @@ export async function sendPushTokenToBackend(token: string, user: User): Promise
 
 export async function registerForPushNotificationsAsync(user: User): Promise<string | null> {
   if (Platform.OS !== 'android' || !Device.isDevice) return null;
+
   if (isRunningInExpoGo()) {
     return null;
   }
@@ -47,20 +45,32 @@ export async function registerForPushNotificationsAsync(user: User): Promise<str
     }),
   });
 
-  const Notifications = await import('expo-notifications');
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
-  });
-
-  await Notifications.setNotificationChannelAsync('default', {
-    name: 'Default',
-    importance: Notifications.AndroidImportance.HIGH,
-  });
+  try {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Default',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'default',
+      vibrationPattern: [0, 250, 250, 250],
+      enableVibrate: true,
+      enableLights: false,
+      showBadge: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      audioAttributes: {
+        usage: Notifications.AndroidAudioUsage.NOTIFICATION,
+        contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+        flags: {
+          enforceAudibility: false,
+          requestHardwareAudioVideoSynchronization: false,
+        },
+      },
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      'Could not configure the Android notification channel. Rebuild the development app ' +
+      `with \`npx expo prebuild --platform android && npx expo run:android\`. ${detail}`,
+    );
+  }
 
   const { status: currentStatus } = await Notifications.getPermissionsAsync();
   const { status } = currentStatus === 'granted'

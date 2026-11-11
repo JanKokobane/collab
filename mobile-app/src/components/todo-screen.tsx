@@ -273,7 +273,6 @@ function formatTaskCardDueDate(value: string | null) {
     : formatDueDate(value);
 }
 
-
 function getInitials(value: string | null | undefined) {
   if (typeof value !== 'string') return '';
   return value
@@ -284,8 +283,6 @@ function getInitials(value: string | null | undefined) {
     .join('');
 }
 
-
->>>>>>> 2784bfd (Restore original task filter button styling)
 function taskFromHomeTask(
   task: HomeTask,
   project: HomeProject,
@@ -404,37 +401,18 @@ function TaskCard({
   const inProgress = status === 'in progress';
 
   return (
-<<<<<<< HEAD
-<<<<<<< HEAD
     <View
       style={[
         styles.taskCard,
         isOnlyTask && styles.taskCardFirst,
         done && styles.taskCardDone,
       ]}>
-=======
-    <View style={[
-      styles.taskCard,
-      isFirst && styles.taskCardFirst,
-      done && styles.taskCardDone,
-    ]}>
->>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
-=======
-    <View
-      style={[
-        styles.taskCard,
-        isFirst && styles.taskCardFirst,
-        done && styles.taskCardDone,
-      ]}>
->>>>>>> 2784bfd (Restore original task filter button styling)
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`View details for ${task.title}`}
         onPress={onOpen}
         style={styles.cardMain}>
         <View style={styles.taskTitleRow}>
-<<<<<<< HEAD
-<<<<<<< HEAD
           <View style={styles.taskTitleIcon}>
             <Icon name="campaign" size={20} color="#000000" />
           </View>
@@ -445,24 +423,6 @@ function TaskCard({
               styles.taskTitleShift,
               done && styles.taskTitleDone,
             ]}>
-=======
-          <Icon name="select" size={16} color="#000000" />
-          <Text
-            numberOfLines={2}
-            style={[styles.taskTitle, done && styles.taskTitleDone]}>
->>>>>>> 2784bfd (Restore original task filter button styling)
-=======
-          <View style={styles.taskTitleIcon}>
-            <Icon name="campaign" size={20} color="#000000" />
-          </View>
-          <Text
-            numberOfLines={2}
-            style={[
-              styles.taskTitle,
-              styles.taskTitleShift,
-              done && styles.taskTitleDone,
-            ]}>
->>>>>>> 30539ed (Polish task screen UI)
             {task.title}
           </Text>
           <TaskCountdown due={task.due} status={task.status} />
@@ -485,15 +445,7 @@ function TaskCard({
             <Icon
               name="calendarSolid"
               size={15}
-<<<<<<< HEAD
-<<<<<<< HEAD
               color="#929292"
-=======
-              color={isDueToday(task.due) ? '#FF7868' : '#929292'}
->>>>>>> 2784bfd (Restore original task filter button styling)
-=======
-              color="#929292"
->>>>>>> 30539ed (Polish task screen UI)
             />
             <Text
               style={[
@@ -529,13 +481,6 @@ function TaskCard({
         <View
           accessibilityLabel={`Project ${task.project}`}
           style={styles.assigneeRow}>
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-          <Text style={styles.projectEmoji}>🎒</Text>
->>>>>>> 2784bfd (Restore original task filter button styling)
-=======
->>>>>>> 30539ed (Polish task screen UI)
           <Text numberOfLines={1} style={styles.assigneeName}>{task.project}</Text>
           <Icon name="chevronDown" size={13} color="#858585" />
         </View>
@@ -852,29 +797,11 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                     isActive && styles.filterButtonActive,
                     pressed && styles.filterButtonPressed,
                   ]}>
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 30539ed (Polish task screen UI)
                   <View
                     style={[
                       styles.filterButtonContent,
                       styles.allFilterButtonContent,
                     ]}>
-<<<<<<< HEAD
-=======
-                  {isActive ? (
-                    <LinearGradient
-                      colors={['#258EFF', '#0755ED']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.filterButtonGradient}
-                    />
-                  ) : null}
-                  <View style={styles.filterButtonContent}>
->>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
-=======
->>>>>>> 30539ed (Polish task screen UI)
                     <View style={styles.filterIconContainer}>
                       {item === 'Today' ? (
                         <Image
@@ -905,10 +832,6 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                         />
                       ) : null}
                     </View>
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 30539ed (Polish task screen UI)
                     <View
                       style={[
                         styles.filterButtonDivider,
@@ -920,13 +843,6 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                         styles.filterButtonText,
                         item === 'In progress' && styles.progressTextOffset,
                       ]}>
-<<<<<<< HEAD
-=======
-                    <View style={styles.filterButtonDivider} />
-                    <View style={styles.filterButtonText}>
->>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
-=======
->>>>>>> 30539ed (Polish task screen UI)
                       <Text
                         numberOfLines={1}
                         adjustsFontSizeToFit
@@ -963,15 +879,11 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
             </View>
           ) : (
             <View style={styles.taskList}>
-              {visibleTasks.map((task, index) => (
+              {visibleTasks.map((task) => (
                 <TaskCard
                   key={task.id}
                   task={task}
-<<<<<<< HEAD
                   isOnlyTask={visibleTasks.length === 1}
-=======
-                  isFirst={index === 0}
->>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
                   busy={busyTaskId === task.id}
                   onOpen={() => setSelectedTaskId(task.id)}
                   onAdvance={() => { void nextStatus(task); }}
@@ -1011,7 +923,6 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
               onPress={() => setSelectedTaskId(null)}
               style={StyleSheet.absoluteFill}
             />
-<<<<<<< HEAD
             <View
               style={[
                 styles.taskDetailsCard,
@@ -1259,121 +1170,6 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                     </Text>
                   )}
                 </View>
-=======
-            <View style={[
-              styles.taskDrawer,
-              { paddingBottom: Math.max(insets.bottom, 23) },
-            ]}>
-              <View style={styles.drawerHandle} />
-              <ScrollView
-                style={styles.drawerScroll}
-                contentContainerStyle={styles.drawerContent}
-                showsVerticalScrollIndicator>
-                <View style={styles.drawerHeader}>
-                  <Text style={[
-                    styles.detailStatus,
-                    selectedTask.status === 'Done' && styles.detailStatusDone,
-                  ]}>
-                    {selectedTask.status}
-                  </Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Close task details"
-                    onPress={() => setSelectedTaskId(null)}
-                    style={styles.drawerCloseButton}>
-                    <Icon name="close" size={20} color="#6F7A75" />
-                  </Pressable>
-                </View>
-                <Text style={styles.detailProject}>
-                  {[selectedTask.project, selectedTask.sprint].filter(Boolean).join(' · ')}
-                </Text>
-                <Text style={styles.detailTitle}>{selectedTask.title}</Text>
-                <Text style={styles.detailDescription}>
-                  {selectedTask.description || 'No description provided.'}
-                </Text>
-                <View style={styles.detailGrid}>
-                  <View style={styles.detailField}>
-                    <Text style={styles.detailLabel}>DUE DATE</Text>
-                    <View style={styles.detailValueRow}>
-                      <Icon name="calendar" size={15} color="#40504A" />
-                      <Text style={styles.detailValue}>{formatDueDate(selectedTask.due)}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.detailField}>
-                    <Text style={styles.detailLabel}>PRIORITY</Text>
-                    <Text style={styles.detailValue}>{selectedTask.priority}</Text>
-                  </View>
-                  <View style={styles.detailField}>
-                    <Text style={styles.detailLabel}>SPRINT</Text>
-                    <Text style={styles.detailValue}>{selectedTask.sprint || 'No sprint'}</Text>
-                  </View>
-                  <View style={styles.detailField}>
-                    <Text style={styles.detailLabel}>CATEGORY</Text>
-                    <Text style={styles.detailValue}>{selectedTask.category || 'General'}</Text>
-                  </View>
-                </View>
-                <View style={styles.assignedRow}>
-                  <Text style={[styles.avatarRing, styles.avatarRingLarge]}>AM</Text>
-                  <View style={styles.assignedCopy}>
-                    <Text style={styles.detailLabel}>ASSIGNED TO</Text>
-                    <Text style={styles.assignedName}>{selectedTask.assignee}</Text>
-                  </View>
-                </View>
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={busyTaskId === selectedTask.id}
-                  onPress={() => { void nextStatus(selectedTask); }}
-                  style={styles.primaryAction}>
-                  {busyTaskId === selectedTask.id
-                    ? <ActivityIndicator color="#FFFFFF" />
-                    : <Text style={styles.primaryActionText}>
-                      {selectedTask.status.trim().toLowerCase() === 'done'
-                        ? 'Reopen task'
-                        : selectedTask.status.trim().toLowerCase() === 'in progress'
-                          ? 'Mark as complete'
-                          : 'Start task'}
-                    </Text>}
-                  {busyTaskId !== selectedTask.id ? (
-                    <Icon
-                      name={selectedTask.status.trim().toLowerCase() === 'in progress' ? 'check' : 'arrow'}
-                      size={18}
-                      color="#FFFFFF"
-                    />
-                  ) : null}
-                </Pressable>
-                <View style={styles.assignedTasksSection}>
-                  <View style={styles.assignedTasksHeading}>
-                    <Text style={styles.assignedTasksTitle}>Your assigned tasks</Text>
-                    <Text style={styles.assignedTasksCount}>{tasks.length}</Text>
-                  </View>
-                  {tasks.length ? tasks.map((task) => (
-                    <Pressable
-                      key={`${task.projectId}:${task.id}`}
-                      accessibilityRole="button"
-                      accessibilityLabel={`View ${task.title}, ${task.status}, ${task.project}`}
-                      accessibilityState={{ selected: task.id === selectedTask.id }}
-                      onPress={() => setSelectedTaskId(task.id)}
-                      style={[
-                        styles.assignedTaskItem,
-                        task.id === selectedTask.id && styles.assignedTaskItemSelected,
-                      ]}>
-                      <View style={styles.assignedTaskCopy}>
-                        <Text numberOfLines={1} style={styles.assignedTaskTitle}>
-                          {task.title}
-                        </Text>
-                        <Text numberOfLines={1} style={styles.assignedTaskProject}>
-                          {task.project}
-                        </Text>
-                      </View>
-                      <Text style={styles.assignedTaskStatus}>{task.status}</Text>
-                    </Pressable>
-                  )) : (
-                    <Text style={styles.assignedTasksEmpty}>
-                      No tasks are currently assigned to you.
-                    </Text>
-                  )}
-                </View>
->>>>>>> 2784bfd (Restore original task filter button styling)
               </ScrollView>
             </View>
           </View>
@@ -1434,14 +1230,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.9,
     shadowRadius: 0,
     elevation: 5,
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-    marginTop: -135,
->>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
-=======
-    marginTop: -150,
->>>>>>> 2784bfd (Restore original task filter button styling)
   },
   filterButtonActive: {
     borderColor: '#333333',
@@ -1484,10 +1272,6 @@ const styles = StyleSheet.create({
   sortText: { color: '#79827E', fontSize: 12, fontWeight: '700' },
   sortChevronUp: { transform: [{ rotate: '-90deg' }] },
   taskList: { gap: 13 },
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 2784bfd (Restore original task filter button styling)
   taskCard: {
     minHeight: 200,
     paddingHorizontal: 15,
@@ -1507,16 +1291,8 @@ const styles = StyleSheet.create({
   taskCardDone: { opacity: 1 },
   cardMain: { flex: 1 },
   taskTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-<<<<<<< HEAD
-<<<<<<< HEAD
   taskTitleIcon: { transform: [{ translateY: -5 }] },
   taskTitleShift: { transform: [{ translateX: -7 }] },
-=======
->>>>>>> 2784bfd (Restore original task filter button styling)
-=======
-  taskTitleIcon: { transform: [{ translateY: -5 }] },
-  taskTitleShift: { transform: [{ translateX: -7 }] },
->>>>>>> 30539ed (Polish task screen UI)
   taskTitle: {
     flex: 1,
     marginTop: -2,
@@ -1534,10 +1310,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
-<<<<<<< HEAD
   taskCountdownOverdue: { color: '#B91C1C' },
-=======
->>>>>>> 2784bfd (Restore original task filter button styling)
   taskTitleDone: { color: '#898989', textDecorationLine: 'line-through' },
   taskDescriptionContainer: {
     marginTop: 0,
@@ -1567,18 +1340,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#242424',
   },
   taskMetaText: { color: '#D0D0D0', fontSize: 10, fontWeight: '700' },
-<<<<<<< HEAD
-<<<<<<< HEAD
   dueToday: { backgroundColor: '#333333' },
   dueTodayText: { color: '#FF4D4F' },
-=======
-  dueToday: { backgroundColor: '#3A211F' },
-  dueTodayText: { color: '#FF968A' },
->>>>>>> 2784bfd (Restore original task filter button styling)
-=======
-  dueToday: { backgroundColor: '#333333' },
-  dueTodayText: { color: '#FF4D4F' },
->>>>>>> 30539ed (Polish task screen UI)
   metaIcons: { flexDirection: 'row', alignItems: 'center', gap: 14, marginLeft: 'auto' },
   metaIconButton: {
     width: 18,
@@ -1623,13 +1386,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   assigneeName: { maxWidth: '75%', flexShrink: 1, color: '#666666', fontSize: 11, fontWeight: '600' },
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-  projectEmoji: { fontSize: 12, lineHeight: 16 },
->>>>>>> 2784bfd (Restore original task filter button styling)
-=======
->>>>>>> 30539ed (Polish task screen UI)
   avatarRing: {
     width: 36,
     height: 36,
@@ -1655,48 +1411,10 @@ const styles = StyleSheet.create({
   },
   statusButtonInProgress: { backgroundColor: '#F0444F' },
   statusButtonDone: { backgroundColor: '#D6D6D6' },
-<<<<<<< HEAD
-=======
-  taskCard: { paddingHorizontal: 17, paddingTop: 17, paddingBottom: 15, borderWidth: 1, borderColor: '#E0E4E0', borderRadius: 17, backgroundColor: '#FFFFFF', },
-  taskCardFirst: { transform: [{ translateY: -150 }] },
-  taskCardDone: { opacity: 0.72 },
-  cardMain: { gap: 0 },
-  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  taskPills: { flexDirection: 'row', gap: 7 },
-  estimatePill: { overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, color: '#5C42D0', backgroundColor: '#F0EDFF', fontSize: 11, lineHeight: 14, fontWeight: '800' },
-  priorityPill: { overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, color: '#6F746F', backgroundColor: '#F1F2F0', fontSize: 11, lineHeight: 14, fontWeight: '800' },
-  priorityHigh: { color: '#A64039', backgroundColor: '#FDEBEA' },
-  priorityLow: { color: '#34745F', backgroundColor: '#E8F5EF' },
-  moreButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  taskTitle: { maxWidth: 300, marginTop: 9, marginBottom: 7, color: '#242C28', fontSize: 17, lineHeight: 23, fontWeight: '800', letterSpacing: -0.3 },
-  taskTitleDone: { color: '#8B938F', textDecorationLine: 'line-through' },
-  projectName: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  projectNameText: { color: '#8A938E', fontSize: 12 },
-  taskMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 13 },
-  taskMetaPill: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: '#F6F7F5' },
-  taskMetaText: { color: '#7E8682', fontSize: 11, fontWeight: '600' },
-  dueToday: { backgroundColor: '#FFF0EE' },
-  dueTodayText: { color: '#A24740' },
-  sprintPill: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: '#EAF3EF' },
-  sprintText: { color: '#3C705E', fontSize: 11, fontWeight: '600' },
-  cardFooter: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 13, marginTop: 14, paddingTop: 13, borderTopWidth: 1, borderTopColor: '#EDF0ED' },
-  assignee: { position: 'relative', flexShrink: 0 },
-  avatarRing: { width: 36, height: 36, overflow: 'hidden', textAlign: 'center', textAlignVertical: 'center', borderWidth: 2, borderColor: '#FFFFFF', borderRadius: 19, color: '#FFFFFF', backgroundColor: '#285F50', fontSize: 9, fontWeight: '800', lineHeight: 32 },
-  statusDot: { position: 'absolute', right: -1, bottom: 0, width: 10, height: 10, borderWidth: 2, borderColor: '#FFFFFF', borderRadius: 6, backgroundColor: '#38A579' },
-  taskProgress: { flex: 1, height: 7, overflow: 'hidden', borderRadius: 999, backgroundColor: '#E6E8E6' },
-  taskProgressFill: { height: '100%', borderRadius: 999, backgroundColor: '#55A087' },
-  statusButton: { minWidth: 62, height: 36, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 11, borderRadius: 8, backgroundColor: '#EAF3EF' },
-  statusButtonInProgress: { backgroundColor: '#EAF3EF' },
-  statusButtonDone: { backgroundColor: '#F0F2F0' },
-  statusButtonText: { color: '#326D5C', fontSize: 11, fontWeight: '800' },
->>>>>>> bf3ca66 (style(mobile): refine todo screen filters and task card layout)
-=======
->>>>>>> 2784bfd (Restore original task filter button styling)
   emptyState: { alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 40, paddingHorizontal: 22, borderWidth: 1, borderStyle: 'dashed', borderColor: '#D8DEDA', borderRadius: 17, backgroundColor: '#FFFFFF' },
   emptyIcon: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 27, backgroundColor: '#EAF4EF' },
   emptyTitle: { marginTop: 13, color: '#35433D', fontSize: 16, fontWeight: '800' },
   emptyDescription: { marginTop: 4, color: '#82908A', fontSize: 12, lineHeight: 17, textAlign: 'center' },
-<<<<<<< HEAD
   modalBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -1880,40 +1598,4 @@ const styles = StyleSheet.create({
   assignedTaskStatus: { color: '#527565', fontSize: 10, fontWeight: '700' },
   assignedTaskArrow: { color: '#89918C', fontSize: 22 },
   assignedTasksEmpty: { color: '#929A95', fontSize: 12 },
-=======
-  modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(21,35,29,0.42)' },
-  taskDrawer: { maxHeight: '90%', gap: 15, paddingTop: 11, paddingHorizontal: 22, borderTopLeftRadius: 26, borderTopRightRadius: 26, backgroundColor: '#FFFFFF' },
-  drawerScroll: { flexShrink: 1 },
-  drawerContent: { gap: 15, paddingBottom: 8 },
-  drawerHandle: { width: 36, height: 4, alignSelf: 'center', marginBottom: 4, borderRadius: 99, backgroundColor: '#DCE1DD' },
-  drawerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  detailStatus: { overflow: 'hidden', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 8, color: '#376B5B', backgroundColor: '#EAF3EF', fontSize: 11, fontWeight: '800' },
-  detailStatusDone: { color: '#507166', backgroundColor: '#EEF2EF' },
-  drawerCloseButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E1E5E1', borderRadius: 20, backgroundColor: '#FFFFFF' },
-  detailProject: { marginTop: 4, color: '#84908A', fontSize: 11, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase' },
-  detailTitle: { color: '#1D302A', fontSize: 27, lineHeight: 33, fontWeight: '800', letterSpacing: -0.7 },
-  detailDescription: { marginTop: -2, color: '#6F7A75', fontSize: 14, lineHeight: 21 },
-  detailGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
-  detailField: { width: '47%', minHeight: 70, justifyContent: 'center', gap: 6, padding: 13, borderRadius: 11, backgroundColor: '#F6F7F5' },
-  detailLabel: { color: '#939B97', fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
-  detailValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  detailValue: { color: '#40504A', fontSize: 13, fontWeight: '700' },
-  assignedRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 2, paddingVertical: 14, borderTopWidth: 1, borderTopColor: '#EDF0ED' },
-  assignedTasksSection: { gap: 8, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#EDF0ED' },
-  assignedTasksHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
-  assignedTasksTitle: { color: '#34433D', fontSize: 15, fontWeight: '800' },
-  assignedTasksCount: { minWidth: 24, overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 12, backgroundColor: '#F0F2F0', color: '#64736D', fontSize: 11, fontWeight: '700', textAlign: 'center' },
-  assignedTaskItem: { minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#E8ECE9', borderRadius: 10, backgroundColor: '#FFFFFF' },
-  assignedTaskItemSelected: { borderColor: '#A8CDBE', backgroundColor: '#F3F8F5' },
-  assignedTaskCopy: { flex: 1, gap: 3 },
-  assignedTaskTitle: { color: '#34433D', fontSize: 13, fontWeight: '700' },
-  assignedTaskProject: { color: '#82908A', fontSize: 11 },
-  assignedTaskStatus: { color: '#64736D', fontSize: 10, fontWeight: '700' },
-  assignedTasksEmpty: { paddingVertical: 10, color: '#82908A', fontSize: 13 },
-  avatarRingLarge: { width: 42, height: 42, borderRadius: 23, fontSize: 10, lineHeight: 38 },
-  assignedCopy: { gap: 4 },
-  assignedName: { color: '#34433D', fontSize: 13, fontWeight: '700' },
-  primaryAction: { height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 12, backgroundColor: '#245D4D' },
-  primaryActionText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
->>>>>>> 2784bfd (Restore original task filter button styling)
 });
