@@ -78,7 +78,7 @@ import {
   openProjectTaskModal,
   openAdminEditTaskModal,
   openInviteModal
-} from './js/admin.js?v=20261112-task-tags'
+} from './js/admin.js?v=20261112-task-tag-search'
 
 import {
   switchView,

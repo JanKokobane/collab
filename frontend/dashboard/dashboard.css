@@ -6630,19 +6630,55 @@ body.dark-mode .admin-table tr:hover td,
     box-shadow: 0 8px 24px rgba(24, 24, 27, .14);
 }
 
-.project-task-tag-option {
-    display: flex;
+form.modal .project-task-tag-options input.project-task-tag-search {
+    width: 100%;
+    min-height: 34px;
+    box-sizing: border-box;
+    margin-bottom: 6px;
+    padding: 7px 9px;
+    border: 1px solid #DCE5E2;
+    border-radius: 7px;
+    background: #FFFFFF;
+    color: #202A29;
+    font: 12px 'DM Sans', sans-serif;
+}
+
+.project-task-tag-option[hidden],
+.project-task-tag-empty[hidden] {
+    display: none;
+}
+
+.project-task-tag-option-list {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+}
+
+.project-task-tag-empty {
+    padding: 8px 3px;
+    color: #71717A;
+    font-size: 11px;
+}
+
+form.modal .project-task-tag-options label.project-task-tag-option {
+    display: grid;
     min-width: 0;
+    grid-template-columns: minmax(0, 1fr) 16px;
     align-items: center;
-    gap: 6px;
+    gap: 12px;
     padding: 5px 3px;
     color: #475467;
     font-size: 11px;
     cursor: pointer;
 }
 
-.project-task-tag-option input {
-    width: 14px;
+form.modal .project-task-tag-option span {
+    min-width: 0;
+}
+
+form.modal .project-task-tag-option input[type="checkbox"] {
+    justify-self: end;
+    width: 16px;
     height: 14px;
     margin: 0;
     accent-color: #218779;
@@ -6662,6 +6698,18 @@ body.dark-mode .project-task-tag-option,
     border-color: #3F3F46;
     background: #24242F;
     color: #E4E4E7;
+}
+
+body.dark-mode form.modal .project-task-tag-options input.project-task-tag-search,
+[data-theme="dark"] form.modal .project-task-tag-options input.project-task-tag-search {
+    border-color: #3F3F46;
+    background: #18181B;
+    color: #E4E4E7;
+}
+
+body.dark-mode .project-task-tag-empty,
+[data-theme="dark"] .project-task-tag-empty {
+    color: #A1A1AA;
 }
 
 .project-task-create-sprint-toggle {

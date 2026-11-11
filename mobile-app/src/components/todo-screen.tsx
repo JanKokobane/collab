@@ -17,6 +17,7 @@ import { firebaseAuth } from '@/lib/firebase';
 import {
   fetchHomeMembers,
   fetchHomeProjects,
+  fetchHomeTaskTags,
   fetchHomeTasks,
   HomeApiError,
   updateHomeTaskStatus,
@@ -521,6 +522,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [dueDateAscending, setDueDateAscending] = useState<boolean | null>(null);
   const [profileImagesByUid, setProfileImagesByUid] = useState<Record<string, string>>({});
+  const [taskTagsRefreshFailed, setTaskTagsRefreshFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -611,6 +613,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   const doneCount = tasks.length - openCount;
   const completionPercent = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) || null;
+  const selectedTaskProjectId = selectedTask?.projectId;
   const selectedCreatorProfileImage = selectedTask
     ? (selectedTask.createdByFirebaseUid
       ? profileImagesByUid[selectedTask.createdByFirebaseUid]
@@ -623,8 +626,9 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     : null;
 
   useEffect(() => {
-    if (!selectedTaskId) return undefined;
+    if (!selectedTaskId || !selectedTaskProjectId) return undefined;
     let active = true;
+    setTaskTagsRefreshFailed(false);
 
     async function refreshTaskModalProfiles() {
       try {
@@ -640,8 +644,23 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     }
 
     void refreshTaskModalProfiles();
+
+    async function refreshSelectedTaskTags() {
+      try {
+        const tags = await fetchHomeTaskTags(selectedTaskProjectId, selectedTaskId);
+        if (!active || tags === null) return;
+        setTasks((current) => current.map((item) => (
+          item.id === selectedTaskId ? { ...item, tags } : item
+        )));
+      } catch (error) {
+        console.error('Unable to refresh task modal tags:', error);
+        if (active) setTaskTagsRefreshFailed(true);
+      }
+    }
+
+    void refreshSelectedTaskTags();
     return () => { active = false; };
-  }, [selectedTaskId]);
+  }, [selectedTaskId, selectedTaskProjectId]);
 
   async function nextStatus(task: Task) {
     if (busyTaskId) return;
@@ -1030,6 +1049,9 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                       ) : (
                         <Text style={styles.metadataMuted}>No tags</Text>
                       )}
+                      {taskTagsRefreshFailed ? (
+                        <Text style={styles.metadataMuted}>Could not refresh tags</Text>
+                      ) : null}
                     </View>
                   </View>
 

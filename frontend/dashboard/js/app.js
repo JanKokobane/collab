@@ -11,7 +11,7 @@ import {
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   renderAuditLogs
-} from './admin.js?v=20261112-task-tags'
+} from './admin.js?v=20261112-task-tag-search'
 import {
   currentTheme,
   currentAccent,
