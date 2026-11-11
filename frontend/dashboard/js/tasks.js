@@ -23,6 +23,7 @@ import { createScheduleCalendarPicker } from './calendar.js'
 import { api } from './api.js'
 import { setDashboardButtonLoading, showDashboardToast } from './modalChrome.js'
 import { openProjectProgressAside } from './projectProgressAside.js?v=20261028-dedicated-file-picker'
+import { toLocalDateKey } from './dateUtils.js'
 
 // ============================================================
 // TASKS & BOARD MANAGEMENT
@@ -223,8 +224,10 @@ const formatTaskCountdown = remainingMs => {
 }
 
 const attachTaskCountdown = (badge, card, task) => {
-  const deadline = getTaskDeadline(task.due_date || task.dueDate)
-  if (!deadline || ['Done', 'Blocked'].includes(task.status)) {
+  const dueDate = task.due_date || task.dueDate || task.date
+  const dueDateKey = dueDate ? String(dueDate).slice(0, 10) : ''
+  const deadline = getTaskDeadline(dueDateKey)
+  if (!deadline || task.status === 'Done') {
     badge.textContent = task.status === 'Done'
       ? 'FINISHED'
       : task.status === 'Blocked' ? 'BLOCKED' : task.tag || 'TASK'
@@ -233,23 +236,22 @@ const attachTaskCountdown = (badge, card, task) => {
 
   let timer
   const update = () => {
+    const remaining = deadline.getTime() - Date.now()
+    const isOverdue = dueDateKey < toLocalDateKey() || remaining <= 0
+    badge.textContent = isOverdue
+      ? 'OVERDUE'
+      : task.status === 'Blocked' ? 'BLOCKED' : formatTaskCountdown(remaining)
+    badge.classList.toggle('is-expired', isOverdue)
+    if (isOverdue) window.clearInterval(timer)
+  }
+  timer = window.setInterval(() => {
     if (!card.isConnected) {
       window.clearInterval(timer)
       return
     }
-    const remaining = deadline.getTime() - Date.now()
-    if (remaining <= 0 && task.backendPersistent) {
-      task.status = 'Blocked'
-      task.done = false
-      renderTasks()
-      hub.renderWorkspaceSummary?.()
-      return
-    }
-    badge.textContent = remaining <= 0 ? '00:00:00' : formatTaskCountdown(remaining)
-    badge.classList.toggle('is-expired', remaining <= 0)
-  }
+    update()
+  }, 1000)
   update()
-  timer = window.setInterval(update, 1000)
 }
 
 export function taskCard(task) {

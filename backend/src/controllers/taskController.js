@@ -3,6 +3,28 @@ const { pool, query } = require('../config/db');
 
 const allowedStatuses = new Set(['Backlog', 'To do', 'In progress', 'Blocked', 'Done']);
 const allowedPriorities = new Set(['low', 'medium', 'high']);
+const allowedTaskTags = new Set([
+    'Accessibility',
+    'Blocked',
+    'Bug',
+    'Content',
+    'Customer Request',
+    'Design',
+    'Documentation',
+    'Enhancement',
+    'Feature',
+    'Follow-up',
+    'Infrastructure',
+    'Needs Review',
+    'Performance',
+    'Release',
+    'Research',
+    'Security',
+    'Technical Debt',
+    'Testing',
+    'Urgent',
+    'UX/UI'
+]);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const maxTaskAttachmentBytes = 100 * 1024 * 1024;
 const attachmentDataUrlPattern = /^data:[^;,]+(?:;codecs=[^;,]+)?;base64,([a-zA-Z0-9+/=]+)$/i;
@@ -54,6 +76,7 @@ const normalizeTaskInput = body => {
         : typeof body.category === 'string'
             ? body.category.trim()
             : '';
+    const tags = body?.tags === undefined ? [] : body.tags;
     const sprintName = typeof body?.sprintName === 'string' ? body.sprintName.trim() : '';
     const assigneeFirebaseUid = typeof body?.assigneeFirebaseUid === 'string'
         ? body.assigneeFirebaseUid.trim()
@@ -75,6 +98,14 @@ const normalizeTaskInput = body => {
     }
     if (!category || category.length > 100) {
         return { error: 'Choose a valid task category.' };
+    }
+    if (
+        !Array.isArray(tags) ||
+        tags.length > allowedTaskTags.size ||
+        tags.some(tag => typeof tag !== 'string' || !allowedTaskTags.has(tag)) ||
+        new Set(tags).size !== tags.length
+    ) {
+        return { error: 'Choose valid, unique task tags.' };
     }
     if (!sprintName || sprintName.length > 255) {
         return { error: 'Choose a valid project sprint.' };
@@ -107,6 +138,8 @@ const normalizeTaskInput = body => {
             title,
             description,
             category,
+            tags,
+            tagsProvided: body?.tags !== undefined,
             sprintName,
             assigneeFirebaseUid,
             status,
@@ -281,6 +314,7 @@ const getProjectTasks = async (req, res) => {
                     t.title,
                     t.description,
                     t.category,
+                    t.tags,
                     t.sprint_name,
                     t.chat_message_id::text AS chat_message_id,
                     context_message.conversation_id::text AS chat_conversation_id,
@@ -298,6 +332,7 @@ const getProjectTasks = async (req, res) => {
                     COALESCE(dependencies.has_warning, FALSE) AS has_dependency_warning,
                     t.start_date,
                     t.due_date,
+                    t.created_by_firebase_uid,
                     t.created_at,
                     t.updated_at
                 FROM project_tasks t
@@ -394,7 +429,7 @@ const getProjectTaskDetails = async (req, res) => {
         }
         const result = await query(
             `SELECT task.task_id, task.project_id, task.title, task.description,
-                    task.category, task.sprint_name, task.assignee_firebase_uid,
+                    task.category, task.tags, task.sprint_name, task.assignee_firebase_uid,
                     task.status, task.priority, task.start_date, task.due_date,
                     task.chat_message_id::text AS chat_message_id,
                     message.conversation_id::text AS chat_conversation_id,
@@ -647,9 +682,9 @@ const createProjectTask = async (req, res) => {
                     task_id, project_id, title, description, category, sprint_name,
                     assignee_firebase_uid, status, start_date, due_date,
                     created_by_firebase_uid, chat_message_id, description_attachments,
-                    priority
+                    priority, tags
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::uuid, $13::jsonb, $14)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::uuid, $13::jsonb, $14, $15::jsonb)
                 RETURNING task_id
             `,
             [
@@ -666,7 +701,8 @@ const createProjectTask = async (req, res) => {
                 req.firebaseUid,
                 normalized.value.chatMessageId,
                 JSON.stringify(normalized.value.descriptionAttachments),
-                normalized.value.priority
+                normalized.value.priority,
+                JSON.stringify(normalized.value.tags)
             ]
         );
 
@@ -782,9 +818,10 @@ const updateProjectTask = async (req, res) => {
                     END,
                     chat_message_id = $10::uuid,
                     description_attachments = $11::jsonb,
+                    tags = CASE WHEN $12::boolean THEN $13::jsonb ELSE tags END,
                     updated_at = NOW()
-                                WHERE project_id = $12
-                                    AND task_id = $13::uuid
+                WHERE project_id = $14
+                  AND task_id = $15::uuid
                 RETURNING task_id
             `,
             [
@@ -799,6 +836,8 @@ const updateProjectTask = async (req, res) => {
                 normalized.value.dueDate,
                 normalized.value.chatMessageId,
                 JSON.stringify(normalized.value.descriptionAttachments),
+                normalized.value.tagsProvided,
+                JSON.stringify(normalized.value.tags),
                 project.project_id,
                 req.params.taskId
             ]

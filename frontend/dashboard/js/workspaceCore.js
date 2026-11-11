@@ -19,6 +19,54 @@ export function renderWorkspaceManagement() {
   renderHubResources()
 }
 
+function createNotificationAccountIcon() {
+  const namespace = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(namespace, 'svg')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('aria-hidden', 'true')
+  svg.setAttribute('focusable', 'false')
+
+  const group = document.createElementNS(namespace, 'g')
+  group.setAttribute('fill', 'none')
+  group.setAttribute('stroke', 'currentColor')
+  group.setAttribute('stroke-dasharray', '28')
+  group.setAttribute('stroke-linecap', 'round')
+  group.setAttribute('stroke-linejoin', 'round')
+  group.setAttribute('stroke-width', '2')
+
+  const paths = [
+    { d: 'M4 21v-1c0 -3.31 2.69 -6 6 -6h4c3.31 0 6 2.69 6 6v1', delay: '0s' },
+    { d: 'M12 11c-2.21 0 -4 -1.79 -4 -4c0 -2.21 1.79 -4 4 -4c2.21 0 4 1.79 4 4c0 2.21 -1.79 4 -4 4Z', delay: '0.4s', offset: '28' }
+  ]
+
+  paths.forEach(({ d, delay, offset }) => {
+    const path = document.createElementNS(namespace, 'path')
+    path.setAttribute('d', d)
+    if (offset) path.setAttribute('stroke-dashoffset', offset)
+    const animation = document.createElementNS(namespace, 'animate')
+    animation.setAttribute('fill', 'freeze')
+    animation.setAttribute('attributeName', 'stroke-dashoffset')
+    animation.setAttribute('begin', delay)
+    animation.setAttribute('dur', '0.4s')
+    animation.setAttribute('to', '0')
+    if (!offset) animation.setAttribute('values', '28;0')
+    path.append(animation)
+    group.append(path)
+  })
+
+  svg.append(group)
+  return svg
+}
+
+function getNotificationUserTone(userName) {
+  const toneCount = 6
+  let hash = 0
+  for (const character of userName.toLowerCase()) {
+    hash = (hash * 31 + character.charCodeAt(0)) >>> 0
+  }
+  return `notification-user-tone-${hash % toneCount}`
+}
+
 export function renderBrainstorm() {
   renderPersistentBrainstorm()
 }
@@ -268,33 +316,24 @@ export function renderNotifications() {
     const row = document.createElement('tr')
     row.classList.toggle('notification-row-unread', notification.unread)
     const avatarValue = notification.avatar || '•'
-    const hasProfilePhoto = Boolean(
-      notification.invitationId &&
-      (/^data:image\/(?:jpeg|png|webp);base64,/.test(avatarValue) ||
-        /^https:\/\//.test(avatarValue))
+    const showAccountIcon = Boolean(
+      notification.invitationId || notification.type === 'meeting_invitation'
     )
+    const inviterName = typeof notification.detail === 'string'
+      ? notification.detail.match(/^(.+?) invited you to (?:join\b|")/i)?.[1]
+      : ''
+    const isRawImagePayload =
+      /^data:image\//i.test(avatarValue) ||
+      (avatarValue.length > 256 && /^[A-Za-z0-9+/]+={0,2}$/.test(avatarValue))
     const source = make(
       'span',
       `notif-avatar ${notification.toneClass || 'coral-bg'}`,
-      hasProfilePhoto ? '' : avatarValue
+      showAccountIcon ? '' : isRawImagePayload ? '•' : avatarValue
     )
-    source.classList.toggle('notification-person-avatar', Boolean(notification.invitationId))
-    if (hasProfilePhoto) {
-      const image = document.createElement('img')
-      image.src = avatarValue
-      image.alt = 'Inviter profile photo'
-      image.loading = 'lazy'
-      image.decoding = 'async'
-      image.referrerPolicy = 'no-referrer'
-      image.addEventListener('error', () => {
-        image.remove()
-        source.classList.remove('notification-person-avatar')
-        const inviterName = notification.detail.match(/^(.+?) invited you to join\b/i)?.[1]
-        source.textContent = inviterName
-          ? inviterName.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase()
-          : '•'
-      }, { once: true })
-      source.append(image)
+    source.classList.toggle('notification-person-avatar', showAccountIcon)
+    if (showAccountIcon) {
+      source.classList.add(getNotificationUserTone(inviterName || notification.id))
+      source.append(createNotificationAccountIcon())
     }
     const title = make('div', 'settings-notification-title')
     title.append(source, make('strong', '', notification.title))
