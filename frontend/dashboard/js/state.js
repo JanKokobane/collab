@@ -697,6 +697,19 @@ export function replaceProjectTasksFromBackend(projectTaskGroups = []) {
         progress: task.status === 'Done' ? 100 : task.status === 'In progress' ? 50 : 0,
         sprint: task.sprint_name,
         sprint_name: task.sprint_name,
+        sprintSubmissionStatus: task.sprint_submission_status || 'Not submitted',
+        sprintSubmissionNote: task.sprint_submission_note || '',
+        sprintSubmissionLinks: Array.isArray(task.sprint_submission_links)
+          ? task.sprint_submission_links
+          : [],
+        sprintSubmissionAttachments: Array.isArray(task.sprint_submission_attachments)
+          ? task.sprint_submission_attachments
+          : [],
+        sprintSubmittedAt: task.sprint_submitted_at || null,
+        sprintSubmittedByFirebaseUid: task.sprint_submitted_by_firebase_uid || null,
+        sprintReviewComment: task.sprint_review_comment || '',
+        sprintReviewedByFirebaseUid: task.sprint_reviewed_by_firebase_uid || null,
+        sprintReviewedAt: task.sprint_reviewed_at || null,
         chatMessageId: task.chat_message_id || task.chatMessageId || null,
         chat_message_id: task.chat_message_id || task.chatMessageId || null,
         chatConversationId: task.chat_conversation_id || task.chatConversationId || null,

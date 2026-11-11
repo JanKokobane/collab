@@ -404,7 +404,7 @@ const markDependencyWarnings = async (taskId, reason, actorUid, taskTitle) => {
 const getProjectAndCheckAccess = async (projectId, firebaseUid, ownerOnly = false) => {
     const result = await query(
         `
-            SELECT project_id, name, creator_firebase_uid, sprints
+            SELECT project_id, name, creator_firebase_uid, creator_initials, sprints
             FROM projects p
             WHERE p.project_id = $1
               AND (
@@ -490,8 +490,16 @@ const getProjectTasks = async (req, res) => {
                     t.sprint_submission_note,
                     t.sprint_submission_links,
                     t.sprint_submitted_at,
+                    t.sprint_submitted_by_firebase_uid,
+                    t.sprint_review_comment,
+                    t.sprint_reviewed_by_firebase_uid,
+                    t.sprint_reviewed_at,
                     COALESCE((
-                        SELECT jsonb_agg(attachment.value - 'data' ORDER BY attachment.ordinality)
+                        SELECT jsonb_agg(
+                            (attachment.value - 'data') ||
+                                jsonb_build_object('attachment_index', attachment.ordinality - 1)
+                            ORDER BY attachment.ordinality
+                        )
                         FROM jsonb_array_elements(t.sprint_submission_attachments)
                             WITH ORDINALITY AS attachment(value, ordinality)
                     ), '[]'::jsonb) AS sprint_submission_attachments,
@@ -616,6 +624,9 @@ const getProjectTaskDetails = async (req, res) => {
                     task.category, task.tags, task.sprint_name, task.assignee_firebase_uid,
                     task.sprint_submission_status, task.sprint_submission_note,
                     task.sprint_submission_links, task.sprint_submitted_at,
+                    task.sprint_submitted_by_firebase_uid,
+                    task.sprint_review_comment, task.sprint_reviewed_by_firebase_uid,
+                    task.sprint_reviewed_at,
                     COALESCE((
                         SELECT jsonb_agg(attachment.value - 'data' ORDER BY attachment.ordinality)
                         FROM jsonb_array_elements(task.sprint_submission_attachments)
@@ -726,6 +737,60 @@ const getProjectTaskAttachment = async (req, res) => {
             success: false,
             code: 'PROJECT_TASK_ATTACHMENT_FETCH_FAILED',
             message: 'The task attachment could not be retrieved.'
+        });
+    }
+};
+
+const getProjectTaskSprintSubmissionAttachment = async (req, res) => {
+    if (!uuidPattern.test(req.params.taskId || '')) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_TASK_ID',
+            message: 'Task ID is invalid.'
+        });
+    }
+    if (!/^\d+$/.test(req.params.attachmentIndex || '') ||
+        !Number.isSafeInteger(Number(req.params.attachmentIndex))) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_ATTACHMENT_INDEX',
+            message: 'Submission attachment index is invalid.'
+        });
+    }
+
+    try {
+        const project = await getProjectAndCheckAccess(req.params.projectId, req.firebaseUid);
+        if (!project) {
+            return res.status(404).json({
+                success: false,
+                code: 'PROJECT_NOT_FOUND',
+                message: 'Project not found.'
+            });
+        }
+        const result = await query(
+            `SELECT sprint_submission_attachments -> $3::int AS attachment
+             FROM project_tasks
+             WHERE project_id = $1 AND task_id = $2::uuid
+             LIMIT 1`,
+            [project.project_id, req.params.taskId, Number(req.params.attachmentIndex)]
+        );
+        if (!result.rowCount || !result.rows[0].attachment) {
+            return res.status(404).json({
+                success: false,
+                code: 'TASK_SPRINT_SUBMISSION_ATTACHMENT_NOT_FOUND',
+                message: 'Task sprint submission attachment not found.'
+            });
+        }
+        return res.status(200).json({
+            success: true,
+            data: { attachment: result.rows[0].attachment }
+        });
+    } catch (error) {
+        console.error('Get task sprint submission attachment error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'TASK_SPRINT_SUBMISSION_ATTACHMENT_FETCH_FAILED',
+            message: 'The task sprint submission attachment could not be retrieved.'
         });
     }
 };
@@ -899,6 +964,154 @@ const submitProjectTaskForReview = async (req, res) => {
             success: false,
             code: 'TASK_SPRINT_SUBMISSION_FAILED',
             message: 'The task sprint could not be submitted for review.'
+        });
+    } finally {
+        client?.release();
+    }
+};
+
+const reviewProjectTaskSprintSubmission = async (req, res) => {
+    let client;
+    try {
+        const { projectId, taskId } = req.params;
+        if (!uuidPattern.test(taskId || '')) {
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_TASK_ID',
+                message: 'Task ID is invalid.'
+            });
+        }
+        const project = await getProjectAndCheckAccess(projectId, req.firebaseUid);
+        if (!project) {
+            return res.status(404).json({
+                success: false,
+                code: 'PROJECT_NOT_FOUND',
+                message: 'Project not found.'
+            });
+        }
+        if (project.creator_firebase_uid !== req.firebaseUid) {
+            return res.status(403).json({
+                success: false,
+                code: 'TASK_SPRINT_REVIEW_FORBIDDEN',
+                message: 'Only the project owner can review this task submission.'
+            });
+        }
+
+        const decision = typeof req.body?.decision === 'string' ? req.body.decision.trim() : '';
+        const comment = typeof req.body?.comment === 'string' ? req.body.comment.trim() : '';
+        if (!['accept', 'request_changes'].includes(decision) ||
+            comment.length > 5000 ||
+            (decision === 'request_changes' && !comment)) {
+            return res.status(400).json({
+                success: false,
+                code: 'TASK_SPRINT_REVIEW_INVALID',
+                message: comment.length > 5000
+                    ? 'Review comments cannot exceed 5,000 characters.'
+                    : decision === 'request_changes' && !comment
+                        ? 'Add feedback explaining the requested changes.'
+                        : 'Choose whether to accept the submission or request changes.'
+            });
+        }
+
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const taskResult = await client.query(
+            `SELECT task.task_id, task.title, task.sprint_name, task.status,
+                    task.assignee_firebase_uid, task.sprint_submission_status,
+                    project.name AS project_name
+             FROM project_tasks task
+             JOIN projects project ON project.project_id = task.project_id
+             WHERE task.project_id = $1 AND task.task_id = $2::uuid
+             FOR UPDATE OF task`,
+            [project.project_id, taskId]
+        );
+        if (!taskResult.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                success: false,
+                code: 'TASK_NOT_FOUND',
+                message: 'Task not found.'
+            });
+        }
+        const task = taskResult.rows[0];
+        if (task.sprint_submission_status !== 'Pending Review') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'TASK_SPRINT_NOT_AWAITING_REVIEW',
+                message: 'This task submission is not awaiting review.'
+            });
+        }
+
+        const reviewedAt = new Date().toISOString();
+        const updated = await client.query(
+            `UPDATE project_tasks
+             SET sprint_submission_status = $1,
+                 sprint_review_comment = $2,
+                 sprint_reviewed_by_firebase_uid = $3,
+                 sprint_reviewed_at = $4::timestamptz,
+                 status = CASE WHEN $5::boolean THEN 'Done' ELSE status END,
+                 updated_at = NOW()
+             WHERE project_id = $6 AND task_id = $7::uuid
+             RETURNING task_id, status, sprint_submission_status,
+                       sprint_review_comment, sprint_reviewed_by_firebase_uid,
+                       sprint_reviewed_at`,
+            [
+                decision === 'accept' ? 'Completed' : 'Changes Requested',
+                comment,
+                req.firebaseUid,
+                reviewedAt,
+                decision === 'accept',
+                project.project_id,
+                taskId
+            ]
+        );
+        await client.query('COMMIT');
+
+        let notificationWarning = null;
+        if (task.assignee_firebase_uid && task.assignee_firebase_uid !== req.firebaseUid) {
+            try {
+                await query(
+                    `INSERT INTO notifications (
+                        recipient_firebase_uid, project_id, related_task_id,
+                        type, title, detail, avatar, tone_class
+                     )
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                    [
+                        task.assignee_firebase_uid,
+                        project.project_id,
+                        taskId,
+                        decision === 'accept' ? 'task_sprint_submission_accepted' : 'task_sprint_changes_requested',
+                        decision === 'accept' ? 'Task submission accepted' : 'Task changes requested',
+                        decision === 'accept'
+                            ? `Your submission for "${task.sprint_name}" in "${task.title}" was accepted.`
+                            : `Changes were requested for your submission for "${task.sprint_name}" in "${task.title}".`,
+                        project.creator_initials || '•',
+                        decision === 'accept' ? 'green-bg' : 'orange-bg'
+                    ]
+                );
+            } catch (notificationError) {
+                console.error('Task sprint review saved, but its notification could not be created:', notificationError);
+                notificationWarning = 'The review was saved, but the assignee could not be notified.';
+            }
+        }
+        return res.status(200).json({
+            success: true,
+            message: decision === 'accept'
+                ? 'Task submission accepted.'
+                : 'Changes requested for the task submission.',
+            ...(notificationWarning ? { notificationWarning } : {}),
+            data: { task: updated.rows[0] }
+        });
+    } catch (error) {
+        await client?.query('ROLLBACK').catch(rollbackError => {
+            console.error('Task sprint review rollback error:', rollbackError);
+        });
+        console.error('Review project task sprint submission error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'TASK_SPRINT_REVIEW_FAILED',
+            message: 'The task submission could not be reviewed.'
         });
     } finally {
         client?.release();
@@ -1680,7 +1893,9 @@ module.exports = {
     getProjectTaskComments,
     getProjectTaskDetails,
     getProjectTaskAttachment,
+    getProjectTaskSprintSubmissionAttachment,
     getProjectTasks,
+    reviewProjectTaskSprintSubmission,
     submitProjectTaskForReview,
     updateProjectTaskDependencies,
     updateProjectTask,

@@ -541,6 +541,9 @@ function openSprintAttachmentPreview(attachment, trigger) {
     preview = make('audio', 'project-sprint-attachment-preview-audio')
     preview.controls = true
     preview.preload = 'metadata'
+  } else if (attachment.mediaType === 'application/pdf') {
+    preview = make('iframe', 'project-sprint-attachment-preview-document')
+    preview.title = attachment.fileName || 'Sprint submission PDF'
   } else {
     return
   }
@@ -634,6 +637,234 @@ function renderSprintSubmissionAttachments(attachments) {
     list.append(row)
   })
   return list
+}
+
+function renderTaskSprintSubmissionAttachments(project, task, attachments) {
+  const list = make('div', 'project-sprint-submission-files')
+  attachments.forEach((attachment, attachmentPosition) => {
+    const fileName = attachment?.fileName || 'Task submission attachment'
+    const mediaType = attachment?.mediaType || 'application/octet-stream'
+    const size = Number(attachment?.size) || 0
+    const attachmentIndex = Number.isSafeInteger(Number(attachment?.attachment_index))
+      ? Number(attachment.attachment_index)
+      : attachmentPosition
+    const row = make('div', 'project-sprint-submission-file')
+    const details = make('span', 'project-sprint-submission-file-details')
+    details.append(
+      make('strong', 'project-sprint-submission-file-name', fileName),
+      make('small', 'project-sprint-submission-file-size', `${Math.max(1, Math.round(size / 1024))} KB`)
+    )
+    const actions = make('span', 'project-sprint-submission-file-actions')
+    const canPreview = mediaType.startsWith('image/') ||
+      mediaType.startsWith('audio/') ||
+      mediaType.startsWith('video/') ||
+      mediaType === 'application/pdf'
+
+    const fetchAttachment = async () => {
+      const response = await api.get(
+        `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(task.taskId)}/submission-attachments/${attachmentIndex}`
+      )
+      const payload = response?.data?.attachment
+      if (typeof payload?.data !== 'string') {
+        throw new Error(`The attachment "${fileName}" could not be loaded.`)
+      }
+      return { ...attachment, ...payload, fileName, mediaType }
+    }
+
+    if (canPreview) {
+      const viewButton = make('button', 'project-sprint-submission-file-view', 'View')
+      viewButton.type = 'button'
+      viewButton.setAttribute('aria-label', `View ${fileName}`)
+      viewButton.addEventListener('click', async () => {
+        viewButton.disabled = true
+        viewButton.textContent = 'Loading…'
+        try {
+          openSprintAttachmentPreview(await fetchAttachment(), viewButton)
+        } catch (error) {
+          showDashboardToast(error.message || `The attachment "${fileName}" could not be opened.`, 'error')
+        } finally {
+          viewButton.disabled = false
+          viewButton.textContent = 'View'
+        }
+      })
+      actions.append(viewButton)
+    }
+
+    const downloadLink = make('a', 'project-sprint-submission-file-download', 'Download')
+    downloadLink.href = '#'
+    downloadLink.addEventListener('click', async event => {
+      event.preventDefault()
+      downloadLink.setAttribute('aria-disabled', 'true')
+      downloadLink.textContent = 'Loading…'
+      try {
+        const payload = await fetchAttachment()
+        const download = make('a')
+        download.href = payload.data
+        download.download = fileName
+        download.hidden = true
+        document.body.append(download)
+        download.click()
+        download.remove()
+      } catch (error) {
+        showDashboardToast(error.message || `The attachment "${fileName}" could not be downloaded.`, 'error')
+      } finally {
+        downloadLink.removeAttribute('aria-disabled')
+        downloadLink.textContent = 'Download'
+      }
+    })
+    row.append(details, actions)
+    actions.append(downloadLink)
+    list.append(row)
+  })
+  return list
+}
+
+function renderTaskSprintSubmission(project, task, isProjectOwner, afterReview) {
+  const submissionStatus = String(task.sprintSubmissionStatus || 'Not submitted')
+  if (submissionStatus === 'Not submitted') return null
+
+  const section = make('section', `project-task-sprint-submission is-${submissionStatus.toLowerCase().replaceAll(' ', '-')}`)
+  section.append(
+    make('strong', 'project-task-sprint-submission-title', `Sprint submission · ${submissionStatus}`)
+  )
+  if (task.sprintSubmittedAt) {
+    const submittedAt = new Date(task.sprintSubmittedAt)
+    if (!Number.isNaN(submittedAt.getTime())) {
+      section.append(make(
+        'small',
+        'project-sprint-submission-metadata',
+        `Submitted ${submittedAt.toLocaleString()}${task.assigneeName ? ` by ${task.assigneeName}` : ''}`
+      ))
+    }
+  }
+  if (task.sprintSubmissionNote) {
+    const note = make('div', 'project-sprint-submission-note')
+    note.append(
+      make('strong', 'project-sprint-card-section-label', 'Assignee note'),
+      make('p', '', task.sprintSubmissionNote)
+    )
+    section.append(note)
+  }
+  if (Array.isArray(task.sprintSubmissionLinks) && task.sprintSubmissionLinks.length) {
+    const links = make('div', 'project-task-sprint-submission-links')
+    links.append(make('strong', 'project-sprint-card-section-label', 'Submitted links'))
+    task.sprintSubmissionLinks.forEach(value => {
+      try {
+        const url = new URL(value)
+        if (!['http:', 'https:'].includes(url.protocol)) return
+        const link = make('a', 'project-task-sprint-submission-link', url.href)
+        link.href = url.href
+        link.target = '_blank'
+        link.rel = 'noopener noreferrer'
+        links.append(link)
+      } catch (error) {
+        console.error('Ignoring invalid task sprint submission link:', error)
+      }
+    })
+    section.append(links)
+  }
+  if (Array.isArray(task.sprintSubmissionAttachments) && task.sprintSubmissionAttachments.length) {
+    const media = make('div', 'project-sprint-submission-media')
+    media.append(
+      make('strong', 'project-sprint-submission-media-title', 'Submitted files and voice notes'),
+      renderTaskSprintSubmissionAttachments(project, task, task.sprintSubmissionAttachments)
+    )
+    section.append(media)
+  }
+  if (task.sprintReviewComment) {
+    const feedback = make('div', 'project-sprint-review-comment')
+    feedback.append(
+      make('strong', 'project-sprint-card-section-label', 'Review feedback'),
+      make('p', '', task.sprintReviewComment)
+    )
+    section.append(feedback)
+  }
+
+  if (isProjectOwner && submissionStatus === 'Pending Review') {
+    const reviewForm = make('div', 'project-task-sprint-review-form')
+    const reviewInput = make('textarea', 'project-sprint-review-input')
+    reviewInput.rows = 3
+    reviewInput.maxLength = 5000
+    reviewInput.placeholder = 'Add feedback for the assignee…'
+    reviewInput.setAttribute('aria-label', `Review submission for ${task.title}`)
+    const error = make('p', 'project-task-sprint-review-error')
+    error.setAttribute('role', 'alert')
+    error.hidden = true
+    const actions = make('div', 'project-sprint-review-actions')
+    const acceptButton = make('button', 'project-progress-aside-complete', 'Accept submission')
+    acceptButton.type = 'button'
+    const changesButton = make('button', 'project-sprint-request-changes', 'Request changes')
+    changesButton.type = 'button'
+    const submitReview = async (decision, button) => {
+      const comment = reviewInput.value.trim()
+      if (decision === 'request_changes' && !comment) {
+        error.textContent = 'Add written feedback explaining the requested changes.'
+        error.hidden = false
+        reviewInput.focus()
+        return
+      }
+      button.disabled = true
+      error.hidden = true
+      const previousText = button.textContent
+      button.textContent = decision === 'accept' ? 'Accepting…' : 'Sending…'
+      try {
+        const response = await api.post(
+          `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(task.taskId)}/review-submission`,
+          { decision, comment }
+        )
+        if (response?.success !== true || !response?.data?.task) {
+          throw new Error(response?.message || 'The server did not confirm the task review.')
+        }
+        if (response.notificationWarning) {
+          showDashboardToast(response.notificationWarning, 'error')
+        } else {
+          showDashboardToast(
+            decision === 'accept' ? 'Task submission accepted.' : 'Changes requested from the assignee.',
+            'success'
+          )
+        }
+        await afterReview(response.data.task)
+      } catch (reviewError) {
+        error.textContent = reviewError.message || 'The task submission could not be reviewed.'
+        error.hidden = false
+        button.disabled = false
+        button.textContent = previousText
+      }
+    }
+    acceptButton.addEventListener('click', () => submitReview('accept', acceptButton))
+    changesButton.addEventListener('click', () => submitReview('request_changes', changesButton))
+    actions.append(acceptButton, changesButton)
+    reviewForm.append(reviewInput, error, actions)
+    section.append(reviewForm)
+  }
+  return section
+}
+
+function applyTaskSprintSubmission(task, record) {
+  if (record.status) task.status = record.status
+  if (record.sprint_submission_status !== undefined) {
+    task.sprintSubmissionStatus = record.sprint_submission_status
+  }
+  if (record.sprint_submission_note !== undefined) {
+    task.sprintSubmissionNote = record.sprint_submission_note
+  }
+  if (Array.isArray(record.sprint_submission_links)) {
+    task.sprintSubmissionLinks = record.sprint_submission_links
+  }
+  if (Array.isArray(record.sprint_submission_attachments)) {
+    task.sprintSubmissionAttachments = record.sprint_submission_attachments
+  }
+  if (record.sprint_submitted_at !== undefined) task.sprintSubmittedAt = record.sprint_submitted_at
+  if (record.sprint_submitted_by_firebase_uid !== undefined) {
+    task.sprintSubmittedByFirebaseUid = record.sprint_submitted_by_firebase_uid
+  }
+  if (record.sprint_review_comment !== undefined) {
+    task.sprintReviewComment = record.sprint_review_comment
+  }
+  if (record.sprint_reviewed_by_firebase_uid !== undefined) {
+    task.sprintReviewedByFirebaseUid = record.sprint_reviewed_by_firebase_uid
+  }
+  if (record.sprint_reviewed_at !== undefined) task.sprintReviewedAt = record.sprint_reviewed_at
 }
 
 function sprintSubmissionContent(sprint) {
@@ -968,13 +1199,32 @@ async function loadTaskComments(project, task, container) {
   }
 }
 
-export function openProjectProgressAside(task) {
+export async function openProjectProgressAside(task) {
   const project = projects.find(candidate => candidate.projectId === task.projectId)
   if (!project) {
     showDashboardToast('The project details for this task could not be found.', 'error')
     return
   }
 
+  const currentTask = tasks.find(candidate =>
+    candidate.backendPersistent && candidate.taskId === task.taskId
+  ) || task
+  try {
+    const response = await api.get(
+      `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(currentTask.taskId)}?metadataOnly=true`
+    )
+    if (!response?.data?.task) {
+      throw new Error('The server did not return the latest task details.')
+    }
+    applyTaskSprintSubmission(currentTask, response.data.task)
+  } catch (error) {
+    console.error('Unable to refresh task submission details:', error)
+    showDashboardToast(
+      'Latest task submission details could not be refreshed. Showing the most recently loaded task data.',
+      'error'
+    )
+  }
+  task = currentTask
   const projectTasks = tasks.filter(candidate =>
     candidate.backendPersistent && candidate.projectId === project.projectId
   )
@@ -1734,6 +1984,14 @@ export function openProjectProgressAside(task) {
       taskTop.setAttribute('aria-controls', taskDetails.id)
       const taskIdentity = make('div', 'project-progress-aside-task-identity')
       taskIdentity.append(make('strong', '', projectTask.title))
+      if (projectTask.sprintSubmissionStatus &&
+        projectTask.sprintSubmissionStatus !== 'Not submitted') {
+        taskIdentity.append(make(
+          'span',
+          `project-progress-aside-submission-status is-${projectTask.sprintSubmissionStatus.toLowerCase().replaceAll(' ', '-')}`,
+          projectTask.sprintSubmissionStatus
+        ))
+      }
       const taskStatus = make('span', `project-progress-aside-status is-${String(projectTask.status || 'To do').toLowerCase().replaceAll(' ', '-')}`, projectTask.status || 'To do')
       const taskExpandIcon = make('span', 'project-progress-aside-task-expand-icon', '⌄')
       taskExpandIcon.setAttribute('aria-hidden', 'true')
@@ -1754,6 +2012,30 @@ export function openProjectProgressAside(task) {
         taskDetails.append(make('p', 'project-progress-aside-task-description', projectTask.description))
       }
       taskDetails.append(taskMeta)
+      const taskSubmission = renderTaskSprintSubmission(
+        project,
+        projectTask,
+        isProjectOwner,
+        async review => {
+          applyTaskSprintSubmission(projectTask, review)
+          projectTask.done = projectTask.status === 'Done'
+          projectTask.progress = projectTask.done ? 100 : projectTask.status === 'In progress' ? 50 : 0
+          try {
+            await hub.renderAdminTasksTable?.({ silent: true })
+            hub.renderTasks?.()
+            hub.renderWorkspaceSummary?.()
+          } catch (error) {
+            console.error('Task review saved, but dashboard task data could not be refreshed:', error)
+            showDashboardToast('Review saved, but the dashboard task list could not be refreshed.', 'error')
+          }
+          const refreshedTask = tasks.find(candidate =>
+            candidate.backendPersistent && candidate.taskId === projectTask.taskId
+          ) || projectTask
+          close()
+          void openProjectProgressAside(refreshedTask)
+        }
+      )
+      if (taskSubmission) taskDetails.append(taskSubmission)
       if (projectTask.taskId === task.taskId) taskDetails.append(focusSection)
       const canManageProjectTask = Boolean(
         currentUid && (

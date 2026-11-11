@@ -4747,6 +4747,17 @@ form.modal .brainstorm-board-member-option input[type="checkbox"] {
     color: #991B1B;
 }
 
+.task-sprint-review-badge {
+    align-self: center;
+    padding: 4px 7px;
+    border-radius: 999px;
+    background: #FFF1CB;
+    color: #795B10;
+    font-size: 9px;
+    font-weight: 750;
+    white-space: nowrap;
+}
+
 .project-task-assignment-row .project-task-sprint-field {
     align-self: end;
     min-width: 0;
@@ -4809,6 +4820,14 @@ body.dark-mode .task-priority-badge.is-low {
 body.dark-mode .task-priority-badge.is-high {
     background: #7F1D1D;
     color: #FECACA;
+}
+
+body.dark-mode .task-sprint-review-badge,
+[data-theme="dark"] .task-sprint-review-badge,
+body.dark-mode .project-progress-aside-submission-status,
+[data-theme="dark"] .project-progress-aside-submission-status {
+    background: #493A1D;
+    color: #F2D58A;
 }
 
 .project-task-assignment-row .project-task-create-sprint-toggle {
@@ -6301,6 +6320,72 @@ body.dark-mode .admin-table tr:hover td,
     display: grid;
     min-width: 0;
     gap: 5px;
+}
+
+.project-task-sprint-submission {
+    display: grid;
+    min-width: 0;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px solid #E8D59D;
+    border-radius: 9px;
+    background: #FFFCF1;
+}
+
+.project-task-sprint-submission-title {
+    color: #73560B;
+    font-size: 11px;
+}
+
+.project-task-sprint-submission-links {
+    display: grid;
+    min-width: 0;
+    gap: 5px;
+}
+
+.project-task-sprint-submission-link {
+    overflow-wrap: anywhere;
+    color: #245F9E;
+    font-size: 11px;
+    text-decoration: underline;
+}
+
+.project-task-sprint-review-form {
+    display: grid;
+    gap: 7px;
+}
+
+.project-task-sprint-review-form textarea {
+    width: 100%;
+    min-height: 68px;
+    resize: vertical;
+    padding: 8px 9px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: #FFFFFF;
+    color: var(--ink);
+    font: 11px/1.45 'DM Sans', sans-serif;
+}
+
+.project-task-sprint-review-error {
+    margin: 0;
+    color: #B42318;
+    font-size: 10px;
+}
+
+.project-task-sprint-review-error[hidden] {
+    display: none;
+}
+
+.project-progress-aside-submission-status {
+    width: fit-content;
+    padding: 3px 6px;
+    border-radius: 999px;
+    background: #FFF1CB;
+    color: #795B10;
+    font-size: 9px;
+    font-weight: 700;
 }
 
 .project-sprint-submission-file {
@@ -10664,6 +10749,29 @@ body.dark-mode .project-sprint-submission-note,
 [data-theme="dark"] .project-sprint-submission-note {
     border-color: #39443B;
     background: #252C26;
+}
+
+body.dark-mode .project-task-sprint-submission,
+[data-theme="dark"] .project-task-sprint-submission {
+    border-color: #554722;
+    background: #29261B;
+}
+
+body.dark-mode .project-task-sprint-submission-title,
+[data-theme="dark"] .project-task-sprint-submission-title {
+    color: #F2D58A;
+}
+
+body.dark-mode .project-task-sprint-review-form textarea,
+[data-theme="dark"] .project-task-sprint-review-form textarea {
+    border-color: #465048;
+    background: #202521;
+    color: #E1E9E2;
+}
+
+body.dark-mode .project-task-sprint-submission-link,
+[data-theme="dark"] .project-task-sprint-submission-link {
+    color: #A7C9F0;
 }
 
 body.dark-mode .project-sprint-review-comment,

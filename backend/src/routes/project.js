@@ -21,7 +21,9 @@ const {
     getProjectTaskComments,
     getProjectTaskDetails,
     getProjectTaskAttachment,
+    getProjectTaskSprintSubmissionAttachment,
     getProjectTasks,
+    reviewProjectTaskSprintSubmission,
     submitProjectTaskForReview,
     updateProjectTaskDependencies,
     updateProjectTask,
@@ -98,10 +100,12 @@ router.delete('/:projectId/invitations/:invitationId', revokeInvitation);
 router.get('/:projectId/tasks', getProjectTasks);
 router.post('/:projectId/tasks', createProjectTask);
 router.post('/:projectId/tasks/:taskId/submit-for-review', submitProjectTaskForReview);
+router.post('/:projectId/tasks/:taskId/review-submission', reviewProjectTaskSprintSubmission);
 router.post('/:projectId/sprints/:sprintName/submit', submitProjectSprint);
 router.post('/:projectId/sprints/:sprintName/complete', submitProjectSprint);
 router.post('/:projectId/sprints/:sprintName/review', reviewProjectSprint);
 router.get('/:projectId/tasks/:taskId/attachments/:attachmentIndex', getProjectTaskAttachment);
+router.get('/:projectId/tasks/:taskId/submission-attachments/:attachmentIndex', getProjectTaskSprintSubmissionAttachment);
 router.get('/:projectId/tasks/:taskId', getProjectTaskDetails);
 router.get('/:projectId/tasks/:taskId/comments', getProjectTaskComments);
 router.post('/:projectId/tasks/:taskId/comments', createProjectTaskComment);

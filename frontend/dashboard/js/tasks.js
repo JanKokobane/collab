@@ -22,7 +22,7 @@ import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } f
 import { createScheduleCalendarPicker } from './calendar.js'
 import { api } from './api.js'
 import { setDashboardButtonLoading, showDashboardToast } from './modalChrome.js'
-import { openProjectProgressAside } from './projectProgressAside.js?v=20261028-dedicated-file-picker'
+import { openProjectProgressAside } from './projectProgressAside.js?v=20261111-task-sprint-review'
 import { toLocalDateKey } from './dateUtils.js'
 
 // ============================================================
@@ -299,6 +299,9 @@ export function taskCard(task) {
     `task-priority-badge is-${task.priority || 'medium'}`,
     `${priorityLabel} priority`
   )
+  const submissionBadge = task.sprintSubmissionStatus === 'Pending Review'
+    ? make('span', 'task-sprint-review-badge', 'Review pending')
+    : null
   const actionMenu = make('div', 'task-card-action-menu')
   const moreBtn = make('button', 'card-more-btn')
   moreBtn.type = 'button'
@@ -356,7 +359,12 @@ export function taskCard(task) {
     }
   })
   actionMenu.append(moreBtn, statusMenu)
-  top.append(tagWrap, ...(task.backendPersistent ? [priority] : []), actionMenu)
+  top.append(
+    tagWrap,
+    ...(task.backendPersistent ? [priority] : []),
+    ...(submissionBadge ? [submissionBadge] : []),
+    actionMenu
+  )
 
   const title = make('h4', '', task.title)
   let discussionButton = null
