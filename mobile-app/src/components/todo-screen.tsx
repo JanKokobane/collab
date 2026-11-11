@@ -21,6 +21,7 @@ import {
 import Svg, {
   Circle,
   Defs,
+  G,
   LinearGradient,
   Path,
   Rect,
@@ -634,13 +635,37 @@ function TaskAttachmentCard({
           disabled={audioBusy}
           onPress={() => { void toggleAudio(); }}
           style={[styles.attachmentAudioTile, audioBusy && styles.attachmentActionDisabled]}>
-          <Svg width={20} height={20} viewBox="0 0 24 24">
-            <Path
-              fill="#000000"
-              stroke="none"
-              d="M7.01 2a3 3 0 0 1 1.502.41l11.994 6.995A3 3 0 0 1 22 11.998a3 3 0 0 1-1.323 2.49l-.166.105l-12 7A3.002 3.002 0 0 1 4 19V5.001A3 3 0 0 1 7.01 2"
-            />
-          </Svg>
+          {attachment.isVoiceNote ? (
+            <>
+              <Svg width={23} height={23} viewBox="0 0 16 16">
+                <G
+                  fill="none"
+                  stroke="#EF5350"
+                  strokeLinecap="round"
+                  strokeLinejoin="round">
+                  <Path d="M5.5 12.5a2 2 0 0 1-2 2a2 2 0 0 1-2-2a2 2 0 0 1 2-2a2 2 0 0 1 2 2m9-2a2 2 0 0 1-2 2a2 2 0 0 1-2-2a2 2 0 0 1 2-2a2 2 0 0 1 2 2" />
+                  <Path d="M5.5 12.5V5c0-.54.44-1.21 1.35-1.5l6.3-2c.9 0 1.35.88 1.35 1.5v7.58m-9-3.08l9-3" />
+                </G>
+              </Svg>
+              <View style={styles.attachmentVoiceNotePlay}>
+                <Svg width={8} height={8} viewBox="0 0 24 24">
+                  <Path
+                    fill="#000000"
+                    stroke="none"
+                    d="M7.01 2a3 3 0 0 1 1.502.41l11.994 6.995A3 3 0 0 1 22 11.998a3 3 0 0 1-1.323 2.49l-.166.105l-12 7A3.002 3.002 0 0 1 4 19V5.001A3 3 0 0 1 7.01 2"
+                  />
+                </Svg>
+              </View>
+            </>
+          ) : (
+            <Svg width={20} height={20} viewBox="0 0 24 24">
+              <Path
+                fill="#000000"
+                stroke="none"
+                d="M7.01 2a3 3 0 0 1 1.502.41l11.994 6.995A3 3 0 0 1 22 11.998a3 3 0 0 1-1.323 2.49l-.166.105l-12 7A3.002 3.002 0 0 1 4 19V5.001A3 3 0 0 1 7.01 2"
+              />
+            </Svg>
+          )}
         </Pressable>
       ) : (
         <Pressable
@@ -2003,7 +2028,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    borderRadius: 8,
+    borderRadius: 20,
     backgroundColor: '#F0F3F0',
   },
   attachmentImage: { width: '100%', height: '100%' },
@@ -2013,6 +2038,12 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  attachmentVoiceNotePlay: {
+    position: 'absolute',
+    right: 1,
+    bottom: 4,
   },
   attachmentFileIconButton: {
     width: 40,
