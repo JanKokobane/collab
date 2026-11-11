@@ -419,8 +419,13 @@ const getProjectTasks = async (req, res) => {
                     t.chat_message_id::text AS chat_message_id,
                     context_message.conversation_id::text AS chat_conversation_id,
                     COALESCE((
-                        SELECT jsonb_agg(attachment.value - 'data')
-                        FROM jsonb_array_elements(t.description_attachments) AS attachment(value)
+                        SELECT jsonb_agg(
+                            (attachment.value - 'data') ||
+                                jsonb_build_object('attachment_index', attachment.ordinality - 1)
+                            ORDER BY attachment.ordinality
+                        )
+                        FROM jsonb_array_elements(t.description_attachments)
+                            WITH ORDINALITY AS attachment(value, ordinality)
                     ), '[]'::jsonb) AS description_attachments,
                     t.assignee_firebase_uid,
                     i.invited_name AS assignee_name,
@@ -533,7 +538,16 @@ const getProjectTaskDetails = async (req, res) => {
                     task.status, task.priority, task.start_date, task.due_date,
                     task.chat_message_id::text AS chat_message_id,
                     message.conversation_id::text AS chat_conversation_id,
-                    task.description_attachments, task.created_at, task.updated_at
+                    CASE WHEN $4::boolean THEN COALESCE((
+                        SELECT jsonb_agg(
+                            (attachment.value - 'data') ||
+                                jsonb_build_object('attachment_index', attachment.ordinality - 1)
+                            ORDER BY attachment.ordinality
+                        )
+                        FROM jsonb_array_elements(task.description_attachments)
+                            WITH ORDINALITY AS attachment(value, ordinality)
+                    ), '[]'::jsonb) ELSE task.description_attachments END AS description_attachments,
+                    task.created_at, task.updated_at
              FROM project_tasks task
                          LEFT JOIN messages message
                              ON message.message_id = task.chat_message_id
@@ -550,7 +564,12 @@ const getProjectTaskDetails = async (req, res) => {
                             )
              WHERE task.project_id = $1 AND task.task_id = $2::uuid
              LIMIT 1`,
-                        [project.project_id, req.params.taskId, req.firebaseUid]
+                        [
+                            project.project_id,
+                            req.params.taskId,
+                            req.firebaseUid,
+                            req.query.metadataOnly === 'true'
+                        ]
         );
         if (!result.rowCount) {
             return res.status(404).json({
@@ -566,6 +585,61 @@ const getProjectTaskDetails = async (req, res) => {
             success: false,
             code: 'PROJECT_TASK_DETAILS_FETCH_FAILED',
             message: 'Task details could not be retrieved.'
+        });
+    }
+};
+
+const getProjectTaskAttachment = async (req, res) => {
+    if (!uuidPattern.test(req.params.taskId || '')) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_TASK_ID',
+            message: 'Task ID is invalid.'
+        });
+    }
+    if (!/^\d+$/.test(req.params.attachmentIndex || '') ||
+        !Number.isSafeInteger(Number(req.params.attachmentIndex))) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_ATTACHMENT_INDEX',
+            message: 'Task attachment index is invalid.'
+        });
+    }
+
+    try {
+        const project = await getProjectAndCheckAccess(req.params.projectId, req.firebaseUid);
+        if (!project) {
+            return res.status(404).json({
+                success: false,
+                code: 'PROJECT_NOT_FOUND',
+                message: 'Project not found.'
+            });
+        }
+
+        const result = await query(
+            `SELECT description_attachments -> $3::int AS attachment
+             FROM project_tasks
+             WHERE project_id = $1 AND task_id = $2::uuid
+             LIMIT 1`,
+            [project.project_id, req.params.taskId, Number(req.params.attachmentIndex)]
+        );
+        if (!result.rowCount || !result.rows[0].attachment) {
+            return res.status(404).json({
+                success: false,
+                code: 'TASK_ATTACHMENT_NOT_FOUND',
+                message: 'Task attachment not found.'
+            });
+        }
+        return res.status(200).json({
+            success: true,
+            data: { attachment: result.rows[0].attachment }
+        });
+    } catch (error) {
+        console.error('Get project task attachment error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'PROJECT_TASK_ATTACHMENT_FETCH_FAILED',
+            message: 'The task attachment could not be retrieved.'
         });
     }
 };
@@ -1344,6 +1418,7 @@ module.exports = {
     getProjectTaskDependencies,
     getProjectTaskComments,
     getProjectTaskDetails,
+    getProjectTaskAttachment,
     getProjectTasks,
     updateProjectTaskDependencies,
     updateProjectTask,
