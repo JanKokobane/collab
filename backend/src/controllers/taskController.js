@@ -1,6 +1,76 @@
 const { randomUUID } = require('node:crypto');
 const { pool, query } = require('../config/db');
 
+const MAX_TASK_SPRINT_SUBMISSION_MEDIA_BYTES = 100 * 1024 * 1024;
+const MAX_TASK_SPRINT_SUBMISSION_ATTACHMENTS = 10;
+
+const normalizeTaskSprintSubmissionAttachments = value => {
+    if (value === undefined) return { attachments: [], error: null };
+    if (!Array.isArray(value) || value.length > MAX_TASK_SPRINT_SUBMISSION_ATTACHMENTS) {
+        return {
+            attachments: [],
+            error: `Attach no more than ${MAX_TASK_SPRINT_SUBMISSION_ATTACHMENTS} files.`
+        };
+    }
+
+    let totalBytes = 0;
+    const attachments = [];
+    for (const item of value) {
+        const fileName = typeof item?.fileName === 'string' ? item.fileName.trim() : '';
+        const mediaType = typeof item?.mediaType === 'string' ? item.mediaType.toLowerCase() : '';
+        const data = typeof item?.data === 'string' ? item.data : '';
+        const isSupportedType = /^(image\/(?!svg\+xml(?:$|;))[a-z0-9.+-]+|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|application\/(pdf|msword|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation)|vnd\.ms-(excel|powerpoint)|vnd\.oasis\.opendocument\.(text|spreadsheet|presentation))|text\/(plain|csv))$/.test(mediaType);
+        const dataMatch = data.match(/^data:([^;,]+)(?:;codecs=[^;,]+)?;base64,([A-Za-z0-9+/]*={0,2})$/);
+        if (!fileName || fileName.length > 255 || /[\u0000-\u001f\u007f]/.test(fileName) ||
+            !isSupportedType || !dataMatch || dataMatch[1].toLowerCase() !== mediaType) {
+            return { attachments: [], error: 'One or more attachments are invalid or use an unsupported file type.' };
+        }
+
+        const encoded = dataMatch[2];
+        const buffer = Buffer.from(encoded, 'base64');
+        if (!buffer.length || buffer.toString('base64') !== encoded) {
+            return { attachments: [], error: 'One or more attachments contain invalid file data.' };
+        }
+        totalBytes += buffer.length;
+        if (totalBytes > MAX_TASK_SPRINT_SUBMISSION_MEDIA_BYTES) {
+            return { attachments: [], error: 'Sprint attachments must total 100 MB or less.' };
+        }
+        attachments.push({
+            fileName,
+            mediaType,
+            size: buffer.length,
+            data,
+            ...(item.is_voice_note === true ? { is_voice_note: true } : {})
+        });
+    }
+    return { attachments, error: null };
+};
+
+const normalizeTaskSprintSubmissionLinks = value => {
+    if (value === undefined) return { links: [], error: null };
+    if (!Array.isArray(value) || value.length > 10) {
+        return { links: [], error: 'Add no more than 10 links.' };
+    }
+
+    const links = [];
+    for (const item of value) {
+        if (typeof item !== 'string' || item.length > 2048) {
+            return { links: [], error: 'One or more submission links are invalid.' };
+        }
+        let url;
+        try {
+            url = new URL(item.trim());
+        } catch {
+            return { links: [], error: 'Enter valid links that start with https:// or http://.' };
+        }
+        if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) {
+            return { links: [], error: 'Enter valid links that start with https:// or http://.' };
+        }
+        links.push(url.toString());
+    }
+    return { links: [...new Set(links)], error: null };
+};
+
 const allowedStatuses = new Set(['Backlog', 'To do', 'In progress', 'Blocked', 'Done']);
 const allowedPriorities = new Set(['low', 'medium', 'high']);
 const allowedTaskTags = new Set([
@@ -416,6 +486,15 @@ const getProjectTasks = async (req, res) => {
                     t.category,
                     t.tags,
                     t.sprint_name,
+                    t.sprint_submission_status,
+                    t.sprint_submission_note,
+                    t.sprint_submission_links,
+                    t.sprint_submitted_at,
+                    COALESCE((
+                        SELECT jsonb_agg(attachment.value - 'data' ORDER BY attachment.ordinality)
+                        FROM jsonb_array_elements(t.sprint_submission_attachments)
+                            WITH ORDINALITY AS attachment(value, ordinality)
+                    ), '[]'::jsonb) AS sprint_submission_attachments,
                     t.chat_message_id::text AS chat_message_id,
                     context_message.conversation_id::text AS chat_conversation_id,
                     COALESCE((
@@ -535,6 +614,13 @@ const getProjectTaskDetails = async (req, res) => {
         const result = await query(
             `SELECT task.task_id, task.project_id, task.title, task.description,
                     task.category, task.tags, task.sprint_name, task.assignee_firebase_uid,
+                    task.sprint_submission_status, task.sprint_submission_note,
+                    task.sprint_submission_links, task.sprint_submitted_at,
+                    COALESCE((
+                        SELECT jsonb_agg(attachment.value - 'data' ORDER BY attachment.ordinality)
+                        FROM jsonb_array_elements(task.sprint_submission_attachments)
+                            WITH ORDINALITY AS attachment(value, ordinality)
+                    ), '[]'::jsonb) AS sprint_submission_attachments,
                     task.status, task.priority, task.start_date, task.due_date,
                     task.chat_message_id::text AS chat_message_id,
                     message.conversation_id::text AS chat_conversation_id,
@@ -641,6 +727,181 @@ const getProjectTaskAttachment = async (req, res) => {
             code: 'PROJECT_TASK_ATTACHMENT_FETCH_FAILED',
             message: 'The task attachment could not be retrieved.'
         });
+    }
+};
+
+const submitProjectTaskForReview = async (req, res) => {
+    let client;
+    try {
+        const { projectId, taskId } = req.params;
+        if (!uuidPattern.test(taskId || '')) {
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_TASK_ID',
+                message: 'Task ID is invalid.'
+            });
+        }
+
+        const project = await getProjectAndCheckAccess(projectId, req.firebaseUid);
+        if (!project) {
+            return res.status(404).json({
+                success: false,
+                code: 'PROJECT_NOT_FOUND',
+                message: 'Project not found.'
+            });
+        }
+        const submissionNote = typeof req.body?.submissionNote === 'string'
+            ? req.body.submissionNote.trim()
+            : '';
+        const { attachments, error: attachmentError } =
+            normalizeTaskSprintSubmissionAttachments(req.body?.submissionAttachments);
+        const { links, error: linksError } =
+            normalizeTaskSprintSubmissionLinks(req.body?.submissionLinks);
+        if (attachmentError || linksError) {
+            return res.status(400).json({
+                success: false,
+                code: 'TASK_SPRINT_SUBMISSION_INVALID',
+                message: attachmentError || linksError
+            });
+        }
+        if (submissionNote.length > 5000 ||
+            (!submissionNote && !attachments.length && !links.length)) {
+            return res.status(400).json({
+                success: false,
+                code: 'TASK_SPRINT_SUBMISSION_CONTENT_REQUIRED',
+                message: submissionNote.length > 5000
+                    ? 'Submission notes cannot exceed 5,000 characters.'
+                    : 'Add submission notes, attach a file or voice note, or include a link.'
+            });
+        }
+
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const taskResult = await client.query(
+            `SELECT task.task_id, task.title, task.sprint_name, task.status,
+                    task.assignee_firebase_uid, task.sprint_submission_status,
+                    project.name AS project_name, project.creator_firebase_uid,
+                    project.creator_initials
+             FROM project_tasks task
+             JOIN projects project ON project.project_id = task.project_id
+             WHERE task.project_id = $1 AND task.task_id = $2::uuid
+             FOR UPDATE OF task`,
+            [project.project_id, taskId]
+        );
+        if (!taskResult.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                success: false,
+                code: 'TASK_NOT_FOUND',
+                message: 'Task not found.'
+            });
+        }
+
+        const task = taskResult.rows[0];
+        if (task.assignee_firebase_uid !== req.firebaseUid) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({
+                success: false,
+                code: 'TASK_SPRINT_SUBMISSION_FORBIDDEN',
+                message: 'Only the task assignee can submit this sprint for review.'
+            });
+        }
+        if (!task.sprint_name) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'TASK_SPRINT_REQUIRED',
+                message: 'This task has no sprint assigned.'
+            });
+        }
+        if (task.status !== 'In progress') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'TASK_NOT_STARTED',
+                message: 'Start the task before submitting its sprint for review.'
+            });
+        }
+        if (['Pending Review', 'Completed'].includes(task.sprint_submission_status)) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                code: 'TASK_SPRINT_NOT_SUBMITTABLE',
+                message: task.sprint_submission_status === 'Completed'
+                    ? 'This task sprint has already been accepted.'
+                    : 'This task sprint is already awaiting review.'
+            });
+        }
+
+        const submittedAt = new Date().toISOString();
+        const saved = await client.query(
+            `UPDATE project_tasks
+             SET sprint_submission_status = 'Pending Review',
+                 sprint_submission_note = $1,
+                 sprint_submission_attachments = $2::jsonb,
+                 sprint_submission_links = $3::jsonb,
+                 sprint_submitted_by_firebase_uid = $4,
+                 sprint_submitted_at = $5::timestamptz,
+                 updated_at = NOW()
+             WHERE project_id = $6 AND task_id = $7::uuid
+             RETURNING task_id, sprint_name, sprint_submission_status,
+                       sprint_submission_note, sprint_submission_links,
+                       sprint_submitted_at`,
+            [
+                submissionNote,
+                JSON.stringify(attachments),
+                JSON.stringify(links),
+                req.firebaseUid,
+                submittedAt,
+                project.project_id,
+                taskId
+            ]
+        );
+        if (!saved.rowCount) throw new Error('Task sprint submission did not persist.');
+        await client.query('COMMIT');
+
+        let notificationWarning = null;
+        if (task.creator_firebase_uid !== req.firebaseUid) {
+            try {
+                await query(
+                    `INSERT INTO notifications (
+                        recipient_firebase_uid, project_id, related_task_id,
+                        type, title, detail, avatar, tone_class
+                     )
+                     VALUES ($1, $2, $3, 'task_sprint_submitted_for_review', $4, $5, $6, 'orange-bg')`,
+                    [
+                        task.creator_firebase_uid,
+                        project.project_id,
+                        taskId,
+                        'Task sprint ready for review',
+                        `${req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'A task assignee'} submitted "${task.sprint_name}" for "${task.title}" in "${task.project_name}" for review.`,
+                        task.creator_initials || '•'
+                    ]
+                );
+            } catch (notificationError) {
+                console.error('Task sprint submission saved, but its notification could not be created:', notificationError);
+                notificationWarning = 'The submission was saved, but the project owner could not be notified.';
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Task sprint submitted for review.',
+            ...(notificationWarning ? { notificationWarning } : {}),
+            data: { task: saved.rows[0] }
+        });
+    } catch (error) {
+        await client?.query('ROLLBACK').catch(rollbackError => {
+            console.error('Task sprint submission rollback error:', rollbackError);
+        });
+        console.error('Submit project task sprint for review error:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'TASK_SPRINT_SUBMISSION_FAILED',
+            message: 'The task sprint could not be submitted for review.'
+        });
+    } finally {
+        client?.release();
     }
 };
 
@@ -1420,6 +1681,7 @@ module.exports = {
     getProjectTaskDetails,
     getProjectTaskAttachment,
     getProjectTasks,
+    submitProjectTaskForReview,
     updateProjectTaskDependencies,
     updateProjectTask,
     updateProjectTaskStatus

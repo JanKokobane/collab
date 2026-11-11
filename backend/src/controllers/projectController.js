@@ -915,6 +915,7 @@ const updateProject = async (req, res) => {
  */
 const MAX_SPRINT_SUBMISSION_MEDIA_BYTES = 100 * 1024 * 1024;
 const MAX_SPRINT_SUBMISSION_ATTACHMENTS = 10;
+const MAX_SPRINT_SUBMISSION_LINKS = 10;
 
 const normalizeSprintSubmissionAttachments = value => {
     if (value === undefined) return { attachments: [], error: null };
@@ -928,7 +929,7 @@ const normalizeSprintSubmissionAttachments = value => {
         const fileName = typeof item?.fileName === 'string' ? item.fileName.trim() : '';
         const mediaType = typeof item?.mediaType === 'string' ? item.mediaType.toLowerCase() : '';
         const data = typeof item?.data === 'string' ? item.data : '';
-        const isSupportedType = /^(image\/(?!svg\+xml(?:$|;))[a-z0-9.+-]+|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|application\/pdf)$/.test(mediaType);
+        const isSupportedType = /^(image\/(?!svg\+xml(?:$|;))[a-z0-9.+-]+|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|application\/(pdf|msword|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation)|vnd\.ms-(excel|powerpoint)|vnd\.oasis\.opendocument\.(text|spreadsheet|presentation))|text\/(plain|csv))$/.test(mediaType);
         const dataMatch = data.match(/^data:([^;,]+)(?:;codecs=[^;,]+)?;base64,([A-Za-z0-9+/]*={0,2})$/);
 
         if (!fileName || fileName.length > 255 || /[\u0000-\u001f\u007f]/.test(fileName) ||
@@ -957,6 +958,31 @@ const normalizeSprintSubmissionAttachments = value => {
     return { attachments, error: null };
 };
 
+const normalizeSprintSubmissionLinks = value => {
+    if (value === undefined) return { links: [], error: null };
+    if (!Array.isArray(value) || value.length > MAX_SPRINT_SUBMISSION_LINKS) {
+        return { links: [], error: `Add no more than ${MAX_SPRINT_SUBMISSION_LINKS} links.` };
+    }
+
+    const links = [];
+    for (const valueItem of value) {
+        if (typeof valueItem !== 'string' || valueItem.length > 2048) {
+            return { links: [], error: 'One or more submission links are invalid.' };
+        }
+        let url;
+        try {
+            url = new URL(valueItem.trim());
+        } catch {
+            return { links: [], error: 'Enter valid links that start with https:// or http://.' };
+        }
+        if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) {
+            return { links: [], error: 'Enter valid links that start with https:// or http://.' };
+        }
+        links.push(url.toString());
+    }
+    return { links: [...new Set(links)], error: null };
+};
+
 const submitProjectSprint = async (req, res) => {
     let client;
     try {
@@ -967,6 +993,8 @@ const submitProjectSprint = async (req, res) => {
             : '';
         const { attachments: submissionAttachments, error: attachmentError } =
             normalizeSprintSubmissionAttachments(req.body?.submissionAttachments);
+        const { links: submissionLinks, error: linksError } =
+            normalizeSprintSubmissionLinks(req.body?.submissionLinks);
 
         if (!projectId || !sprintName?.trim()) {
             return res.status(400).json({
@@ -982,13 +1010,21 @@ const submitProjectSprint = async (req, res) => {
                 message: attachmentError
             });
         }
-        if (submissionNote.length > 5000 || (!submissionNote && !submissionAttachments.length)) {
+        if (linksError) {
+            return res.status(400).json({
+                success: false,
+                code: 'SPRINT_SUBMISSION_LINKS_INVALID',
+                message: linksError
+            });
+        }
+        if (submissionNote.length > 5000 ||
+            (!submissionNote && !submissionAttachments.length && !submissionLinks.length)) {
             return res.status(400).json({
                 success: false,
                 code: 'SPRINT_SUBMISSION_NOTE_REQUIRED',
                 message: submissionNote.length > 5000
                     ? 'Submission notes cannot exceed 5,000 characters.'
-                    : 'Add a submission note or attach a file or voice note.'
+                    : 'Add submission notes, attach a file or voice note, or include a link.'
             });
         }
 
@@ -1052,6 +1088,7 @@ const submitProjectSprint = async (req, res) => {
             status: project.creator_firebase_uid === firebaseUid ? 'Completed' : 'Pending Review',
             submissionNote,
             submissionAttachments,
+            submissionLinks,
             submittedByFirebaseUid: firebaseUid,
             submittedByName,
             submittedAt,
@@ -1061,6 +1098,7 @@ const submitProjectSprint = async (req, res) => {
                     type: 'submission',
                     note: submissionNote,
                     attachments: submissionAttachments,
+                    links: submissionLinks,
                     submittedByFirebaseUid: firebaseUid,
                     submittedByName,
                     submittedAt

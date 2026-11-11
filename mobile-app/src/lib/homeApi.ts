@@ -58,6 +58,11 @@ export interface HomeTask {
   description?: string;
   category?: string;
   sprintName?: string;
+  sprintSubmissionStatus?: string;
+  sprintSubmissionNote?: string;
+  sprintSubmissionLinks?: string[];
+  sprintSubmissionAttachments?: HomeTaskSprintSubmissionAttachment[];
+  sprintSubmittedAt?: string;
   createdByFirebaseUid?: string;
   assigneeFirebaseUid?: string;
   assigneeName?: string;
@@ -75,6 +80,13 @@ export interface HomeTaskAttachment {
   size: number | null;
   isVoiceNote: boolean;
   data?: string;
+}
+
+export interface HomeTaskSprintSubmissionAttachment {
+  fileName: string;
+  mediaType: string;
+  size: number | null;
+  isVoiceNote: boolean;
 }
 
 export interface HomeMeeting {
@@ -330,6 +342,26 @@ export async function fetchHomeTasks(
         ? row.tags.filter((tag): tag is string => typeof tag === 'string')
         : [],
       sprintName: asText(row.sprint_name, asText(row.sprintName)),
+      sprintSubmissionStatus: asText(row.sprint_submission_status, 'Not submitted'),
+      sprintSubmissionNote: asText(row.sprint_submission_note),
+      sprintSubmissionLinks: Array.isArray(row.sprint_submission_links)
+        ? row.sprint_submission_links.filter((link): link is string => typeof link === 'string')
+        : [],
+      sprintSubmissionAttachments: Array.isArray(row.sprint_submission_attachments)
+        ? row.sprint_submission_attachments.flatMap((attachmentValue) => {
+          const attachment = asRecord(attachmentValue);
+          const fileName = asText(attachment.fileName);
+          return fileName ? [{
+            fileName,
+            mediaType: asText(attachment.mediaType, 'application/octet-stream'),
+            size: typeof attachment.size === 'number' && Number.isFinite(attachment.size)
+              ? attachment.size
+              : null,
+            isVoiceNote: attachment.is_voice_note === true,
+          }] : [];
+        })
+        : [],
+      sprintSubmittedAt: asText(row.sprint_submitted_at) || undefined,
       createdByFirebaseUid: asText(row.created_by_firebase_uid) || undefined,
       assigneeFirebaseUid: asText(row.assignee_firebase_uid) || undefined,
       assigneeName: asText(row.assignee_name) || undefined,
@@ -343,16 +375,48 @@ export async function fetchHomeTasks(
   });
 }
 
-export async function fetchHomeTaskTags(
+export async function fetchHomeTaskDetails(
   projectId: string,
   taskId: string,
-): Promise<string[] | null> {
+): Promise<{
+  tags: string[] | null;
+  sprintName: string | null;
+  sprintSubmissionStatus: string;
+  sprintSubmissionNote: string;
+  sprintSubmissionLinks: string[];
+  sprintSubmissionAttachments: HomeTaskSprintSubmissionAttachment[];
+  sprintSubmittedAt: string | null;
+}> {
   const data = await request<{ task?: unknown }>(
     `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}?metadataOnly=true`,
   );
   const task = asRecord(data.task);
-  if (!Array.isArray(task.tags)) return null;
-  return task.tags.filter((tag): tag is string => typeof tag === 'string');
+  return {
+    tags: Array.isArray(task.tags)
+      ? task.tags.filter((tag): tag is string => typeof tag === 'string')
+      : null,
+    sprintName: asText(task.sprint_name, asText(task.sprintName)) || null,
+    sprintSubmissionStatus: asText(task.sprint_submission_status, 'Not submitted'),
+    sprintSubmissionNote: asText(task.sprint_submission_note),
+    sprintSubmissionLinks: Array.isArray(task.sprint_submission_links)
+      ? task.sprint_submission_links.filter((link): link is string => typeof link === 'string')
+      : [],
+    sprintSubmissionAttachments: Array.isArray(task.sprint_submission_attachments)
+      ? task.sprint_submission_attachments.flatMap((attachmentValue) => {
+        const attachment = asRecord(attachmentValue);
+        const fileName = asText(attachment.fileName);
+        return fileName ? [{
+          fileName,
+          mediaType: asText(attachment.mediaType, 'application/octet-stream'),
+          size: typeof attachment.size === 'number' && Number.isFinite(attachment.size)
+            ? attachment.size
+            : null,
+          isVoiceNote: attachment.is_voice_note === true,
+        }] : [];
+      })
+      : [],
+    sprintSubmittedAt: asText(task.sprint_submitted_at) || null,
+  };
 }
 
 export async function fetchHomeTaskAttachment(
@@ -360,11 +424,27 @@ export async function fetchHomeTaskAttachment(
   taskId: string,
   attachmentIndex: number,
 ): Promise<HomeTaskAttachment> {
-  const data = await request<{ attachment?: unknown }>(
-    `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}` +
-      `/attachments/${attachmentIndex}`,
-  );
-  const attachment = asRecord(data.attachment);
+  const taskPath =
+    `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}`;
+  let attachmentValue: unknown;
+  try {
+    const data = await request<{ attachment?: unknown }>(
+      `${taskPath}/attachments/${attachmentIndex}`,
+    );
+    attachmentValue = data.attachment;
+  } catch (error) {
+    if (!(error instanceof HomeApiError) || error.status !== 404) throw error;
+
+    // Older deployed API versions do not have the dedicated attachment route.
+    const data = await request<{ task?: unknown }>(taskPath);
+    const task = asRecord(data.task);
+    const attachments = Array.isArray(task.description_attachments)
+      ? task.description_attachments
+      : [];
+    attachmentValue = attachments[attachmentIndex];
+  }
+
+  const attachment = asRecord(attachmentValue);
   const fileName = asText(attachment.fileName);
   const payload = asText(attachment.data);
   if (!fileName || !payload) {
@@ -508,13 +588,54 @@ export async function submitHomeSprint(
   projectId: string,
   sprintName: string,
   note: string,
+  attachments: Array<{
+    fileName: string;
+    mediaType: string;
+    size: number;
+    data: string;
+    is_voice_note?: boolean;
+  }> = [],
+  links: string[] = [],
 ): Promise<HomeProjectSprint[]> {
   const data = await request<{ project?: { sprints?: unknown[] } }>(
     `/projects/${encodeURIComponent(projectId)}/sprints/${encodeURIComponent(sprintName)}/submit`,
-    { method: 'POST', body: { submissionNote: note.trim() } },
+    {
+      method: 'POST',
+      body: {
+        submissionNote: note.trim(),
+        submissionAttachments: attachments,
+        submissionLinks: links,
+      },
+    },
   );
   const project = parseHomeProject({ project_id: projectId, sprints: data.project?.sprints });
   return project?.sprints || [];
+}
+
+export async function submitHomeTaskSprint(
+  projectId: string,
+  taskId: string,
+  note: string,
+  attachments: Array<{
+    fileName: string;
+    mediaType: string;
+    size: number;
+    data: string;
+    is_voice_note?: boolean;
+  }>,
+  links: string[],
+): Promise<void> {
+  await request(
+    `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/submit-for-review`,
+    {
+      method: 'POST',
+      body: {
+        submissionNote: note.trim(),
+        submissionAttachments: attachments,
+        submissionLinks: links,
+      },
+    },
+  );
 }
 
 export async function reviewHomeSprint(

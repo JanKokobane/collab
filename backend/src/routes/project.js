@@ -22,6 +22,7 @@ const {
     getProjectTaskDetails,
     getProjectTaskAttachment,
     getProjectTasks,
+    submitProjectTaskForReview,
     updateProjectTaskDependencies,
     updateProjectTask,
     updateProjectTaskStatus
@@ -96,6 +97,7 @@ router.get('/:projectId/invitations', listProjectInvitations);
 router.delete('/:projectId/invitations/:invitationId', revokeInvitation);
 router.get('/:projectId/tasks', getProjectTasks);
 router.post('/:projectId/tasks', createProjectTask);
+router.post('/:projectId/tasks/:taskId/submit-for-review', submitProjectTaskForReview);
 router.post('/:projectId/sprints/:sprintName/submit', submitProjectSprint);
 router.post('/:projectId/sprints/:sprintName/complete', submitProjectSprint);
 router.post('/:projectId/sprints/:sprintName/review', reviewProjectSprint);

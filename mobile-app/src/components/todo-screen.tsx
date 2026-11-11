@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,9 +15,13 @@ import {
 } from 'react-native';
 import { Directory, File, Paths } from 'expo-file-system';
 import {
+  AudioModule,
+  RecordingPresets,
   setAudioModeAsync,
   useAudioPlayer,
   useAudioPlayerStatus,
+  useAudioRecorder,
+  useAudioRecorderState,
 } from 'expo-audio';
 import Svg, {
   Circle,
@@ -33,13 +38,15 @@ import {
   fetchHomeMembers,
   fetchHomeProjects,
   fetchHomeTaskAttachment,
-  fetchHomeTaskTags,
+  fetchHomeTaskDetails,
   fetchHomeTasks,
   HomeApiError,
+  submitHomeTaskSprint,
   updateHomeTaskStatus,
   type HomeProject,
   type HomeTask,
   type HomeTaskAttachment,
+  type HomeTaskSprintSubmissionAttachment,
 } from '@/lib/homeApi';
 
 type TaskFilter = 'All' | 'Today' | 'In progress' | 'Completed';
@@ -59,6 +66,9 @@ type IconName =
   | 'pause'
   | 'chevronDown'
   | 'folder'
+  | 'mic'
+  | 'stop'
+  | 'webPhone'
   | 'select'
   | 'campaign'
   | 'tag'
@@ -75,6 +85,11 @@ type Task = {
   title: string;
   project: string;
   sprint: string | null;
+  sprintSubmissionStatus: string;
+  sprintSubmissionNote: string;
+  sprintSubmissionLinks: string[];
+  sprintSubmissionAttachments: HomeTaskSprintSubmissionAttachment[];
+  sprintSubmittedAt: string | null;
   updatedAt: string | null;
   priority: string;
   due: string | null;
@@ -93,6 +108,19 @@ type Task = {
   createdByProfileImage: string | null;
   assignedSprintCount: number;
 };
+
+type SprintSubmissionAttachment = {
+  fileName: string;
+  mediaType: string;
+  size: number;
+  data: string;
+  is_voice_note?: boolean;
+};
+
+const maxSprintSubmissionBytes = 100 * 1024 * 1024;
+const maxSprintSubmissionAttachments = 10;
+const supportedSprintSubmissionMediaType =
+  /^(image\/(?!svg\+xml(?:$|;))[a-z0-9.+-]+|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|application\/(pdf|msword|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation)|vnd\.ms-(excel|powerpoint)|vnd\.oasis\.opendocument\.(text|spreadsheet|presentation))|text\/(plain|csv))$/;
 
 const filters: TaskFilter[] = ['Today', 'All', 'In progress', 'Completed'];
 const filterCopy: Record<TaskFilter, { title: string; description: string }> = {
@@ -164,12 +192,37 @@ function Icon({
     arrowUp: <Path d="M12 19V5m-7 7 7-7 7 7" />,
     download: <Path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4" />,
     play: <Path d="m8 5 11 7-11 7z" fill={color} stroke="none" />,
-    pause: (
+    pause: <Path d="M14 19V5h4v14zm-8 0V5h4v14z" fill={color} stroke="none" />,
+    folder: (
+      <Path
+        d="M2.75 7.25v-2.5h7.1l.6.8L11.55 7l.6.8h9.1v11.45H2.75v-2.5Zm0 3.5h18.5"
+        strokeWidth={1.5}
+        strokeLinecap="square"
+        strokeLinejoin="miter"
+      />
+    ),
+    mic: (
+      <Path
+        d="M600 0C268.629 0 0 268.629 0 600s268.629 600 600 600s600-268.629 600-600S931.371 0 600 0m-21.021 209.766v115.723h42.848V209.766c19.77 1.616 39.348 5.557 58.374 11.353v104.37h42.847v-87.305c18.649 9.283 36.453 20.498 52.734 33.984c.086.072.133.148.22.22v427.515c-.086.071-.133.147-.22.22c-48.755 40.238-111.174 63.33-175.781 63.354c-63.145-.121-126.043-22.153-175.781-63.354c-.086-.071-.133-.147-.22-.22V272.388c.086-.072.134-.148.22-.22c16.394-13.529 34.421-24.923 53.467-34.351v87.671h42.921V220.825c18.905-5.721 38.452-9.506 58.371-11.059M339.771 551.367h50.537v193.726c57.225 46.73 130.172 74.78 209.692 74.78s152.469-28.05 209.692-74.78V551.367h50.536v218.921c-15.686 14.476-32.614 27.604-50.536 39.331c-41.29 27.015-87.999 46.312-138.208 55.811v71.191h84.521v53.613h-312.01v-53.613h84.521V865.43c-50.209-9.499-96.918-28.796-138.208-55.811c-17.922-11.727-34.852-24.855-50.537-39.331zM528.516 865.43c23.147 4.379 47.067 6.665 71.484 6.665s48.337-2.286 71.484-6.665v-25.269H528.516z"
+        fill={color}
+        stroke="none"
+      />
+    ),
+    stop: <Path d="M6 18V6h12v12z" fill={color} stroke="none" />,
+    webPhone: (
       <>
-        <Path d="M8 5v14M16 5v14" strokeWidth={3} />
+        <Path
+          d="M23.396 11.994c-.18 1.289-.52 3.387-.88 5.385c-.998 5.754-1.128 5.205-1.048 5.135c-.65.44-5.994-.09-7.493-1.18c0 .13-.24-.519.89-6.992c.888-5.145.998-4.645 1.737-4.705c0 .799 0 1.788.63 2.108a9.7 9.7 0 0 0 4.156.919c.56-.25.809-.75 1.578-1.898l.48.21a.342.342 0 1 0 .31-.61c-1.55-.83-7.643-2.497-8.602-1.099c-.959 1.399-2.557 10.989-2.308 12.338a1.64 1.64 0 0 0 .95.999c1.628.829 7.372 1.838 8.47.559c.49-.56 1.65-10.34 1.729-11.059a.305.305 0 1 0-.6-.11m-1.12-1.518c-.279.29-.569.69-.868.999s-.31.2-.5.16l-3.227-.8l-.19-1.228c1.627.096 3.235.399 4.786.899zm-7.64-8.881a24 24 0 0 1 2.867 1.998c.52.496.99 1.045 1.398 1.638c1.2 1.739 1 2.319 1.48 2.169a.31.31 0 0 0 .19-.4c-.73-3.106-1.999-4.195-3.627-5.094c-.75-.4-1.578-.79-1.998-1a.378.378 0 0 0-.31.69m-3.447 17.981c-3.576.2-9.69-2.238-9.99-8.092C.818 6.37 5.414.346 11.778.935a.302.302 0 0 0 .07-.599C6.562-.384 2.636 2.574.617 7.57a8.99 8.99 0 0 0 3.587 10.889a12.5 12.5 0 0 0 6.993 1.808a.35.35 0 0 0-.01-.69"
+          fill={color}
+          stroke="none"
+        />
+        <Path
+          d="M18.001 5.081c-.999 0-2.308-.16-3.766-.28a7.5 7.5 0 0 0-.87-1.927a.3.3 0 0 0-.569.18q.045.83.21 1.648c-4.995-.37-5.105-.06-4.995-.23a6.4 6.4 0 0 1 1.998-2.677c.14-.45-.53-.48-1.129 0a7.5 7.5 0 0 0-1.988 2.767q-1.144.018-2.277.19c-.9.15-.74.849-.07.819a16 16 0 0 1 1.998 0a19.8 19.8 0 0 0-.79 4.296c-1.178 0-2.367-.08-3.366-.11s-.91.55-.12.799q1.681.306 3.387.44c-.056 1.239.065 2.48.36 3.686c-.78-.07-1.59-.09-2.748-.21c-.949.21-.33.859.58.999c3.766.889 1.918-.36 3.186 1.858q.264.457.58.879c.5.59 1.138.82.999 0a7.3 7.3 0 0 1-1.23-2.258c1.443.072 2.889.042 4.327-.09a.34.34 0 0 0 0-.679c-1.529 0-3.097-.22-4.626-.38a14.2 14.2 0 0 1-.3-3.716c2.358.1 3.377 0 5.465-.06a.35.35 0 0 0 0-.689c-1.718-.1-3.397-.26-5.425-.39c.108-1.457.349-2.902.72-4.315l5.784.16c.15.35.32.699.47 1.059a.341.341 0 1 0 .659-.18c0-.29-.07-.58-.1-.87h3.576a.361.361 0 0 0 .07-.719"
+          fill={color}
+          stroke="none"
+        />
       </>
     ),
-    folder: <Path d="M3 6h7l2 2h9v11H3Z" />,
     select: (
       <Path
         d="M15 4H1c-.6 0-1 .4-1 1v6c0 .6.4 1 1 1h14c.6 0 1-.4 1-1V5c0-.6-.4-1-1-1m-3 5-2-2h4z"
@@ -241,7 +294,7 @@ function Icon({
       accessibilityElementsHidden
       width={size}
       height={size}
-      viewBox={name === 'select' ? '0 0 16 16' : '0 0 24 24'}
+      viewBox={name === 'select' ? '0 0 16 16' : name === 'mic' ? '0 0 1200 1200' : '0 0 24 24'}
       fill="none"
       stroke={color}
       strokeWidth={1.8}
@@ -522,12 +575,15 @@ function TaskAttachmentCard({
   async function saveAttachment() {
     setActionBusy(true);
     try {
+      if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+        throw new Error('Saving attachments to a device folder is only available on iOS and Android.');
+      }
       const data = await ensureAttachmentData();
-      const downloadsDirectory = new Directory(Paths.document, 'Downloads');
-      if (!downloadsDirectory.exists) downloadsDirectory.create({ intermediates: true });
-      await writeTaskAttachment(downloadsDirectory, data);
-      Alert.alert('Download complete', `${attachment.fileName} was saved to the app's Downloads.`);
+      const destinationDirectory = await Directory.pickDirectoryAsync();
+      await writeTaskAttachment(destinationDirectory, data);
+      Alert.alert('Download complete', `${attachment.fileName} was saved to ${destinationDirectory.name}.`);
     } catch (error) {
+      if (error instanceof Error && /cancel(?:led|ed)?/i.test(error.message)) return;
       console.error('Unable to download task attachment:', error);
       Alert.alert(
         'Download failed',
@@ -648,7 +704,7 @@ function TaskAttachmentCard({
                 </G>
               </Svg>
               <View style={styles.attachmentVoiceNotePlay}>
-                <Svg width={8} height={8} viewBox="0 0 24 24">
+                <Svg width={10} height={10} viewBox="0 0 24 24">
                   <Path
                     fill="#000000"
                     stroke="none"
@@ -770,6 +826,11 @@ function taskFromHomeTask(
     title: task.title,
     project: project.name,
     sprint: task.sprintName || null,
+    sprintSubmissionStatus: task.sprintSubmissionStatus || 'Not submitted',
+    sprintSubmissionNote: task.sprintSubmissionNote || '',
+    sprintSubmissionLinks: task.sprintSubmissionLinks || [],
+    sprintSubmissionAttachments: task.sprintSubmissionAttachments || [],
+    sprintSubmittedAt: task.sprintSubmittedAt || null,
     updatedAt: task.updatedAt || null,
     priority: task.priority || 'No priority',
     due: task.dueDate,
@@ -866,7 +927,6 @@ function TaskCard({
   const status = task.status.trim().toLowerCase();
   const done = status === 'done';
   const inProgress = status === 'in progress';
-
   return (
     <View
       style={[
@@ -978,6 +1038,16 @@ function TaskCard({
 export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
+  const sprintSubmissionRecorder = useAudioRecorder({
+    ...RecordingPresets.HIGH_QUALITY,
+    isMeteringEnabled: true,
+  });
+  const sprintRecorderState = useAudioRecorderState(sprintSubmissionRecorder, 50);
+  const [recordingWaveform, setRecordingWaveform] = useState<number[]>(Array(20).fill(2));
+  const [voiceNoteActive, setVoiceNoteActive] = useState(false);
+  const [voiceNotePaused, setVoiceNotePaused] = useState(false);
+  const voiceNoteTransitionRef = useRef(false);
+  const voiceNotePreparedRef = useRef(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -990,6 +1060,25 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   const [dueDateAscending, setDueDateAscending] = useState<boolean | null>(null);
   const [profileImagesByUid, setProfileImagesByUid] = useState<Record<string, string>>({});
   const [taskTagsRefreshFailed, setTaskTagsRefreshFailed] = useState(false);
+
+  useEffect(() => {
+    if (!sprintRecorderState.isRecording || voiceNotePaused) {
+      setRecordingWaveform(Array(20).fill(2));
+      return;
+    }
+
+    const meter = sprintRecorderState.metering ?? -60;
+    const amplitude = Math.max(0, Math.min(1, (meter + 60) / 60));
+    const height = Math.max(2, Math.round(2 + amplitude * 18));
+    setRecordingWaveform((current) => [...current.slice(1), height]);
+  }, [sprintRecorderState.isRecording, sprintRecorderState.metering, voiceNotePaused]);
+  const [expandedSprintTaskId, setExpandedSprintTaskId] = useState<string | null>(null);
+  const [submissionNote, setSubmissionNote] = useState('');
+  const [submissionAttachments, setSubmissionAttachments] = useState<SprintSubmissionAttachment[]>([]);
+  const [submissionLinks, setSubmissionLinks] = useState<string[]>([]);
+  const [submissionLinkDraft, setSubmissionLinkDraft] = useState('');
+  const [submissionBusy, setSubmissionBusy] = useState(false);
+  const [submissionError, setSubmissionError] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -1114,22 +1203,307 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
 
     void refreshTaskModalProfiles();
 
-    async function refreshSelectedTaskTags() {
+    async function refreshSelectedTaskDetails() {
       try {
-        const tags = await fetchHomeTaskTags(projectId, taskId);
-        if (!active || tags === null) return;
-        setTasks((current) => current.map((item) => (
-          item.id === taskId ? { ...item, tags } : item
-        )));
+        const details = await fetchHomeTaskDetails(projectId, taskId);
+        if (!active) return;
+        setTasks((current) => current.map((item) => item.id === taskId
+          ? {
+            ...item,
+            tags: details.tags ?? item.tags,
+            sprint: details.sprintName,
+            sprintSubmissionStatus: details.sprintSubmissionStatus,
+            sprintSubmissionNote: details.sprintSubmissionNote,
+            sprintSubmissionLinks: details.sprintSubmissionLinks,
+            sprintSubmissionAttachments: details.sprintSubmissionAttachments,
+            sprintSubmittedAt: details.sprintSubmittedAt,
+          }
+          : item));
       } catch (error) {
-        console.error('Unable to refresh task modal tags:', error);
+        console.error('Unable to refresh task modal details:', error);
         if (active) setTaskTagsRefreshFailed(true);
       }
     }
 
-    void refreshSelectedTaskTags();
+    void refreshSelectedTaskDetails();
     return () => { active = false; };
   }, [selectedTaskId, selectedTaskProjectId]);
+
+  useEffect(() => {
+    setExpandedSprintTaskId(null);
+    setSubmissionNote('');
+    setSubmissionAttachments([]);
+    setSubmissionLinks([]);
+    setSubmissionLinkDraft('');
+    setSubmissionError('');
+  }, [selectedTaskId]);
+
+  async function addSprintSubmissionAttachments() {
+    if (submissionBusy || voiceNoteActive) return;
+    try {
+      const selection = await File.pickFileAsync({
+        multipleFiles: true,
+        mimeTypes: ['*/*'],
+      });
+      if (selection.canceled) return;
+
+      const selectedFiles = selection.result;
+      if (submissionAttachments.length + selectedFiles.length > maxSprintSubmissionAttachments) {
+        setSubmissionError(`Attach no more than ${maxSprintSubmissionAttachments} files.`);
+        return;
+      }
+
+      let totalBytes = submissionAttachments.reduce((total, item) => total + item.size, 0);
+      const added: SprintSubmissionAttachment[] = [];
+      for (const file of selectedFiles) {
+        const mediaType = (file.type || '').toLowerCase();
+        const size = file.size;
+        if (!supportedSprintSubmissionMediaType.test(mediaType)) {
+          throw new Error(`${file.name || 'The selected file'} uses an unsupported file type.`);
+        }
+        if (!file.name.trim() || file.name.length > 255 || /[\u0000-\u001f\u007f]/.test(file.name)) {
+          throw new Error('File names must be 255 characters or fewer and cannot contain control characters.');
+        }
+        if (!Number.isSafeInteger(size) || size <= 0) {
+          throw new Error(`${file.name || 'The selected file'} is empty or could not be read.`);
+        }
+        totalBytes += size;
+        if (totalBytes > maxSprintSubmissionBytes) {
+          throw new Error('Sprint attachments must total 100 MB or less.');
+        }
+        const data = await file.base64();
+        if (!data) throw new Error(`${file.name || 'The selected file'} could not be read.`);
+        added.push({
+          fileName: file.name.slice(0, 255) || 'Attachment',
+          mediaType,
+          size,
+          data: `data:${mediaType};base64,${data}`,
+        });
+      }
+      setSubmissionAttachments((current) => [...current, ...added]);
+      setSubmissionError('');
+    } catch (error) {
+      console.error('Unable to add sprint submission attachments:', error);
+      setSubmissionError(error instanceof Error
+        ? error.message
+        : 'The selected files could not be attached.');
+    }
+  }
+
+  function addSprintSubmissionLink() {
+    const value = submissionLinkDraft.trim();
+    if (!value) {
+      setSubmissionError('Enter a link before adding it.');
+      return;
+    }
+    try {
+      const link = new URL(value);
+      if (!['http:', 'https:'].includes(link.protocol) || !link.hostname) {
+        throw new Error('Use a valid http:// or https:// link.');
+      }
+      if (link.toString().length > 2048) {
+        throw new Error('Links must be 2,048 characters or fewer.');
+      }
+      if (submissionLinks.includes(link.toString())) {
+        throw new Error('This link has already been added.');
+      }
+      if (submissionLinks.length >= 10) {
+        throw new Error('Add no more than 10 links.');
+      }
+      setSubmissionLinks((current) => [...current, link.toString()]);
+      setSubmissionLinkDraft('');
+      setSubmissionError('');
+    } catch (error) {
+      setSubmissionError(error instanceof Error ? error.message : 'Enter a valid link.');
+    }
+  }
+
+  async function toggleSprintVoiceRecording() {
+    if (submissionBusy || voiceNoteTransitionRef.current) return;
+    voiceNoteTransitionRef.current = true;
+    try {
+      if (voiceNoteActive) {
+        try {
+          await sprintSubmissionRecorder.stop();
+          voiceNotePreparedRef.current = false;
+          setVoiceNoteActive(false);
+          setVoiceNotePaused(false);
+          await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+          const uri = sprintSubmissionRecorder.uri;
+          if (!uri) throw new Error('The voice note could not be saved.');
+          const file = new File(uri);
+          const size = file.size;
+          const totalBytes = submissionAttachments.reduce((total, item) => total + item.size, 0);
+          if (!Number.isSafeInteger(size) || size <= 0) {
+            throw new Error('The voice note is empty or could not be read.');
+          }
+          if (totalBytes + size > maxSprintSubmissionBytes) {
+            throw new Error('Sprint attachments must total 100 MB or less.');
+          }
+          if (submissionAttachments.length >= maxSprintSubmissionAttachments) {
+            throw new Error(`Attach no more than ${maxSprintSubmissionAttachments} files.`);
+          }
+          const data = await file.base64();
+          if (!data) throw new Error('The voice note could not be read.');
+          setSubmissionAttachments((current) => [...current, {
+            fileName: `voice-note-${Date.now()}.m4a`,
+            mediaType: 'audio/mp4',
+            size,
+            data: `data:audio/mp4;base64,${data}`,
+            is_voice_note: true,
+          }]);
+          setSubmissionError('');
+        } catch (error) {
+          console.error('Unable to finish sprint voice note:', error);
+          setVoiceNoteActive(false);
+          setVoiceNotePaused(false);
+          setSubmissionError(error instanceof Error
+            ? error.message
+            : 'The voice note could not be attached.');
+          await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+        }
+        return;
+      }
+
+      if (submissionAttachments.length >= maxSprintSubmissionAttachments) {
+        setSubmissionError(`Attach no more than ${maxSprintSubmissionAttachments} files.`);
+        return;
+      }
+      try {
+        const permission = await AudioModule.requestRecordingPermissionsAsync();
+        if (!permission.granted) {
+          setSubmissionError('Allow microphone access to record a voice note.');
+          return;
+        }
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+        if (!voiceNotePreparedRef.current) {
+          await sprintSubmissionRecorder.prepareToRecordAsync();
+          voiceNotePreparedRef.current = true;
+        }
+        sprintSubmissionRecorder.record({ forDuration: 3600 });
+        setVoiceNoteActive(true);
+        setVoiceNotePaused(false);
+        setSubmissionError('');
+      } catch (error) {
+        console.error('Unable to start sprint voice note:', error);
+        setSubmissionError(error instanceof Error
+          ? error.message
+          : 'The voice note could not be recorded.');
+        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      }
+    } finally {
+      voiceNoteTransitionRef.current = false;
+    }
+  }
+
+  async function toggleSprintVoicePause() {
+    if (submissionBusy || !voiceNoteActive) return;
+    try {
+      if (voiceNotePaused) {
+        sprintSubmissionRecorder.record({ forDuration: 3600 });
+        setVoiceNotePaused(false);
+      } else {
+        sprintSubmissionRecorder.pause();
+        setVoiceNotePaused(true);
+      }
+    } catch (error) {
+      console.error('Unable to pause or resume sprint voice note:', error);
+      setSubmissionError(error instanceof Error
+        ? error.message
+        : 'The voice note could not be paused or resumed.');
+    }
+  }
+
+  async function submitSelectedSprintForReview(task: Task) {
+    if (!task.sprint || submissionBusy) return;
+    const note = submissionNote.trim();
+    if (note.length > 5000) {
+      setSubmissionError('Submission notes cannot exceed 5,000 characters.');
+      return;
+    }
+    if (submissionLinkDraft.trim()) {
+      setSubmissionError('Add the link using the Add link button, or clear the link field.');
+      return;
+    }
+    if (submissionLinks.length > 10) {
+      setSubmissionError('Add no more than 10 links.');
+      return;
+    }
+    if (submissionLinks.some((value) => {
+      try {
+        const link = new URL(value);
+        return !['http:', 'https:'].includes(link.protocol) ||
+          !link.hostname ||
+          link.toString().length > 2048;
+      } catch {
+        return true;
+      }
+    })) {
+      setSubmissionError('One or more links are invalid. Use a valid http:// or https:// link.');
+      return;
+    }
+    if (submissionAttachments.length > maxSprintSubmissionAttachments) {
+      setSubmissionError(`Attach no more than ${maxSprintSubmissionAttachments} files.`);
+      return;
+    }
+    if (submissionAttachments.some((attachment) =>
+      !attachment.fileName.trim() ||
+      attachment.fileName.length > 255 ||
+      /[\u0000-\u001f\u007f]/.test(attachment.fileName) ||
+      !supportedSprintSubmissionMediaType.test(attachment.mediaType.toLowerCase()) ||
+      !Number.isSafeInteger(attachment.size) ||
+      attachment.size <= 0
+    )) {
+      setSubmissionError('One or more attachments are invalid or use an unsupported file type.');
+      return;
+    }
+    const totalAttachmentBytes = submissionAttachments.reduce(
+      (total, attachment) => total + attachment.size,
+      0,
+    );
+    if (totalAttachmentBytes > maxSprintSubmissionBytes) {
+      setSubmissionError('Sprint attachments must total 100 MB or less.');
+      return;
+    }
+    if (!note && submissionAttachments.length === 0 && submissionLinks.length === 0) {
+      setSubmissionError('Add a submission note, file or voice note, or link before submitting.');
+      return;
+    }
+    setSubmissionBusy(true);
+    setSubmissionError('');
+    try {
+      await submitHomeTaskSprint(
+        task.projectId,
+        task.id,
+        note,
+        submissionAttachments,
+        submissionLinks,
+      );
+      setTasks((current) => current.map((item) => item.id === task.id ? {
+        ...item,
+        sprintSubmissionStatus: 'Pending Review',
+        sprintSubmissionNote: note,
+        sprintSubmissionLinks: submissionLinks,
+        sprintSubmissionAttachments: submissionAttachments.map((attachment) => ({
+          fileName: attachment.fileName,
+          mediaType: attachment.mediaType,
+          size: attachment.size,
+          isVoiceNote: attachment.is_voice_note === true,
+        })),
+        sprintSubmittedAt: new Date().toISOString(),
+      } : item));
+      setSubmissionNote('');
+      setSubmissionAttachments([]);
+      setSubmissionLinks([]);
+    } catch (error) {
+      console.error('Unable to submit task sprint for review:', error);
+      setSubmissionError(error instanceof HomeApiError
+        ? error.message
+        : 'The sprint could not be submitted for review.');
+    } finally {
+      setSubmissionBusy(false);
+    }
+  }
 
   async function nextStatus(task: Task) {
     if (busyTaskId) return;
@@ -1578,81 +1952,313 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   )}
                 </View>
 
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={busyTaskId === selectedTask.id}
-                  onPress={() => { void nextStatus(selectedTask); }}
-                  style={[
-                    styles.primaryAction,
-                    busyTaskId === selectedTask.id && styles.primaryActionDisabled,
-                  ]}>
-                  {busyTaskId === selectedTask.id ? (
-                    <ActivityIndicator color="#FFFFFF" />
-                  ) : (
-                    <>
-                      <Text style={styles.primaryActionText}>
-                        {selectedTask.status.trim().toLowerCase() === 'done'
-                          ? 'Reopen task'
-                          : selectedTask.status.trim().toLowerCase() === 'in progress'
-                            ? 'Mark as complete'
-                            : 'Start task'}
-                      </Text>
-                      <Icon
-                        name={selectedTask.status.trim().toLowerCase() === 'in progress'
-                          ? 'check'
-                          : 'arrow'}
-                        size={18}
-                        color="#FFFFFF"
-                      />
-                    </>
-                  )}
-                </Pressable>
-
-                <View style={styles.assignedTasksSection}>
-                  <View style={styles.assignedTasksHeading}>
-                    <Text style={styles.assignedTasksTitle}>
-                      Your assigned tasks
+                <View style={styles.assignedSprintSection}>
+                  <View style={styles.assignedSprintHeading}>
+                    <Text style={styles.assignedSprintTitle}>Your assigned sprints</Text>
+                    <Text style={styles.assignedSprintCount}>
+                      {selectedTask.sprint ? '1' : '0'}
                     </Text>
-                    <Text style={styles.assignedTasksCount}>{tasks.length}</Text>
                   </View>
-                  {tasks.length ? tasks.map((task) => (
-                    <Pressable
-                      key={`${task.projectId}:${task.id}`}
-                      accessibilityRole="button"
-                      accessibilityLabel={`View ${task.title}, ${task.status}, ${task.project}`}
-                      accessibilityState={{ selected: task.id === selectedTask.id }}
-                      onPress={() => setSelectedTaskId(task.id)}
-                      style={[
-                        styles.assignedTaskItem,
-                        task.id === selectedTask.id && styles.assignedTaskItemSelected,
-                      ]}>
-                      <View
-                        style={[
-                          styles.taskStatusDot,
-                          task.status.trim().toLowerCase() === 'done'
-                            ? styles.statusDotDone
-                            : task.status.trim().toLowerCase() === 'in progress'
-                              ? styles.statusDotInProgress
-                              : styles.statusDotDefault,
-                        ]}
-                      />
-                      <View style={styles.assignedTaskCopy}>
-                        <Text numberOfLines={1} style={styles.assignedTaskTitle}>
-                          {task.title}
-                        </Text>
-                        <Text numberOfLines={1} style={styles.assignedTaskProject}>
-                          {task.project}
-                        </Text>
-                      </View>
-                      <Text style={styles.assignedTaskStatus}>{task.status}</Text>
-                      <Text style={styles.assignedTaskArrow}>›</Text>
-                    </Pressable>
-                  )) : (
-                    <Text style={styles.assignedTasksEmpty}>
-                      No tasks are currently assigned to you.
-                    </Text>
+                  {selectedTask.sprint ? (
+                    <>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`View details for ${selectedTask.sprint}`}
+                        accessibilityState={{
+                          expanded: expandedSprintTaskId === selectedTask.id,
+                        }}
+                        onPress={() => setExpandedSprintTaskId((current) => (
+                          current === selectedTask.id ? null : selectedTask.id
+                        ))}
+                        style={styles.assignedSprintExpandButton}>
+                        <View style={styles.assignedSprintDescription}>
+                          <Text style={styles.assignedSprintBullet}>-</Text>
+                          <Text style={styles.assignedSprintName}>{selectedTask.sprint}</Text>
+                        </View>
+                        <View style={styles.assignedSprintViewDetails}>
+                          <Text style={styles.assignedSprintExpandText}>
+                            {expandedSprintTaskId === selectedTask.id
+                              ? 'Hide details'
+                              : 'View details'}
+                          </Text>
+                          <Icon
+                            name="chevronDown"
+                            size={15}
+                            color="#68736C"
+                          />
+                        </View>
+                      </Pressable>
+                      {!['in progress', 'done'].includes(selectedTask.status.trim().toLowerCase()) ? (
+                        <View style={styles.assignedSprintStartRow}>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Start task"
+                            disabled={busyTaskId === selectedTask.id}
+                            onPress={() => { void nextStatus(selectedTask); }}
+                            style={[
+                              styles.assignedSprintStartButton,
+                              busyTaskId === selectedTask.id && styles.primaryActionDisabled,
+                            ]}>
+                            {busyTaskId === selectedTask.id ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <>
+                                <Text style={styles.assignedSprintStartText}>Start task</Text>
+                                <Icon name="arrow" size={16} color="#FFFFFF" />
+                              </>
+                            )}
+                          </Pressable>
+                        </View>
+                      ) : null}
+                      {expandedSprintTaskId === selectedTask.id ? (
+                        <View style={styles.sprintDetails}>
+                          <Text style={styles.sprintDescription}>
+                            {selectedTask.description || 'No sprint details have been added.'}
+                          </Text>
+                          <View style={styles.sprintProgressHeading}>
+                            <Text style={styles.sectionLabel}>Progress</Text>
+                            <Text style={styles.sprintProgressPercent}>
+                              {selectedTask.progress}%
+                            </Text>
+                          </View>
+                          <View
+                            accessibilityRole="progressbar"
+                            accessibilityValue={{ min: 0, max: 100, now: selectedTask.progress }}
+                            style={styles.sprintProgressTrack}>
+                            <View
+                              style={[
+                                styles.sprintProgressFill,
+                                { width: `${selectedTask.progress}%` },
+                              ]}
+                            />
+                          </View>
+
+                          {selectedTask.status.trim().toLowerCase() === 'in progress' &&
+                          !['Pending Review', 'Completed'].includes(selectedTask.sprintSubmissionStatus) ? (
+                            <View style={styles.sprintSubmissionForm}>
+                              <TextInput
+                                accessibilityLabel="Sprint submission notes"
+                                placeholder="Summarize the completed sprint work..."
+                                placeholderTextColor="#858C87"
+                                value={submissionNote}
+                                onChangeText={setSubmissionNote}
+                                multiline
+                                maxLength={5000}
+                                style={styles.sprintSubmissionNote}
+                              />
+                              <View style={styles.sprintMediaHeading}>
+                                <Text style={styles.sectionLabel}>Attach a file or voice note</Text>
+                                <Text style={styles.sprintMediaLimit}>Up to 100 MB total</Text>
+                              </View>
+                              <View style={styles.sprintMediaActions}>
+                                <Pressable
+                                  accessibilityRole="button"
+                                  accessibilityLabel="Attach files"
+                                  disabled={submissionBusy || voiceNoteActive}
+                                  onPress={() => { void addSprintSubmissionAttachments(); }}
+                                  style={[styles.sprintMediaAction, styles.sprintMediaActionWithIcon]}>
+                                  <Icon name="folder" size={15} color="#353B37" />
+                                  <Text style={styles.sprintMediaActionText}>Attach file</Text>
+                                </Pressable>
+                                <Pressable
+                                  accessibilityRole="button"
+                                  accessibilityLabel={voiceNoteActive
+                                    ? 'Stop voice note recording'
+                                    : 'Record voice note'}
+                                  disabled={submissionBusy}
+                                  onPress={() => { void toggleSprintVoiceRecording(); }}
+                                  style={[styles.sprintMediaAction, styles.sprintMediaIconButton]}>
+                                  <Icon
+                                    name={voiceNoteActive ? 'stop' : 'mic'}
+                                    size={voiceNoteActive ? 34 : 24}
+                                    color="#353B37"
+                                  />
+                                </Pressable>
+                                {voiceNoteActive ? (
+                                  <Pressable
+                                    accessibilityRole="button"
+                                    accessibilityLabel={voiceNotePaused
+                                      ? 'Resume voice note recording'
+                                      : 'Pause voice note recording'}
+                                    disabled={submissionBusy}
+                                    onPress={() => { void toggleSprintVoicePause(); }}
+                                    style={[styles.sprintMediaAction, styles.sprintMediaIconButton]}>
+                                    <Icon
+                                      name={voiceNotePaused ? 'play' : 'pause'}
+                                      size={34}
+                                      color="#353B37"
+                                    />
+                                  </Pressable>
+                                ) : null}
+                                {voiceNoteActive ? (
+                                  <View
+                                    accessibilityLabel="Recording audio waveform"
+                                    accessibilityRole="image"
+                                    style={styles.sprintRecordingWaveform}>
+                                    {recordingWaveform.map((height, index) => (
+                                      <View
+                                        key={index}
+                                        style={[styles.sprintRecordingWaveformBar, { height }]}
+                                      />
+                                    ))}
+                                  </View>
+                                ) : null}
+                              </View>
+                              {submissionAttachments.map((attachment, index) => (
+                                <View
+                                  key={`${attachment.fileName}-${index}`}
+                                  style={styles.sprintSubmissionAttachment}>
+                                  <Text numberOfLines={1} style={styles.sprintSubmissionAttachmentName}>
+                                    {attachment.fileName}
+                                  </Text>
+                                  <Pressable
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Remove ${attachment.fileName}`}
+                                    onPress={() => setSubmissionAttachments((current) =>
+                                      current.filter((_, itemIndex) => itemIndex !== index))}
+                                    style={styles.sprintSubmissionRemove}>
+                                    <Text style={styles.sprintSubmissionRemoveText}>Remove</Text>
+                                  </Pressable>
+                                </View>
+                              ))}
+                              <View style={styles.sprintLinkRow}>
+                                <TextInput
+                                  accessibilityLabel="Sprint submission link"
+                                  placeholder="Add a link (https://...)"
+                                  placeholderTextColor="#858C87"
+                                  value={submissionLinkDraft}
+                                  onChangeText={setSubmissionLinkDraft}
+                                  autoCapitalize="none"
+                                  keyboardType="url"
+                                  style={styles.sprintLinkInput}
+                                />
+                                <Pressable
+                                  accessibilityRole="button"
+                                  accessibilityLabel="Add link"
+                                  onPress={addSprintSubmissionLink}
+                                  style={[styles.sprintMediaAction, styles.sprintMediaActionWithIcon]}>
+                                  <Icon name="webPhone" size={16} color="#353B37" />
+                                  <Text style={styles.sprintMediaActionText}>Add link</Text>
+                                </Pressable>
+                              </View>
+                              {submissionLinks.map((link) => (
+                                <View key={link} style={styles.sprintSubmissionAttachment}>
+                                  <Text numberOfLines={1} style={styles.sprintSubmissionAttachmentName}>
+                                    {link}
+                                  </Text>
+                                  <Pressable
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Remove link"
+                                    onPress={() => setSubmissionLinks((current) =>
+                                      current.filter((item) => item !== link))}
+                                    style={styles.sprintSubmissionRemove}>
+                                    <Text style={styles.sprintSubmissionRemoveText}>Remove</Text>
+                                  </Pressable>
+                                </View>
+                              ))}
+                              {submissionError ? (
+                                <Text accessibilityRole="alert" style={styles.sprintSubmissionError}>
+                                  {submissionError}
+                                </Text>
+                              ) : null}
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel="Submit sprint for review"
+                                disabled={submissionBusy || voiceNoteActive}
+                                onPress={() => { void submitSelectedSprintForReview(selectedTask); }}
+                                style={[
+                                  styles.assignedSprintStartButton,
+                                  styles.assignedSprintSubmitButton,
+                                  (submissionBusy || voiceNoteActive) &&
+                                    styles.primaryActionDisabled,
+                                ]}>
+                                {submissionBusy ? (
+                                <ActivityIndicator size="small" color="#202020" />
+                                ) : (
+                                  <>
+                                  <Text style={styles.assignedSprintSubmitText}>Submit for review</Text>
+                                  <Icon name="check" size={16} color="#FFFDD0" />
+                                  </>
+                                )}
+                              </Pressable>
+                            </View>
+                          ) : selectedTask.sprintSubmissionStatus === 'Pending Review' ||
+                          selectedTask.sprintSubmissionStatus === 'Completed' ? (
+                            <View style={styles.sprintSubmittedDetails}>
+                              <Text style={styles.sprintSubmittedMessage}>
+                                {selectedTask.sprintSubmissionStatus === 'Completed'
+                                  ? 'Sprint accepted'
+                                  : 'Submitted for review'}
+                              </Text>
+                              {selectedTask.sprintSubmissionNote ? (
+                                <Text style={styles.sprintDescription}>
+                                  {selectedTask.sprintSubmissionNote}
+                                </Text>
+                              ) : null}
+                              {selectedTask.sprintSubmissionAttachments.map((attachment) => (
+                                <Text
+                                  key={attachment.fileName}
+                                  style={styles.sprintSubmittedLink}>
+                                  - {attachment.fileName}
+                                </Text>
+                              ))}
+                              {selectedTask.sprintSubmissionLinks.map((link) => (
+                                <Text key={link} style={styles.sprintSubmittedLink}>
+                                  - {link}
+                                </Text>
+                              ))}
+                            </View>
+                          ) : null}
+                        </View>
+                      ) : null}
+                    </>
+                  ) : (
+                    <View style={styles.assignedSprintNoSprintRow}>
+                      <Text style={styles.assignedSprintName}>No sprint assigned to this task.</Text>
+                      {!['in progress', 'done'].includes(selectedTask.status.trim().toLowerCase()) ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Start task"
+                          disabled={busyTaskId === selectedTask.id}
+                          onPress={() => { void nextStatus(selectedTask); }}
+                          style={[
+                            styles.assignedSprintStartButton,
+                            busyTaskId === selectedTask.id && styles.primaryActionDisabled,
+                          ]}>
+                          {busyTaskId === selectedTask.id ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
+                            <>
+                              <Text style={styles.assignedSprintStartText}>Start task</Text>
+                              <Icon name="arrow" size={16} color="#FFFFFF" />
+                            </>
+                          )}
+                        </Pressable>
+                      ) : null}
+                    </View>
                   )}
                 </View>
+
+                {selectedTask.status.trim().toLowerCase() === 'done' ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={busyTaskId === selectedTask.id}
+                    onPress={() => { void nextStatus(selectedTask); }}
+                    style={[
+                      styles.primaryAction,
+                      busyTaskId === selectedTask.id && styles.primaryActionDisabled,
+                    ]}>
+                    {busyTaskId === selectedTask.id ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <>
+                        <Text style={styles.primaryActionText}>Reopen task</Text>
+                        <Icon name="arrow" size={18} color="#FFFFFF" />
+                      </>
+                    )}
+                  </Pressable>
+                ) : null}
+
               </ScrollView>
             </View>
           </View>
@@ -2012,6 +2618,135 @@ const styles = StyleSheet.create({
   sectionLabel: { color: '#858C87', fontSize: 12, fontWeight: '700' },
   descriptionText: { color: '#272D29', fontSize: 13, lineHeight: 22, fontWeight: '400' },
   attachmentSection: { gap: 7 },
+  assignedSprintSection: {
+    gap: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#D9D9D9',
+  },
+  assignedSprintHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  assignedSprintTitle: { color: '#353B37', fontSize: 14, fontWeight: '700' },
+  assignedSprintCount: { color: '#68736C', fontSize: 12, fontWeight: '700' },
+  assignedSprintExpandButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 20,
+    paddingVertical: 8,
+  },
+  assignedSprintViewDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    transform: [{ translateY: 0 }],
+  },
+  assignedSprintExpandText: { color: '#68736C', fontSize: 10, fontWeight: '600' },
+  assignedSprintStartRow: { alignItems: 'flex-end' },
+  assignedSprintNoSprintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  sprintDetails: { gap: 12, paddingTop: 8 },
+  sprintDescription: { color: '#353B37', fontSize: 12, lineHeight: 18 },
+  sprintProgressHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sprintProgressPercent: { color: '#353B37', fontSize: 11, fontWeight: '700' },
+  sprintProgressTrack: { height: 6, overflow: 'hidden', borderRadius: 3, backgroundColor: '#E4E8E5' },
+  sprintProgressFill: { height: '100%', borderRadius: 3, backgroundColor: '#FFC400' },
+  sprintSubmissionForm: { gap: 10, paddingTop: 8 },
+  sprintSubmissionNote: {
+    minHeight: 80,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#D9DFDA',
+    borderRadius: 8,
+    color: '#272D29',
+    fontSize: 12,
+    textAlignVertical: 'top',
+  },
+  sprintMediaHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  sprintMediaLimit: { color: '#858C87', fontSize: 10 },
+  sprintMediaActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  sprintMediaAction: {
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#D9DFDA',
+    borderRadius: 5,
+    backgroundColor: '#FFFFFF',
+  },
+  sprintMediaActionWithIcon: { flexDirection: 'row', gap: 6 },
+  sprintMediaIconButton: { width: 32, paddingHorizontal: 0, borderWidth: 0 },
+  sprintRecordingWaveform: {
+    height: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  sprintRecordingWaveformBar: { width: 1, borderRadius: 1, backgroundColor: '#E6B000' },
+  sprintMediaActionText: { color: '#353B37', fontSize: 11, fontWeight: '700' },
+  sprintSubmissionAttachment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 5,
+  },
+  sprintSubmissionAttachmentName: { flex: 1, color: '#353B37', fontSize: 11 },
+  sprintSubmissionRemove: { padding: 4 },
+  sprintSubmissionRemoveText: { color: '#B42318', fontSize: 10, fontWeight: '700' },
+  sprintLinkRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sprintLinkInput: {
+    flex: 1,
+    minHeight: 36,
+    paddingHorizontal: 24,
+    borderWidth: 1,
+    borderColor: '#D9DFDA',
+    borderRadius: 999,
+    color: '#272D29',
+    fontSize: 11,
+  },
+  sprintSubmissionError: { color: '#B42318', fontSize: 11, lineHeight: 16 },
+  sprintSubmittedDetails: { gap: 8, paddingTop: 8 },
+  sprintSubmittedMessage: { color: '#15803D', fontSize: 12, fontWeight: '700' },
+  sprintSubmittedLink: { color: '#52665A', fontSize: 11 },
+  assignedSprintDescription: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 5,
+  },
+  assignedSprintBullet: { color: '#353B37', fontSize: 12, fontWeight: '600' },
+  assignedSprintName: { flex: 1, color: '#353B37', fontSize: 12, fontWeight: '600' },
+  assignedSprintStartButton: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    borderRadius: 5,
+    backgroundColor: '#F0444F',
+  },
+  assignedSprintSubmitButton: { borderRadius: 999, backgroundColor: '#E6B000' },
+  assignedSprintSubmitText: { color: '#FFFDD0', fontSize: 10, fontWeight: '800' },
+  assignedSprintStartText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
   taskAttachmentCard: {
     minHeight: 48,
     flexDirection: 'row',
@@ -2042,8 +2777,8 @@ const styles = StyleSheet.create({
   },
   attachmentVoiceNotePlay: {
     position: 'absolute',
-    right: 1,
-    bottom: 4,
+    right: -2,
+    bottom: 9,
   },
   attachmentFileIconButton: {
     width: 40,
@@ -2102,47 +2837,4 @@ const styles = StyleSheet.create({
   },
   primaryActionDisabled: { opacity: 0.65 },
   primaryActionText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-  assignedTasksSection: {
-    gap: 14,
-    paddingTop: 18,
-    borderTopWidth: 1,
-    borderTopColor: '#EDF0ED',
-  },
-  assignedTasksHeading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  assignedTasksTitle: { color: '#202820', fontSize: 16, fontWeight: '800' },
-  assignedTasksCount: {
-    minWidth: 27,
-    height: 27,
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    overflow: 'hidden',
-    borderRadius: 15,
-    backgroundColor: '#EEF1EF',
-    color: '#40504A',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  assignedTaskItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    minHeight: 58,
-    paddingVertical: 7,
-  },
-  assignedTaskItemSelected: {
-    backgroundColor: '#F7F9F7',
-    borderRadius: 10,
-    paddingHorizontal: 7,
-  },
-  taskStatusDot: { width: 10, height: 10, borderRadius: 6 },
-  assignedTaskCopy: { flex: 1, gap: 3 },
-  assignedTaskTitle: { color: '#242C26', fontSize: 12, fontWeight: '700' },
-  assignedTaskProject: { color: '#8A938D', fontSize: 11 },
-  assignedTaskStatus: { color: '#527565', fontSize: 10, fontWeight: '700' },
-  assignedTaskArrow: { color: '#89918C', fontSize: 22 },
-  assignedTasksEmpty: { color: '#929A95', fontSize: 12 },
 });
