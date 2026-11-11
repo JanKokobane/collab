@@ -2,7 +2,6 @@
 import * as Application from 'expo-application';
 import { isRunningInExpoGo } from 'expo';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import { isRunningInExpoGo } from 'expo';
 import { Platform } from 'react-native';
 import type { User } from 'firebase/auth';
