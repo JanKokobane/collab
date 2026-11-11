@@ -1119,7 +1119,107 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     'Technical Debt',
     'Testing',
     'Urgent',
-    'UX/UI'
+    'UX/UI',
+    'Account Management',
+    'Accounts Payable',
+    'Accounts Receivable',
+    'Acquisition',
+    'Agile Delivery',
+    'Annual Planning',
+    'Audit',
+    'Automation',
+    'Benefits',
+    'Budget',
+    'Business Continuity',
+    'Business Intelligence',
+    'Business Process',
+    'Business Requirements',
+    'Change Management',
+    'Client Relations',
+    'Cloud Migration',
+    'Compliance',
+    'Contract Management',
+    'Corporate Communications',
+    'Corporate Governance',
+    'Cost Optimization',
+    'Cross-functional',
+    'Customer Experience',
+    'Customer Onboarding',
+    'Customer Retention',
+    'Cybersecurity',
+    'Data Governance',
+    'Data Privacy',
+    'Data Quality',
+    'Data Strategy',
+    'Decision Log',
+    'Demand Generation',
+    'Digital Transformation',
+    'Due Diligence',
+    'Employee Engagement',
+    'Employee Onboarding',
+    'Employee Relations',
+    'Enterprise Architecture',
+    'Escalation',
+    'ESG',
+    'Ethics',
+    'Executive Review',
+    'Facilities',
+    'Forecasting',
+    'Governance',
+    'Hiring',
+    'Incident Management',
+    'Internal Communications',
+    'Inventory',
+    'Investor Relations',
+    'IT Operations',
+    'KPI Tracking',
+    'Knowledge Management',
+    'Leadership',
+    'Learning & Development',
+    'Market Analysis',
+    'Market Research',
+    'Marketing Operations',
+    'Mergers & Acquisitions',
+    'Monthly Reporting',
+    'Negotiation',
+    'Office Management',
+    'OKRs',
+    'Organizational Design',
+    'Partner Management',
+    'Payroll',
+    'Policy',
+    'Portfolio Management',
+    'Pricing',
+    'Process Improvement',
+    'Procurement',
+    'Product Launch',
+    'Program Management',
+    'Regulatory',
+    'Relationship Management',
+    'Risk Assessment',
+    'Roadmap',
+    'Sales Enablement',
+    'Sales Operations',
+    'Service Delivery',
+    'SLA',
+    'Stakeholder Alignment',
+    'Strategic Partnerships',
+    'Strategic Planning',
+    'Succession Planning',
+    'Supply Chain',
+    'Sustainability',
+    'Talent Acquisition',
+    'Tax',
+    'Team Development',
+    'Vendor Management',
+    'Workforce Planning',
+    'Year-end Planning',
+    'Business Case',
+    'Capital Planning',
+    'Channel Strategy',
+    'Competitive Analysis',
+    'Corporate Strategy',
+    'Financial Planning'
   ]
   const selectedTags = new Set(
     Array.isArray(task?.tags) ? task.tags.filter(tag => taskTagOptions.includes(tag)) : []
@@ -1128,6 +1228,14 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   const tagLabel = make('span', 'project-task-tag-label', 'Tags')
   const tagPicker = make('details', 'project-task-tag-picker')
   const tagPickerSummary = make('summary', 'project-task-tag-picker-summary')
+  const tagSearchInput = document.createElement('input')
+  tagSearchInput.type = 'search'
+  tagSearchInput.className = 'project-task-tag-search'
+  tagSearchInput.placeholder = 'Search tags...'
+  tagSearchInput.setAttribute('aria-label', 'Search task tags')
+  const tagOptionList = make('div', 'project-task-tag-option-list')
+  const tagEmptyState = make('span', 'project-task-tag-empty', 'No matching tags')
+  tagEmptyState.hidden = true
   const updateTagSummary = () => {
     const selectedTagNames = [...selectedTags]
     const visibleNames = selectedTagNames.slice(0, 2).join(', ')
@@ -1137,8 +1245,22 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   }
   updateTagSummary()
   const tagOptions = make('div', 'project-task-tag-options')
+  tagOptions.append(tagSearchInput, tagOptionList, tagEmptyState)
+  const filterTagOptions = () => {
+    const searchTerm = tagSearchInput.value.trim().toLowerCase()
+    let visibleTagCount = 0
+    tagOptionList.querySelectorAll('.project-task-tag-option').forEach(option => {
+      const matches = option.dataset.tagName.startsWith(searchTerm)
+      option.hidden = !matches
+      if (matches) visibleTagCount += 1
+    })
+    tagEmptyState.hidden = visibleTagCount > 0
+  }
+  tagSearchInput.addEventListener('input', filterTagOptions)
   taskTagOptions.forEach(tag => {
     const optionLabel = make('label', 'project-task-tag-option')
+    optionLabel.dataset.tagName = tag.toLowerCase()
+    const optionName = make('span', '', tag)
     const checkbox = document.createElement('input')
     checkbox.type = 'checkbox'
     checkbox.value = tag
@@ -1148,11 +1270,22 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
       else selectedTags.delete(tag)
       updateTagSummary()
     })
-    optionLabel.append(checkbox, document.createTextNode(tag))
-    tagOptions.append(optionLabel)
+    optionLabel.append(optionName, checkbox)
+    tagOptionList.append(optionLabel)
   })
   tagPicker.append(tagPickerSummary, tagOptions)
   tagField.append(tagLabel, tagPicker)
+  tagPicker.addEventListener('toggle', () => {
+    if (tagPicker.open) {
+      tagSearchInput.focus()
+      return
+    }
+    tagSearchInput.value = ''
+    filterTagOptions()
+  })
+  backdrop.addEventListener('pointerdown', event => {
+    if (!tagPicker.contains(event.target)) tagPicker.open = false
+  })
 
   const statusLabel = make('label', 'no-input-icon', 'Status')
   const statusSelect = document.createElement('select')

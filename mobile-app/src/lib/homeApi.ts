@@ -337,6 +337,18 @@ export async function fetchHomeTasks(
   });
 }
 
+export async function fetchHomeTaskTags(
+  projectId: string,
+  taskId: string,
+): Promise<string[] | null> {
+  const data = await request<{ task?: unknown }>(
+    `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}`,
+  );
+  const task = asRecord(data.task);
+  if (!Array.isArray(task.tags)) return null;
+  return task.tags.filter((tag): tag is string => typeof tag === 'string');
+}
+
 export interface HomeUserSearchResult {
   firebaseUid: string;
   name: string;
