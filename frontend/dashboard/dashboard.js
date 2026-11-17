@@ -42,7 +42,7 @@ import {
   openAddSprintModal,
   openInviteCollaboratorModal,
   openManageCollaboratorsModal
-} from './js/projects.js?v=20261105-invitation-roles'
+} from './js/projects.js?v=20261112-project-timespan-selector'
 
 import { enhanceInputsWithIcons } from './js/icons.js'
 
@@ -78,7 +78,7 @@ import {
   openProjectTaskModal,
   openAdminEditTaskModal,
   openInviteModal
-} from './js/admin.js?v=20261112-task-tag-search'
+} from './js/admin.js?v=20261112-task-project-table'
 
 import {
   switchView,

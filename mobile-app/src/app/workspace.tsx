@@ -28,6 +28,8 @@ import {
   fetchHomeResources,
   fetchHomeScratchpad,
   fetchHomeTasks,
+  acceptHomeProjectInvitation,
+  declineHomeProjectInvitation,
   HomeApiError,
   markAllHomeNotificationsRead,
   markHomeNotificationRead,
@@ -391,6 +393,31 @@ export default function WorkspaceScreen() {
     }
   }
 
+  async function handleProjectInvitationResponse(
+    notification: HomeNotification,
+    response: 'accepted' | 'declined',
+  ) {
+    if (!notification.invitationId) {
+      throw new Error('This project invitation is no longer available.');
+    }
+
+    try {
+      if (response === 'accepted') {
+        await acceptHomeProjectInvitation(notification.invitationId);
+      } else {
+        await declineHomeProjectInvitation(notification.invitationId);
+      }
+      setHomeNotifications((current) => current.map((item) => (
+        item.id === notification.id
+          ? { ...item, invitationStatus: response, isRead: true }
+          : item
+      )));
+    } catch (error) {
+      console.error(`Unable to ${response === 'accepted' ? 'accept' : 'decline'} project invitation:`, error);
+      throw error;
+    }
+  }
+
   async function handleMarkAllNotificationsRead() {
     try {
       await markAllHomeNotificationsRead();
@@ -512,6 +539,8 @@ export default function WorkspaceScreen() {
               onRetry={() => setNotificationsRefreshKey((key) => key + 1)}
               onMarkAllRead={() => { void handleMarkAllNotificationsRead(); }}
               onMarkRead={(notification) => { void handleMarkNotificationRead(notification); }}
+              onAcceptInvitation={(notification) => handleProjectInvitationResponse(notification, 'accepted')}
+              onDeclineInvitation={(notification) => handleProjectInvitationResponse(notification, 'declined')}
             />
           </View>
         ) : activeSection === 'To-do' ? (

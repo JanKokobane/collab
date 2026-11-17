@@ -916,13 +916,11 @@ function TaskCard({
   onOpen,
   onAdvance,
   busy,
-  isOnlyTask,
 }: {
   task: Task;
   onOpen: () => void;
   onAdvance: () => void;
   busy: boolean;
-  isOnlyTask: boolean;
 }) {
   const status = task.status.trim().toLowerCase();
   const done = status === 'done';
@@ -931,7 +929,6 @@ function TaskCard({
     <View
       style={[
         styles.taskCard,
-        isOnlyTask && styles.taskCardFirst,
         done && styles.taskCardDone,
       ]}>
       <Pressable
@@ -1726,7 +1723,6 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                 <TaskCard
                   key={task.id}
                   task={task}
-                  isOnlyTask={visibleTasks.length === 1}
                   busy={busyTaskId === task.id}
                   onOpen={() => setSelectedTaskId(task.id)}
                   onAdvance={() => { void nextStatus(task); }}
@@ -2376,7 +2372,6 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     elevation: 5,
   },
-  taskCardFirst: { transform: [{ translateY: -175 }] },
   taskCardDone: { opacity: 1 },
   cardMain: { flex: 1 },
   taskTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },

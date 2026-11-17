@@ -11,7 +11,7 @@ import {
   setActiveDisplayMode
 } from './state.js'
 import { renderTasks, renderListView, getFilteredTasks } from './tasks.js?v=20261028-project-comments'
-import { openCreateProjectModal, openAddSprintModal, openInviteCollaboratorModal, openManageCollaboratorsModal } from './projects.js?v=20261105-invitation-roles'
+import { openCreateProjectModal, openAddSprintModal, openInviteCollaboratorModal, openManageCollaboratorsModal } from './projects.js?v=20261112-project-timespan-selector'
 import { toLocalDateKey } from './dateUtils.js'
 import {
   openScheduleMeetingModal,
@@ -32,7 +32,7 @@ import {
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   openInviteModal
-} from './admin.js?v=20261112-task-tag-search'
+} from './admin.js?v=20261112-task-project-table'
 import {
   currentTheme,
   applyTheme,

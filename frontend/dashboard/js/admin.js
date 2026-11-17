@@ -21,7 +21,12 @@ import {
 import { getActiveProject } from './auth.js'
 import { createScheduleCalendarPicker } from './calendar.js'
 import { addDaysToDateKey, toLocalDateKey } from './dateUtils.js'
-import { openInviteCollaboratorModal, openCreateProjectModal, openEditProjectModal } from './projects.js?v=20261105-invitation-roles'
+import {
+  formatProjectTimeSpanForDisplay,
+  openInviteCollaboratorModal,
+  openCreateProjectModal,
+  openEditProjectModal
+} from './projects.js?v=20261112-project-timespan-selector'
 import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
 import { setDashboardButtonLoading, showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
@@ -575,15 +580,27 @@ export async function renderAdminTasksTable({ silent = false, canApply = () => t
     const projectDescription = make('small', '', project.description || 'No description provided')
     identity.append(projectTitle, projectDescription)
     const metadata = make('span', 'project-task-row-metadata')
+    const metaItem = (label, value) => {
+      const item = make('span', 'project-task-row-meta-item')
+      item.append(
+        make('small', 'project-task-row-meta-label', label),
+        make('strong', 'project-task-row-meta-value', value)
+      )
+      return item
+    }
+    const collaboratorCount = (project.acceptedMembers || []).length
     metadata.append(
-      make('span', 'collab-type-badge', project.projectType || 'General Collaboration'),
-      make('span', '', project.timeSpan || 'Ongoing'),
-      make('span', '', `${(project.acceptedMembers || []).length} ${(project.acceptedMembers || []).length === 1 ? 'collaborator' : 'collaborators'}`)
+      metaItem('Collaboration type', project.projectType || 'General Collaboration'),
+      metaItem('Duration', formatProjectTimeSpanForDisplay(project.timeSpan)),
+      metaItem('Collaborators', `${collaboratorCount} ${collaboratorCount === 1 ? 'person' : 'people'}`)
     )
-    const taskCount = make('small', '', `${projectTasks.length} ${projectTasks.length === 1 ? 'task' : 'tasks'}`)
     expandButton.append(identity, metadata)
     const rowActions = make('div', 'project-task-row-actions')
-    rowActions.append(taskCount)
+    rowActions.append(make(
+      'small',
+      'project-task-row-task-count',
+      `${projectTasks.length} ${projectTasks.length === 1 ? 'task' : 'tasks'}`
+    ))
     if (project.creatorFirebaseUid === firebaseAuth.currentUser?.uid) {
       const addTaskButton = make('button', 'primary-button gold project-task-row-add-button', '+ Add Task')
       addTaskButton.type = 'button'
@@ -2017,7 +2034,11 @@ export function renderAdminProjectsTable() {
 
     // 3. Time Span
     const tdTimeSpan = document.createElement('td')
-    const timeSpanText = make('span', 'time-span-text', project.timeSpan || 'Ongoing')
+    const timeSpanText = make(
+      'span',
+      'time-span-text',
+      formatProjectTimeSpanForDisplay(project.timeSpan)
+    )
     tdTimeSpan.append(timeSpanText)
 
     // 4. Creator

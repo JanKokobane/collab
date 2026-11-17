@@ -4,14 +4,14 @@
 
 import { updateNotifCount } from './state.js'
 import { updateUserUI } from './auth.js'
-import { renderProjectNav } from './projects.js?v=20261105-invitation-roles'
+import { renderProjectNav } from './projects.js?v=20261112-project-timespan-selector'
 import { renderTasks } from './tasks.js'
 import {
   renderMembersTable,
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   renderAuditLogs
-} from './admin.js?v=20261112-task-tag-search'
+} from './admin.js?v=20261112-task-project-table'
 import {
   currentTheme,
   currentAccent,

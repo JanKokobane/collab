@@ -1,6 +1,6 @@
 import { currentUser, make, projects, tasks, root, addAuditLog, hub, renderAvatarElement } from './state.js'
 import { api } from './api.js'
-import { openProjectTaskModal } from './admin.js?v=20261112-task-tag-search'
+import { openProjectTaskModal } from './admin.js?v=20261112-task-project-table'
 import { createTaskMediaEditor, renderTaskMediaAttachments } from './taskMedia.js?v=20261028-dedicated-file-picker'
 import {
   showDashboardConfirmation,

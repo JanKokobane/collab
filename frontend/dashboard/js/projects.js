@@ -191,6 +191,209 @@ export function createColorPicker(initialColor = 'yellow', onColorChange = () =>
   }
 }
 
+function createProjectTimeSpanSelector() {
+  const field = make('div', 'project-time-span-field')
+  const fieldLabel = make('span', 'project-time-span-label', 'Time Span')
+  const hiddenInput = make('input')
+  hiddenInput.type = 'hidden'
+  hiddenInput.name = 'timeSpan'
+
+  const startInput = make('input')
+  startInput.type = 'hidden'
+  startInput.value = toLocalDateKey()
+
+  const endInput = make('input')
+  endInput.type = 'hidden'
+  const dateCalendars = createProjectDateRangeCalendars(startInput, endInput, () => {
+    updatePreview()
+  })
+  const dates = dateCalendars.element
+
+  const preview = make('output', 'project-time-span-preview', 'Choose an end date to preview the time span.')
+  preview.setAttribute('aria-live', 'polite')
+  preview.setAttribute('aria-label', 'Calculated project time span')
+
+  const updatePreview = () => {
+    const startDate = new Date(`${startInput.value}T00:00:00Z`)
+    const endDate = new Date(`${endInput.value}T00:00:00Z`)
+    const validStart = Number.isFinite(startDate.getTime())
+    const validEnd = Number.isFinite(endDate.getTime())
+
+    if (!validStart || !validEnd) {
+      hiddenInput.value = ''
+      preview.textContent = 'Choose an end date to preview the time span.'
+      return
+    }
+
+    const durationDays = (endDate.getTime() - startDate.getTime()) / 86400000
+    if (durationDays < 0) {
+      hiddenInput.value = ''
+      preview.textContent = 'End date must be on or after the start date.'
+      return
+    }
+
+    const durationWeeks = durationDays / 7
+    const formattedWeeks = Math.round(durationWeeks)
+    const unit = formattedWeeks === 1 ? 'Week' : 'Weeks'
+    const monthLabel = formatDurationInMonths(durationWeeks)
+    const dateFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    })
+    const formattedSpan = `${formattedWeeks} ${unit} (about ${monthLabel}; ${dateFormatter.format(startDate)} – ${dateFormatter.format(endDate)})`
+    hiddenInput.value = formattedSpan
+    preview.textContent = formattedSpan
+  }
+
+  startInput.addEventListener('change', updatePreview)
+  endInput.addEventListener('change', updatePreview)
+
+  field.append(fieldLabel, dates, preview, hiddenInput)
+  return { element: field, input: hiddenInput, focus: dateCalendars.focus }
+}
+
+function createProjectDateRangeCalendars(startInput, endInput, onChange) {
+  const container = make('section', 'project-time-span-calendars')
+  container.setAttribute('aria-label', 'Choose project start and end dates')
+
+  const todayKey = toLocalDateKey()
+  const today = new Date(`${todayKey}T00:00:00`)
+  let firstMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+
+  const navigation = make('div', 'project-time-span-calendar-navigation')
+  const previous = make('button', 'project-time-span-calendar-nav', '‹')
+  previous.type = 'button'
+  previous.setAttribute('aria-label', 'Show previous months')
+  const next = make('button', 'project-time-span-calendar-nav', '›')
+  next.type = 'button'
+  next.setAttribute('aria-label', 'Show next months')
+  navigation.append(previous, make('span', '', 'Select your project dates'), next)
+
+  const calendarGrid = make('div', 'project-time-span-calendar-grid')
+  const panels = [
+    { key: 'start', label: 'Start Date' },
+    { key: 'end', label: 'Due Date' }
+  ].map(({ key, label }) => {
+    const panel = make('section', 'project-time-span-calendar')
+    const heading = make('h4', 'project-time-span-calendar-heading', label)
+    const month = make('div', 'project-time-span-calendar-month')
+    const weekdays = make('div', 'project-time-span-calendar-weekdays')
+    ;['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].forEach(day => {
+      weekdays.append(make('span', '', day))
+    })
+    const days = make('div', 'project-time-span-calendar-days')
+    const selectedDate = make('output', 'project-time-span-selected-date')
+    selectedDate.setAttribute('aria-live', 'polite')
+    panel.append(heading, month, weekdays, days, selectedDate)
+    calendarGrid.append(panel)
+    return { key, month, days, selectedDate }
+  })
+
+  const render = () => {
+    const firstMonthKey = `${firstMonth.getFullYear()}-${String(firstMonth.getMonth() + 1).padStart(2, '0')}-01`
+    previous.disabled = firstMonthKey <= `${todayKey.slice(0, 7)}-01`
+    panels.forEach((panel, panelIndex) => {
+      const monthDate = new Date(firstMonth.getFullYear(), firstMonth.getMonth() + panelIndex, 1)
+      const year = monthDate.getFullYear()
+      const monthIndex = monthDate.getMonth()
+      const monthName = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(monthDate)
+      panel.month.textContent = monthName
+      panel.days.replaceChildren()
+
+      const firstWeekday = (new Date(year, monthIndex, 1).getDay() + 6) % 7
+      for (let blank = 0; blank < firstWeekday; blank += 1) {
+        panel.days.append(make('span', 'project-time-span-calendar-blank'))
+      }
+
+      const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        const dateKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        const selectedKey = panel.key === 'start' ? startInput.value : endInput.value
+        const isPast = dateKey < todayKey
+        const beforeStart = panel.key === 'end' && startInput.value && dateKey < startInput.value
+        const dayButton = make('button', 'project-time-span-calendar-day', String(day))
+        dayButton.type = 'button'
+        dayButton.dataset.dateKey = dateKey
+        dayButton.disabled = isPast || Boolean(beforeStart)
+        dayButton.setAttribute('aria-label', new Intl.DateTimeFormat('en-US', {
+          timeZone: 'UTC',
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric'
+        }).format(new Date(`${dateKey}T00:00:00Z`)))
+        if (dateKey === todayKey) dayButton.classList.add('is-today')
+        if (dateKey === selectedKey) {
+          dayButton.classList.add(panel.key === 'start' ? 'is-start-date' : 'is-end-date')
+          dayButton.setAttribute('aria-pressed', 'true')
+        } else {
+          dayButton.setAttribute('aria-pressed', 'false')
+        }
+        if (startInput.value && endInput.value && dateKey > startInput.value && dateKey < endInput.value) {
+          dayButton.classList.add('is-in-range')
+        }
+        dayButton.addEventListener('click', () => {
+          if (panel.key === 'start') {
+            startInput.value = dateKey
+            if (endInput.value && endInput.value < dateKey) endInput.value = dateKey
+          } else {
+            endInput.value = dateKey
+          }
+          onChange()
+          render()
+          panel.days.querySelector(`[data-date-key="${dateKey}"]`)?.focus()
+        })
+        panel.days.append(dayButton)
+      }
+
+      const selectedDateKey = panel.key === 'start' ? startInput.value : endInput.value
+      panel.selectedDate.textContent = selectedDateKey
+        ? new Intl.DateTimeFormat('en-US', {
+          timeZone: 'UTC',
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+        }).format(new Date(`${selectedDateKey}T00:00:00Z`))
+        : 'Select a date'
+    })
+  }
+
+  previous.addEventListener('click', () => {
+    if (previous.disabled) return
+    firstMonth = new Date(firstMonth.getFullYear(), firstMonth.getMonth() - 1, 1)
+    render()
+  })
+  next.addEventListener('click', () => {
+    firstMonth = new Date(firstMonth.getFullYear(), firstMonth.getMonth() + 1, 1)
+    render()
+  })
+  container.append(navigation, calendarGrid)
+  render()
+  return {
+    element: container,
+    render,
+    focus: () => panels[0].days.querySelector('button:not(:disabled)')?.focus()
+  }
+}
+
+function formatDurationInMonths(weeks) {
+  if (weeks < 4) return 'Less than 1 Month'
+  const months = Math.round(weeks / 4)
+  return `${months} ${months === 1 ? 'Month' : 'Months'}`
+}
+
+export function formatProjectTimeSpanForDisplay(value) {
+  const timeSpan = String(value || '').trim()
+  const monthMatch = timeSpan.match(/\(about\s+([^;]+);/i)
+  if (monthMatch) return monthMatch[1].trim()
+
+  const weekMatch = timeSpan.match(/^(\d+(?:\.\d+)?)\s+weeks?\b/i)
+  if (weekMatch) return formatDurationInMonths(Number(weekMatch[1]))
+
+  return timeSpan || 'Ongoing'
+}
+
 // ============================================================
 // CREATE GROUP PROJECT
 // ============================================================
@@ -202,6 +405,7 @@ export function openCreateProjectModal() {
   })
 
   const form = make('form', 'modal')
+  form.id = 'create-group-project-form'
 
   const close = make('button', 'close-modal', '×')
   close.type = 'button'
@@ -224,13 +428,13 @@ export function openCreateProjectModal() {
   const typeSelect = createCollaborationTypeSelect('')
   typeLabel.append(typeSelect)
 
-  const timeSpanLabel = make('label', '', 'Time Span (Optional)')
-  const timeSpanInput = make('input')
-  timeSpanInput.placeholder = 'e.g. 6 weeks, Q4 2026, or Oct 15 - Dec 1'
-  timeSpanLabel.append(timeSpanInput)
+  const timeSpanSelector = createProjectTimeSpanSelector()
 
-  const descLabel = make('label', '', 'Description (Optional)')
-  const descInput = make('input')
+  const descLabel = make('label', '', 'Description')
+  const descInput = document.createElement('textarea')
+  descInput.rows = 3
+  descInput.maxLength = 10000
+  descInput.required = true
   descInput.placeholder = 'Brief purpose of this project board'
   descLabel.append(descInput)
 
@@ -251,7 +455,7 @@ export function openCreateProjectModal() {
     copy,
     nameLabel,
     typeLabel,
-    timeSpanLabel,
+    timeSpanSelector.element,
     descLabel,
     colorLabel,
     errorNotice,
@@ -263,14 +467,28 @@ export function openCreateProjectModal() {
 
     const name = nameInput.value.trim()
     const projectType = typeSelect.value || 'General Collaboration'
-    const timeSpan = timeSpanInput.value.trim() || 'Ongoing'
-    const description = descInput.value.trim() || `Collaborative ${projectType.toLowerCase()} project board.`
+    const timeSpan = timeSpanSelector.input.value.trim()
+    const description = descInput.value.trim()
     const color = colorPickerObj.getColor()
 
     if (!name) {
       nameInput.focus()
       return
     }
+
+    if (!timeSpan) {
+      errorNotice.textContent = 'Select both a start date and a due date for the project.'
+      errorNotice.hidden = false
+      timeSpanSelector.focus()
+      return
+    }
+    if (!description) {
+      errorNotice.textContent = 'Enter a project description.'
+      errorNotice.hidden = false
+      descInput.focus()
+      return
+    }
+    errorNotice.hidden = true
 
     const duplicateProject = projects.some(
       p => String(p.name).trim().toLowerCase() === name.toLowerCase()
@@ -433,8 +651,11 @@ export function openEditProjectModal(project) {
   timeSpanInput.value = project.timeSpan || ''
   timeSpanLabel.append(timeSpanInput)
 
-  const descLabel = make('label', '', 'Description (Optional)')
-  const descInput = make('input')
+  const descLabel = make('label', '', 'Description')
+  const descInput = document.createElement('textarea')
+  descInput.rows = 3
+  descInput.maxLength = 10000
+  descInput.required = true
   descInput.placeholder = 'Brief purpose of this project board'
   descInput.value = project.description || ''
   descLabel.append(descInput)
@@ -469,13 +690,21 @@ export function openEditProjectModal(project) {
     const name = nameInput.value.trim()
     const projectType = typeSelect.value || project.projectType || 'Product collaboration'
     const timeSpan = timeSpanInput.value.trim() || 'Ongoing'
-    const description = descInput.value.trim() || `Collaborative ${projectType.toLowerCase()} project board.`
+    const description = descInput.value.trim()
     const color = colorPickerObj.getColor()
 
     if (!name) {
       nameInput.focus()
       return
     }
+
+    if (!description) {
+      errorNotice.textContent = 'Enter a project description.'
+      errorNotice.hidden = false
+      descInput.focus()
+      return
+    }
+    errorNotice.hidden = true
 
     const duplicate = projects.some(
       p => p.id !== project.id && String(p.name).trim().toLowerCase() === name.toLowerCase()

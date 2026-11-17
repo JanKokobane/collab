@@ -110,6 +110,9 @@ export interface HomeNotification {
   id: string;
   projectId: string | null;
   relatedTaskId: string | null;
+  invitationId: string | null;
+  invitationStatus: string | null;
+  invitationExpiresAt: string | null;
   type: string;
   title: string;
   detail: string;
@@ -730,6 +733,11 @@ export async function fetchHomeNotifications(): Promise<HomeNotification[]> {
       id,
       projectId: typeof row.project_id === 'string' ? row.project_id : null,
       relatedTaskId: typeof row.related_task_id === 'string' ? row.related_task_id : null,
+      invitationId: typeof row.invitation_id === 'string' ? row.invitation_id : null,
+      invitationStatus: typeof row.invitation_status === 'string' ? row.invitation_status : null,
+      invitationExpiresAt: typeof row.invitation_expires_at === 'string'
+        ? row.invitation_expires_at
+        : null,
       type: asText(row.type, 'update'),
       title: asText(row.title, 'Notification'),
       detail: asText(row.detail),
@@ -738,6 +746,20 @@ export async function fetchHomeNotifications(): Promise<HomeNotification[]> {
       isRead: Boolean(row.is_read),
       createdAt: asText(row.created_at),
     }];
+  });
+}
+
+export async function acceptHomeProjectInvitation(invitationId: string): Promise<void> {
+  await request<{ invitation?: unknown }>('/invitations/accept', {
+    method: 'POST',
+    body: { invitationId },
+  });
+}
+
+export async function declineHomeProjectInvitation(invitationId: string): Promise<void> {
+  await request<{ invitation?: unknown }>('/invitations/decline-in-app', {
+    method: 'POST',
+    body: { invitationId },
   });
 }
 

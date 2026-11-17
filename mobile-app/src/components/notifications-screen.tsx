@@ -1,5 +1,14 @@
 import { useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import type { HomeNotification } from '@/lib/homeApi';
 
@@ -63,16 +72,46 @@ type NotificationsScreenProps = {
   onRetry: () => void;
   onMarkAllRead: () => void;
   onMarkRead: (notification: HomeNotification) => void;
+  onAcceptInvitation: (notification: HomeNotification) => Promise<void>;
+  onDeclineInvitation: (notification: HomeNotification) => Promise<void>;
 };
 
 export default function NotificationsScreen({
-  notifications,
-  loading,
-  error,
-  onRetry,
-  onMarkAllRead,
-  onMarkRead,
+  notifications, loading, error, onRetry, onMarkAllRead, onMarkRead,
+  onAcceptInvitation, onDeclineInvitation,
 }: NotificationsScreenProps) {
+  const [decliningInvitation, setDecliningInvitation] = useState<HomeNotification | null>(null);
+  const [respondingInvitationId, setRespondingInvitationId] = useState<string | null>(null);
+  const [declineError, setDeclineError] = useState<string | null>(null);
+
+  const acceptInvitation = async (notification: HomeNotification) => {
+    if (!notification.invitationId) return;
+    setRespondingInvitationId(notification.invitationId);
+    try {
+      await onAcceptInvitation(notification);
+    } catch (actionError) {
+      Alert.alert(
+        'Could not accept invitation',
+        actionError instanceof Error ? actionError.message : 'Please try again.',
+      );
+    } finally {
+      setRespondingInvitationId(null);
+    }
+  };
+
+  const confirmDeclineInvitation = async () => {
+    if (!decliningInvitation?.invitationId) return;
+    setRespondingInvitationId(decliningInvitation.invitationId);
+    setDeclineError(null);
+    try {
+      await onDeclineInvitation(decliningInvitation);
+      setDecliningInvitation(null);
+    } catch (actionError) {
+      setDeclineError(actionError instanceof Error ? actionError.message : 'Please try again.');
+    } finally {
+      setRespondingInvitationId(null);
+    }
+  };
   const unreadCount = notifications.filter((notification) => !notification.isRead).length;
 
   return (
@@ -116,38 +155,132 @@ export default function NotificationsScreen({
       ) : (
         <View style={styles.list}>
           {notifications.map((notification) => {
+            const invitationExpiresAt = notification.invitationExpiresAt
+              ? new Date(notification.invitationExpiresAt).getTime()
+              : null;
+            const canRespondToInvitation = notification.type === 'project_invitation'
+              && Boolean(notification.invitationId)
+              && notification.invitationStatus?.toLowerCase() === 'pending'
+              && (invitationExpiresAt === null || invitationExpiresAt > Date.now());
+            const isResponding = notification.invitationId === respondingInvitationId;
+
             return (
-              <Pressable
-                key={notification.id}
-                accessibilityRole="button"
-                accessibilityLabel={`${notification.isRead ? '' : 'Unread: '}${notification.title}. ${notification.detail}`}
-                accessibilityState={{ selected: !notification.isRead }}
-                onPress={() => {
-                  if (!notification.isRead) onMarkRead(notification);
-                }}
-                style={({ pressed }) => [
-                  styles.notification,
-                  pressed && styles.pressed,
-                ]}>
-                <NotificationAvatar avatar={notification.avatar} />
-                <View style={styles.copy}>
-                  <View style={styles.titleLine}>
-                    <Text numberOfLines={2} style={styles.notificationTitle}>{notification.title}</Text>
-                    <Text style={styles.timestamp}>{formatNotificationDate(notification.createdAt)}</Text>
+              <View key={notification.id} style={styles.notification}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${notification.isRead ? '' : 'Unread: '}${notification.title}. ${notification.detail}`}
+                  accessibilityState={{ selected: !notification.isRead }}
+                  onPress={() => {
+                    if (!notification.isRead) onMarkRead(notification);
+                  }}
+                  style={({ pressed }) => [
+                    styles.notificationContent,
+                    pressed && styles.pressed,
+                  ]}>
+                  <NotificationAvatar avatar={notification.avatar} />
+                  <View style={styles.copy}>
+                    <View style={styles.titleLine}>
+                      <Text numberOfLines={2} style={styles.notificationTitle}>{notification.title}</Text>
+                      <Text style={styles.timestamp}>{formatNotificationDate(notification.createdAt)}</Text>
+                    </View>
+                    {!!notification.detail && (
+                      <Text style={styles.detail}>{notification.detail}</Text>
+                    )}
+                    {!!notification.type && (
+                      <Text style={styles.type}>{notification.type.replace(/[_-]+/g, ' ')}</Text>
+                    )}
                   </View>
-                  {!!notification.detail && (
-                    <Text style={styles.detail}>{notification.detail}</Text>
-                  )}
-                  {!!notification.type && (
-                    <Text style={styles.type}>{notification.type.replace(/[_-]+/g, ' ')}</Text>
-                  )}
-                </View>
-                {!notification.isRead && <View style={styles.unreadDot} />}
-              </Pressable>
+                  {!notification.isRead && <View style={styles.unreadDot} />}
+                </Pressable>
+                {canRespondToInvitation && (
+                  <View style={styles.invitationActions}>
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={isResponding}
+                      onPress={() => { void acceptInvitation(notification); }}
+                      style={({ pressed }) => [
+                        styles.invitationButton,
+                        styles.acceptInvitationButton,
+                        (pressed || isResponding) && styles.pressed,
+                      ]}>
+                      <Text style={styles.acceptInvitationText}>
+                        {isResponding ? 'Please wait…' : 'Accept'}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={isResponding}
+                      onPress={() => {
+                        setDeclineError(null);
+                        setDecliningInvitation(notification);
+                      }}
+                      style={({ pressed }) => [
+                        styles.invitationButton,
+                        styles.declineInvitationButton,
+                        (pressed || isResponding) && styles.pressed,
+                      ]}>
+                      <Text style={styles.declineInvitationText}>Decline</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
             );
           })}
         </View>
       )}
+      <Modal
+        visible={Boolean(decliningInvitation)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!respondingInvitationId) setDecliningInvitation(null);
+        }}>
+        <View style={styles.confirmationBackdrop}>
+          <View
+            accessibilityViewIsModal
+            accessibilityRole="alert"
+            style={styles.confirmationCard}>
+            <View style={styles.confirmationHeading}>
+              <View style={styles.confirmationIcon}>
+                <Text style={styles.confirmationIconText}>!</Text>
+              </View>
+              <Text style={styles.confirmationTitle}>Decline this invitation?</Text>
+            </View>
+            <Text style={styles.confirmationMessage}>
+              {decliningInvitation
+                ? `This will decline your invitation to ${decliningInvitation.detail || 'this project'}.`
+                : 'This project invitation will be declined.'}
+            </Text>
+            {declineError && <Text style={styles.confirmationError}>{declineError}</Text>}
+            <View style={styles.confirmationActions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={Boolean(respondingInvitationId)}
+                onPress={() => setDecliningInvitation(null)}
+                style={({ pressed }) => [
+                  styles.confirmationButton,
+                  styles.cancelConfirmationButton,
+                  pressed && styles.pressed,
+                ]}>
+                <Text style={styles.cancelConfirmationText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={Boolean(respondingInvitationId)}
+                onPress={() => { void confirmDeclineInvitation(); }}
+                style={({ pressed }) => [
+                  styles.confirmationButton,
+                  styles.confirmDeclineButton,
+                  (pressed || Boolean(respondingInvitationId)) && styles.pressed,
+                ]}>
+                <Text style={styles.confirmDeclineText}>
+                  {respondingInvitationId ? 'Declining…' : 'Decline'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -161,7 +294,14 @@ const styles = StyleSheet.create({
   markAllButton: { paddingHorizontal: 10, paddingVertical: 8 },
   markAllText: { color: '#000000', fontSize: 12, fontWeight: '800' },
   list: { gap: 9 },
-  notification: { minHeight: 72, flexDirection: 'row', alignItems: 'flex-start', gap: 11, padding: 12, borderBottomWidth: 1, borderBottomColor: '#D1D1D1' },
+  notification: { gap: 10, padding: 12, borderBottomWidth: 1, borderBottomColor: '#D1D1D1' },
+  notificationContent: { minHeight: 48, flexDirection: 'row', alignItems: 'flex-start', gap: 11 },
+  invitationActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 9, paddingLeft: 45, marginTop: -10 },
+  invitationButton: { minWidth: 60, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, paddingVertical: 5, borderWidth: 1, borderRadius: 7 },
+  acceptInvitationButton: { borderColor: '#EAB308', backgroundColor: '#EAB308' },
+  acceptInvitationText: { color: '#F3F0E8', fontSize: 9, fontWeight: '800' },
+  declineInvitationButton: { borderColor: '#E5483D', backgroundColor: '#E5483D' },
+  declineInvitationText: { color: '#FFFFFF', fontSize: 9, fontWeight: '800' },
   marker: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 17 },
   avatarImage: { width: '100%', height: '100%', borderRadius: 17 },
   copy: { flex: 1, minWidth: 0 },
@@ -177,5 +317,19 @@ const styles = StyleSheet.create({
   errorText: { color: '#9F2D25', fontSize: 11, textAlign: 'center' },
   retryButton: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: '#FFF0EF' },
   retryText: { color: '#9F2D25', fontSize: 10, fontWeight: '800' },
+  confirmationBackdrop: { flex: 1, justifyContent: 'center', padding: 24 },
+  confirmationCard: { gap: 10, padding: 20, borderWidth: 1, borderColor: '#E4E4E7', borderRadius: 18, backgroundColor: '#FFFFFF', shadowColor: '#000000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.16, shadowRadius: 18, elevation: 8 },
+  confirmationHeading: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  confirmationIcon: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 21, backgroundColor: '#E5483D' },
+  confirmationIconText: { color: '#FFFFFF', fontSize: 22, fontWeight: '800' },
+  confirmationTitle: { color: '#202020', fontSize: 16, fontWeight: '800' },
+  confirmationMessage: { color: '#55545D', fontSize: 12, lineHeight: 18 },
+  confirmationError: { color: '#B42318', fontSize: 11, lineHeight: 16 },
+  confirmationActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
+  confirmationButton: { minWidth: 86, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderRadius: 10 },
+  cancelConfirmationButton: { borderColor: '#D0D5DD', backgroundColor: '#FFFFFF' },
+  cancelConfirmationText: { color: '#344054', fontSize: 12, fontWeight: '700' },
+  confirmDeclineButton: { borderColor: '#E5483D', backgroundColor: '#E5483D' },
+  confirmDeclineText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   pressed: { opacity: 0.72 },
 });
