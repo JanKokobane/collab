@@ -659,6 +659,8 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
         throw new Error('Project sprints could not be loaded.')
       }
       project.sprints = latestProject.sprints
+      project.startDate = latestProject.start_date || null
+      project.dueDate = latestProject.due_date || null
     } catch (error) {
       showDashboardToast(error.message || 'Task and project sprint details could not be loaded.', 'error')
       return
@@ -1341,7 +1343,10 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   const initialStartDate = task?.start_date
     ? String(task.start_date).slice(0, 10)
     : (defaults.startDate || initialDueDate)
-  const schedulePicker = createScheduleCalendarPicker(initialStartDate, initialDueDate)
+  const schedulePicker = createScheduleCalendarPicker(initialStartDate, initialDueDate, {
+    minDate: project.startDate,
+    maxDate: project.dueDate
+  })
 
   const assignmentRow = make('div', 'form-row project-task-assignment-row')
   assignmentRow.append(sprintSection, categoryLabel, statusLabel)
@@ -1373,6 +1378,13 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   form.addEventListener('submit', async event => {
     event.preventDefault()
     const schedule = schedulePicker.getValues()
+    if (
+      (project.startDate && schedule.startDate < project.startDate) ||
+      (project.dueDate && schedule.dueDate > project.dueDate)
+    ) {
+      showDashboardToast('Task dates must fall within the project timeline.', 'error')
+      return
+    }
     const payload = {
       title: titleInput.value.trim(),
       description: descriptionInput.value.trim(),

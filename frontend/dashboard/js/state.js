@@ -130,6 +130,9 @@ function normalizeProject(project) {
       project.timeSpan ||
       'Ongoing',
 
+    startDate: project.start_date || project.startDate || null,
+    dueDate: project.due_date || project.dueDate || null,
+
     description: project.description || '',
 
     color,

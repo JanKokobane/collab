@@ -1,6 +1,16 @@
 const { pool, query } = require('../config/db');
 const { reconcileUserConversationAccess } = require('../realtime/messageSocket');
 
+const isValidDateKey = value => {
+    if (value === null || value === undefined || value === '') return true;
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCFullYear() === year &&
+        date.getUTCMonth() === month - 1 &&
+        date.getUTCDate() === day;
+};
+
 /**
  * Create a project
  * POST /api/projects
@@ -23,6 +33,8 @@ const createProject = async (req, res) => {
             name,
             project_type,
             time_span,
+            start_date,
+            due_date,
             description,
             color,
             sprints
@@ -66,6 +78,19 @@ const createProject = async (req, res) => {
             time_span.trim()
                 ? time_span.trim()
                 : 'Ongoing';
+
+        if (
+            !isValidDateKey(start_date) ||
+            !isValidDateKey(due_date) ||
+            Boolean(start_date) !== Boolean(due_date) ||
+            (start_date && due_date && due_date < start_date)
+        ) {
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_PROJECT_TIMELINE',
+                message: 'Choose a valid project start date and due date, with the due date on or after the start date.'
+            });
+        }
 
         const projectDescription =
             typeof description === 'string'
@@ -123,6 +148,8 @@ const createProject = async (req, res) => {
                 name,
                 project_type,
                 time_span,
+                start_date,
+                due_date,
                 description,
                 color,
                 creator_firebase_uid,
@@ -143,8 +170,10 @@ const createProject = async (req, res) => {
                 $8,
                 $9,
                 $10,
-                $11::jsonb,
-                $12::jsonb
+                $11,
+                $12,
+                $13::jsonb,
+                $14::jsonb
             )
             RETURNING
                 id,
@@ -152,6 +181,8 @@ const createProject = async (req, res) => {
                 name,
                 project_type,
                 time_span,
+                start_date,
+                due_date,
                 description,
                 color,
                 creator_firebase_uid,
@@ -169,6 +200,8 @@ const createProject = async (req, res) => {
             cleanName,
             projectType,
             timeSpan,
+            start_date || null,
+            due_date || null,
             projectDescription,
             projectColor,
             creatorFirebaseUid,
@@ -292,6 +325,8 @@ const getProjects = async (req, res) => {
                 name,
                 project_type,
                 time_span,
+                start_date,
+                due_date,
                 description,
                 color,
                 creator_firebase_uid,
@@ -406,6 +441,8 @@ const getProject = async (req, res) => {
                 name,
                 project_type,
                 time_span,
+                start_date,
+                due_date,
                 description,
                 color,
                 creator_firebase_uid,
@@ -748,6 +785,8 @@ const updateProject = async (req, res) => {
                 name,
                 project_type,
                 time_span,
+                start_date,
+                due_date,
                 description,
                 color,
                 creator_firebase_uid,

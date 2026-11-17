@@ -11481,7 +11481,7 @@ body.dark-mode .mini-cal-day {
     color: #E4E4E7;
 }
 
-body.dark-mode .mini-cal-day:hover:not(.other-month) {
+body.dark-mode .mini-cal-day:hover:not(.other-month):not(.is-past) {
     background: #272733;
 }
 

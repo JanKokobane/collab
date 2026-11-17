@@ -251,7 +251,12 @@ function createProjectTimeSpanSelector() {
   endInput.addEventListener('change', updatePreview)
 
   field.append(fieldLabel, dates, preview, hiddenInput)
-  return { element: field, input: hiddenInput, focus: dateCalendars.focus }
+  return {
+    element: field,
+    input: hiddenInput,
+    focus: dateCalendars.focus,
+    getDates: () => ({ startDate: startInput.value, dueDate: endInput.value })
+  }
 }
 
 function createProjectDateRangeCalendars(startInput, endInput, onChange) {
@@ -468,6 +473,7 @@ export function openCreateProjectModal() {
     const name = nameInput.value.trim()
     const projectType = typeSelect.value || 'General Collaboration'
     const timeSpan = timeSpanSelector.input.value.trim()
+    const projectDates = timeSpanSelector.getDates()
     const description = descInput.value.trim()
     const color = colorPickerObj.getColor()
 
@@ -534,6 +540,8 @@ export function openCreateProjectModal() {
         name: newProject.name,
         project_type: newProject.projectType,
         time_span: newProject.timeSpan,
+        start_date: projectDates.startDate,
+        due_date: projectDates.dueDate,
         description: newProject.description,
         color: newProject.color,
         invited_members: newProject.invitedMembers,
@@ -555,6 +563,8 @@ export function openCreateProjectModal() {
         projectId: savedProject.project_id || savedProject.id || newProject.id,
         projectType: savedProject.project_type || newProject.projectType,
         timeSpan: savedProject.time_span || newProject.timeSpan,
+        startDate: savedProject.start_date || projectDates.startDate,
+        dueDate: savedProject.due_date || projectDates.dueDate,
         creatorFirebaseUid: savedProject.creator_firebase_uid || null,
         creatorEmail: savedProject.creator_email || newProject.creatorEmail,
         creatorName: savedProject.creator_name || newProject.creatorName,
@@ -567,16 +577,16 @@ export function openCreateProjectModal() {
       return
     }
 
-    const today = toLocalDateKey()
+    const kickoffDate = projectDates.startDate || toLocalDateKey()
     tasks.push({
       id: Date.now(),
       project: name,
       title: `Plan kickoff for ${name}`,
       tag: 'Product',
       tagTone: 'yellow',
-      due: 'Today',
-      startDate: today,
-      date: today,
+      due: kickoffDate === toLocalDateKey() ? 'Today' : kickoffDate,
+      startDate: kickoffDate,
+      date: kickoffDate,
       assignee: currentUser?.initials || 'AM',
       assigneeName: currentUser?.name || 'Alex Morgan',
       assigneeTone: 'teal',

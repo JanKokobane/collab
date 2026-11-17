@@ -298,6 +298,9 @@ const normalizeTaskInput = body => {
     if (!isValidDate(startDate) || !isValidDate(dueDate)) {
         return { error: 'Task dates must use YYYY-MM-DD format.' };
     }
+    if (startDate && dueDate && startDate > dueDate) {
+        return { error: 'Task due date must be on or after its start date.' };
+    }
     const today = new Date().toISOString().slice(0, 10);
     if ([startDate, dueDate].some(date => date && date < today)) {
         return { error: 'Task start and due dates cannot be in the past.' };
@@ -404,7 +407,8 @@ const markDependencyWarnings = async (taskId, reason, actorUid, taskTitle) => {
 const getProjectAndCheckAccess = async (projectId, firebaseUid, ownerOnly = false) => {
     const result = await query(
         `
-            SELECT project_id, name, creator_firebase_uid, creator_initials, sprints
+            SELECT project_id, name, creator_firebase_uid, creator_initials,
+                   start_date, due_date, sprints
             FROM projects p
             WHERE p.project_id = $1
               AND (
@@ -461,6 +465,28 @@ const validateAssignmentAndSprint = async (project, task, { allowLegacyTaskAssig
     if (!assignee.rowCount) {
         return 'Tasks can only be assigned to the project owner or users who accepted an invitation to this project.';
     }
+    return null;
+};
+
+const validateTaskProjectTimeline = (project, task) => {
+    const projectStartDate = project.start_date
+        ? String(project.start_date).slice(0, 10)
+        : null;
+    const projectDueDate = project.due_date
+        ? String(project.due_date).slice(0, 10)
+        : null;
+    const taskStartDate = task.startDate;
+    const taskDueDate = task.dueDate;
+
+    if (
+        (taskStartDate && projectStartDate && taskStartDate < projectStartDate) ||
+        (taskDueDate && projectDueDate && taskDueDate > projectDueDate) ||
+        (taskStartDate && projectDueDate && taskStartDate > projectDueDate) ||
+        (taskDueDate && projectStartDate && taskDueDate < projectStartDate)
+    ) {
+        return `Task dates must fall within the project timeline (${projectStartDate || 'any start date'} to ${projectDueDate || 'any due date'}).`;
+    }
+
     return null;
 };
 
@@ -1336,6 +1362,14 @@ const createProjectTask = async (req, res) => {
                 message: 'New project tasks must start in To do.'
             });
         }
+        const timelineError = validateTaskProjectTimeline(project, normalized.value);
+        if (timelineError) {
+            return res.status(400).json({
+                success: false,
+                code: 'TASK_OUTSIDE_PROJECT_TIMELINE',
+                message: timelineError
+            });
+        }
         const messageLinkError = await validateChatMessageLink(
             project.project_id,
             normalized.value.chatMessageId,
@@ -1426,6 +1460,14 @@ const updateProjectTask = async (req, res) => {
                 success: false,
                 code: 'PROJECT_NOT_FOUND',
                 message: 'Project not found or you are not its creator.'
+            });
+        }
+        const timelineError = validateTaskProjectTimeline(project, normalized.value);
+        if (timelineError) {
+            return res.status(400).json({
+                success: false,
+                code: 'TASK_OUTSIDE_PROJECT_TIMELINE',
+                message: timelineError
             });
         }
         const assignmentError = await validateAssignmentAndSprint(project, normalized.value, {

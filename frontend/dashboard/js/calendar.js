@@ -514,10 +514,22 @@ export function renderCalendarDaysGrid() {
   })
 }
 
-export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey(), initialDueDate = toLocalDateKey()) {
+export function createScheduleCalendarPicker(
+  initialStartDate = toLocalDateKey(),
+  initialDueDate = toLocalDateKey(),
+  { minDate: requestedMinDate, maxDate = null } = {}
+) {
   const todayKey = toLocalDateKey()
-  let startDate = notBeforeTodayDateKey(initialStartDate, todayKey)
-  let dueDate = notBeforeTodayDateKey(initialDueDate, todayKey)
+  const minDate = requestedMinDate && requestedMinDate > todayKey
+    ? requestedMinDate
+    : todayKey
+  const clampToProjectRange = dateKey => {
+    if (dateKey < minDate) return minDate
+    if (maxDate && dateKey > maxDate) return maxDate
+    return dateKey
+  }
+  let startDate = clampToProjectRange(notBeforeTodayDateKey(initialStartDate, todayKey))
+  let dueDate = clampToProjectRange(notBeforeTodayDateKey(initialDueDate, todayKey))
   if (dueDate < startDate) dueDate = startDate
   let activeField = 'due'
 
@@ -554,7 +566,8 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
   const startLabel = make('label', '', 'Start Date')
   const startInput = make('input')
   startInput.type = 'date'
-  startInput.min = todayKey
+  startInput.min = minDate
+  if (maxDate) startInput.max = maxDate
   startInput.value = startDate
   startField.append(startLabel, startInput)
 
@@ -562,7 +575,8 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
   const dueLabel = make('label', '', 'Due Date')
   const dueInput = make('input')
   dueInput.type = 'date'
-  dueInput.min = todayKey
+  dueInput.min = minDate
+  if (maxDate) dueInput.max = maxDate
   dueInput.value = dueDate
   dueField.append(dueLabel, dueInput)
 
@@ -612,7 +626,8 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
     const firstDay = new Date(curYear, curMonth, 1)
     const lastDay = new Date(curYear, curMonth + 1, 0)
     const daysInMonth = lastDay.getDate()
-    const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+    const minDateObj = parseLocalDate(minDate)
+    const currentMonthStart = new Date(minDateObj.getFullYear(), minDateObj.getMonth(), 1)
     const displayedMonthStart = new Date(curYear, curMonth, 1)
     prevBtn.disabled = displayedMonthStart <= currentMonthStart
     
@@ -629,8 +644,8 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
       const cell = make('div', 'mini-cal-day', day)
-      const isPastDate = dateStr < todayKey
-      if (isPastDate) {
+      const isOutsideRange = dateStr < minDate || Boolean(maxDate && dateStr > maxDate)
+      if (isOutsideRange) {
         cell.classList.add('is-past')
         cell.setAttribute('aria-disabled', 'true')
       }
@@ -646,7 +661,7 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
       if (inRange) cell.classList.add('in-range')
 
       cell.addEventListener('click', () => {
-        if (isPastDate) return
+        if (isOutsideRange) return
         if (activeField === 'start') {
           startDate = dateStr
           if (dueDate < startDate) dueDate = startDate
@@ -676,6 +691,9 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
   function updateSummaryAndUI() {
     startInput.value = startDate
     dueInput.value = dueDate
+    startInput.max = maxDate && maxDate < dueDate ? maxDate : dueDate
+    dueInput.min = startDate > minDate ? startDate : minDate
+    if (maxDate) dueInput.max = maxDate
 
     modeStartBtn.className = activeField === 'start' ? 'cal-mode-btn active' : 'cal-mode-btn'
     modeDueBtn.className = activeField === 'due' ? 'cal-mode-btn active' : 'cal-mode-btn'
@@ -690,7 +708,10 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
 
     presetPills.forEach((p, idx) => {
       const preset = presets[idx]
-      if (preset.start === startDate && preset.due === dueDate) {
+      const presetStart = clampToProjectRange(preset.start)
+      let presetDue = clampToProjectRange(preset.due)
+      if (presetDue < presetStart) presetDue = presetStart
+      if (presetStart === startDate && presetDue === dueDate) {
         p.classList.add('active')
       } else {
         p.classList.remove('active')
@@ -718,10 +739,11 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
     const pill = make('button', 'cal-preset-pill', p.label)
     pill.type = 'button'
     pill.addEventListener('click', () => {
-      startDate = p.start
-      dueDate = p.due
+      startDate = clampToProjectRange(p.start)
+      dueDate = clampToProjectRange(p.due)
+      if (dueDate < startDate) dueDate = startDate
       activeField = 'due'
-      const d = parseLocalDate(p.due)
+      const d = parseLocalDate(dueDate)
       curYear = d.getFullYear()
       curMonth = d.getMonth()
       updateSummaryAndUI()
@@ -731,7 +753,8 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
   })
 
   startInput.addEventListener('change', () => {
-    if (startInput.value && startInput.value >= todayKey) {
+    if (startInput.value && startInput.value >= minDate &&
+      (!maxDate || startInput.value <= maxDate)) {
       startDate = startInput.value
       if (dueDate < startDate) dueDate = startDate
       const d = parseLocalDate(startDate)
@@ -742,7 +765,8 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
   })
 
   dueInput.addEventListener('change', () => {
-    if (dueInput.value && dueInput.value >= todayKey) {
+    if (dueInput.value && dueInput.value >= minDate &&
+      (!maxDate || dueInput.value <= maxDate)) {
       dueDate = dueInput.value
       if (startDate > dueDate) startDate = dueDate
       const d = parseLocalDate(dueDate)
@@ -792,12 +816,12 @@ export function createScheduleCalendarPicker(initialStartDate = toLocalDateKey()
   })
 
   todayBtn.addEventListener('click', () => {
-    const todayKey = toLocalDateKey()
-    const today = parseLocalDate(todayKey)
-    curYear = today.getFullYear()
-    curMonth = today.getMonth()
-    startDate = todayKey
-    dueDate = todayKey
+    const selectedToday = clampToProjectRange(todayKey)
+    const selectedTodayDate = parseLocalDate(selectedToday)
+    curYear = selectedTodayDate.getFullYear()
+    curMonth = selectedTodayDate.getMonth()
+    startDate = selectedToday
+    dueDate = selectedToday
     activeField = 'due'
     updateSummaryAndUI()
   })
