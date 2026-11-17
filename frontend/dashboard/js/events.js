@@ -10,9 +10,9 @@ import {
   setActiveFilter,
   setActiveDisplayMode
 } from './state.js'
-import { renderTasks, renderListView, getFilteredTasks } from './tasks.js?v=20261028-project-comments'
+import { renderTasks, renderListView, getFilteredTasks } from './tasks.js?v=20261117-no-auto-sprints'
 import { openCreateProjectModal, openAddSprintModal, openInviteCollaboratorModal, openManageCollaboratorsModal } from './projects.js?v=20261117-project-calendar-same-month'
-import { toLocalDateKey } from './dateUtils.js'
+import { toLocalDateKey } from './dateUtils.js?v=20261117-date-input-validation'
 import {
   openScheduleMeetingModal,
   calCurrentDate,
@@ -20,7 +20,7 @@ import {
   setSelectedCalDate,
   renderActualCalendarGrid,
   setActiveCalendarFilter
-} from './calendar.js'
+} from './calendar.js?v=20261117-date-input-validation'
 import {
   renderAdminProjectsTable,
   renderMembersTable,
@@ -32,7 +32,7 @@ import {
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   openInviteModal
-} from './admin.js?v=20261112-task-project-table'
+} from './admin.js?v=20261117-project-task-date-compare'
 import {
   currentTheme,
   applyTheme,

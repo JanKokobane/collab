@@ -86,13 +86,8 @@ export function renderSprintChips() {
   })
   container.append(allChip)
 
-  if (!proj.sprints || proj.sprints.length === 0) {
-    proj.sprints = [
-      { id: `s_${Date.now()}`, name: 'Sprint 1: Core Deliverables', status: 'Active' }
-    ]
-  }
-
-  proj.sprints.forEach(sprint => {
+  const projectSprints = Array.isArray(proj.sprints) ? proj.sprints : []
+  projectSprints.forEach(sprint => {
     const isAct = activeSprintFilter === sprint.name
     const chip = make('div', `sprint-chip ${isAct ? 'active' : ''}`)
     const count = tasks.filter(t => t.project === proj.name && t.sprint === sprint.name).length

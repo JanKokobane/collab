@@ -25,10 +25,10 @@ import {
   isCurrentUserProjectCreator,
   showPermissionNotice,
   updateUserUI
-} from './auth.js'
+} from './auth.js?v=20261117-no-auto-sprints'
 
 import { switchView } from './navigation.js'
-import { toLocalDateKey } from './dateUtils.js'
+import { toLocalDateKey } from './dateUtils.js?v=20261117-date-input-validation'
 
 // ============================================================
 // PROJECTS MANAGEMENT (Create Group Projects)

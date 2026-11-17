@@ -3,15 +3,15 @@
 // ============================================================
 
 import { updateNotifCount } from './state.js'
-import { updateUserUI } from './auth.js'
+import { updateUserUI } from './auth.js?v=20261117-no-auto-sprints'
 import { renderProjectNav } from './projects.js?v=20261117-project-calendar-same-month'
-import { renderTasks } from './tasks.js'
+import { renderTasks } from './tasks.js?v=20261117-no-auto-sprints'
 import {
   renderMembersTable,
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   renderAuditLogs
-} from './admin.js?v=20261112-task-project-table'
+} from './admin.js?v=20261117-project-task-date-compare'
 import {
   currentTheme,
   currentAccent,

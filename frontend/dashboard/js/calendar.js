@@ -21,11 +21,12 @@ import {
   addDaysToDateKey,
   formatRelativeDate,
   getDateDayOffset,
+  normalizeDateKey,
   parseLocalDate,
   toLocalDateKey,
   notBeforeTodayDateKey,
   getEarliestDateTimeInput
-} from './dateUtils.js'
+} from './dateUtils.js?v=20261117-date-input-validation'
 
 // ============================================================
 // CALENDAR TIMELINE PANEL & INTERACTIVE MONTH CALENDAR
@@ -520,16 +521,23 @@ export function createScheduleCalendarPicker(
   { minDate: requestedMinDate, maxDate = null } = {}
 ) {
   const todayKey = toLocalDateKey()
-  const minDate = requestedMinDate && requestedMinDate > todayKey
-    ? requestedMinDate
+  const projectStartDate = normalizeDateKey(requestedMinDate)
+  const projectDueDate = normalizeDateKey(maxDate)
+  const minDate = projectStartDate && projectStartDate > todayKey
+    ? projectStartDate
     : todayKey
-  const clampToProjectRange = dateKey => {
+  const validMaxDate = projectDueDate && projectDueDate >= minDate
+    ? projectDueDate
+    : null
+  const clampToProjectRange = value => {
+    const dateKey = normalizeDateKey(value)
+    if (!dateKey) return minDate
     if (dateKey < minDate) return minDate
-    if (maxDate && dateKey > maxDate) return maxDate
+    if (validMaxDate && dateKey > validMaxDate) return validMaxDate
     return dateKey
   }
-  let startDate = clampToProjectRange(notBeforeTodayDateKey(initialStartDate, todayKey))
-  let dueDate = clampToProjectRange(notBeforeTodayDateKey(initialDueDate, todayKey))
+  let startDate = clampToProjectRange(initialStartDate)
+  let dueDate = clampToProjectRange(initialDueDate)
   if (dueDate < startDate) dueDate = startDate
   let activeField = 'due'
 
@@ -567,7 +575,7 @@ export function createScheduleCalendarPicker(
   const startInput = make('input')
   startInput.type = 'date'
   startInput.min = minDate
-  if (maxDate) startInput.max = maxDate
+  if (validMaxDate) startInput.max = validMaxDate
   startInput.value = startDate
   startField.append(startLabel, startInput)
 
@@ -576,7 +584,7 @@ export function createScheduleCalendarPicker(
   const dueInput = make('input')
   dueInput.type = 'date'
   dueInput.min = minDate
-  if (maxDate) dueInput.max = maxDate
+  if (validMaxDate) dueInput.max = validMaxDate
   dueInput.value = dueDate
   dueField.append(dueLabel, dueInput)
 
@@ -644,7 +652,7 @@ export function createScheduleCalendarPicker(
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
       const cell = make('div', 'mini-cal-day', day)
-      const isOutsideRange = dateStr < minDate || Boolean(maxDate && dateStr > maxDate)
+      const isOutsideRange = dateStr < minDate || Boolean(validMaxDate && dateStr > validMaxDate)
       if (isOutsideRange) {
         cell.classList.add('is-past')
         cell.setAttribute('aria-disabled', 'true')
@@ -691,9 +699,9 @@ export function createScheduleCalendarPicker(
   function updateSummaryAndUI() {
     startInput.value = startDate
     dueInput.value = dueDate
-    startInput.max = maxDate && maxDate < dueDate ? maxDate : dueDate
+    startInput.max = validMaxDate && validMaxDate < dueDate ? validMaxDate : dueDate
     dueInput.min = startDate > minDate ? startDate : minDate
-    if (maxDate) dueInput.max = maxDate
+    if (validMaxDate) dueInput.max = validMaxDate
 
     modeStartBtn.className = activeField === 'start' ? 'cal-mode-btn active' : 'cal-mode-btn'
     modeDueBtn.className = activeField === 'due' ? 'cal-mode-btn active' : 'cal-mode-btn'
@@ -754,7 +762,7 @@ export function createScheduleCalendarPicker(
 
   startInput.addEventListener('change', () => {
     if (startInput.value && startInput.value >= minDate &&
-      (!maxDate || startInput.value <= maxDate)) {
+      (!validMaxDate || startInput.value <= validMaxDate)) {
       startDate = startInput.value
       if (dueDate < startDate) dueDate = startDate
       const d = parseLocalDate(startDate)
@@ -766,7 +774,7 @@ export function createScheduleCalendarPicker(
 
   dueInput.addEventListener('change', () => {
     if (dueInput.value && dueInput.value >= minDate &&
-      (!maxDate || dueInput.value <= maxDate)) {
+      (!validMaxDate || dueInput.value <= validMaxDate)) {
       dueDate = dueInput.value
       if (startDate > dueDate) startDate = dueDate
       const d = parseLocalDate(dueDate)

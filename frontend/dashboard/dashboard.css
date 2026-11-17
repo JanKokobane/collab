@@ -6140,6 +6140,13 @@ body.dark-mode .admin-project-action-option:focus-visible,
     vertical-align: middle;
 }
 
+.admin-projects-card .admin-table th:not(:last-child),
+.admin-projects-card .admin-table td:not(:last-child),
+.admin-members-card .admin-table th:not(:last-child),
+.admin-members-card .admin-table td:not(:last-child) {
+    border-right: 1px solid #E4E7EC;
+}
+
 @media (min-width: 1101px) {
     .admin-projects-card .admin-table {
         width: 100%;
@@ -6155,7 +6162,7 @@ body.dark-mode .admin-project-action-option:focus-visible,
 
     .admin-projects-card .admin-table th:nth-child(1),
     .admin-projects-card .admin-table td:nth-child(1) {
-        width: 25%;
+        width: 24%;
     }
 
     .admin-projects-card .admin-table th:nth-child(2),
@@ -6165,7 +6172,7 @@ body.dark-mode .admin-project-action-option:focus-visible,
 
     .admin-projects-card .admin-table th:nth-child(3),
     .admin-projects-card .admin-table td:nth-child(3) {
-        width: 10%;
+        width: 13%;
     }
 
     .admin-projects-card .admin-table th:nth-child(4),
@@ -6175,12 +6182,12 @@ body.dark-mode .admin-project-action-option:focus-visible,
 
     .admin-projects-card .admin-table th:nth-child(5),
     .admin-projects-card .admin-table td:nth-child(5) {
-        width: 15%;
+        width: 14%;
     }
 
     .admin-projects-card .admin-table th:nth-child(6),
     .admin-projects-card .admin-table td:nth-child(6) {
-        width: 10%;
+        width: 9%;
     }
 
     .admin-projects-card .project-cell,
@@ -6244,6 +6251,17 @@ body.dark-mode .admin-table td,
 [data-theme="dark"] .admin-table td {
     border-bottom-color: #27272A;
     color: #E4E4E7;
+}
+
+body.dark-mode .admin-projects-card .admin-table th:not(:last-child),
+body.dark-mode .admin-projects-card .admin-table td:not(:last-child),
+body.dark-mode .admin-members-card .admin-table th:not(:last-child),
+body.dark-mode .admin-members-card .admin-table td:not(:last-child),
+[data-theme="dark"] .admin-projects-card .admin-table th:not(:last-child),
+[data-theme="dark"] .admin-projects-card .admin-table td:not(:last-child),
+[data-theme="dark"] .admin-members-card .admin-table th:not(:last-child),
+[data-theme="dark"] .admin-members-card .admin-table td:not(:last-child) {
+    border-right-color: #27272A;
 }
 
 body.dark-mode .admin-table tr:hover td,
@@ -6312,6 +6330,12 @@ body.dark-mode .admin-table tr:hover td,
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     text-overflow: ellipsis;
+}
+
+.project-task-project-row.is-expanded .project-task-row-identity small {
+    display: block;
+    overflow: visible;
+    -webkit-line-clamp: unset;
 }
 
 .project-task-row-metadata {

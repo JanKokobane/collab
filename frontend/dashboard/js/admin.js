@@ -18,9 +18,13 @@ import {
   loadNotificationsFromAPI,
   replaceProjectTasksFromBackend
 } from './state.js'
-import { getActiveProject } from './auth.js'
-import { createScheduleCalendarPicker } from './calendar.js'
-import { addDaysToDateKey, toLocalDateKey } from './dateUtils.js'
+import { getActiveProject } from './auth.js?v=20261117-no-auto-sprints'
+import { createScheduleCalendarPicker } from './calendar.js?v=20261117-date-input-validation'
+import {
+  addDaysToDateKey,
+  normalizeDateKey,
+  toLocalDateKey
+} from './dateUtils.js?v=20261117-date-input-validation'
 import {
   formatProjectTimeSpanForDisplay,
   openInviteCollaboratorModal,
@@ -634,6 +638,7 @@ export async function renderAdminTasksTable({ silent = false, canApply = () => t
       expandButtonToggle.setAttribute('aria-expanded', String(!isExpanded))
       expandButtonToggle.setAttribute('aria-label', `${isExpanded ? 'Expand' : 'Collapse'} ${project.name}`)
       detailsRow.hidden = isExpanded
+      projectRow.classList.toggle('is-expanded', !isExpanded)
       expandButton.classList.toggle('is-expanded', !isExpanded)
       expandButtonToggle.classList.toggle('is-expanded', !isExpanded)
     }
@@ -1343,9 +1348,11 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   const initialStartDate = task?.start_date
     ? String(task.start_date).slice(0, 10)
     : (defaults.startDate || initialDueDate)
+  const projectStartDate = normalizeDateKey(project.startDate)
+  const projectDueDate = normalizeDateKey(project.dueDate)
   const schedulePicker = createScheduleCalendarPicker(initialStartDate, initialDueDate, {
-    minDate: project.startDate,
-    maxDate: project.dueDate
+    minDate: projectStartDate,
+    maxDate: projectDueDate
   })
 
   const assignmentRow = make('div', 'form-row project-task-assignment-row')
@@ -1379,8 +1386,8 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     event.preventDefault()
     const schedule = schedulePicker.getValues()
     if (
-      (project.startDate && schedule.startDate < project.startDate) ||
-      (project.dueDate && schedule.dueDate > project.dueDate)
+      (projectStartDate && schedule.startDate < projectStartDate) ||
+      (projectDueDate && schedule.dueDate > projectDueDate)
     ) {
       showDashboardToast('Task dates must fall within the project timeline.', 'error')
       return
@@ -1622,7 +1629,15 @@ export function openLegacyAdminTaskModal(prefilledStatus = 'To do', prefilledPro
   function updateSprints() {
     sprintSelect.replaceChildren()
     const selectedProj = projects.find(p => p.name === projectSelect.value) || currentProj
-    const curSprints = selectedProj.sprints || [{ name: 'Sprint 1: Wireframes' }]
+    const curSprints = Array.isArray(selectedProj.sprints) ? selectedProj.sprints : []
+    sprintSelect.disabled = curSprints.length === 0
+    if (!curSprints.length) {
+      const emptyOption = make('option', '', 'Create a sprint before adding tasks')
+      emptyOption.value = ''
+      emptyOption.disabled = true
+      emptyOption.selected = true
+      sprintSelect.append(emptyOption)
+    }
     curSprints.forEach(s => {
       const opt = make('option', '', s.name)
       opt.value = s.name
@@ -1630,7 +1645,6 @@ export function openLegacyAdminTaskModal(prefilledStatus = 'To do', prefilledPro
     })
   }
   updateSprints()
-  projectSelect.addEventListener('change', updateSprints)
   sprintLabel.append(sprintSelect)
 
   const titleLabel = make('label', '', 'Task Title')
@@ -1686,6 +1700,11 @@ export function openLegacyAdminTaskModal(prefilledStatus = 'To do', prefilledPro
 
   const submit = make('button', 'primary-button full gold', 'Add Task to Workspace')
   submit.type = 'submit'
+  submit.disabled = sprintSelect.disabled
+  projectSelect.addEventListener('change', () => {
+    updateSprints()
+    submit.disabled = sprintSelect.disabled
+  })
 
   form.append(
     close,
@@ -2028,15 +2047,13 @@ export function renderAdminProjectsTable() {
   projects.forEach(project => {
     const tr = document.createElement('tr')
 
-    // 1. Project Info (Name + Color dot + Description)
+    // 1. Project name
     const tdProject = document.createElement('td')
     const projWrap = make('div', 'project-cell')
-    const dot = make('i', `dot ${project.color || 'blue'}`)
     const info = make('div', 'project-info')
     const nameStrong = make('strong', '', project.name)
-    const descSmall = make('small', '', project.description || 'No description provided')
-    info.append(nameStrong, descSmall)
-    projWrap.append(dot, info)
+    info.append(nameStrong)
+    projWrap.append(info)
     tdProject.append(projWrap)
 
     // 2. Collaboration Type
@@ -2063,18 +2080,12 @@ export function renderAdminProjectsTable() {
       isCurrentUserCreator ? currentUser.name?.trim() : ''
     ) || project.creatorName?.trim() || project.creatorEmail?.trim() || 'Project creator'
     const creatorEmail = project.creatorEmail?.trim()
-    const creatorInitials = isCurrentUserCreator && currentUser.initials
-      ? currentUser.initials
-      : project.creatorInitials || creatorName.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase()
-    const creatorTone = creatorInitials === 'ER' ? 'purple' : creatorInitials === 'SK' ? 'teal' : 'coral'
-    const creatorAv = make('div', `avatar ${creatorTone}-bg`)
-    creatorAv.textContent = creatorInitials
     const creatorInfo = make('div', 'member-info')
     creatorInfo.append(
       make('strong', '', creatorName),
       ...(creatorEmail && creatorName !== creatorEmail ? [make('small', '', creatorEmail)] : [])
     )
-    creatorWrap.append(creatorAv, creatorInfo)
+    creatorWrap.append(creatorInfo)
     tdCreator.append(creatorWrap)
 
     // 5. Team / Collaborators

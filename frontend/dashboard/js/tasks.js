@@ -18,12 +18,12 @@ import {
   renderAvatarElement,
   hub
 } from './state.js'
-import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } from './auth.js'
-import { createScheduleCalendarPicker } from './calendar.js'
+import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } from './auth.js?v=20261117-no-auto-sprints'
+import { createScheduleCalendarPicker } from './calendar.js?v=20261117-date-input-validation'
 import { api } from './api.js'
 import { setDashboardButtonLoading, showDashboardToast } from './modalChrome.js'
 import { openProjectProgressAside } from './projectProgressAside.js?v=20261111-task-sprint-review'
-import { toLocalDateKey } from './dateUtils.js'
+import { toLocalDateKey } from './dateUtils.js?v=20261117-date-input-validation'
 
 // ============================================================
 // TASKS & BOARD MANAGEMENT
@@ -634,7 +634,14 @@ export function openTaskModal() {
 
   const sprintLabel = make('label', '', 'Project Sprint')
   const sprintSelect = document.createElement('select')
-  const curProjSprints = proj.sprints || [{ name: 'Sprint 1: Core Deliverables' }]
+  const curProjSprints = Array.isArray(proj.sprints) ? proj.sprints : []
+  if (!curProjSprints.length) {
+    const emptyOption = make('option', '', 'Create a sprint before adding tasks')
+    emptyOption.value = ''
+    emptyOption.disabled = true
+    emptyOption.selected = true
+    sprintSelect.append(emptyOption)
+  }
   curProjSprints.forEach(s => {
     const opt = make('option', '', s.name)
     opt.value = s.name
@@ -674,6 +681,7 @@ export function openTaskModal() {
 
   const submit = make('button', 'primary-button full gold', 'Assign & Create Task')
   submit.type = 'submit'
+  submit.disabled = curProjSprints.length === 0
 
   form.append(close, make('p', 'eyebrow', 'NEW TASK ASSIGNMENT'), title, copy, titleLabel, descLabel, row1, row2, row3, schedulePicker.element, submit)
 

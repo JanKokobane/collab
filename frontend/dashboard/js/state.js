@@ -6,7 +6,7 @@ import {
   addDaysToDateKey,
   formatRelativeDate,
   toLocalDateKey
-} from './dateUtils.js'
+} from './dateUtils.js?v=20261117-date-input-validation'
 import { firebaseAuth } from '../../firebase.js'
 import { api } from './api.js'
 

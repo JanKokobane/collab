@@ -10,7 +10,7 @@ import {
   make,
   hub
 } from './state.js'
-import { updateUserUI } from './auth.js'
+import { updateUserUI } from './auth.js?v=20261117-no-auto-sprints'
 import { initSettingsControls } from './theme.js'
 import { loadProjectMeetings } from './meetings.js'
 import { loadProjectCalendarData } from './calendarData.js'

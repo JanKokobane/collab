@@ -19,15 +19,26 @@ export function getEarliestDateTimeInput(stepSeconds = 60, now = new Date()) {
 }
 
 export function notBeforeTodayDateKey(dateKey, todayKey = toLocalDateKey()) {
-  if (typeof dateKey !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+  if (!isValidDateKey(dateKey)) {
     return todayKey
+  }
+  return dateKey >= todayKey ? dateKey : todayKey
+}
+
+export function isValidDateKey(dateKey) {
+  if (typeof dateKey !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+    return false
   }
   const [year, month, day] = dateKey.split('-').map(Number)
   const parsedDate = new Date(year, month - 1, day)
-  const isValidDate = parsedDate.getFullYear() === year &&
+  return parsedDate.getFullYear() === year &&
     parsedDate.getMonth() === month - 1 &&
     parsedDate.getDate() === day
-  return isValidDate && dateKey >= todayKey ? dateKey : todayKey
+}
+
+export function normalizeDateKey(value) {
+  const dateKey = typeof value === 'string' ? value.slice(0, 10) : ''
+  return isValidDateKey(dateKey) ? dateKey : null
 }
 
 export function parseLocalDate(dateKey) {
@@ -50,6 +61,7 @@ export function getDateDayOffset(dateKey, referenceDate = new Date()) {
 }
 
 export function formatRelativeDate(dateKey, referenceDate = new Date()) {
+  if (!isValidDateKey(dateKey)) return '—'
   const offset = getDateDayOffset(dateKey, referenceDate)
   if (offset === 0) return 'Today'
   if (offset === 1) return 'Tomorrow'

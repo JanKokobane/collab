@@ -1,7 +1,7 @@
 import { activeView, addAuditLog, hub, make, meetings, projects } from './state.js'
 import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
-import { openAddReminderModal, openScheduleMeetingModal } from './calendar.js'
-import { formatRelativeDate } from './dateUtils.js'
+import { openAddReminderModal, openScheduleMeetingModal } from './calendar.js?v=20261117-date-input-validation'
+import { formatRelativeDate } from './dateUtils.js?v=20261117-date-input-validation'
 import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { openMeteredMeetingModal } from './meteredMeetingModal.js'
 

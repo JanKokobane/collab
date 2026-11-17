@@ -3,7 +3,7 @@ import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
 import { getSvg } from './icons.js'
 import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
-import { getActiveProject } from './auth.js'
+import { getActiveProject } from './auth.js?v=20261117-no-auto-sprints'
 import { openCreateProjectModal } from './projects.js?v=20261117-project-calendar-same-month'
 
 export let teamResources = []

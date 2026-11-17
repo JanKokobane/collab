@@ -238,6 +238,20 @@ const isValidDate = value => {
         date.getUTCDate() === day;
 };
 
+const toProjectDateKey = value => {
+    if (value instanceof Date && Number.isFinite(value.getTime())) {
+        return [
+            value.getFullYear(),
+            String(value.getMonth() + 1).padStart(2, '0'),
+            String(value.getDate()).padStart(2, '0')
+        ].join('-');
+    }
+
+    return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+        ? value
+        : null;
+};
+
 const normalizeTaskInput = body => {
     const title = typeof body?.title === 'string' ? body.title.trim() : '';
     const description = typeof body?.description === 'string' ? body.description.trim() : '';
@@ -408,7 +422,9 @@ const getProjectAndCheckAccess = async (projectId, firebaseUid, ownerOnly = fals
     const result = await query(
         `
             SELECT project_id, name, creator_firebase_uid, creator_initials,
-                   start_date, due_date, sprints
+                   start_date::text AS start_date,
+                   due_date::text AS due_date,
+                   sprints
             FROM projects p
             WHERE p.project_id = $1
               AND (
@@ -469,12 +485,8 @@ const validateAssignmentAndSprint = async (project, task, { allowLegacyTaskAssig
 };
 
 const validateTaskProjectTimeline = (project, task) => {
-    const projectStartDate = project.start_date
-        ? String(project.start_date).slice(0, 10)
-        : null;
-    const projectDueDate = project.due_date
-        ? String(project.due_date).slice(0, 10)
-        : null;
+    const projectStartDate = toProjectDateKey(project.start_date);
+    const projectDueDate = toProjectDateKey(project.due_date);
     const taskStartDate = task.startDate;
     const taskDueDate = task.dueDate;
 

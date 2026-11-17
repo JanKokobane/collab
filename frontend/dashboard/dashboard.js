@@ -33,7 +33,7 @@ import {
   toggleAdminRole,
   switchTestingPerspective,
   showPermissionNotice
-} from './js/auth.js'
+} from './js/auth.js?v=20261117-no-auto-sprints'
 
 import {
   renderProjectNav,
@@ -54,7 +54,7 @@ import {
   moveTaskStatus,
   taskCard,
   setupDragAndDrop
-} from './js/tasks.js?v=20261111-task-sprint-review'
+} from './js/tasks.js?v=20261117-no-auto-sprints'
 
 import {
   renderCalendarPanel,
@@ -65,7 +65,7 @@ import {
   openAddReminderModal,
   openDayScheduleModal,
   createScheduleCalendarPicker
-} from './js/calendar.js'
+} from './js/calendar.js?v=20261117-date-input-validation'
 
 import {
   renderAdminProjectsTable,
@@ -78,7 +78,7 @@ import {
   openProjectTaskModal,
   openAdminEditTaskModal,
   openInviteModal
-} from './js/admin.js?v=20261112-task-project-table'
+} from './js/admin.js?v=20261117-project-task-date-compare'
 
 import {
   switchView,
