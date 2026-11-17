@@ -44,6 +44,7 @@ import {
   submitHomeTaskSprint,
   updateHomeTaskStatus,
   type HomeProject,
+  type HomeProjectSprint,
   type HomeTask,
   type HomeTaskAttachment,
   type HomeTaskSprintSubmissionAttachment,
@@ -94,7 +95,6 @@ type Task = {
   priority: string;
   due: string | null;
   status: string;
-  projectSprintsComplete: boolean;
   progress: number;
   category: string | null;
   tags: string[];
@@ -107,6 +107,7 @@ type Task = {
   createdByFirebaseUid: string | null;
   createdByProfileImage: string | null;
   assignedSprintCount: number;
+  assignedSprints: HomeProjectSprint[];
 };
 
 type SprintSubmissionAttachment = {
@@ -820,6 +821,12 @@ function taskFromHomeTask(
   const createdBy = task.createdByFirebaseUid === project.creatorFirebaseUid
     ? project.creatorName || project.creatorEmail
     : taskCreator?.name;
+  const projectAssignedSprints = project.sprints?.filter(
+    (sprint) => sprint.assigneeFirebaseUid === task.assigneeFirebaseUid,
+  ) || [];
+  const assignedSprints = projectAssignedSprints.length
+    ? projectAssignedSprints
+    : task.sprintName ? [{ name: task.sprintName, status: 'Upcoming' }] : [];
   return {
     id: task.id,
     projectId: task.projectId,
@@ -835,10 +842,6 @@ function taskFromHomeTask(
     priority: task.priority || 'No priority',
     due: task.dueDate,
     status: task.status || 'To do',
-    projectSprintsComplete: Boolean(
-      project.sprints?.length &&
-      project.sprints.every((sprint) => sprint.status === 'Completed')
-    ),
     progress: normalizedStatus === 'done'
       ? 100
       : normalizedStatus === 'in progress' ? 50 : 0,
@@ -854,9 +857,8 @@ function taskFromHomeTask(
     createdByProfileImage: taskCreatorIsProjectOwner
       ? project.creatorProfileImage || null
       : taskCreator?.profileImage || project.creatorProfileImage || null,
-    assignedSprintCount: project.sprints?.filter(
-      (sprint) => sprint.assigneeFirebaseUid === task.assigneeFirebaseUid,
-    ).length || 0,
+    assignedSprints,
+    assignedSprintCount: assignedSprints.length,
   };
 }
 
@@ -925,6 +927,7 @@ function TaskCard({
   const status = task.status.trim().toLowerCase();
   const done = status === 'done';
   const inProgress = status === 'in progress';
+  const canFinish = task.sprintSubmissionStatus === 'Completed';
   return (
     <View
       style={[
@@ -1011,13 +1014,18 @@ function TaskCard({
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={done ? 'Task completed' : inProgress ? 'Finish task' : 'Start task'}
-          disabled={busy}
+          accessibilityLabel={done
+            ? 'Task completed'
+            : inProgress
+              ? canFinish ? 'Finish task' : 'Submit sprint for review before finishing task'
+              : 'Start task'}
+          disabled={busy || (inProgress && !canFinish)}
           onPress={onAdvance}
           style={[
             styles.statusButton,
             inProgress && styles.statusButtonInProgress,
             done && styles.statusButtonDone,
+            inProgress && !canFinish && styles.primaryActionDisabled,
           ]}>
           {busy ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
@@ -1069,7 +1077,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     const height = Math.max(2, Math.round(2 + amplitude * 18));
     setRecordingWaveform((current) => [...current.slice(1), height]);
   }, [sprintRecorderState.isRecording, sprintRecorderState.metering, voiceNotePaused]);
-  const [expandedSprintTaskId, setExpandedSprintTaskId] = useState<string | null>(null);
+  const [expandedSprintName, setExpandedSprintName] = useState<string | null>(null);
   const [submissionNote, setSubmissionNote] = useState('');
   const [submissionAttachments, setSubmissionAttachments] = useState<SprintSubmissionAttachment[]>([]);
   const [submissionLinks, setSubmissionLinks] = useState<string[]>([]);
@@ -1166,6 +1174,23 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   const doneCount = tasks.length - openCount;
   const completionPercent = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) || null;
+  const selectedAssignedSprints = selectedTask
+    ? selectedTask.assignedSprints.map((sprint, index) => {
+      const sprintTasks = tasks.filter((task) =>
+        task.projectId === selectedTask.projectId && task.sprint === sprint.name);
+      const sprintTask = sprintTasks[0];
+      const previousSprintsSubmitted = selectedTask.assignedSprints
+        .slice(0, index)
+        .every((previousSprint) => {
+          const previousTasks = tasks.filter((task) =>
+            task.projectId === selectedTask.projectId && task.sprint === previousSprint.name);
+          return previousTasks.length > 0 && previousTasks.every((previousTask) =>
+            previousTask.sprintSubmissionStatus === 'Pending Review' ||
+            previousTask.sprintSubmissionStatus === 'Completed');
+        });
+      return { sprint, task: sprintTask, previousSprintsSubmitted };
+    })
+    : [];
   const selectedTaskProjectId = selectedTask?.projectId;
   const selectedCreatorProfileImage = selectedTask
     ? (selectedTask.createdByFirebaseUid
@@ -1227,13 +1252,21 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   }, [selectedTaskId, selectedTaskProjectId]);
 
   useEffect(() => {
-    setExpandedSprintTaskId(null);
+    setExpandedSprintName(null);
     setSubmissionNote('');
     setSubmissionAttachments([]);
     setSubmissionLinks([]);
     setSubmissionLinkDraft('');
     setSubmissionError('');
   }, [selectedTaskId]);
+
+  useEffect(() => {
+    setSubmissionNote('');
+    setSubmissionAttachments([]);
+    setSubmissionLinks([]);
+    setSubmissionLinkDraft('');
+    setSubmissionError('');
+  }, [expandedSprintName]);
 
   async function addSprintSubmissionAttachments() {
     if (submissionBusy || voiceNoteActive) return;
@@ -1512,8 +1545,9 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
       ? 100
       : status === 'In progress' ? Math.max(task.progress, 25) : 0;
 
-    if (currentStatus === 'in progress' && !task.projectSprintsComplete) {
-      setLoadError('This in-progress task cannot be moved until every project sprint is complete.');
+    if (currentStatus === 'in progress' && status === 'Done' &&
+      task.sprintSubmissionStatus !== 'Completed') {
+      setLoadError('This task can be completed after its sprint submission is accepted.');
       return;
     }
 
@@ -1952,85 +1986,95 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   <View style={styles.assignedSprintHeading}>
                     <Text style={styles.assignedSprintTitle}>Your assigned sprints</Text>
                     <Text style={styles.assignedSprintCount}>
-                      {selectedTask.sprint ? '1' : '0'}
+                      {selectedAssignedSprints.length}
                     </Text>
                   </View>
-                  {selectedTask.sprint ? (
-                    <>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`View details for ${selectedTask.sprint}`}
-                        accessibilityState={{
-                          expanded: expandedSprintTaskId === selectedTask.id,
-                        }}
-                        onPress={() => setExpandedSprintTaskId((current) => (
-                          current === selectedTask.id ? null : selectedTask.id
-                        ))}
-                        style={styles.assignedSprintExpandButton}>
-                        <View style={styles.assignedSprintDescription}>
-                          <Text style={styles.assignedSprintBullet}>-</Text>
-                          <Text style={styles.assignedSprintName}>{selectedTask.sprint}</Text>
-                        </View>
-                        <View style={styles.assignedSprintViewDetails}>
-                          <Text style={styles.assignedSprintExpandText}>
-                            {expandedSprintTaskId === selectedTask.id
-                              ? 'Hide details'
-                              : 'View details'}
-                          </Text>
-                          <Icon
-                            name="chevronDown"
-                            size={15}
-                            color="#68736C"
-                          />
-                        </View>
-                      </Pressable>
-                      {!['in progress', 'done'].includes(selectedTask.status.trim().toLowerCase()) ? (
-                        <View style={styles.assignedSprintStartRow}>
+                  {selectedAssignedSprints.length > 0 ? (
+                    selectedAssignedSprints.map(({ sprint, task: sprintTask, previousSprintsSubmitted }) => {
+                      const expanded = expandedSprintName === sprint.name;
+                      const taskStatus = sprintTask?.status.trim().toLowerCase() || '';
+                      const submissionStatus = sprintTask?.sprintSubmissionStatus || sprint.status;
+                      const alreadySubmitted = ['Pending Review', 'Completed']
+                        .includes(submissionStatus);
+                      return (
+                        <View key={sprint.name} style={styles.assignedSprintItem}>
                           <Pressable
                             accessibilityRole="button"
-                            accessibilityLabel="Start task"
-                            disabled={busyTaskId === selectedTask.id}
-                            onPress={() => { void nextStatus(selectedTask); }}
-                            style={[
-                              styles.assignedSprintStartButton,
-                              busyTaskId === selectedTask.id && styles.primaryActionDisabled,
-                            ]}>
-                            {busyTaskId === selectedTask.id ? (
-                              <ActivityIndicator size="small" color="#FFFFFF" />
-                            ) : (
-                              <>
-                                <Text style={styles.assignedSprintStartText}>Start task</Text>
-                                <Icon name="arrow" size={16} color="#FFFFFF" />
-                              </>
-                            )}
+                            accessibilityLabel={`View details for ${sprint.name}`}
+                            accessibilityState={{ expanded }}
+                            onPress={() => setExpandedSprintName((current) => (
+                              current === sprint.name ? null : sprint.name
+                            ))}
+                            style={styles.assignedSprintExpandButton}>
+                            <View style={styles.assignedSprintDescription}>
+                              <Text style={styles.assignedSprintBullet}>-</Text>
+                              <Text style={styles.assignedSprintName}>{sprint.name}</Text>
+                            </View>
+                            <View style={styles.assignedSprintViewDetails}>
+                              <Text style={styles.assignedSprintStatus}>{submissionStatus}</Text>
+                              <Text style={styles.assignedSprintExpandText}>
+                                {expanded ? 'Hide details' : 'View details'}
+                              </Text>
+                              <Icon name="chevronDown" size={15} color="#68736C" />
+                            </View>
                           </Pressable>
-                        </View>
-                      ) : null}
-                      {expandedSprintTaskId === selectedTask.id ? (
-                        <View style={styles.sprintDetails}>
-                          <Text style={styles.sprintDescription}>
-                            {selectedTask.description || 'No sprint details have been added.'}
-                          </Text>
-                          <View style={styles.sprintProgressHeading}>
-                            <Text style={styles.sectionLabel}>Progress</Text>
-                            <Text style={styles.sprintProgressPercent}>
-                              {selectedTask.progress}%
-                            </Text>
-                          </View>
-                          <View
-                            accessibilityRole="progressbar"
-                            accessibilityValue={{ min: 0, max: 100, now: selectedTask.progress }}
-                            style={styles.sprintProgressTrack}>
-                            <View
-                              style={[
-                                styles.sprintProgressFill,
-                                { width: `${selectedTask.progress}%` },
-                              ]}
-                            />
-                          </View>
+                          {sprintTask && taskStatus !== 'in progress' &&
+                          taskStatus !== 'done' && !alreadySubmitted ? (
+                            <View style={styles.assignedSprintStartRow}>
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel={previousSprintsSubmitted
+                                  ? `Start ${sprint.name}`
+                                  : `Complete the previous sprint submission before starting ${sprint.name}`}
+                                disabled={!previousSprintsSubmitted ||
+                                  busyTaskId === sprintTask.id}
+                                onPress={() => { void nextStatus(sprintTask); }}
+                                style={[
+                                  styles.assignedSprintStartButton,
+                                  (!previousSprintsSubmitted || busyTaskId === sprintTask.id) &&
+                                    styles.primaryActionDisabled,
+                                ]}>
+                                {busyTaskId === sprintTask.id ? (
+                                  <ActivityIndicator size="small" color="#FFFFFF" />
+                                ) : (
+                                  <>
+                                    <Text style={styles.assignedSprintStartText}>
+                                      {previousSprintsSubmitted
+                                        ? 'Start sprint'
+                                        : 'Previous sprint must be submitted first'}
+                                    </Text>
+                                    {previousSprintsSubmitted
+                                      ? <Icon name="arrow" size={16} color="#FFFFFF" />
+                                      : null}
+                                  </>
+                                )}
+                              </Pressable>
+                            </View>
+                          ) : null}
+                          {expanded ? sprintTask ? (
+                            <View style={styles.sprintDetails}>
+                              <Text style={styles.sprintDescription}>
+                                {sprintTask.description || 'No sprint details have been added.'}
+                              </Text>
+                              <View style={styles.sprintProgressHeading}>
+                                <Text style={styles.sectionLabel}>Progress</Text>
+                                <Text style={styles.sprintProgressPercent}>
+                                  {sprintTask.progress}%
+                                </Text>
+                              </View>
+                              <View
+                                accessibilityRole="progressbar"
+                                accessibilityValue={{ min: 0, max: 100, now: sprintTask.progress }}
+                                style={styles.sprintProgressTrack}>
+                                <View
+                                  style={[
+                                    styles.sprintProgressFill,
+                                    { width: `${sprintTask.progress}%` },
+                                  ]}
+                                />
+                              </View>
 
-                          {selectedTask.status.trim().toLowerCase() === 'in progress' &&
-                          !['Pending Review', 'Completed'].includes(selectedTask.sprintSubmissionStatus) ? (
+                              {taskStatus === 'in progress' && !alreadySubmitted ? (
                             <View style={styles.sprintSubmissionForm}>
                               <TextInput
                                 accessibilityLabel="Sprint submission notes"
@@ -2161,7 +2205,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                                 accessibilityRole="button"
                                 accessibilityLabel="Submit sprint for review"
                                 disabled={submissionBusy || voiceNoteActive}
-                                onPress={() => { void submitSelectedSprintForReview(selectedTask); }}
+                                onPress={() => { void submitSelectedSprintForReview(sprintTask); }}
                                 style={[
                                   styles.assignedSprintStartButton,
                                   styles.assignedSprintSubmitButton,
@@ -2178,59 +2222,50 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                                 )}
                               </Pressable>
                             </View>
-                          ) : selectedTask.sprintSubmissionStatus === 'Pending Review' ||
-                          selectedTask.sprintSubmissionStatus === 'Completed' ? (
+                              ) : alreadySubmitted ? (
                             <View style={styles.sprintSubmittedDetails}>
                               <Text style={styles.sprintSubmittedMessage}>
-                                {selectedTask.sprintSubmissionStatus === 'Completed'
-                                  ? 'Sprint accepted'
-                                  : 'Submitted for review'}
+                              {submissionStatus === 'Completed'
+                                ? 'Sprint accepted'
+                                : 'Submitted for review'}
                               </Text>
-                              {selectedTask.sprintSubmissionNote ? (
-                                <Text style={styles.sprintDescription}>
-                                  {selectedTask.sprintSubmissionNote}
-                                </Text>
+                              {sprintTask.sprintSubmissionNote ? (
+                              <Text style={styles.sprintDescription}>
+                                {sprintTask.sprintSubmissionNote}
+                              </Text>
                               ) : null}
-                              {selectedTask.sprintSubmissionAttachments.map((attachment) => (
-                                <Text
-                                  key={attachment.fileName}
-                                  style={styles.sprintSubmittedLink}>
-                                  - {attachment.fileName}
-                                </Text>
+                              {sprintTask.sprintSubmissionAttachments.map((attachment) => (
+                              <Text
+                                key={attachment.fileName}
+                                style={styles.sprintSubmittedLink}>
+                                - {attachment.fileName}
+                              </Text>
                               ))}
-                              {selectedTask.sprintSubmissionLinks.map((link) => (
-                                <Text key={link} style={styles.sprintSubmittedLink}>
-                                  - {link}
-                                </Text>
+                              {sprintTask.sprintSubmissionLinks.map((link) => (
+                              <Text key={link} style={styles.sprintSubmittedLink}>
+                                - {link}
+                              </Text>
                               ))}
                             </View>
+                              ) : submissionStatus === 'Changes Requested' ? (
+                              <Text style={styles.sprintSubmissionError}>
+                                Changes were requested. Start the task again to update and resubmit it.
+                              </Text>
+                              ) : null}
+                            </View>
+                          ) : (
+                            <Text style={styles.metadataMuted}>
+                              No task is linked to this sprint yet.
+                            </Text>
                           ) : null}
                         </View>
-                      ) : null}
-                    </>
+                      );
+                    })
                   ) : (
                     <View style={styles.assignedSprintNoSprintRow}>
-                      <Text style={styles.assignedSprintName}>No sprint assigned to this task.</Text>
-                      {!['in progress', 'done'].includes(selectedTask.status.trim().toLowerCase()) ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Start task"
-                          disabled={busyTaskId === selectedTask.id}
-                          onPress={() => { void nextStatus(selectedTask); }}
-                          style={[
-                            styles.assignedSprintStartButton,
-                            busyTaskId === selectedTask.id && styles.primaryActionDisabled,
-                          ]}>
-                          {busyTaskId === selectedTask.id ? (
-                            <ActivityIndicator size="small" color="#FFFFFF" />
-                          ) : (
-                            <>
-                              <Text style={styles.assignedSprintStartText}>Start task</Text>
-                              <Icon name="arrow" size={16} color="#FFFFFF" />
-                            </>
-                          )}
-                        </Pressable>
-                      ) : null}
+                      <Text style={styles.assignedSprintName}>
+                        No sprints are assigned to you in this project.
+                      </Text>
                     </View>
                   )}
                 </View>
@@ -2626,6 +2661,7 @@ const styles = StyleSheet.create({
   },
   assignedSprintTitle: { color: '#353B37', fontSize: 14, fontWeight: '700' },
   assignedSprintCount: { color: '#68736C', fontSize: 12, fontWeight: '700' },
+  assignedSprintItem: { gap: 5 },
   assignedSprintExpandButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2633,6 +2669,11 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 20,
     paddingVertical: 8,
+  },
+  assignedSprintStatus: {
+    color: '#68736C',
+    fontSize: 10,
+    fontWeight: '700',
   },
   assignedSprintViewDetails: {
     flexDirection: 'row',

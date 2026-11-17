@@ -464,6 +464,40 @@ const validateAssignmentAndSprint = async (project, task, { allowLegacyTaskAssig
     return null;
 };
 
+const getUnsubmittedPreviousSprint = async (project, assigneeFirebaseUid, sprintName) => {
+    if (!assigneeFirebaseUid || !sprintName) return null;
+    const sprints = Array.isArray(project.sprints) ? project.sprints : [];
+    const currentSprintIndex = sprints.findIndex(sprint => sprint?.name === sprintName);
+    if (currentSprintIndex <= 0) return null;
+
+    const previousSprintNames = sprints
+        .slice(0, currentSprintIndex)
+        .filter(sprint => sprint?.assigneeFirebaseUid === assigneeFirebaseUid)
+        .map(sprint => sprint.name);
+    if (!previousSprintNames.length) return null;
+
+    const result = await query(
+        `SELECT sprint_name, sprint_submission_status
+         FROM project_tasks
+         WHERE project_id = $1
+           AND assignee_firebase_uid = $2
+           AND sprint_name = ANY($3::text[])`,
+        [project.project_id, assigneeFirebaseUid, previousSprintNames]
+    );
+    const taskStatusesBySprint = new Map();
+    for (const row of result.rows) {
+        const statuses = taskStatusesBySprint.get(row.sprint_name) || [];
+        statuses.push(row.sprint_submission_status);
+        taskStatusesBySprint.set(row.sprint_name, statuses);
+    }
+
+    return previousSprintNames.find(name => {
+        const statuses = taskStatusesBySprint.get(name) || [];
+        return !statuses.length ||
+            statuses.some(status => !['Pending Review', 'Completed'].includes(status));
+    }) || null;
+};
+
 const getProjectTasks = async (req, res) => {
     try {
         const project = await getProjectAndCheckAccess(req.params.projectId, req.firebaseUid);
@@ -1582,7 +1616,8 @@ const updateProjectTaskStatus = async (req, res) => {
 
         const existingTask = await query(
             `
-                SELECT task_id, assignee_firebase_uid, status, title
+                SELECT task_id, assignee_firebase_uid, status, title,
+                       sprint_name, sprint_submission_status
                 FROM project_tasks
                 WHERE project_id = $1
                   AND task_id = $2::uuid
@@ -1607,18 +1642,27 @@ const updateProjectTaskStatus = async (req, res) => {
             });
         }
 
-        if (
-            existingTask.rows[0].status === 'In progress' &&
-            status !== existingTask.rows[0].status
-        ) {
-            const sprints = Array.isArray(project.sprints) ? project.sprints : [];
-            if (!sprints.length || sprints.some(sprint => sprint.status !== 'Completed')) {
+        const task = existingTask.rows[0];
+        if (status === 'In progress' && task.status !== 'In progress') {
+            const previousSprint = await getUnsubmittedPreviousSprint(
+                project,
+                task.assignee_firebase_uid,
+                task.sprint_name
+            );
+            if (previousSprint) {
                 return res.status(409).json({
                     success: false,
-                    code: 'PROJECT_SPRINTS_INCOMPLETE',
-                    message: 'This in-progress task cannot be moved until every project sprint is complete.'
+                    code: 'PREVIOUS_SPRINT_NOT_SUBMITTED',
+                    message: `Submit "${previousSprint}" for review before starting this sprint.`
                 });
             }
+        }
+        if (status === 'Done' && task.sprint_submission_status !== 'Completed') {
+            return res.status(409).json({
+                success: false,
+                code: 'TASK_SPRINT_NOT_ACCEPTED',
+                message: 'This task can be completed after its sprint submission is accepted.'
+            });
         }
 
         const result = await query(
