@@ -1175,20 +1175,11 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   const completionPercent = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) || null;
   const selectedAssignedSprints = selectedTask
-    ? selectedTask.assignedSprints.map((sprint, index) => {
+    ? selectedTask.assignedSprints.map((sprint) => {
       const sprintTasks = tasks.filter((task) =>
         task.projectId === selectedTask.projectId && task.sprint === sprint.name);
       const sprintTask = sprintTasks[0];
-      const previousSprintsSubmitted = selectedTask.assignedSprints
-        .slice(0, index)
-        .every((previousSprint) => {
-          const previousTasks = tasks.filter((task) =>
-            task.projectId === selectedTask.projectId && task.sprint === previousSprint.name);
-          return previousTasks.length > 0 && previousTasks.every((previousTask) =>
-            previousTask.sprintSubmissionStatus === 'Pending Review' ||
-            previousTask.sprintSubmissionStatus === 'Completed');
-        });
-      return { sprint, task: sprintTask, previousSprintsSubmitted };
+      return { sprint, task: sprintTask };
     })
     : [];
   const selectedTaskProjectId = selectedTask?.projectId;
@@ -1990,7 +1981,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                     </Text>
                   </View>
                   {selectedAssignedSprints.length > 0 ? (
-                    selectedAssignedSprints.map(({ sprint, task: sprintTask, previousSprintsSubmitted }) => {
+                    selectedAssignedSprints.map(({ sprint, task: sprintTask }) => {
                       const expanded = expandedSprintName === sprint.name;
                       const taskStatus = sprintTask?.status.trim().toLowerCase() || '';
                       const submissionStatus = sprintTask?.sprintSubmissionStatus || sprint.status;
@@ -2023,29 +2014,19 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                             <View style={styles.assignedSprintStartRow}>
                               <Pressable
                                 accessibilityRole="button"
-                                accessibilityLabel={previousSprintsSubmitted
-                                  ? `Start ${sprint.name}`
-                                  : `Complete the previous sprint submission before starting ${sprint.name}`}
-                                disabled={!previousSprintsSubmitted ||
-                                  busyTaskId === sprintTask.id}
+                                accessibilityLabel={`Start ${sprint.name}`}
+                                disabled={busyTaskId === sprintTask.id}
                                 onPress={() => { void nextStatus(sprintTask); }}
                                 style={[
                                   styles.assignedSprintStartButton,
-                                  (!previousSprintsSubmitted || busyTaskId === sprintTask.id) &&
-                                    styles.primaryActionDisabled,
+                                  busyTaskId === sprintTask.id && styles.primaryActionDisabled,
                                 ]}>
                                 {busyTaskId === sprintTask.id ? (
                                   <ActivityIndicator size="small" color="#FFFFFF" />
                                 ) : (
                                   <>
-                                    <Text style={styles.assignedSprintStartText}>
-                                      {previousSprintsSubmitted
-                                        ? 'Start sprint'
-                                        : 'Previous sprint must be submitted first'}
-                                    </Text>
-                                    {previousSprintsSubmitted
-                                      ? <Icon name="arrow" size={16} color="#FFFFFF" />
-                                      : null}
+                                    <Text style={styles.assignedSprintStartText}>Start sprint</Text>
+                                    <Icon name="arrow" size={16} color="#FFFFFF" />
                                   </>
                                 )}
                               </Pressable>
