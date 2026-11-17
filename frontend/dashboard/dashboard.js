@@ -42,7 +42,7 @@ import {
   openAddSprintModal,
   openInviteCollaboratorModal,
   openManageCollaboratorsModal
-} from './js/projects.js?v=20261112-project-timespan-selector'
+} from './js/projects.js?v=20261117-project-calendar-same-month'
 
 import { enhanceInputsWithIcons } from './js/icons.js'
 

@@ -105,21 +105,7 @@ const createProject = async (req, res) => {
 
         const invitedMembers = [];
 
-        const projectSprints =
-            Array.isArray(sprints)
-                ? sprints
-                : [
-                    {
-                        id: `s_${Date.now()}_1`,
-                        name: 'Sprint 1: Kickoff & Scoping',
-                        status: 'Active'
-                    },
-                    {
-                        id: `s_${Date.now()}_2`,
-                        name: 'Sprint 2: Implementation',
-                        status: 'Upcoming'
-                    }
-                ];
+        const projectSprints = Array.isArray(sprints) ? sprints : [];
 
         const creatorEmail =
             req.firebaseEmail ||

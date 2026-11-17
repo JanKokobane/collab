@@ -4,7 +4,7 @@
 
 import { updateNotifCount } from './state.js'
 import { updateUserUI } from './auth.js'
-import { renderProjectNav } from './projects.js?v=20261112-project-timespan-selector'
+import { renderProjectNav } from './projects.js?v=20261117-project-calendar-same-month'
 import { renderTasks } from './tasks.js'
 import {
   renderMembersTable,

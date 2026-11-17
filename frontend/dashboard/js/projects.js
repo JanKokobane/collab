@@ -265,25 +265,25 @@ function createProjectDateRangeCalendars(startInput, endInput, onChange) {
 
   const todayKey = toLocalDateKey()
   const today = new Date(`${todayKey}T00:00:00`)
-  let firstMonth = new Date(today.getFullYear(), today.getMonth(), 1)
-
-  const navigation = make('div', 'project-time-span-calendar-navigation')
-  const previous = make('button', 'project-time-span-calendar-nav', '‹')
-  previous.type = 'button'
-  previous.setAttribute('aria-label', 'Show previous months')
-  const next = make('button', 'project-time-span-calendar-nav', '›')
-  next.type = 'button'
-  next.setAttribute('aria-label', 'Show next months')
-  navigation.append(previous, make('span', '', 'Select your project dates'), next)
+  const firstMonth = new Date(today.getFullYear(), today.getMonth(), 1)
 
   const calendarGrid = make('div', 'project-time-span-calendar-grid')
   const panels = [
     { key: 'start', label: 'Start Date' },
     { key: 'end', label: 'Due Date' }
-  ].map(({ key, label }) => {
+  ].map(({ key, label }, panelIndex) => {
     const panel = make('section', 'project-time-span-calendar')
+    const monthDate = new Date(firstMonth.getFullYear(), firstMonth.getMonth() + panelIndex, 1)
     const heading = make('h4', 'project-time-span-calendar-heading', label)
+    const monthNavigation = make('div', 'project-time-span-calendar-navigation')
+    const previous = make('button', 'project-time-span-calendar-nav', '‹')
+    previous.type = 'button'
+    previous.setAttribute('aria-label', `Show previous ${label.toLowerCase()} month`)
     const month = make('div', 'project-time-span-calendar-month')
+    const next = make('button', 'project-time-span-calendar-nav', '›')
+    next.type = 'button'
+    next.setAttribute('aria-label', `Show next ${label.toLowerCase()} month`)
+    monthNavigation.append(previous, month, next)
     const weekdays = make('div', 'project-time-span-calendar-weekdays')
     ;['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].forEach(day => {
       weekdays.append(make('span', '', day))
@@ -291,20 +291,37 @@ function createProjectDateRangeCalendars(startInput, endInput, onChange) {
     const days = make('div', 'project-time-span-calendar-days')
     const selectedDate = make('output', 'project-time-span-selected-date')
     selectedDate.setAttribute('aria-live', 'polite')
-    panel.append(heading, month, weekdays, days, selectedDate)
+    panel.append(heading, monthNavigation, weekdays, days, selectedDate)
     calendarGrid.append(panel)
-    return { key, month, days, selectedDate }
+    const panelState = { key, month, days, selectedDate, monthDate, previous }
+    previous.addEventListener('click', () => {
+      if (previous.disabled) return
+      panelState.monthDate = new Date(
+        panelState.monthDate.getFullYear(),
+        panelState.monthDate.getMonth() - 1,
+        1
+      )
+      render()
+    })
+    next.addEventListener('click', () => {
+      panelState.monthDate = new Date(
+        panelState.monthDate.getFullYear(),
+        panelState.monthDate.getMonth() + 1,
+        1
+      )
+      render()
+    })
+    return panelState
   })
 
   const render = () => {
-    const firstMonthKey = `${firstMonth.getFullYear()}-${String(firstMonth.getMonth() + 1).padStart(2, '0')}-01`
-    previous.disabled = firstMonthKey <= `${todayKey.slice(0, 7)}-01`
-    panels.forEach((panel, panelIndex) => {
-      const monthDate = new Date(firstMonth.getFullYear(), firstMonth.getMonth() + panelIndex, 1)
+    panels.forEach(panel => {
+      const monthDate = panel.monthDate
       const year = monthDate.getFullYear()
       const monthIndex = monthDate.getMonth()
       const monthName = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(monthDate)
       panel.month.textContent = monthName
+      panel.previous.disabled = monthDate <= firstMonth
       panel.days.replaceChildren()
 
       const firstWeekday = (new Date(year, monthIndex, 1).getDay() + 6) % 7
@@ -341,7 +358,13 @@ function createProjectDateRangeCalendars(startInput, endInput, onChange) {
         dayButton.addEventListener('click', () => {
           if (panel.key === 'start') {
             startInput.value = dateKey
-            if (endInput.value && endInput.value < dateKey) endInput.value = dateKey
+            if (endInput.value && endInput.value < dateKey) {
+              endInput.value = dateKey
+              const endPanel = panels.find(item => item.key === 'end')
+              if (endPanel) {
+                endPanel.monthDate = new Date(year, monthIndex, 1)
+              }
+            }
           } else {
             endInput.value = dateKey
           }
@@ -364,16 +387,7 @@ function createProjectDateRangeCalendars(startInput, endInput, onChange) {
     })
   }
 
-  previous.addEventListener('click', () => {
-    if (previous.disabled) return
-    firstMonth = new Date(firstMonth.getFullYear(), firstMonth.getMonth() - 1, 1)
-    render()
-  })
-  next.addEventListener('click', () => {
-    firstMonth = new Date(firstMonth.getFullYear(), firstMonth.getMonth() + 1, 1)
-    render()
-  })
-  container.append(navigation, calendarGrid)
+  container.append(calendarGrid)
   render()
   return {
     element: container,
@@ -519,18 +533,7 @@ export function openCreateProjectModal() {
       creatorInitials: currentUser?.initials || 'AM',
       invitedMembers: [],
       teamMemberCount: 0,
-      sprints: [
-        {
-          id: `s_${timestamp}_1`,
-          name: 'Sprint 1: Kickoff & Scoping',
-          status: 'Active'
-        },
-        {
-          id: `s_${timestamp}_2`,
-          name: 'Sprint 2: Implementation',
-          status: 'Upcoming'
-        }
-      ]
+      sprints: []
     }
 
     const restoreSubmit = setDashboardButtonLoading(submit, 'Creating project…')
@@ -576,29 +579,6 @@ export function openCreateProjectModal() {
       restoreSubmit()
       return
     }
-
-    const kickoffDate = projectDates.startDate || toLocalDateKey()
-    tasks.push({
-      id: Date.now(),
-      project: name,
-      title: `Plan kickoff for ${name}`,
-      tag: 'Product',
-      tagTone: 'yellow',
-      due: kickoffDate === toLocalDateKey() ? 'Today' : kickoffDate,
-      startDate: kickoffDate,
-      date: kickoffDate,
-      assignee: currentUser?.initials || 'AM',
-      assigneeName: currentUser?.name || 'Alex Morgan',
-      assigneeTone: 'teal',
-      status: 'To do',
-      progress: 0,
-      sprint: 'Sprint 1: Kickoff & Scoping',
-      approvalStatus: 'none',
-      description: `Initial planning checklist for ${name} (${projectType}).`,
-      comments: 0,
-      commentsList: []
-    })
-    saveTasks()
 
     closeModal()
     renderProjectNav()

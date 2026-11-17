@@ -510,10 +510,7 @@ export async function createHomeProject(input: {
       description: input.description.trim(),
       color: 'coral',
       invited_members: [],
-      sprints: [
-        { id: `s_${timestamp}_1`, name: 'Sprint 1: Kickoff & Scoping', status: 'Active' },
-        { id: `s_${timestamp}_2`, name: 'Sprint 2: Implementation', status: 'Upcoming' },
-      ],
+      sprints: [],
     },
   });
   const project = parseHomeProject(data.project);

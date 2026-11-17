@@ -26,7 +26,7 @@ import {
   openInviteCollaboratorModal,
   openCreateProjectModal,
   openEditProjectModal
-} from './projects.js?v=20261112-project-timespan-selector'
+} from './projects.js?v=20261117-project-calendar-same-month'
 import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
 import { setDashboardButtonLoading, showDashboardConfirmation, showDashboardToast } from './modalChrome.js'

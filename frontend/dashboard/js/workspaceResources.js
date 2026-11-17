@@ -4,7 +4,7 @@ import { firebaseAuth } from '../../firebase.js'
 import { getSvg } from './icons.js'
 import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { getActiveProject } from './auth.js'
-import { openCreateProjectModal } from './projects.js?v=20261112-project-timespan-selector'
+import { openCreateProjectModal } from './projects.js?v=20261117-project-calendar-same-month'
 
 export let teamResources = []
 let resourcesLoading = false
