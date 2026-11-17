@@ -20,9 +20,20 @@ FROM extracted_dates
 WHERE extracted_dates.project_id = projects.project_id
   AND extracted_dates.dates IS NOT NULL;
 
-ALTER TABLE projects
-    ADD CONSTRAINT projects_timeline_dates_ordered
-        CHECK (
-            (start_date IS NULL AND due_date IS NULL) OR
-            (start_date IS NOT NULL AND due_date IS NOT NULL AND due_date >= start_date)
-        );
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'projects_timeline_dates_ordered'
+          AND conrelid = 'projects'::regclass
+    ) THEN
+        ALTER TABLE projects
+            ADD CONSTRAINT projects_timeline_dates_ordered
+                CHECK (
+                    (start_date IS NULL AND due_date IS NULL) OR
+                    (start_date IS NOT NULL AND due_date IS NOT NULL AND due_date >= start_date)
+                );
+    END IF;
+END
+$$;
