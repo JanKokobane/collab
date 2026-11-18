@@ -916,9 +916,13 @@ function TaskCountdown({ due, status }: { due: string | null; status: string }) 
 function TaskCard({
   task,
   onOpen,
+  onStart,
+  starting,
 }: {
   task: Task;
   onOpen: () => void;
+  onStart: () => void;
+  starting: boolean;
 }) {
   const status = task.status.trim().toLowerCase();
   const done = status === 'done';
@@ -1005,13 +1009,25 @@ function TaskCard({
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`${done ? 'View' : inProgress ? 'Continue' : 'Start'} task ${task.title}`}
-          onPress={onOpen}
-          style={styles.statusButton}>
-          <Text style={styles.statusButtonText}>
-            {done ? 'View' : inProgress ? 'Continue' : 'Start'}
-          </Text>
-          <Icon name="arrow" size={17} color="#FFFFFF" />
+          accessibilityLabel={`${starting ? 'Starting' : done ? 'View' : inProgress ? 'Continue' : 'Start'} task ${task.title}`}
+          disabled={starting}
+          onPress={done || inProgress ? onOpen : onStart}
+          style={[
+            styles.statusButton,
+            !done && !inProgress && styles.startTaskButton,
+            inProgress && styles.continueTaskButton,
+            starting && styles.taskActionDisabled,
+          ]}>
+          {starting ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <>
+              {!inProgress ? (
+                <Text style={styles.statusButtonText}>{done ? 'View' : 'Start'}</Text>
+              ) : null}
+              <Icon name="arrow" size={17} color="#FFFFFF" />
+            </>
+          )}
         </Pressable>
       </View>
     </View>
@@ -1504,12 +1520,12 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     }
   }
 
-  async function nextStatus(task: Task) {
+  async function nextStatus(task: Task, requestedStatus?: string) {
     if (busyTaskId) return;
     const currentStatus = task.status.trim().toLowerCase();
-    const status = currentStatus === 'done'
+    const status = requestedStatus || (currentStatus === 'done'
       ? 'To do'
-      : currentStatus === 'in progress' ? 'Done' : 'In progress';
+      : currentStatus === 'in progress' ? 'Done' : 'In progress');
     const progress = status === 'Done'
       ? 100
       : status === 'In progress' ? Math.max(task.progress, 25) : 0;
@@ -1530,6 +1546,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
       setTasks((current) => current.map((item) => (
         item.id === task.id ? { ...item, status, progress } : item
       )));
+      if (requestedStatus === 'In progress') setFilter('In progress');
     } catch (error) {
       console.error('Unable to update assigned task status:', error);
       setLoadError(error instanceof HomeApiError
@@ -1727,6 +1744,8 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   key={task.id}
                   task={task}
                   onOpen={() => setSelectedTaskId(task.id)}
+                  onStart={() => { void nextStatus(task, 'In progress'); }}
+                  starting={busyTaskId === task.id}
                 />
               ))}
               {visibleTasks.length === 0 ? (
@@ -2471,15 +2490,26 @@ const styles = StyleSheet.create({
   },
   statusButton: {
     minWidth: 76,
-    minHeight: 34,
+    minHeight: 26,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     borderRadius: 999,
     backgroundColor: '#285F50',
   },
+  startTaskButton: { backgroundColor: '#F0444F' },
+  continueTaskButton: {
+    width: 31,
+    minWidth: 31,
+    height: 31,
+    minHeight: 31,
+    paddingHorizontal: 0,
+    borderRadius: 15.5,
+    backgroundColor: '#F0444F',
+  },
+  taskActionDisabled: { opacity: 0.65 },
   statusButtonText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
   emptyState: { alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 40, paddingHorizontal: 22, borderWidth: 1, borderStyle: 'dashed', borderColor: '#D8DEDA', borderRadius: 17, backgroundColor: '#FFFFFF' },
   emptyIcon: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 27, backgroundColor: '#EAF4EF' },
