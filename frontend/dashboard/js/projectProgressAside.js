@@ -778,22 +778,38 @@ function renderTaskSprintSubmissionAttachments(project, task, attachments) {
     }
 
     if (canPreview) {
-      const viewButton = make('button', 'project-sprint-submission-file-view', 'View')
-      viewButton.type = 'button'
-      viewButton.setAttribute('aria-label', `View ${fileName}`)
-      viewButton.addEventListener('click', async () => {
-        viewButton.disabled = true
-        viewButton.textContent = 'Loading…'
+      const isAudio = mediaType.startsWith('audio/')
+      const previewButton = make(
+        'button',
+        'project-sprint-submission-file-view',
+        isAudio ? 'Play' : 'View'
+      )
+      previewButton.type = 'button'
+      previewButton.setAttribute('aria-label', `${isAudio ? 'Play' : 'View'} ${fileName}`)
+      previewButton.addEventListener('click', async () => {
+        previewButton.disabled = true
+        previewButton.textContent = 'Loading…'
         try {
-          openSprintAttachmentPreview(await fetchAttachment(), viewButton)
+          const payload = await fetchAttachment()
+          if (isAudio) {
+            const audioPlayer = make('audio', 'project-sprint-submission-audio')
+            audioPlayer.controls = true
+            audioPlayer.preload = 'metadata'
+            audioPlayer.src = payload.data
+            audioPlayer.setAttribute('aria-label', fileName)
+            row.append(audioPlayer)
+            previewButton.hidden = true
+          } else {
+            openSprintAttachmentPreview(payload, previewButton)
+          }
         } catch (error) {
           showDashboardToast(error.message || `The attachment "${fileName}" could not be opened.`, 'error')
         } finally {
-          viewButton.disabled = false
-          viewButton.textContent = 'View'
+          previewButton.disabled = false
+          previewButton.textContent = isAudio ? 'Play' : 'View'
         }
       })
-      actions.append(viewButton)
+      actions.append(previewButton)
     }
 
     const downloadLink = make('a', 'project-sprint-submission-file-download', 'Download')
@@ -1099,8 +1115,11 @@ function sprintSubmissionContent(sprint) {
 
 function openCommentMediaPreview(media, trigger) {
   if (!media || !['IMG', 'VIDEO'].includes(media.tagName)) return
+  const aside = media.closest('.project-progress-aside')
+  if (!aside) return
 
   const backdrop = make('div', 'project-comment-media-preview-backdrop')
+  backdrop.classList.add('is-aside-preview')
   const dialog = make('div', 'project-comment-media-preview')
   dialog.setAttribute('role', 'dialog')
   dialog.setAttribute('aria-modal', 'true')
@@ -1124,7 +1143,10 @@ function openCommentMediaPreview(media, trigger) {
     trigger?.focus()
   }
   const onKeyDown = event => {
-    if (event.key === 'Escape') closePreview()
+    if (event.key === 'Escape') {
+      event.stopImmediatePropagation()
+      closePreview()
+    }
   }
 
   closeButton.addEventListener('click', closePreview)
@@ -1134,7 +1156,7 @@ function openCommentMediaPreview(media, trigger) {
   })
   dialog.append(closeButton, preview)
   backdrop.append(dialog)
-  document.body.append(backdrop)
+  aside.append(backdrop)
   document.addEventListener('keydown', onKeyDown)
   closeButton.focus()
 }
@@ -1223,7 +1245,8 @@ function closeAsideAndReopen(task) {
   openProjectProgressAside(task)
 }
 
-async function loadTaskComments(project, task, container) {
+async function loadTaskComments(project, task, container, options = {}) {
+  const { onCountChange, onError } = options
   try {
     const response = await api.get(
       `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(task.taskId)}/comments`
@@ -1231,6 +1254,7 @@ async function loadTaskComments(project, task, container) {
     const comments = response?.data?.comments || []
     task.commentsList = comments
     task.comments = comments.length
+    onCountChange?.(comments.length, comments)
     container.replaceChildren()
     if (!comments.length) {
       container.append(make('p', 'project-comments-empty', 'No comments yet. Share an update to start the discussion.'))
@@ -1303,6 +1327,7 @@ async function loadTaskComments(project, task, container) {
     })
     return comments
   } catch (error) {
+    onError?.(error)
     container.replaceChildren(make('p', 'task-media-status is-error', error.message || 'Task comments could not be loaded.'))
     return []
   }
@@ -1567,7 +1592,166 @@ export async function openProjectProgressAside(task) {
   )
   commentsHeading.append(commentsTitle)
   const commentsList = make('div', 'task-comment-list')
+  const commentsListId = `project-comments-list-${String(task.taskId || 'task').replace(/[^a-zA-Z0-9_-]/g, '')}`
+  commentsList.id = commentsListId
   commentsList.setAttribute('aria-label', 'Task comments')
+  commentsList.hidden = true
+
+  const commentsDrawer = make('div', 'project-comments-drawer')
+  const commentsToggle = make('button', 'project-comments-toggle')
+  commentsToggle.type = 'button'
+  commentsToggle.setAttribute('aria-expanded', 'false')
+  commentsToggle.setAttribute('aria-controls', commentsListId)
+
+  const commentsToggleCopy = make('span', 'project-comments-toggle-copy')
+  const commentsToggleTitle = make('span', 'project-comments-toggle-title', 'Click to view messages')
+  const commentsToggleHint = make('span', 'project-comments-toggle-hint', 'Checking messages…')
+  commentsToggleCopy.append(commentsToggleTitle, commentsToggleHint)
+
+  const commentsToggleRight = make('span', 'project-comments-toggle-right')
+  const commentsCountBadge = make('span', 'project-comments-count-badge', '0')
+  commentsCountBadge.hidden = true
+  const commentsChevron = make('span', 'project-comments-chevron')
+  commentsChevron.setAttribute('aria-hidden', 'true')
+  commentsChevron.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg>'
+  commentsToggleRight.append(commentsCountBadge, commentsChevron)
+  commentsToggle.append(commentsToggleCopy, commentsToggleRight)
+
+  let loadedComments = Array.isArray(task.commentsList) ? task.commentsList : []
+  let commentsLoaded = false
+  let commentPollTimer = null
+  let commentRefreshPromise = null
+  const commentReadMarkerKey = `collab-task-comments-read:${currentUser.uid}:${task.taskId}`
+  const isCommentsExpanded = () => commentsToggle.getAttribute('aria-expanded') === 'true'
+  const saveCommentReadMarker = comments => {
+    if (!currentUser.uid) return
+    const latest = comments[comments.length - 1]
+    const marker = latest
+      ? {
+        commentId: String(latest.comment_id || ''),
+        createdAt: String(latest.created_at || '')
+      }
+      : { commentId: null, createdAt: null }
+    try {
+      localStorage.setItem(commentReadMarkerKey, JSON.stringify(marker))
+    } catch (error) {
+      console.error('Unable to save the task comment read marker:', error)
+    }
+  }
+  const readCommentMarker = () => {
+    try {
+      const stored = localStorage.getItem(commentReadMarkerKey)
+      if (stored === null) return null
+      const marker = JSON.parse(stored)
+      return marker && typeof marker === 'object' ? marker : null
+    } catch (error) {
+      console.error('Unable to read the task comment read marker:', error)
+      return null
+    }
+  }
+  const getUnreadComments = comments => {
+    if (!currentUser.uid) return []
+    const marker = readCommentMarker()
+    if (!marker) {
+      saveCommentReadMarker(comments)
+      return []
+    }
+    const markerIndex = marker.commentId
+      ? comments.findIndex(comment => String(comment.comment_id) === marker.commentId)
+      : -1
+    const newerComments = markerIndex >= 0
+      ? comments.slice(markerIndex + 1)
+      : marker.createdAt
+        ? comments.filter(comment => String(comment.created_at || '') > marker.createdAt)
+        : comments
+    return newerComments.filter(comment => comment.author_firebase_uid !== currentUser.uid)
+  }
+
+  const setCommentsExpanded = expanded => {
+    commentsToggle.setAttribute('aria-expanded', String(expanded))
+    commentsToggle.classList.toggle('is-expanded', expanded)
+    commentsDrawer.classList.toggle('is-expanded', expanded)
+    commentsList.hidden = !expanded
+    commentsToggleTitle.textContent = expanded ? 'Hide messages' : 'Click to view messages'
+    if (expanded && commentsLoaded) {
+      saveCommentReadMarker(loadedComments)
+      updateCommentsCount(loadedComments.length, loadedComments)
+    }
+  }
+
+  const updateCommentsCount = (count, comments = []) => {
+    const total = Math.max(0, Number(count) || 0)
+    loadedComments = comments
+    commentsLoaded = true
+    task.commentsList = comments
+    task.comments = total
+    if (isCommentsExpanded()) saveCommentReadMarker(comments)
+    const unreadComments = isCommentsExpanded() ? [] : getUnreadComments(comments)
+    const unreadCount = unreadComments.length
+    commentsToggle.classList.toggle('has-messages', unreadCount > 0)
+    commentsCountBadge.hidden = unreadCount === 0
+    commentsCountBadge.textContent = unreadCount > 99 ? '99+' : String(unreadCount)
+    commentsCountBadge.setAttribute(
+      'aria-label',
+      `${unreadCount} new ${unreadCount === 1 ? 'message' : 'messages'}`
+    )
+    if (!total) {
+      commentsToggleHint.textContent = 'No messages yet'
+    } else if (!unreadCount) {
+      commentsToggleHint.textContent = isCommentsExpanded()
+        ? 'No new messages'
+        : 'Open to view messages'
+    } else {
+      const latest = unreadComments[unreadComments.length - 1]
+      const latestAuthor = latest?.author_name || latest?.author_email || ''
+      commentsToggleHint.textContent = latestAuthor
+        ? `${unreadCount} new ${unreadCount === 1 ? 'message' : 'messages'} · Latest by ${latestAuthor}`
+        : `${unreadCount} new ${unreadCount === 1 ? 'message' : 'messages'}`
+    }
+  }
+
+  const refreshTaskComments = async ({ force = false } = {}) => {
+    if (!force && isCommentsExpanded()) return
+    while (commentRefreshPromise) await commentRefreshPromise
+    if (!force && isCommentsExpanded()) return
+    const refreshPromise = loadTaskComments(project, task, commentsList, {
+      onCountChange: updateCommentsCount,
+      onError: () => {
+        commentsToggleHint.textContent = 'Unable to load messages'
+      }
+    })
+    commentRefreshPromise = refreshPromise
+    try {
+      await refreshPromise
+    } finally {
+      if (commentRefreshPromise === refreshPromise) commentRefreshPromise = null
+    }
+  }
+
+  const startCommentPolling = () => {
+    if (commentPollTimer) clearInterval(commentPollTimer)
+    commentPollTimer = null
+    if (!isCommentsExpanded()) {
+      commentPollTimer = window.setInterval(() => {
+        if (aside.isConnected) void refreshTaskComments()
+      }, 30_000)
+    }
+  }
+
+  commentsToggle.addEventListener('click', () => {
+    const isExpanded = commentsToggle.getAttribute('aria-expanded') === 'true'
+    setCommentsExpanded(!isExpanded)
+    if (isExpanded) {
+      startCommentPolling()
+    } else {
+      if (commentPollTimer) clearInterval(commentPollTimer)
+      commentPollTimer = null
+      void refreshTaskComments({ force: true })
+    }
+  })
+
+  commentsDrawer.append(commentsToggle, commentsList)
+
   commentsSection.append(commentsHeading)
   const commentForm = document.createElement('form')
   commentForm.className = 'task-comment-form collab-textarea-wrap'
@@ -1575,7 +1759,7 @@ export async function openProjectProgressAside(task) {
   commentInput.className = 'collab-textarea'
   commentInput.classList.add('no-input-icon')
   commentInput.maxLength = 5000
-  commentInput.rows = 3
+  commentInput.rows = 2
   commentInput.placeholder = 'Share feedback, review notes, or attach delivery clips…'
   commentInput.setAttribute('aria-label', 'Task comment')
   const commentMedia = createTaskMediaEditor({ label: 'Comment media' })
@@ -1601,16 +1785,17 @@ export async function openProjectProgressAside(task) {
       )
       commentInput.value = ''
       commentMedia.clear()
-      await loadTaskComments(project, task, commentsList)
+      setCommentsExpanded(true)
+      await refreshTaskComments({ force: true })
       restoreButton()
     } catch (error) {
       restoreButton()
       showDashboardToast(error.message || 'The comment could not be posted.', 'error')
     }
   })
-  commentsSection.append(commentForm, commentsList)
+  commentsSection.append(commentForm, commentsDrawer)
   content.append(commentsSection)
-  void loadTaskComments(project, task, commentsList)
+  void refreshTaskComments({ force: true })
 
   const sprintSection = make('section', 'project-progress-aside-section is-sprints')
   sprintSection.setAttribute('aria-labelledby', 'project-progress-aside-sprints-title')
@@ -2362,6 +2547,10 @@ export async function openProjectProgressAside(task) {
   let analysisAnimationTimer = null
   const close = () => {
     document.removeEventListener('keydown', onKeyDown)
+    if (commentPollTimer) {
+      clearInterval(commentPollTimer)
+      commentPollTimer = null
+    }
     if (analysisAnimationTimer) {
       clearInterval(analysisAnimationTimer)
       analysisAnimationTimer = null
@@ -2384,6 +2573,7 @@ export async function openProjectProgressAside(task) {
   requestAnimationFrame(() => {
     if (!aside.isConnected) return
     animateAnalysisCharts(aside)
+    startCommentPolling()
     analysisAnimationTimer = setInterval(() => {
       if (!document.hidden && aside.isConnected) animateAnalysisCharts(aside)
     }, 5 * 60 * 1000)

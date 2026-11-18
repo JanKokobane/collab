@@ -22,7 +22,7 @@ import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } f
 import { createScheduleCalendarPicker } from './calendar.js?v=20261117-date-input-validation'
 import { api } from './api.js'
 import { setDashboardButtonLoading, showDashboardToast } from './modalChrome.js'
-import { openProjectProgressAside } from './projectProgressAside.js?v=20261118-real-file-icons'
+import { openProjectProgressAside } from './projectProgressAside.js?v=20261118-aside-media-expand'
 import { toLocalDateKey } from './dateUtils.js?v=20261117-date-input-validation'
 
 // ============================================================
