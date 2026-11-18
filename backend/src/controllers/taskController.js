@@ -19,7 +19,7 @@ const normalizeTaskSprintSubmissionAttachments = value => {
         const fileName = typeof item?.fileName === 'string' ? item.fileName.trim() : '';
         const mediaType = typeof item?.mediaType === 'string' ? item.mediaType.toLowerCase() : '';
         const data = typeof item?.data === 'string' ? item.data : '';
-        const isSupportedType = /^(image\/(?!svg\+xml(?:$|;))[a-z0-9.+-]+|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|application\/(pdf|msword|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation)|vnd\.ms-(excel|powerpoint)|vnd\.oasis\.opendocument\.(text|spreadsheet|presentation))|text\/(plain|csv))$/.test(mediaType);
+        const isSupportedType = /^(image\/(?!svg\+xml(?:$|;))[a-z0-9.+-]+|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|application\/[a-z0-9.+_-]+|text\/(?!html(?:$|;))[a-z0-9.+-]+|font\/[a-z0-9.+-]+)$/.test(mediaType);
         const dataMatch = data.match(/^data:([^;,]+)(?:;codecs=[^;,]+)?;base64,([A-Za-z0-9+/]*={0,2})$/);
         if (!fileName || fileName.length > 255 || /[\u0000-\u001f\u007f]/.test(fileName) ||
             !isSupportedType || !dataMatch || dataMatch[1].toLowerCase() !== mediaType) {
@@ -197,7 +197,7 @@ const allowedTaskTags = new Set([
 ]);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const maxTaskAttachmentBytes = 100 * 1024 * 1024;
-const attachmentDataUrlPattern = /^data:[^;,]+(?:;codecs=[^;,]+)?;base64,([a-zA-Z0-9+/=]+)$/i;
+const attachmentDataUrlPattern = /^data:[^;,]+(?:;codecs=[^;,]+)?;base64,([a-zA-Z0-9+/=]*)$/i;
 const validTaskAttachments = attachments => {
     if (!Array.isArray(attachments) || attachments.length > 10) return false;
     let totalBytes = 0;

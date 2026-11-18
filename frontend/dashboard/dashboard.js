@@ -109,7 +109,7 @@ import {
   renderNotifications,
   initWorkspaceHubEvents
 } from './js/workspaceHub.js'
-import { openProjectTaskDetails } from './js/projectProgressAside.js?v=20261111-task-sprint-review'
+import { openProjectTaskDetails } from './js/projectProgressAside.js?v=20261118-real-file-icons'
 import { initMessages, openMessageContext, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261026-collaboration-context'
 import { renderMeetingsPage } from './js/meetingsPage.js'
 import { initProjectStickyNotes } from './js/projectStickyNotes.js'
@@ -300,6 +300,9 @@ async function refreshDashboardDataInBackground() {
     if (!canApplySync()) return null
 
     renderProjectNav()
+    if (!document.querySelector('#admin-project-actions details[open]')) {
+      renderAdminProjectsTable()
+    }
     await renderAdminTasksTable({
       silent: true,
       canApply: canApplySync

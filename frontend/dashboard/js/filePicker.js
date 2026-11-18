@@ -12,6 +12,7 @@ export function createNativeFilePicker({
   ariaLabel = label,
   accept = '',
   multiple = true,
+  iconHtml = '',
   onFiles,
   onError
 } = {}) {
@@ -23,8 +24,14 @@ export function createNativeFilePicker({
   input.multiple = multiple
   input.setAttribute('aria-label', ariaLabel)
 
-  const trigger = make('button', 'task-media-action', label)
+  const trigger = make('button', 'task-media-action', iconHtml ? '' : label)
   trigger.type = 'button'
+  if (iconHtml) {
+    const iconWrap = make('span', 'task-media-action-icon')
+    iconWrap.setAttribute('aria-hidden', 'true')
+    iconWrap.innerHTML = iconHtml
+    trigger.append(iconWrap, make('span', 'task-media-action-label', label))
+  }
   trigger.setAttribute('aria-controls', id)
   trigger.addEventListener('click', event => {
     event.preventDefault()

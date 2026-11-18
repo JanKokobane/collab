@@ -1,7 +1,11 @@
 import { currentUser, make, projects, tasks, root, addAuditLog, hub, renderAvatarElement } from './state.js'
 import { api } from './api.js'
-import { openProjectTaskModal } from './admin.js?v=20261117-project-task-date-compare'
-import { createTaskMediaEditor, renderTaskMediaAttachments } from './taskMedia.js?v=20261028-dedicated-file-picker'
+import {
+  createFileTypeIcon,
+  createTaskMediaEditor,
+  renderTaskMediaAttachments,
+  resolveAttachmentMediaType
+} from './taskMedia.js?v=20261118-real-file-icons'
 import {
   showDashboardConfirmation,
   showDashboardToast,
@@ -27,11 +31,26 @@ function getTaskSprintName(task) {
   return String(task.sprint_name || task.sprint || '').trim()
 }
 
+function pluralize(count, singular, pluralForm = `${singular}s`) {
+  return count === 1 ? singular : pluralForm
+}
+
 function getProductionAnalysis(projectTasks, sprints) {
   const taskStatus = task => String(task.status || '').trim().toLowerCase()
   const sprintStatus = sprint => String(sprint.status || '').trim().toLowerCase()
+  const taskSubmissionStatus = task => String(
+    task.sprintSubmissionStatus || task.sprint_submission_status || ''
+  ).trim().toLowerCase()
+  const taskPriority = task => String(task.priority || 'medium').trim().toLowerCase()
+
   const activeTasks = projectTasks.filter(task => taskStatus(task) !== 'done')
   const completed = projectTasks.length - activeTasks.length
+  const inProgress = projectTasks.filter(task => taskStatus(task) === 'in progress').length
+  const toDo = projectTasks.filter(task => taskStatus(task) === 'to do').length
+  const backlog = projectTasks.filter(task => taskStatus(task) === 'backlog').length
+  const hasIncompleteSprint = !sprints.length || sprints.some(sprint => sprintStatus(sprint) !== 'completed')
+  const sprintLocked = hasIncompleteSprint ? inProgress : 0
+
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const dateKey = date => [
@@ -43,6 +62,7 @@ function getProductionAnalysis(projectTasks, sprints) {
   const weekEnd = new Date(today)
   weekEnd.setDate(weekEnd.getDate() + 7)
   const weekEndKey = dateKey(weekEnd)
+
   const overdue = activeTasks.filter(task => {
     const dueDate = task.due_date ? String(task.due_date).slice(0, 10) : ''
     return dueDate && dueDate < todayKey
@@ -51,16 +71,25 @@ function getProductionAnalysis(projectTasks, sprints) {
     const dueDate = task.due_date ? String(task.due_date).slice(0, 10) : ''
     return dueDate && dueDate >= todayKey && dueDate <= weekEndKey
   }).length
+  const dueLater = activeTasks.filter(task => {
+    const dueDate = task.due_date ? String(task.due_date).slice(0, 10) : ''
+    return dueDate && dueDate > weekEndKey
+  }).length
+  const noDueDate = activeTasks.filter(task => !task.due_date).length
+
   const blocked = activeTasks.filter(task => taskStatus(task) === 'blocked').length
   const dependencyRisks = activeTasks.filter(task =>
     task.hasDependencyWarning ||
     task.dependencies?.some(dependency => dependency.warning_reason)
   ).length
-  const pendingReview = sprints.filter(sprint => sprintStatus(sprint) === 'pending review').length
+  const pendingSprintReviews = sprints.filter(sprint => sprintStatus(sprint) === 'pending review').length
+  const pendingTaskReviews = activeTasks.filter(task => taskSubmissionStatus(task) === 'pending review').length
+  const totalPendingReviews = pendingTaskReviews + pendingSprintReviews
+
   const sprintStatusBreakdown = [
     { label: 'Completed', count: sprints.filter(sprint => sprintStatus(sprint) === 'completed').length, tone: 'is-done' },
     { label: 'Active', count: sprints.filter(sprint => sprintStatus(sprint) === 'active').length, tone: 'is-progress' },
-    { label: 'Pending review', count: pendingReview, tone: 'is-review' },
+    { label: 'Pending review', count: pendingSprintReviews, tone: 'is-review' },
     { label: 'Changes requested', count: sprints.filter(sprint => sprintStatus(sprint) === 'changes requested').length, tone: 'is-blocked' },
     { label: 'Upcoming', count: sprints.filter(sprint => !sprintStatus(sprint) || sprintStatus(sprint) === 'upcoming').length, tone: 'is-backlog' }
   ]
@@ -71,86 +100,119 @@ function getProductionAnalysis(projectTasks, sprints) {
   if (otherSprintStatusCount) {
     sprintStatusBreakdown.push({ label: 'Other', count: otherSprintStatusCount, tone: 'is-backlog' })
   }
+
   const taskStatusBreakdown = [
-    { label: 'To do', count: projectTasks.filter(task => taskStatus(task) === 'to do').length, tone: 'is-todo' },
-    { label: 'In progress', count: projectTasks.filter(task => taskStatus(task) === 'in progress').length, tone: 'is-progress' },
+    { label: 'To do', count: toDo, tone: 'is-todo' },
+    { label: 'In progress', count: inProgress, tone: 'is-progress' },
     { label: 'Blocked', count: blocked, tone: 'is-blocked' },
     { label: 'Done', count: completed, tone: 'is-done' },
-    { label: 'Backlog', count: projectTasks.filter(task => task.status === 'Backlog').length, tone: 'is-backlog' }
+    { label: 'Backlog', count: backlog, tone: 'is-backlog' }
   ]
   const knownTaskStatuses = new Set(['to do', 'in progress', 'blocked', 'done', 'backlog'])
   const otherStatusCount = projectTasks.filter(task => !knownTaskStatuses.has(taskStatus(task))).length
   if (otherStatusCount) {
     taskStatusBreakdown.push({ label: 'Other', count: otherStatusCount, tone: 'is-backlog' })
   }
+
+  const openTaskShare = count => activeTasks.length
+    ? `${Math.round((count / activeTasks.length) * 100)}% of open`
+    : '0% of open'
   const scheduleBreakdown = [
-    { label: 'Overdue', count: overdue, tone: 'is-blocked' },
-    { label: 'Due in 7 days', count: dueSoon, tone: 'is-upcoming' },
-    {
-      label: 'Due later',
-      count: activeTasks.filter(task => {
-        const dueDate = task.due_date ? String(task.due_date).slice(0, 10) : ''
-        return dueDate > weekEndKey
-      }).length,
-      tone: 'is-progress'
-    },
-    {
-      label: 'No due date',
-      count: activeTasks.filter(task => !task.due_date).length,
-      tone: 'is-backlog'
-    }
+    { label: 'Overdue', count: overdue, tone: 'is-blocked', note: openTaskShare(overdue) },
+    { label: 'Due in 7 days', count: dueSoon, tone: 'is-upcoming', note: openTaskShare(dueSoon) },
+    { label: 'Due later', count: dueLater, tone: 'is-progress', note: openTaskShare(dueLater) },
+    { label: 'No due date', count: noDueDate, tone: 'is-backlog', note: openTaskShare(noDueDate) }
   ]
+
+  const priorityCounts = {
+    high: activeTasks.filter(task => taskPriority(task) === 'high').length,
+    medium: activeTasks.filter(task => taskPriority(task) === 'medium').length,
+    low: activeTasks.filter(task => taskPriority(task) === 'low').length
+  }
+
   const workload = new Map()
-  activeTasks.forEach(task => {
+  projectTasks.forEach(task => {
     const identity = task.assigneeFirebaseUid || task.assignee_email || task.assigneeName || 'unassigned'
     const name = identity === 'unassigned'
       ? 'Unassigned'
       : task.assigneeName || task.assignee_email || 'Assigned teammate'
-    const entry = workload.get(identity) || { label: name, count: 0 }
-    entry.count += 1
+    const entry = workload.get(identity) || { label: name, open: 0, done: 0, count: 0 }
+    if (taskStatus(task) === 'done') {
+      entry.done += 1
+    } else {
+      entry.open += 1
+    }
+    entry.count = entry.open + entry.done
     workload.set(identity, entry)
   })
-  const sprintNames = new Set(sprints.map(sprint => String(sprint.name || '').trim()).filter(Boolean))
+  const workloadItems = [...workload.values()]
+    .sort((a, b) => b.open - a.open || b.count - a.count || a.label.localeCompare(b.label))
+    .map(item => ({
+      ...item,
+      completion: item.count ? Math.round((item.done / item.count) * 100) : 0,
+      note: `${item.open} open · ${item.done} done`
+    }))
+
+  const sprintNameSet = new Set(
+    sprints.map(sprint => String(sprint.name || '').trim().toLowerCase()).filter(Boolean)
+  )
   const sprintProgress = sprints.map((sprint, index) => {
     const sprintName = String(sprint.name || '').trim()
-    const sprintTasks = sprintName
-      ? projectTasks.filter(task => getTaskSprintName(task) === sprintName)
+    const normalizedSprintName = sprintName.toLowerCase()
+    const sprintTasks = normalizedSprintName
+      ? projectTasks.filter(task => getTaskSprintName(task).toLowerCase() === normalizedSprintName)
       : []
     const done = sprintTasks.filter(task => taskStatus(task) === 'done').length
+    const completion = sprintTasks.length ? Math.round((done / sprintTasks.length) * 100) : 0
+    const statusLabel = sprint.status || 'Upcoming'
     return {
-      label: sprintName || 'Untitled sprint',
+      label: sprintName || `Sprint ${index + 1}`,
       number: index + 1,
-      status: sprint.status || 'Upcoming',
+      status: statusLabel,
       count: sprintTasks.length,
       done,
-      completion: sprintTasks.length ? Math.round((done / sprintTasks.length) * 100) : 0
+      completion,
+      note: `${statusLabel} · ${sprintTasks.length ? `${completion}%` : '0 tasks'}`
     }
   })
-  const noSprintTasks = projectTasks.filter(task =>
-    !sprintNames.has(getTaskSprintName(task))
-  )
+  const noSprintTasks = projectTasks.filter(task => {
+    const name = getTaskSprintName(task).toLowerCase()
+    return !name || !sprintNameSet.has(name)
+  })
   if (noSprintTasks.length) {
     const done = noSprintTasks.filter(task => taskStatus(task) === 'done').length
+    const completion = Math.round((done / noSprintTasks.length) * 100)
     sprintProgress.push({
-      label: 'No sprint assigned',
+      label: 'No sprint',
       status: 'Unassigned',
       count: noSprintTasks.length,
       done,
-      completion: Math.round((done / noSprintTasks.length) * 100)
+      completion,
+      note: `Unassigned · ${completion}%`
     })
   }
-  const workloadItems = [...workload.values()].sort((a, b) => b.count - a.count)
+
   const completion = projectTasks.length
     ? Math.round((completed / projectTasks.length) * 100)
     : 0
 
   return {
     completed,
+    inProgress,
+    toDo,
+    backlog,
+    sprintLocked,
     blocked,
     dependencyRisks,
     overdue,
     dueSoon,
-    pendingReview,
+    dueLater,
+    noDueDate,
+    pendingReview: pendingSprintReviews,
+    pendingSprintReviews,
+    pendingTaskReviews,
+    totalPendingReviews,
+    priorityCounts,
     sprintCount: sprints.length,
     completion,
     taskStatusBreakdown,
@@ -161,43 +223,81 @@ function getProductionAnalysis(projectTasks, sprints) {
   }
 }
 
-function renderDeliveryIndicators(analysis, totalTasks, openTasks, totalSprints) {
+function renderDeliveryIndicators(analysis, totalTasks, totalSprints) {
+  const reviewPool = totalTasks + totalSprints
   const items = [
     {
-      label: 'Tasks complete',
+      label: 'Completed',
       count: analysis.completed,
       total: totalTasks,
-      totalLabel: 'project tasks',
       tone: 'is-done',
-      chartValue: analysis.completion,
-      valueLabel: `${analysis.completed} · ${analysis.completion}%`
+      note: totalTasks ? `${analysis.completed} of ${totalTasks} ${pluralize(totalTasks, 'task')}` : 'No project tasks'
     },
-    { label: 'Blocked', count: analysis.blocked, total: openTasks, totalLabel: 'open tasks', tone: 'is-blocked' },
-    { label: 'Dependency risk', count: analysis.dependencyRisks, total: openTasks, totalLabel: 'open tasks', tone: 'is-review' },
-    { label: 'Overdue', count: analysis.overdue, total: openTasks, totalLabel: 'open tasks', tone: 'is-blocked' },
-    { label: 'Due in 7 days', count: analysis.dueSoon, total: openTasks, totalLabel: 'open tasks', tone: 'is-upcoming' },
-    { label: 'Awaiting review', count: analysis.pendingReview, total: totalSprints, totalLabel: 'project sprints', tone: 'is-review' }
+    {
+      label: 'In progress',
+      count: analysis.inProgress,
+      total: totalTasks,
+      tone: 'is-progress',
+      note: analysis.sprintLocked
+        ? `${analysis.sprintLocked} sprint-locked`
+        : totalTasks
+          ? `${analysis.inProgress} of ${totalTasks} ${pluralize(totalTasks, 'task')}`
+          : 'No project tasks'
+    },
+    {
+      label: 'Blocked',
+      count: analysis.blocked,
+      total: totalTasks,
+      tone: 'is-blocked',
+      note: totalTasks ? `${analysis.blocked} of ${totalTasks} ${pluralize(totalTasks, 'task')}` : 'No project tasks'
+    },
+    {
+      label: 'Overdue',
+      count: analysis.overdue,
+      total: totalTasks,
+      tone: 'is-blocked',
+      note: totalTasks ? `${analysis.overdue} of ${totalTasks} ${pluralize(totalTasks, 'task')}` : 'No project tasks'
+    },
+    {
+      label: 'Due in 7 days',
+      count: analysis.dueSoon,
+      total: totalTasks,
+      tone: 'is-upcoming',
+      note: totalTasks ? `${analysis.dueSoon} of ${totalTasks} ${pluralize(totalTasks, 'task')}` : 'No project tasks'
+    },
+    {
+      label: 'Awaiting review',
+      count: analysis.totalPendingReviews,
+      total: reviewPool,
+      tone: 'is-review',
+      note: reviewPool
+        ? `${analysis.pendingTaskReviews} ${pluralize(analysis.pendingTaskReviews, 'task')} · ${analysis.pendingSprintReviews} ${pluralize(analysis.pendingSprintReviews, 'sprint')}`
+        : 'No deliverables'
+    }
   ]
-  items.slice(1).forEach(item => {
+  if (analysis.dependencyRisks > 0) {
+    items.push({
+      label: 'Dependency risk',
+      count: analysis.dependencyRisks,
+      total: totalTasks,
+      tone: 'is-review',
+      note: `${analysis.dependencyRisks} of ${totalTasks} ${pluralize(totalTasks, 'task')}`
+    })
+  }
+  items.forEach(item => {
     const percent = item.total ? Math.round((item.count / item.total) * 100) : 0
     item.chartValue = percent
     item.valueLabel = `${item.count} · ${percent}%`
-    item.note = item.total
-      ? `${item.count} of ${item.total} ${item.totalLabel}`
-      : item.totalLabel === 'project sprints'
-        ? 'No project sprints'
-        : 'No open tasks'
   })
-  items[0].note = totalTasks
-    ? `${analysis.completed} of ${totalTasks} project tasks`
-    : 'No project tasks'
   return renderProgressBars(
     'Delivery indicators',
-    "Share of this project's tasks and sprints in each delivery state",
+    `Task & review readiness across ${totalTasks} ${pluralize(totalTasks, 'task')}${totalSprints ? ` · ${totalSprints} ${pluralize(totalSprints, 'sprint')}` : ''}`,
     items,
     'is-delivery-indicators',
-    'percent',
-    'Add project tasks and sprints to see delivery indicators.'
+    {
+      scale: 'percent',
+      emptyMessage: 'Add project tasks and sprints to see delivery indicators.'
+    }
   )
 }
 
@@ -211,10 +311,8 @@ function renderStatusDonut(items, options = {}) {
   } = options
   const chart = make('section', 'project-progress-chart project-progress-status-chart')
   chart.setAttribute('aria-label', ariaLabel)
-  const heading = make('div', 'project-progress-chart-heading')
-  const titleCopy = make('div', 'project-progress-chart-title')
-  titleCopy.append(make('h4', '', title), make('small', '', subtitle))
-  heading.append(titleCopy)
+  const heading = make('div', 'project-progress-chart-title')
+  heading.append(make('h4', '', title), make('small', '', subtitle))
   chart.append(heading)
   const total = items.reduce((sum, item) => sum + item.count, 0)
   if (!total) {
@@ -281,74 +379,100 @@ function renderProgressBars(
   subtitle,
   items,
   className,
-  scale = 'max',
-  emptyMessage = 'No data to display yet.'
+  options = 'max',
+  legacyEmptyMessage = 'No data to display yet.'
 ) {
+  const config = typeof options === 'string'
+    ? { scale: options, emptyMessage: legacyEmptyMessage }
+    : options
+  const {
+    scale = 'max',
+    emptyMessage = 'No data to display yet.',
+    pairedSeries = null
+  } = config
+
   const chart = make('section', `project-progress-chart ${className}`)
   const heading = make('div', 'project-progress-chart-title')
   heading.append(make('h4', '', title), make('small', '', subtitle))
   chart.append(heading)
-  if (
-    !items.length ||
-    (!items.some(item => item.count > 0) && !items.some(item => item.completion !== undefined))
-  ) {
+
+  const hasSeriesData = items.some(item =>
+    pairedSeries
+      ? Number(item[pairedSeries[0].key] || 0) > 0 || Number(item[pairedSeries[1].key] || 0) > 0
+      : Number(item.count || 0) > 0
+  )
+  if (!items.length || (!hasSeriesData && !pairedSeries)) {
+    chart.append(make('p', 'project-progress-chart-empty', emptyMessage))
+    return chart
+  }
+  if (!hasSeriesData && pairedSeries && items.every(item => !item.count)) {
     chart.append(make('p', 'project-progress-chart-empty', emptyMessage))
     return chart
   }
 
-  const totalCount = items.reduce((sum, item) => sum + item.count, 0)
-  const max = scale === 'percent' || scale === 'total'
+  const maxValue = scale === 'percent'
     ? 100
-    : Math.max(...items.map(item => item.count), 1)
-  const isSprintCompletion = items.some(item => item.completion !== undefined)
-  const axis = make('div', 'project-progress-column-axis')
-  const axisValues = scale === 'percent' || scale === 'total'
+    : pairedSeries
+      ? Math.max(...items.flatMap(item => [
+          Number(item[pairedSeries[0].key] || 0),
+          Number(item[pairedSeries[1].key] || 0)
+        ]), 1)
+      : Math.max(...items.map(item => Number(item.count || 0)), 1)
+
+  const axisValues = scale === 'percent'
     ? [100, 75, 50, 25, 0].map(value => `${value}%`)
-    : max <= 3
-      ? Array.from({ length: max + 1 }, (_, index) => String(max - index))
-      : [max, .75, .5, .25, 0].map(value =>
-          String(typeof value === 'number' && value <= 1
-            ? Math.round(max * value)
-            : value)
+    : maxValue <= 3
+      ? Array.from({ length: maxValue + 1 }, (_, index) => String(maxValue - index))
+      : [maxValue, 0.75, 0.5, 0.25, 0].map(value =>
+          String(value === maxValue ? maxValue : Math.round(maxValue * value))
         )
+
+  const axis = make('div', 'project-progress-column-axis')
   axisValues.forEach(value => {
-    const tick = make('span', '', value)
-    axis.append(tick)
+    axis.append(make('span', '', value))
   })
 
   const plot = make('div', 'project-progress-column-plot')
   plot.style.setProperty('--column-count', String(items.length))
+  plot.style.setProperty('--grid-step', `${100 / Math.max(axisValues.length - 1, 1)}%`)
+
   items.forEach(item => {
     const group = make('div', 'project-progress-column-group')
+    const ariaSummary = pairedSeries
+      ? `${item.label}: ${pairedSeries[0].label} ${item[pairedSeries[0].key] || 0}, ${pairedSeries[1].label} ${item[pairedSeries[1].key] || 0}`
+      : `${item.label}: ${item.count}${item.note ? `, ${item.note}` : ''}`
     group.setAttribute('role', 'img')
-    group.setAttribute('aria-label', item.completion !== undefined
-      ? `${item.label}: ${item.done} of ${item.count} tasks complete, ${item.completion}%`
-      : `${item.label}: ${item.count}${item.note ? `, ${item.note}` : ''}`)
-    const bars = make('div', 'project-progress-column-bars')
-    const values = item.completion !== undefined
-      ? [
-          { value: item.count, label: String(item.count), tone: 'is-planned' },
-          { value: item.done, label: String(item.done), tone: 'is-done' }
-        ]
+    group.setAttribute('aria-label', ariaSummary)
+    group.title = item.note ? `${item.label} — ${item.note}` : item.label
+
+    const bars = make('div', `project-progress-column-bars${pairedSeries ? ' is-paired' : ''}`)
+    const values = pairedSeries
+      ? pairedSeries.map(series => ({
+          value: Number(item[series.key] || 0),
+          label: String(Number(item[series.key] || 0)),
+          tone: series.tone
+        }))
       : [{
-          value: item.chartValue ?? (scale === 'total'
-            ? (totalCount ? (item.count / totalCount) * 100 : 0)
-            : item.count),
-          label: item.valueLabel || String(item.count),
+          value: scale === 'percent'
+            ? Number(item.chartValue ?? 0)
+            : Number(item.count || 0),
+          label: item.valueLabel || String(item.count || 0),
           tone: item.tone || 'is-progress'
         }]
+
     values.forEach(barData => {
       const bar = make('div', `project-progress-column-bar ${barData.tone}`)
       const barValue = make('small', 'project-progress-column-value', barData.label)
       const fill = make('span', 'project-progress-column-fill')
-      const height = scale === 'total' && item.completion === undefined
-        ? barData.value
-        : max ? (barData.value / max) * 100 : 0
-      bar.style.height = `${Math.max(height, 1)}%`
+      const rawHeight = maxValue ? (barData.value / maxValue) * 100 : 0
+      const height = barData.value <= 0 ? 0 : Math.max(rawHeight, 2)
+      bar.classList.toggle('is-zero', barData.value <= 0)
+      bar.style.height = `${Math.min(height, 100)}%`
       fill.style.height = '100%'
       bar.append(barValue, fill)
       bars.append(bar)
     })
+
     const label = make('span', 'project-progress-column-label', item.label)
     group.append(bars, label)
     if (item.note || item.status) {
@@ -360,14 +484,12 @@ function renderProgressBars(
   const graph = make('div', 'project-progress-column-graph')
   graph.append(axis, plot)
   chart.append(graph)
-  if (isSprintCompletion) {
+  if (pairedSeries) {
     const legend = make('div', 'project-progress-column-legend')
-    legend.append(
-      make('span', '', 'Total tasks'),
-      make('span', '', 'Completed tasks')
-    )
-    legend.children[0].classList.add('is-planned')
-    legend.children[1].classList.add('is-done')
+    pairedSeries.forEach(series => {
+      const entry = make('span', series.tone, series.label)
+      legend.append(entry)
+    })
     chart.append(legend)
   }
   return chart
@@ -393,21 +515,21 @@ function downloadProjectAnalysis(project, projectTasks, analysis) {
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;')
   const percentage = (count, total) => total ? Math.round((count / total) * 100) : 0
-  const percentLabel = (count, total) => `${percentage(count, total)}%`
   const openTasks = projectTasks.length - analysis.completed
+  const reviewPool = projectTasks.length + analysis.sprintCount
   const deliveryIndicators = [
-    ['Tasks complete', analysis.completed, projectTasks.length],
-    ['Blocked', analysis.blocked, openTasks],
-    ['Dependency risk', analysis.dependencyRisks, openTasks],
-    ['Overdue', analysis.overdue, openTasks],
-    ['Due in 7 days', analysis.dueSoon, openTasks],
-    ['Awaiting review', analysis.pendingReview, analysis.sprintCount]
+    ['Completed', analysis.completed, projectTasks.length],
+    ['In progress', analysis.inProgress, projectTasks.length],
+    ['Blocked', analysis.blocked, projectTasks.length],
+    ['Overdue', analysis.overdue, projectTasks.length],
+    ['Due in 7 days', analysis.dueSoon, projectTasks.length],
+    ['Awaiting review', analysis.totalPendingReviews, reviewPool]
   ]
   const metricCards = [
     ['Completion', `${analysis.completion}%`, 'of project tasks'],
     ['Tasks complete', `${analysis.completed}/${projectTasks.length}`, 'completed'],
     ['Open tasks', openTasks, 'remaining'],
-    ['Sprints', analysis.sprintCount, 'project sprints']
+    ['Sprints', analysis.sprintCount, pluralize(analysis.sprintCount, 'project sprint')]
   ].map(([label, value, note]) => `
     <article class="metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></article>
   `).join('')
@@ -417,7 +539,7 @@ function downloadProjectAnalysis(project, projectTasks, analysis) {
       <div class="bars">
         ${items.map(item => {
           const value = Number(item.count || 0)
-          const ratio = percentage(value, total)
+          const ratio = percentage(value, item.total ?? total)
           return `<div class="bar-row">
             <div class="bar-label"><span>${escapeHtml(item.label)}</span><b>${escapeHtml(valueLabel ? valueLabel(item, value) : value)}</b></div>
             <div class="track"><i style="width:${ratio}%"></i></div>
@@ -461,7 +583,7 @@ function downloadProjectAnalysis(project, projectTasks, analysis) {
   .metric span,.metric small { display:block; color:#667085; font-size:12px; } .metric strong { display:block; font-size:26px; margin:10px 0 4px; }
   .charts { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; margin-bottom:20px; }
   .bar-row { margin: 14px 0; } .bar-label { display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px; }
-  .track { height:10px; background:#edf0f5; border-radius:3px; overflow:hidden; } .track i { display:block; height:100%; min-width:2px; background:#3b82f6; border-radius:3px; }
+  .track { height:10px; background:#edf0f5; border-radius:3px; overflow:hidden; } .track i { display:block; height:100%; min-width:0; background:#3b82f6; border-radius:3px; }
   .panel:nth-child(2) .track i { background:#10a878; } .panel:nth-child(3) .track i { background:#d88a45; }
   table { width:100%; border-collapse:collapse; font-size:12px; background:white; } th,td { text-align:left; padding:11px 12px; border-bottom:1px solid #edf0f5; vertical-align:top; } th { background:#f7f8fb; color:#667085; font-weight:700; }
   .table-panel { overflow:auto; margin-bottom:20px; } .status { display:inline-block; padding:3px 7px; border-radius:3px; background:#eef2ff; color:#3730a3; white-space:nowrap; }
@@ -473,11 +595,11 @@ function downloadProjectAnalysis(project, projectTasks, analysis) {
   <header><h1>${escapeHtml(project.name)}</h1><p>Production report generated ${escapeHtml(new Date().toLocaleString())}</p></header>
   <div class="metrics">${metricCards}</div>
   <div class="charts">
-    ${barSection('Delivery indicators', deliveryIndicators.map(([label, count]) => ({ label, count })), Math.max(projectTasks.length, openTasks, analysis.sprintCount), (item, value) => `${value} · ${percentLabel(value, item.label === 'Tasks complete' ? projectTasks.length : item.label === 'Awaiting review' ? analysis.sprintCount : openTasks)}`)}
+    ${barSection('Delivery indicators', deliveryIndicators.map(([label, count, total]) => ({ label, count, total })), projectTasks.length, (item, value) => `${value} · ${percentage(value, item.total)}%`)}
     ${barSection('Task status', analysis.taskStatusBreakdown, projectTasks.length)}
     ${barSection('Sprint status', analysis.sprintStatusBreakdown, analysis.sprintCount)}
     ${barSection('Schedule outlook', analysis.scheduleBreakdown, openTasks)}
-    ${barSection('Open work by assignee', analysis.workload, openTasks)}
+    ${barSection('Workload by assignee', analysis.workload, projectTasks.length, item => `${item.open} open · ${item.done} done`)}
   </div>
   <section class="panel table-panel"><h2>Task details</h2><table><thead><tr><th>Task</th><th>Status</th><th>Assignee</th><th>Sprint</th><th>Due date</th><th>Dependency warning</th></tr></thead><tbody>${taskRows || '<tr><td colspan="6">No tasks found.</td></tr>'}</tbody></table></section>
   <section class="panel table-panel"><h2>Sprint delivery</h2><table><thead><tr><th>Sprint</th><th>Status</th><th>Tasks</th><th>Completed tasks</th><th>Completion</th></tr></thead><tbody>${sprintRows || '<tr><td colspan="5">No sprints found.</td></tr>'}</tbody></table></section>
@@ -577,24 +699,7 @@ function renderSprintSubmissionAttachments(attachments) {
     const fileName = attachment.fileName || attachment.name || 'Sprint attachment'
     const size = Number(attachment.size) || 0
     const row = make('div', 'project-sprint-submission-file')
-    const iconType = mediaType === 'application/pdf'
-      ? 'pdf'
-      : mediaType.startsWith('image/')
-        ? 'image'
-        : mediaType.startsWith('audio/')
-          ? 'audio'
-          : mediaType.startsWith('video/')
-            ? 'video'
-            : 'file'
-    const iconText = {
-      pdf: 'PDF',
-      image: 'IMG',
-      audio: '♪',
-      video: '▶',
-      file: 'FILE'
-    }[iconType]
-    const icon = make('span', `project-sprint-submission-file-icon is-${iconType}`, iconText)
-    icon.setAttribute('aria-hidden', 'true')
+    const icon = createFileTypeIcon(fileName, mediaType, 'project-sprint-submission-file-icon')
     const details = make('span', 'project-sprint-submission-file-details')
     details.append(
       make('strong', 'project-sprint-submission-file-name', fileName),
@@ -649,6 +754,7 @@ function renderTaskSprintSubmissionAttachments(project, task, attachments) {
       ? Number(attachment.attachment_index)
       : attachmentPosition
     const row = make('div', 'project-sprint-submission-file')
+    const icon = createFileTypeIcon(fileName, mediaType, 'project-sprint-submission-file-icon')
     const details = make('span', 'project-sprint-submission-file-details')
     details.append(
       make('strong', 'project-sprint-submission-file-name', fileName),
@@ -712,7 +818,7 @@ function renderTaskSprintSubmissionAttachments(project, task, attachments) {
         downloadLink.textContent = 'Download'
       }
     })
-    row.append(details, actions)
+    row.append(icon, details, actions)
     actions.append(downloadLink)
     list.append(row)
   })
@@ -1149,19 +1255,22 @@ async function loadTaskComments(project, task, container) {
       copy.append(header)
       if (comment.body) copy.append(make('p', 'task-comment-body', comment.body))
       const attachments = comment.attachments || []
-      const playableAttachments = attachments.filter(attachment =>
-        attachment?.mediaType?.startsWith('image/') ||
-        attachment?.mediaType?.startsWith('audio/') ||
-        attachment?.mediaType?.startsWith('video/')
-      )
+      const isInlinePlayable = attachment => {
+        const type = resolveAttachmentMediaType(attachment?.fileName, attachment?.mediaType)
+        return (type.startsWith('image/') && type !== 'image/svg+xml') ||
+          type.startsWith('audio/') ||
+          type.startsWith('video/')
+      }
+      const playableAttachments = attachments.filter(isInlinePlayable)
       const attachmentContent = renderTaskMediaAttachments(playableAttachments)
       addCommentMediaExpandButtons(attachmentContent)
       const documentAttachments = attachments.filter(attachment =>
-        attachment?.mediaType === 'application/pdf' &&
-        typeof attachment.data === 'string' &&
-        typeof attachment.fileName === 'string'
+        !isInlinePlayable(attachment) &&
+        typeof attachment?.data === 'string' &&
+        typeof attachment?.fileName === 'string'
       )
       documentAttachments.forEach(attachment => {
+        const mediaType = resolveAttachmentMediaType(attachment.fileName, attachment.mediaType)
         const documentLink = make('a', 'project-comment-document')
         documentLink.href = attachment.data
         documentLink.download = attachment.fileName
@@ -1178,7 +1287,7 @@ async function loadTaskComments(project, task, container) {
           download.remove()
         })
         documentLink.append(
-          make('span', 'project-comment-document-type', 'PDF'),
+          createFileTypeIcon(attachment.fileName, mediaType, 'project-comment-document-icon'),
           make('span', 'project-comment-document-name', attachment.fileName),
           make(
             'span',
@@ -1291,57 +1400,67 @@ export async function openProjectProgressAside(task) {
   const openTasks = projectTasks.filter(task =>
     String(task.status || '').trim().toLowerCase() !== 'done'
   ).length
+  const scheduleSubtitle = openTasks
+    ? `${openTasks} open ${pluralize(openTasks, 'task')} by due date`
+    : projectTasks.length
+      ? 'All project tasks completed'
+      : 'No open tasks scheduled'
   const charts = make('div', 'project-progress-analysis-charts')
   charts.append(
-    renderDeliveryIndicators(analysis, projectTasks.length, openTasks, sprints.length),
+    renderDeliveryIndicators(analysis, projectTasks.length, sprints.length),
     renderStatusDonut(analysis.taskStatusBreakdown, {
       title: 'Task status',
-      subtitle: `${projectTasks.length} total project tasks`,
+      subtitle: `${projectTasks.length} ${pluralize(projectTasks.length, 'project task')}`,
       centerValue: `${analysis.completion}%`,
       centerLabel: 'complete',
-      ariaLabel: `${analysis.completion}% complete across ${projectTasks.length} project tasks`
+      ariaLabel: `${analysis.completion}% complete across ${projectTasks.length} ${pluralize(projectTasks.length, 'project task')}`
     }),
     renderStatusDonut(analysis.sprintStatusBreakdown, {
       title: 'Project sprint status',
-      subtitle: `${sprints.length} total project sprints`,
+      subtitle: `${sprints.length} ${pluralize(sprints.length, 'project sprint')}`,
       centerValue: String(sprints.length),
-      centerLabel: 'sprints',
-      ariaLabel: `${sprints.length} project sprints by delivery status`
+      centerLabel: pluralize(sprints.length, 'sprint'),
+      ariaLabel: `${sprints.length} ${pluralize(sprints.length, 'project sprint')} by delivery status`
     }),
     renderProgressBars(
-      'Project delivery',
-      `${projectTasks.length} total project tasks · ${sprints.length} total project sprints`,
-      [{
-        label: 'Project',
-        count: projectTasks.length,
-        done: analysis.completed,
-        completion: analysis.completion,
-        tone: 'is-done'
-      }],
+      'Sprint task delivery',
+      `${projectTasks.length} ${pluralize(projectTasks.length, 'task')} across ${sprints.length} ${pluralize(sprints.length, 'sprint')}`,
+      analysis.sprintProgress,
       'is-project-delivery',
-      'max',
-      'Add project tasks to see delivery progress.'
+      {
+        scale: 'max',
+        emptyMessage: 'Add sprints and assign tasks to track sprint delivery.',
+        pairedSeries: [
+          { key: 'count', label: 'Total tasks', tone: 'is-planned' },
+          { key: 'done', label: 'Completed tasks', tone: 'is-done' }
+        ]
+      }
     ),
     renderProgressBars(
       'Schedule outlook',
-      `${openTasks} open tasks grouped by due date`,
+      scheduleSubtitle,
       analysis.scheduleBreakdown,
       'is-schedule',
-      'total',
-      'No open tasks to analyze.'
+      {
+        scale: 'max',
+        emptyMessage: projectTasks.length
+          ? 'All project tasks are completed.'
+          : 'Add tasks with due dates to track schedule outlook.'
+      }
     ),
     renderProgressBars(
-      'Open work by assignee',
-      `${openTasks} open tasks grouped by assignee`,
-      analysis.workload.map((item, index) => ({
-        ...item,
-        tone: item.label === 'Unassigned'
-          ? 'is-blocked'
-          : `is-assignee-${(index % 4) + 1}`
-      })),
+      'Workload by assignee',
+      `${projectTasks.length} ${pluralize(projectTasks.length, 'task')} across ${analysis.workload.length} ${pluralize(analysis.workload.length, 'assignee')}`,
+      analysis.workload,
       'is-workload',
-      'max',
-      'No open work to compare.'
+      {
+        scale: 'max',
+        emptyMessage: 'Assign tasks to teammates to compare workload.',
+        pairedSeries: [
+          { key: 'open', label: 'Open tasks', tone: 'is-progress' },
+          { key: 'done', label: 'Completed tasks', tone: 'is-done' }
+        ]
+      }
     )
   )
   analysisSection.append(
@@ -1349,57 +1468,6 @@ export async function openProjectProgressAside(task) {
     charts
   )
   content.append(analysisSection)
-
-  const focusSection = make('section', 'project-progress-aside-section project-progress-aside-focus')
-  const descriptionMediaContainer = make('div', 'task-media-player-list')
-  focusSection.className = 'project-progress-aside-task-context'
-  focusSection.hidden = true
-  focusSection.append(make('h4', '', 'Task context'))
-  const discussionButton = make('button', 'project-progress-aside-context-link', 'View Discussion Context')
-  discussionButton.type = 'button'
-  discussionButton.hidden = true
-  discussionButton.addEventListener('click', () => {
-    close()
-    hub.openMessageContext?.({
-      conversationId: task.chatConversationId,
-      messageId: task.chatMessageId
-    })
-  })
-  focusSection.append(discussionButton)
-  if (task.hasDependencyWarning) {
-    focusSection.append(make('p', 'task-dependency-warning', 'A predecessor task is blocked or its due date moved later.'))
-  }
-  focusSection.append(descriptionMediaContainer)
-  const updateTaskContextVisibility = () => {
-    const hasDiscussionContext = Boolean(task.chatMessageId && task.chatConversationId)
-    discussionButton.hidden = !hasDiscussionContext
-    focusSection.hidden = !(
-      hasDiscussionContext ||
-      task.hasDependencyWarning ||
-      descriptionMediaContainer.childElementCount
-    )
-  }
-  updateTaskContextVisibility()
-  if (task.descriptionAttachments?.length) {
-    descriptionMediaContainer.append(make('p', 'project-progress-aside-empty', 'Loading task media…'))
-  }
-  void api.get(
-    `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(task.taskId)}`
-  ).then(response => {
-    const detail = response?.data?.task
-    if (!detail || !aside.isConnected) return
-    task.descriptionAttachments = detail.description_attachments || []
-    task.chatMessageId = detail.chat_message_id || task.chatMessageId
-    task.chatConversationId = detail.chat_conversation_id || task.chatConversationId
-    descriptionMediaContainer.replaceChildren(renderTaskMediaAttachments(task.descriptionAttachments))
-    updateTaskContextVisibility()
-  }).catch(error => {
-    if (aside.isConnected && task.descriptionAttachments?.length) {
-      descriptionMediaContainer.replaceChildren(
-        make('p', 'project-progress-aside-empty', error.message || 'Task media could not be loaded.')
-      )
-    }
-  })
 
   const dependencySection = make('section', 'project-progress-aside-section is-dependencies')
   const dependencyHeading = make('div', 'project-progress-aside-section-heading')
@@ -1547,345 +1615,543 @@ export async function openProjectProgressAside(task) {
   const sprintSection = make('section', 'project-progress-aside-section is-sprints')
   sprintSection.setAttribute('aria-labelledby', 'project-progress-aside-sprints-title')
   const sprintHeading = make('div', 'project-progress-aside-section-heading')
+  const sprintHeadingLeft = make('div', 'project-progress-aside-heading-group')
   const sprintHeadingCopy = make('div', 'project-comments-title')
   sprintHeadingCopy.append(make('span', 'project-progress-aside-eyebrow', 'Delivery plan'))
   const sprintHeadingTitle = make('h3', '', 'Project sprints')
   sprintHeadingTitle.id = 'project-progress-aside-sprints-title'
   sprintHeadingCopy.append(sprintHeadingTitle)
-  sprintHeading.append(sprintHeadingCopy)
-  sprintSection.append(sprintHeading)
-  const sprintList = make('div', 'project-sprint-list project-progress-aside-sprints')
-  const submissionMediaEditors = []
-  sprints.forEach((sprint, sprintIndex) => {
-    const sprintStatus = sprint.status || 'Upcoming'
-    const row = make('div', 'project-sprint-chip project-progress-aside-sprint')
-    row.setAttribute('aria-label', `${sprint.name || 'Untitled sprint'}: ${sprintStatus}`)
-    const sprintTop = make('span', 'project-sprint-card-top')
-    sprintTop.append(make('strong', 'project-sprint-card-name', sprint.name || 'Untitled sprint'))
-    const normalizedStatus = String(sprintStatus).toLowerCase().replaceAll(' ', '-')
-    sprintTop.append(make('span', `project-sprint-status is-${normalizedStatus}`, sprintStatus))
-    const sprintLead = sprintLeadMember(project, sprint)
-    const lead = sprintLead || (sprint.assigneeName
-      ? { name: sprint.assigneeName, firebaseUid: sprint.assigneeFirebaseUid }
-      : null)
-    const leadRow = make('span', 'project-sprint-card-lead')
-    if (lead) {
-      const leadAvatar = make('span')
-      renderAvatarElement(leadAvatar, lead, 'project-sprint-lead-avatar')
-      const leadLabel = lead.firebaseUid && lead.firebaseUid === project.creatorFirebaseUid
-        ? 'Owner'
-        : sprintLeadName(project, sprint)
-      leadRow.append(
-        leadAvatar,
-        make('span', 'project-sprint-card-lead-name', leadLabel)
-      )
-    } else {
-      leadRow.append(make('span', 'project-sprint-card-unassigned', 'No sprint lead assigned'))
-    }
-    sprintTop.append(leadRow)
-    const sprintTasks = projectTasks.filter(candidate => getTaskSprintName(candidate) === sprint.name)
-    const sprintStart = sprint.startDate || sprint.start_date
-    const sprintEnd = sprint.endDate || sprint.end_date
-    const sprintStartLabel = sprintStart ? formatSprintDate(sprintStart) : ''
-    const sprintEndLabel = sprintEnd ? formatSprintDate(sprintEnd) : ''
-    const sprintDates = sprintStartLabel && sprintEndLabel
-      ? `${sprintStartLabel} — ${sprintEndLabel}`
-      : ''
-    const completedSprintTasks = sprintTasks.filter(candidate => candidate.status === 'Done').length
-    const sprintProgress = sprintTasks.length
-      ? Math.round((completedSprintTasks / sprintTasks.length) * 100)
-      : 0
-    const progress = make('div', 'project-sprint-card-progress')
-    const progressTrack = make('div', 'project-sprint-card-track')
-    progressTrack.setAttribute('role', 'progressbar')
-    progressTrack.setAttribute('aria-label', `${sprint.name || 'Sprint'} task completion`)
-    progressTrack.setAttribute('aria-valuemin', '0')
-    progressTrack.setAttribute('aria-valuemax', '100')
-    progressTrack.setAttribute('aria-valuenow', String(sprintProgress))
-    const progressFill = make('span', 'project-sprint-card-fill')
-    progressFill.style.width = `${sprintProgress}%`
-    progressTrack.append(progressFill)
-    progress.append(
-      progressTrack,
-      make('strong', 'project-sprint-card-percent', sprintTasks.length ? `${sprintProgress}%` : '—')
+  sprintHeadingLeft.append(
+    sprintHeadingCopy,
+    make(
+      'span',
+      'project-progress-aside-count',
+      `${sprints.length} ${sprints.length === 1 ? 'sprint' : 'sprints'}`
     )
-    const progressSummary = make(
-      'small',
-      'project-sprint-card-summary',
-      sprintTasks.length
-        ? `${completedSprintTasks} of ${sprintTasks.length} ${sprintTasks.length === 1 ? 'task' : 'tasks'} complete`
-        : 'No tasks assigned to this sprint'
-    )
-    const detailsId = `project-sprint-details-${sprintIndex}`
-    const toggle = make('button', 'project-sprint-card-toggle')
-    toggle.type = 'button'
-    toggle.setAttribute('aria-expanded', 'false')
-    toggle.setAttribute('aria-controls', detailsId)
-    toggle.append(sprintTop)
-    if (sprintDates) toggle.append(make('small', 'project-sprint-card-dates', sprintDates))
-    toggle.append(
-      progressSummary,
-      make('span', 'project-sprint-card-toggle-label', 'View sprint details'),
-      make('span', 'project-sprint-card-toggle-icon', '⌄')
-    )
-    const details = make('div', 'project-sprint-card-details')
-    details.id = detailsId
-    details.hidden = true
-    details.setAttribute('role', 'region')
-    details.setAttribute('aria-labelledby', `${detailsId}-toggle`)
-    toggle.id = `${detailsId}-toggle`
-    toggle.addEventListener('click', () => {
-      const expanded = toggle.getAttribute('aria-expanded') === 'true'
-      toggle.setAttribute('aria-expanded', String(!expanded))
-      details.hidden = expanded
-      row.classList.toggle('is-expanded', !expanded)
-      toggle.querySelector('.project-sprint-card-toggle-label').textContent =
-        expanded ? 'View sprint details' : 'Hide sprint details'
+  )
+  sprintHeading.append(sprintHeadingLeft)
+  const sprintExpandControls = []
+  if (sprints.length) {
+    const expandAllButton = make('button', 'project-sprint-sheet-bulk-toggle', 'Expand all')
+    expandAllButton.type = 'button'
+    expandAllButton.addEventListener('click', () => {
+      const anyCollapsed = sprintExpandControls.some(control => !control.isExpanded())
+      sprintExpandControls.forEach(control => control.setExpanded(anyCollapsed))
+      expandAllButton.textContent = anyCollapsed ? 'Collapse all' : 'Expand all'
     })
-    row.append(toggle, details)
-    const sprintDescriptions = [
-      sprint.description,
-      sprint.details,
-      sprint.goal,
-      sprint.objective,
-      sprint.summary
-    ].filter(value => typeof value === 'string' && value.trim())
-      .map(value => value.trim())
-    const uniqueDescriptions = [...new Set(sprintDescriptions)]
-    if (uniqueDescriptions.length) {
-      const description = make('div', 'project-sprint-card-descriptions')
-      uniqueDescriptions.forEach(text => {
-        description.append(make('p', 'project-sprint-card-description', text))
-      })
-      details.append(description)
+    sprintHeading.append(expandAllButton)
+  }
+  sprintSection.append(sprintHeading)
+
+  const submissionMediaEditors = []
+  if (!sprints.length) {
+    sprintSection.append(make('p', 'project-progress-aside-empty', 'No project sprints yet.'))
+  } else {
+    const sheetWrap = make('div', 'project-sprint-sheet-wrap')
+    const sheetTable = make('table', 'project-sprint-sheet')
+    sheetTable.setAttribute('aria-label', 'Project sprints delivery plan')
+
+    const thead = document.createElement('thead')
+    const headRow = document.createElement('tr')
+    ;[
+      ['#', 'is-index'],
+      ['Sprint', 'is-sprint'],
+      ['Status', 'is-status'],
+      ['Lead', 'is-lead'],
+      ['Schedule', 'is-schedule'],
+      ['Tasks', 'is-tasks'],
+      ['Progress', 'is-progress'],
+      ['Details', 'is-actions']
+    ].forEach(([label, colClass]) => {
+      const th = document.createElement('th')
+      th.scope = 'col'
+      th.className = colClass
+      th.textContent = label
+      headRow.append(th)
+    })
+    thead.append(headRow)
+    sheetTable.append(thead)
+
+    const tbody = document.createElement('tbody')
+    const syncBulkToggleLabel = () => {
+      const bulkButton = sprintHeading.querySelector('.project-sprint-sheet-bulk-toggle')
+      if (!bulkButton || !sprintExpandControls.length) return
+      const allExpanded = sprintExpandControls.every(control => control.isExpanded())
+      bulkButton.textContent = allExpanded ? 'Collapse all' : 'Expand all'
     }
-    details.append(progress)
-    const submission = sprintSubmissionContent(sprint)
-    if (submission.notes.length) {
-      const submissionNote = make('div', 'project-sprint-submission-note')
-      submissionNote.append(make('strong', 'project-sprint-card-section-label', 'Sprint notes'))
-      submission.notes.forEach(note => submissionNote.append(make('p', '', note)))
-      details.append(submissionNote)
-    }
-    if (submission.attachments.length) {
-      const attachmentList = renderSprintSubmissionAttachments(submission.attachments)
-      if (attachmentList.childElementCount) {
-        const submissionMedia = make('div', 'project-sprint-submission-media')
-        submissionMedia.append(make('strong', 'project-sprint-submission-media-title', 'Submission attachments'))
-        submissionMedia.append(attachmentList)
-        details.append(submissionMedia)
+
+    sprints.forEach((sprint, sprintIndex) => {
+      const sprintStatus = sprint.status || 'Upcoming'
+      const normalizedStatus = String(sprintStatus).toLowerCase().replaceAll(' ', '-')
+      const sprintTasks = projectTasks.filter(candidate => getTaskSprintName(candidate) === sprint.name)
+      const completedSprintTasks = sprintTasks.filter(candidate => candidate.status === 'Done').length
+      const sprintProgress = sprintTasks.length
+        ? Math.round((completedSprintTasks / sprintTasks.length) * 100)
+        : 0
+
+      const sprintLead = sprintLeadMember(project, sprint)
+      const lead = sprintLead || (sprint.assigneeName
+        ? { name: sprint.assigneeName, firebaseUid: sprint.assigneeFirebaseUid }
+        : null)
+      const leadDisplayName = lead
+        ? (lead.name || lead.email || sprintLeadName(project, sprint))
+        : ''
+      const leadIsOwner = Boolean(lead?.firebaseUid && lead.firebaseUid === project.creatorFirebaseUid)
+
+      const sprintStart = sprint.startDate || sprint.start_date
+      const sprintEnd = sprint.endDate || sprint.end_date
+      const sprintStartLabel = sprintStart ? formatSprintDate(sprintStart) : ''
+      const sprintEndLabel = sprintEnd ? formatSprintDate(sprintEnd) : ''
+      const sprintDates = sprintStartLabel && sprintEndLabel
+        ? `${sprintStartLabel} – ${sprintEndLabel}`
+        : sprintStartLabel || sprintEndLabel || 'Not scheduled'
+
+      const sprintDescriptions = [
+        sprint.description,
+        sprint.details,
+        sprint.goal,
+        sprint.objective,
+        sprint.summary
+      ].filter(value => typeof value === 'string' && value.trim())
+        .map(value => value.trim())
+      const uniqueDescriptions = [...new Set(sprintDescriptions)]
+
+      const dataRow = make('tr', 'project-sprint-sheet-row')
+      dataRow.setAttribute('aria-label', `${sprint.name || 'Untitled sprint'}: ${sprintStatus}`)
+
+      const indexCell = make('td', 'project-sprint-sheet-cell is-index')
+      indexCell.append(make('span', 'project-sprint-sheet-index', String(sprintIndex + 1).padStart(2, '0')))
+
+      const sprintCell = make('td', 'project-sprint-sheet-cell is-sprint')
+      const sprintTitleBtn = make('button', 'project-sprint-sheet-title-btn')
+      sprintTitleBtn.type = 'button'
+      sprintTitleBtn.append(make('strong', 'project-sprint-sheet-name', sprint.name || 'Untitled sprint'))
+      if (uniqueDescriptions[0]) {
+        sprintTitleBtn.append(make('span', 'project-sprint-sheet-brief', uniqueDescriptions[0]))
       }
-    }
-    if (submission.submittedBy || submission.submittedAt) {
-      const submittedMetadata = make('small', 'project-sprint-submission-metadata')
-      const submittedDate = submission.submittedAt
-        ? new Date(submission.submittedAt).toLocaleString(undefined, {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit'
-        })
-        : ''
-      submittedMetadata.textContent = [
-        submission.submittedBy ? `Submitted by ${submission.submittedBy}` : '',
-        submittedDate
-      ].filter(Boolean).join(' · ')
-      details.append(submittedMetadata)
-    }
-    if (submission.feedback) {
-      const ownerFeedback = make('div', 'project-sprint-review-comment')
-      ownerFeedback.append(
-        make('strong', 'project-sprint-card-section-label', 'Owner feedback'),
-        make('p', '', submission.feedback)
-      )
-      const reviewAttachments = renderSprintSubmissionAttachments(submission.reviewAttachments)
-      if (reviewAttachments.childElementCount) ownerFeedback.append(reviewAttachments)
-      details.append(ownerFeedback)
-    } else if (submission.reviewAttachments.length) {
-      const ownerFeedback = make('div', 'project-sprint-review-comment')
-      ownerFeedback.append(make('strong', 'project-sprint-card-section-label', 'Owner feedback'))
-      ownerFeedback.append(renderSprintSubmissionAttachments(submission.reviewAttachments))
-      details.append(ownerFeedback)
-    }
-    if (submission.reviewedBy || submission.reviewedAt) {
-      const reviewedDate = submission.reviewedAt
-        ? new Date(submission.reviewedAt).toLocaleString(undefined, {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit'
-        })
-        : ''
-      details.append(make(
-        'small',
-        'project-sprint-submission-metadata',
-        [
-          submission.reviewedBy ? `Reviewed by ${submission.reviewedBy}` : '',
-          reviewedDate
-        ].filter(Boolean).join(' · ')
+      sprintCell.append(sprintTitleBtn)
+
+      const statusCell = make('td', 'project-sprint-sheet-cell is-status')
+      statusCell.append(make('span', `project-sprint-status is-${normalizedStatus}`, sprintStatus))
+
+      const leadCell = make('td', 'project-sprint-sheet-cell is-lead')
+      if (lead) {
+        const leadWrap = make('div', 'project-sprint-sheet-lead')
+        const leadAvatar = make('span')
+        renderAvatarElement(leadAvatar, lead, 'project-sprint-lead-avatar')
+        leadAvatar.setAttribute('aria-hidden', 'true')
+        const leadMeta = make('div', 'project-sprint-sheet-lead-copy')
+        leadMeta.append(make('span', 'project-sprint-sheet-lead-name', leadDisplayName || 'Assigned lead'))
+        if (leadIsOwner) {
+          leadMeta.append(make('small', 'project-sprint-sheet-lead-role', 'Owner'))
+        }
+        leadWrap.append(leadAvatar, leadMeta)
+        leadCell.append(leadWrap)
+      } else {
+        leadCell.append(make('span', 'project-sprint-sheet-muted', 'Unassigned'))
+      }
+
+      const scheduleCell = make('td', 'project-sprint-sheet-cell is-schedule')
+      scheduleCell.append(make(
+        'span',
+        sprintDates === 'Not scheduled' ? 'project-sprint-sheet-muted' : 'project-sprint-sheet-date',
+        sprintDates
       ))
-    }
-    if (isProjectOwner) {
-      const removeButton = make('button', 'project-sprint-remove', '×')
-      removeButton.type = 'button'
-      removeButton.setAttribute('aria-label', `Remove ${sprint.name || 'sprint'}`)
-      removeButton.title = 'Remove sprint'
-      removeButton.addEventListener('click', () => removeProjectSprint(project, sprint, task, removeButton))
-      details.append(removeButton)
-    }
 
-    if (currentUid && sprint.assigneeFirebaseUid === currentUid &&
-      !['Completed', 'Pending Review'].includes(sprint.status)) {
-      const submissionForm = document.createElement('form')
-      submissionForm.className = 'project-sprint-review-form no-input-icon'
-      const submissionInput = document.createElement('textarea')
-      submissionInput.rows = 3
-      submissionInput.maxLength = 5000
-      submissionInput.placeholder = sprint.status === 'Changes Requested'
-        ? 'Describe your updates before resubmitting…'
-        : 'Summarize the completed sprint work for the project owner…'
-      submissionInput.setAttribute('aria-label', `Submission note for ${sprint.name}`)
-      const submissionMedia = createTaskMediaEditor({
-        label: 'Attach a file or voice note',
-        allowScreenRecording: false,
-        maxAttachments: 10
-      })
-      submissionMedia.element.classList.add('project-sprint-submission-editor')
-      submissionMediaEditors.push(submissionMedia)
-      const submitButton = make(
-        'button',
-        'project-progress-aside-complete',
-        isProjectOwner
-          ? 'Complete sprint'
-          : sprint.status === 'Changes Requested'
-            ? 'Resubmit for review'
-            : 'Submit for review'
+      const tasksCell = make('td', 'project-sprint-sheet-cell is-tasks')
+      tasksCell.append(make(
+        'span',
+        sprintTasks.length ? 'project-sprint-sheet-task-count' : 'project-sprint-sheet-muted',
+        sprintTasks.length
+          ? `${completedSprintTasks} / ${sprintTasks.length} done`
+          : 'No tasks'
+      ))
+
+      const progressCell = make('td', 'project-sprint-sheet-cell is-progress')
+      const progress = make('div', 'project-sprint-card-progress project-sprint-sheet-progress')
+      const progressTrack = make('div', 'project-sprint-card-track')
+      progressTrack.setAttribute('role', 'progressbar')
+      progressTrack.setAttribute('aria-label', `${sprint.name || 'Sprint'} task completion`)
+      progressTrack.setAttribute('aria-valuemin', '0')
+      progressTrack.setAttribute('aria-valuemax', '100')
+      progressTrack.setAttribute('aria-valuenow', String(sprintProgress))
+      const progressFill = make('span', 'project-sprint-card-fill')
+      progressFill.style.width = `${sprintProgress}%`
+      progressTrack.append(progressFill)
+      progress.append(
+        progressTrack,
+        make('strong', 'project-sprint-card-percent', sprintTasks.length ? `${sprintProgress}%` : '—')
       )
-      submitButton.type = 'submit'
-      submissionForm.append(submissionInput, submissionMedia.element, submitButton)
-      submissionForm.addEventListener('submit', async event => {
-        event.preventDefault()
-        const submissionNote = submissionInput.value.trim()
-        const restoreButton = setDashboardButtonLoading(submitButton, 'Submitting…')
-        try {
-          const submissionAttachments = await submissionMedia.getAttachments()
-          if (!submissionNote && !submissionAttachments.length) {
-            restoreButton()
-            submissionInput.focus()
-            showDashboardToast('Add a submission note or attach a file or voice note.', 'error')
-            return
-          }
-          const response = await api.post(
-            `/projects/${encodeURIComponent(project.projectId)}/sprints/${encodeURIComponent(sprint.name)}/submit`,
-            { submissionNote, submissionAttachments }
-          )
-          const savedProject = response?.data?.project
-          if (response?.success !== true || !Array.isArray(savedProject?.sprints)) {
-            throw new Error(response?.message || 'The server did not confirm that the sprint submission was saved.')
-          }
-          project.sprints = savedProject.sprints
-          hub.renderTasks?.()
-          addAuditLog(
-            isProjectOwner ? 'Sprint completed' : 'Sprint submitted for review',
-            `${currentUser.name} ${isProjectOwner ? 'completed' : 'submitted'} "${sprint.name}" in ${project.name}.`,
-            isProjectOwner ? 'check' : 'send'
-          )
-          showDashboardToast(
-            response.notificationWarning ||
-            (isProjectOwner
-              ? `"${sprint.name}" completed.`
-              : `"${sprint.name}" submitted to the project owner for review.`),
-            response.notificationWarning ? 'error' : 'success'
-          )
-          close()
-          openProjectProgressAside(task)
-        } catch (error) {
-          restoreButton()
-          showDashboardToast(error.message || 'The sprint could not be submitted.', 'error')
-        }
-      })
-      details.append(submissionForm)
-    }
+      progressCell.append(progress)
 
-    if (isProjectOwner && sprint.status === 'Pending Review') {
-      const reviewForm = document.createElement('form')
-      reviewForm.className = 'project-sprint-review-form no-input-icon'
-      const reviewInput = document.createElement('textarea')
-      reviewInput.rows = 3
-      reviewInput.maxLength = 5000
-      reviewInput.placeholder = 'Add optional feedback for the sprint lead…'
-      reviewInput.setAttribute('aria-label', `Review comment for ${sprint.name}`)
-      const reviewMedia = createTaskMediaEditor({
-        label: 'Attach feedback file or voice note',
-        allowScreenRecording: false,
-        maxAttachments: 10
-      })
-      reviewMedia.element.classList.add('project-sprint-submission-editor')
-      submissionMediaEditors.push(reviewMedia)
-      const actions = make('div', 'project-sprint-review-actions')
-      const acceptButton = make('button', 'project-progress-aside-complete', 'Accept submission')
-      acceptButton.type = 'button'
-      const changesButton = make('button', 'project-sprint-request-changes', 'Request changes')
-      changesButton.type = 'submit'
-      actions.append(acceptButton, changesButton)
-      reviewForm.append(reviewInput, reviewMedia.element, actions)
+      const detailsId = `project-sprint-details-${sprintIndex}`
+      const actionCell = make('td', 'project-sprint-sheet-cell is-actions')
+      const toggle = make('button', 'project-sprint-sheet-toggle')
+      toggle.type = 'button'
+      toggle.id = `${detailsId}-toggle`
+      toggle.setAttribute('aria-expanded', 'false')
+      toggle.setAttribute('aria-controls', detailsId)
 
-      const submitReview = async (decision, button) => {
-        const comment = reviewInput.value.trim()
-        const restoreButton = setDashboardButtonLoading(button, decision === 'accept' ? 'Accepting…' : 'Sending…')
-        try {
-          const reviewAttachments = await reviewMedia.getAttachments()
-          if (decision === 'request_changes' && !comment) {
-            restoreButton()
-            reviewInput.focus()
-            showDashboardToast('Add written feedback explaining the requested changes. You can also attach a file or voice note.', 'error')
-            return
-          }
-          const response = await api.post(
-            `/projects/${encodeURIComponent(project.projectId)}/sprints/${encodeURIComponent(sprint.name)}/review`,
-            {
-              decision,
-              comment,
-              ...(reviewAttachments.length ? { reviewAttachments } : {})
-            }
-          )
-          const savedProject = response?.data?.project
-          if (response?.success !== true || !Array.isArray(savedProject?.sprints)) {
-            throw new Error('The server did not confirm the sprint review.')
-          }
-          project.sprints = savedProject.sprints
-          hub.renderTasks?.()
-          addAuditLog(
-            decision === 'accept' ? 'Sprint submission accepted' : 'Sprint changes requested',
-            `${currentUser.name} ${decision === 'accept' ? 'accepted' : 'requested changes to'} "${sprint.name}" in ${project.name}.${comment ? ` ${comment}` : ''}`,
-            decision === 'accept' ? 'check' : 'comment'
-          )
-          showDashboardToast(
-            response.notificationWarning ||
-              (decision === 'accept' ? `"${sprint.name}" accepted and completed.` : `Changes requested for "${sprint.name}".`),
-            response.notificationWarning ? 'error' : 'success'
-          )
-          close()
-          openProjectProgressAside(task)
-        } catch (error) {
-          restoreButton()
-          showDashboardToast(error.message || 'The sprint review could not be saved.', 'error')
-        }
+      const canSubmitSprint = Boolean(
+        currentUid &&
+        sprint.assigneeFirebaseUid === currentUid &&
+        !['Completed', 'Pending Review'].includes(sprint.status)
+      )
+      const canReviewSprint = Boolean(isProjectOwner && sprint.status === 'Pending Review')
+
+      const toggleLabel = make('span', 'project-sprint-card-toggle-label', 'Details')
+      const toggleIcon = make('span', 'project-sprint-card-toggle-icon', '⌄')
+      toggleIcon.setAttribute('aria-hidden', 'true')
+      toggle.append(toggleLabel, toggleIcon)
+      if (canSubmitSprint || canReviewSprint) {
+        toggle.classList.add('has-pending-action')
+        toggle.title = canReviewSprint ? 'Review pending sprint submission' : 'Open details to submit sprint work'
+      }
+      actionCell.append(toggle)
+
+      dataRow.append(
+        indexCell,
+        sprintCell,
+        statusCell,
+        leadCell,
+        scheduleCell,
+        tasksCell,
+        progressCell,
+        actionCell
+      )
+
+      const detailRow = make('tr', 'project-sprint-sheet-detail-row')
+      detailRow.hidden = true
+      const detailTd = document.createElement('td')
+      detailTd.colSpan = 8
+      detailTd.className = 'project-sprint-sheet-detail-cell'
+
+      const details = make('div', 'project-sprint-card-details project-sprint-sheet-details')
+      details.id = detailsId
+      details.setAttribute('role', 'region')
+      details.setAttribute('aria-labelledby', toggle.id)
+
+      const setExpanded = expanded => {
+        toggle.setAttribute('aria-expanded', String(expanded))
+        detailRow.hidden = !expanded
+        dataRow.classList.toggle('is-expanded', expanded)
+        detailRow.classList.toggle('is-expanded', expanded)
+        toggleLabel.textContent = expanded ? 'Hide' : 'Details'
+        syncBulkToggleLabel()
+      }
+      sprintExpandControls.push({
+        isExpanded: () => toggle.getAttribute('aria-expanded') === 'true',
+        setExpanded
+      })
+
+      const handleToggle = () => {
+        const expanded = toggle.getAttribute('aria-expanded') === 'true'
+        setExpanded(!expanded)
+      }
+      toggle.addEventListener('click', handleToggle)
+      sprintTitleBtn.addEventListener('click', handleToggle)
+
+      const detailGrid = make('div', 'project-sprint-sheet-detail-grid')
+      const infoPane = make('div', 'project-sprint-sheet-detail-pane is-info')
+
+      if (uniqueDescriptions.length) {
+        const scopeBlock = make('div', 'project-sprint-sheet-block')
+        scopeBlock.append(make('strong', 'project-sprint-card-section-label', 'Sprint scope & deliverables'))
+        const description = make('div', 'project-sprint-card-descriptions')
+        uniqueDescriptions.forEach(text => {
+          description.append(make('p', 'project-sprint-card-description', text))
+        })
+        scopeBlock.append(description)
+        infoPane.append(scopeBlock)
       }
 
-      acceptButton.addEventListener('click', () => submitReview('accept', acceptButton))
-      reviewForm.addEventListener('submit', event => {
-        event.preventDefault()
-        void submitReview('request_changes', changesButton)
-      })
-      details.append(reviewForm)
-    }
-    sprintList.append(row)
-  })
-  if (!sprints.length) sprintList.append(make('p', 'project-progress-aside-empty', 'No project sprints yet.'))
-  sprintSection.append(sprintList)
+      const tasksBlock = make('div', 'project-sprint-sheet-block')
+      tasksBlock.append(make(
+        'strong',
+        'project-sprint-card-section-label',
+        `Assigned tasks (${sprintTasks.length})`
+      ))
+      if (!sprintTasks.length) {
+        tasksBlock.append(make('p', 'project-sprint-sheet-empty-note', 'No tasks have been assigned to this sprint yet.'))
+      } else {
+        const miniTaskList = make('div', 'project-sprint-sheet-task-list')
+        sprintTasks.forEach(sprintTask => {
+          const item = make('div', 'project-sprint-sheet-task-item')
+          item.append(
+            make('span', 'project-sprint-sheet-task-title', sprintTask.title || 'Untitled task'),
+            make(
+              'span',
+              `project-progress-aside-status is-${String(sprintTask.status || 'To do').toLowerCase().replaceAll(' ', '-')}`,
+              sprintTask.status || 'To do'
+            ),
+            make(
+              'small',
+              'project-sprint-sheet-task-due',
+              sprintTask.due_date ? displayDate(sprintTask.due_date) : 'No due date'
+            )
+          )
+          miniTaskList.append(item)
+        })
+        tasksBlock.append(miniTaskList)
+      }
+      infoPane.append(tasksBlock)
+
+      const submission = sprintSubmissionContent(sprint)
+      if (submission.notes.length) {
+        const submissionNote = make('div', 'project-sprint-submission-note')
+        submissionNote.append(make('strong', 'project-sprint-card-section-label', 'Sprint notes'))
+        submission.notes.forEach(note => submissionNote.append(make('p', '', note)))
+        infoPane.append(submissionNote)
+      }
+      if (submission.attachments.length) {
+        const attachmentList = renderSprintSubmissionAttachments(submission.attachments)
+        if (attachmentList.childElementCount) {
+          const submissionMedia = make('div', 'project-sprint-submission-media')
+          submissionMedia.append(make('strong', 'project-sprint-submission-media-title', 'Submission attachments'))
+          submissionMedia.append(attachmentList)
+          infoPane.append(submissionMedia)
+        }
+      }
+      if (submission.submittedBy || submission.submittedAt) {
+        const submittedMetadata = make('small', 'project-sprint-submission-metadata')
+        const submittedDate = submission.submittedAt
+          ? new Date(submission.submittedAt).toLocaleString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+          })
+          : ''
+        submittedMetadata.textContent = [
+          submission.submittedBy ? `Submitted by ${submission.submittedBy}` : '',
+          submittedDate
+        ].filter(Boolean).join(' · ')
+        infoPane.append(submittedMetadata)
+      }
+      if (submission.feedback) {
+        const ownerFeedback = make('div', 'project-sprint-review-comment')
+        ownerFeedback.append(
+          make('strong', 'project-sprint-card-section-label', 'Owner feedback'),
+          make('p', '', submission.feedback)
+        )
+        const reviewAttachments = renderSprintSubmissionAttachments(submission.reviewAttachments)
+        if (reviewAttachments.childElementCount) ownerFeedback.append(reviewAttachments)
+        infoPane.append(ownerFeedback)
+      } else if (submission.reviewAttachments.length) {
+        const ownerFeedback = make('div', 'project-sprint-review-comment')
+        ownerFeedback.append(make('strong', 'project-sprint-card-section-label', 'Owner feedback'))
+        ownerFeedback.append(renderSprintSubmissionAttachments(submission.reviewAttachments))
+        infoPane.append(ownerFeedback)
+      }
+      if (submission.reviewedBy || submission.reviewedAt) {
+        const reviewedDate = submission.reviewedAt
+          ? new Date(submission.reviewedAt).toLocaleString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+          })
+          : ''
+        infoPane.append(make(
+          'small',
+          'project-sprint-submission-metadata',
+          [
+            submission.reviewedBy ? `Reviewed by ${submission.reviewedBy}` : '',
+            reviewedDate
+          ].filter(Boolean).join(' · ')
+        ))
+      }
+
+      detailGrid.append(infoPane)
+
+      const actionPane = make('div', 'project-sprint-sheet-detail-pane is-actions')
+
+      if (canSubmitSprint) {
+        const submissionPanel = make('div', 'project-sprint-sheet-action-card')
+        submissionPanel.append(make(
+          'strong',
+          'project-sprint-card-section-label',
+          isProjectOwner ? 'Complete sprint' : 'Sprint submission'
+        ))
+        const submissionForm = document.createElement('form')
+        submissionForm.className = 'project-sprint-review-form no-input-icon'
+        const submissionInput = document.createElement('textarea')
+        submissionInput.rows = 3
+        submissionInput.maxLength = 5000
+        submissionInput.placeholder = sprint.status === 'Changes Requested'
+          ? 'Describe your updates before resubmitting…'
+          : 'Summarize the completed sprint work for the project owner…'
+        submissionInput.setAttribute('aria-label', `Submission note for ${sprint.name}`)
+        const submissionMedia = createTaskMediaEditor({
+          label: 'Attach a file or voice note',
+          allowScreenRecording: false,
+          maxAttachments: 10
+        })
+        submissionMedia.element.classList.add('project-sprint-submission-editor')
+        submissionMediaEditors.push(submissionMedia)
+        const submitButton = make(
+          'button',
+          'project-progress-aside-complete',
+          isProjectOwner
+            ? 'Complete sprint'
+            : sprint.status === 'Changes Requested'
+              ? 'Resubmit for review'
+              : 'Submit for review'
+        )
+        submitButton.type = 'submit'
+        submissionForm.append(submissionInput, submissionMedia.element, submitButton)
+        submissionForm.addEventListener('submit', async event => {
+          event.preventDefault()
+          const submissionNote = submissionInput.value.trim()
+          const restoreButton = setDashboardButtonLoading(submitButton, 'Submitting…')
+          try {
+            const submissionAttachments = await submissionMedia.getAttachments()
+            if (!submissionNote && !submissionAttachments.length) {
+              restoreButton()
+              submissionInput.focus()
+              showDashboardToast('Add a submission note or attach a file or voice note.', 'error')
+              return
+            }
+            const response = await api.post(
+              `/projects/${encodeURIComponent(project.projectId)}/sprints/${encodeURIComponent(sprint.name)}/submit`,
+              { submissionNote, submissionAttachments }
+            )
+            const savedProject = response?.data?.project
+            if (response?.success !== true || !Array.isArray(savedProject?.sprints)) {
+              throw new Error(response?.message || 'The server did not confirm that the sprint submission was saved.')
+            }
+            project.sprints = savedProject.sprints
+            hub.renderTasks?.()
+            addAuditLog(
+              isProjectOwner ? 'Sprint completed' : 'Sprint submitted for review',
+              `${currentUser.name} ${isProjectOwner ? 'completed' : 'submitted'} "${sprint.name}" in ${project.name}.`,
+              isProjectOwner ? 'check' : 'send'
+            )
+            showDashboardToast(
+              response.notificationWarning ||
+              (isProjectOwner
+                ? `"${sprint.name}" completed.`
+                : `"${sprint.name}" submitted to the project owner for review.`),
+              response.notificationWarning ? 'error' : 'success'
+            )
+            close()
+            openProjectProgressAside(task)
+          } catch (error) {
+            restoreButton()
+            showDashboardToast(error.message || 'The sprint could not be submitted.', 'error')
+          }
+        })
+        submissionPanel.append(submissionForm)
+        actionPane.append(submissionPanel)
+      }
+
+      if (canReviewSprint) {
+        const reviewPanel = make('div', 'project-sprint-sheet-action-card')
+        reviewPanel.append(make('strong', 'project-sprint-card-section-label', 'Owner review'))
+        const reviewForm = document.createElement('form')
+        reviewForm.className = 'project-sprint-review-form no-input-icon'
+        const reviewInput = document.createElement('textarea')
+        reviewInput.rows = 3
+        reviewInput.maxLength = 5000
+        reviewInput.placeholder = 'Add optional feedback for the sprint lead…'
+        reviewInput.setAttribute('aria-label', `Review comment for ${sprint.name}`)
+        const reviewMedia = createTaskMediaEditor({
+          label: 'Attach feedback file or voice note',
+          allowScreenRecording: false,
+          maxAttachments: 10
+        })
+        reviewMedia.element.classList.add('project-sprint-submission-editor')
+        submissionMediaEditors.push(reviewMedia)
+        const actions = make('div', 'project-sprint-review-actions')
+        const acceptButton = make('button', 'project-progress-aside-complete', 'Accept submission')
+        acceptButton.type = 'button'
+        const changesButton = make('button', 'project-sprint-request-changes', 'Request changes')
+        changesButton.type = 'submit'
+        actions.append(acceptButton, changesButton)
+        reviewForm.append(reviewInput, reviewMedia.element, actions)
+
+        const submitReview = async (decision, button) => {
+          const comment = reviewInput.value.trim()
+          const restoreButton = setDashboardButtonLoading(button, decision === 'accept' ? 'Accepting…' : 'Sending…')
+          try {
+            const reviewAttachments = await reviewMedia.getAttachments()
+            if (decision === 'request_changes' && !comment) {
+              restoreButton()
+              reviewInput.focus()
+              showDashboardToast('Add written feedback explaining the requested changes. You can also attach a file or voice note.', 'error')
+              return
+            }
+            const response = await api.post(
+              `/projects/${encodeURIComponent(project.projectId)}/sprints/${encodeURIComponent(sprint.name)}/review`,
+              {
+                decision,
+                comment,
+                ...(reviewAttachments.length ? { reviewAttachments } : {})
+              }
+            )
+            const savedProject = response?.data?.project
+            if (response?.success !== true || !Array.isArray(savedProject?.sprints)) {
+              throw new Error('The server did not confirm the sprint review.')
+            }
+            project.sprints = savedProject.sprints
+            hub.renderTasks?.()
+            addAuditLog(
+              decision === 'accept' ? 'Sprint submission accepted' : 'Sprint changes requested',
+              `${currentUser.name} ${decision === 'accept' ? 'accepted' : 'requested changes to'} "${sprint.name}" in ${project.name}.${comment ? ` ${comment}` : ''}`,
+              decision === 'accept' ? 'check' : 'comment'
+            )
+            showDashboardToast(
+              response.notificationWarning ||
+                (decision === 'accept' ? `"${sprint.name}" accepted and completed.` : `Changes requested for "${sprint.name}".`),
+              response.notificationWarning ? 'error' : 'success'
+            )
+            close()
+            openProjectProgressAside(task)
+          } catch (error) {
+            restoreButton()
+            showDashboardToast(error.message || 'The sprint review could not be saved.', 'error')
+          }
+        }
+
+        acceptButton.addEventListener('click', () => submitReview('accept', acceptButton))
+        reviewForm.addEventListener('submit', event => {
+          event.preventDefault()
+          void submitReview('request_changes', changesButton)
+        })
+        reviewPanel.append(reviewForm)
+        actionPane.append(reviewPanel)
+      }
+
+      if (actionPane.childElementCount) {
+        detailGrid.append(actionPane)
+      } else {
+        detailGrid.classList.add('is-single-pane')
+      }
+
+      details.append(detailGrid)
+
+      if (isProjectOwner) {
+        const footerBar = make('div', 'project-sprint-sheet-detail-footer')
+        const removeButton = make('button', 'project-sprint-sheet-remove-btn', 'Remove sprint')
+        removeButton.type = 'button'
+        removeButton.setAttribute('aria-label', `Remove ${sprint.name || 'sprint'}`)
+        removeButton.title = 'Remove sprint'
+        removeButton.addEventListener('click', () => removeProjectSprint(project, sprint, task, removeButton))
+        footerBar.append(removeButton)
+        details.append(footerBar)
+      }
+
+      detailTd.append(details)
+      detailRow.append(detailTd)
+      tbody.append(dataRow, detailRow)
+    })
+
+    sheetTable.append(tbody)
+    sheetWrap.append(sheetTable)
+    sprintSection.append(sheetWrap)
+  }
   content.append(sprintSection)
 
   const memberSection = make('section', 'project-progress-aside-section is-members')
@@ -2036,7 +2302,6 @@ export async function openProjectProgressAside(task) {
         }
       )
       if (taskSubmission) taskDetails.append(taskSubmission)
-      if (projectTask.taskId === task.taskId) taskDetails.append(focusSection)
       const canManageProjectTask = Boolean(
         currentUid && (
           isProjectOwner ||
@@ -2047,48 +2312,6 @@ export async function openProjectProgressAside(task) {
         !projectSprints.length ||
         projectSprints.some(sprint => sprint.status !== 'Completed')
       )
-      if (isProjectOwner) {
-        const actions = make('div', 'project-progress-aside-task-actions')
-        const editButton = make('button', 'project-progress-aside-task-action', 'Edit')
-        editButton.type = 'button'
-        editButton.addEventListener('click', () => {
-          close()
-          openProjectTaskModal(project, projectTask)
-        })
-        const deleteButton = make('button', 'project-progress-aside-task-action is-danger', 'Delete')
-        deleteButton.type = 'button'
-        deleteButton.addEventListener('click', async () => {
-          const confirmed = await showDashboardConfirmation({
-            title: 'Delete project task?',
-            message: `Delete "${projectTask.title}" from ${project.name}?`,
-            confirmText: 'Delete task',
-            danger: true
-          })
-          if (!confirmed) return
-          const restoreButton = setDashboardButtonLoading(deleteButton, 'Deleting…')
-          try {
-            await api.delete(
-              `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(projectTask.taskId)}`
-            )
-            const taskIndex = tasks.findIndex(candidate =>
-              candidate.backendPersistent && candidate.taskId === projectTask.taskId
-            )
-            if (taskIndex >= 0) tasks.splice(taskIndex, 1)
-            hub.renderTasks?.()
-            hub.renderWorkspaceSummary?.()
-            await hub.renderAdminTasksTable?.()
-              await hub.renderTasks?.()
-            showDashboardToast('Project task deleted.', 'success')
-            close()
-            openProjectProgressAside(task)
-          } catch (error) {
-            restoreButton()
-            showDashboardToast(error.message || 'The project task could not be deleted.', 'error')
-          }
-        })
-        actions.append(editButton, deleteButton)
-        taskDetails.append(actions)
-      }
       if (
         canManageProjectTask &&
         projectTask.status !== 'Done'
@@ -2130,9 +2353,6 @@ export async function openProjectProgressAside(task) {
       taskRow.append(taskTop, taskDetails)
       taskList.append(taskRow)
     })
-    if (!projectTasks.some(projectTask => projectTask.taskId === task.taskId)) {
-      taskSection.append(focusSection)
-    }
   }
   taskSection.append(taskList)
   content.append(taskSection)

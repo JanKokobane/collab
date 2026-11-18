@@ -954,7 +954,7 @@ const normalizeSprintSubmissionAttachments = value => {
         const fileName = typeof item?.fileName === 'string' ? item.fileName.trim() : '';
         const mediaType = typeof item?.mediaType === 'string' ? item.mediaType.toLowerCase() : '';
         const data = typeof item?.data === 'string' ? item.data : '';
-        const isSupportedType = /^(image\/(?!svg\+xml(?:$|;))[a-z0-9.+-]+|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|application\/(pdf|msword|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet|presentationml\.presentation)|vnd\.ms-(excel|powerpoint)|vnd\.oasis\.opendocument\.(text|spreadsheet|presentation))|text\/(plain|csv))$/.test(mediaType);
+        const isSupportedType = /^(image\/(?!svg\+xml(?:$|;))[a-z0-9.+-]+|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|application\/[a-z0-9.+_-]+|text\/(?!html(?:$|;))[a-z0-9.+-]+|font\/[a-z0-9.+-]+)$/.test(mediaType);
         const dataMatch = data.match(/^data:([^;,]+)(?:;codecs=[^;,]+)?;base64,([A-Za-z0-9+/]*={0,2})$/);
 
         if (!fileName || fileName.length > 255 || /[\u0000-\u001f\u007f]/.test(fileName) ||

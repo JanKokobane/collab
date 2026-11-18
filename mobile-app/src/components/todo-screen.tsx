@@ -916,29 +916,20 @@ function TaskCountdown({ due, status }: { due: string | null; status: string }) 
 function TaskCard({
   task,
   onOpen,
-  onAdvance,
-  busy,
 }: {
   task: Task;
   onOpen: () => void;
-  onAdvance: () => void;
-  busy: boolean;
 }) {
   const status = task.status.trim().toLowerCase();
   const done = status === 'done';
   const inProgress = status === 'in progress';
-  const canFinish = task.sprintSubmissionStatus === 'Completed';
   return (
     <View
       style={[
         styles.taskCard,
         done && styles.taskCardDone,
       ]}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`View details for ${task.title}`}
-        onPress={onOpen}
-        style={styles.cardMain}>
+      <View style={styles.cardMain}>
         <View style={styles.taskTitleRow}>
           <View style={styles.taskTitleIcon}>
             <Icon name="campaign" size={20} color="#000000" />
@@ -995,7 +986,7 @@ function TaskCard({
             </View>
           </View>
         </View>
-      </Pressable>
+      </View>
 
       <View style={styles.cardFooter}>
         <Text
@@ -1014,26 +1005,13 @@ function TaskCard({
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={done
-            ? 'Task completed'
-            : inProgress
-              ? canFinish ? 'Finish task' : 'Submit sprint for review before finishing task'
-              : 'Start task'}
-          disabled={busy || (inProgress && !canFinish)}
-          onPress={onAdvance}
-          style={[
-            styles.statusButton,
-            inProgress && styles.statusButtonInProgress,
-            done && styles.statusButtonDone,
-            inProgress && !canFinish && styles.primaryActionDisabled,
-          ]}>
-          {busy ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : done ? (
-            <Icon name="check" size={17} color="#BEBEBE" />
-          ) : (
-            <Icon name="arrow" size={19} color="#FFFFFF" />
-          )}
+          accessibilityLabel={`${done ? 'View' : inProgress ? 'Continue' : 'Start'} task ${task.title}`}
+          onPress={onOpen}
+          style={styles.statusButton}>
+          <Text style={styles.statusButtonText}>
+            {done ? 'View' : inProgress ? 'Continue' : 'Start'}
+          </Text>
+          <Icon name="arrow" size={17} color="#FFFFFF" />
         </Pressable>
       </View>
     </View>
@@ -1748,9 +1726,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                 <TaskCard
                   key={task.id}
                   task={task}
-                  busy={busyTaskId === task.id}
                   onOpen={() => setSelectedTaskId(task.id)}
-                  onAdvance={() => { void nextStatus(task); }}
                 />
               ))}
               {visibleTasks.length === 0 ? (
@@ -2450,11 +2426,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sprintCount: {
-    position: 'absolute',
-    left: 0,
-    top: 8,
-    bottom: 0,
-    width: '32%',
+    flex: 0.9,
     textAlignVertical: 'center',
     minWidth: 0,
     color: '#666666',
@@ -2463,22 +2435,18 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   cardFooter: {
-    position: 'relative',
     minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 8,
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#D9D9D9',
   },
   assigneeRow: {
-    position: 'absolute',
-    left: '25%',
-    top: 8,
-    bottom: 0,
-    width: '50%',
+    flex: 1.4,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2502,15 +2470,17 @@ const styles = StyleSheet.create({
     lineHeight: 32,
   },
   statusButton: {
-    width: 30,
-    height: 30,
+    minWidth: 76,
+    minHeight: 34,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 15,
-    backgroundColor: '#F0444F',
+    gap: 5,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: '#285F50',
   },
-  statusButtonInProgress: { backgroundColor: '#F0444F' },
-  statusButtonDone: { backgroundColor: '#D6D6D6' },
+  statusButtonText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
   emptyState: { alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 40, paddingHorizontal: 22, borderWidth: 1, borderStyle: 'dashed', borderColor: '#D8DEDA', borderRadius: 17, backgroundColor: '#FFFFFF' },
   emptyIcon: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 27, backgroundColor: '#EAF4EF' },
   emptyTitle: { marginTop: 13, color: '#35433D', fontSize: 16, fontWeight: '800' },

@@ -36,7 +36,7 @@ import { firebaseAuth } from '../../firebase.js'
 import { setDashboardButtonLoading, showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { deleteProjectMeeting, getSafeMeetingUrl } from './meetings.js'
 import { openMeteredMeetingModal } from './meteredMeetingModal.js'
-import { createTaskMediaEditor } from './taskMedia.js?v=20261028-dedicated-file-picker'
+import { createTaskMediaEditor } from './taskMedia.js?v=20261118-real-file-icons'
 
 // ============================================================
 // ADMIN CONSOLE TABLE & FUNCTIONS
@@ -1929,8 +1929,32 @@ export function openLegacyAdminEditTaskModal(task) {
   })
 }
 
+let projectActionDropdownListenersReady = false
+
+function ensureProjectActionDropdownDismissal() {
+  if (projectActionDropdownListenersReady) return
+  projectActionDropdownListenersReady = true
+
+  document.addEventListener('click', event => {
+    if (event.target instanceof Element && event.target.closest('.admin-project-action-dropdown')) {
+      return
+    }
+    document.querySelectorAll('.admin-project-action-dropdown[open]').forEach(dropdown => {
+      dropdown.open = false
+    })
+  })
+
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return
+    document.querySelectorAll('.admin-project-action-dropdown[open]').forEach(dropdown => {
+      dropdown.open = false
+    })
+  })
+}
+
 function renderProjectActionDropdown(container, label, availableProjects, onSelect, variant = '') {
   if (!availableProjects.length) return
+  ensureProjectActionDropdownDismissal()
 
   const dropdown = make('details', 'admin-project-action-dropdown')
   const trigger = make('summary', `action-btn admin-project-action-trigger ${variant}`, label)
@@ -2043,6 +2067,15 @@ export function renderAdminProjectsTable() {
     )
   }
   tbody.replaceChildren()
+
+  if (!projects.length) {
+    const row = document.createElement('tr')
+    const cell = make('td', 'notification-empty-state', 'No projects yet. Create a project to get started.')
+    cell.colSpan = 6
+    row.append(cell)
+    tbody.append(row)
+    return
+  }
 
   projects.forEach(project => {
     const tr = document.createElement('tr')

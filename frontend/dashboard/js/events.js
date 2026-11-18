@@ -10,7 +10,7 @@ import {
   setActiveFilter,
   setActiveDisplayMode
 } from './state.js'
-import { renderTasks, renderListView, getFilteredTasks } from './tasks.js?v=20261117-no-auto-sprints'
+import { renderTasks, renderListView, getFilteredTasks } from './tasks.js?v=20261118-review-badge-layout'
 import { openCreateProjectModal, openAddSprintModal, openInviteCollaboratorModal, openManageCollaboratorsModal } from './projects.js?v=20261117-project-calendar-same-month'
 import { toLocalDateKey } from './dateUtils.js?v=20261117-date-input-validation'
 import {
@@ -32,7 +32,7 @@ import {
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   openInviteModal
-} from './admin.js?v=20261117-project-task-date-compare'
+} from './admin.js?v=20261118-sprint-sequence-numbering'
 import {
   currentTheme,
   applyTheme,
