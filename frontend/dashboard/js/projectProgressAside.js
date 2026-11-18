@@ -31,6 +31,17 @@ function getTaskSprintName(task) {
   return String(task.sprint_name || task.sprint || '').trim()
 }
 
+async function refreshProjectTaskBoard() {
+  try {
+    await hub.renderAdminTasksTable?.({ silent: true })
+  } catch (error) {
+    console.error('Sprint update saved, but project tasks could not be refreshed:', error)
+    showDashboardToast('Sprint update saved, but task status and analytics could not be refreshed.', 'error')
+  }
+  hub.renderTasks?.()
+  hub.renderWorkspaceSummary?.()
+}
+
 function pluralize(count, singular, pluralForm = `${singular}s`) {
   return count === 1 ? singular : pluralForm
 }
@@ -83,8 +94,14 @@ function getProductionAnalysis(projectTasks, sprints) {
     task.dependencies?.some(dependency => dependency.warning_reason)
   ).length
   const pendingSprintReviews = sprints.filter(sprint => sprintStatus(sprint) === 'pending review').length
-  const pendingTaskReviews = activeTasks.filter(task => taskSubmissionStatus(task) === 'pending review').length
+  const pendingTaskReviews = projectTasks.filter(task => taskSubmissionStatus(task) === 'pending review').length
   const totalPendingReviews = pendingTaskReviews + pendingSprintReviews
+  const taskSubmissionStatusBreakdown = [
+    { label: 'Not submitted', count: projectTasks.filter(task => !taskSubmissionStatus(task) || taskSubmissionStatus(task) === 'not submitted').length, tone: 'is-backlog' },
+    { label: 'Pending review', count: projectTasks.filter(task => taskSubmissionStatus(task) === 'pending review').length, tone: 'is-review' },
+    { label: 'Completed', count: projectTasks.filter(task => taskSubmissionStatus(task) === 'completed').length, tone: 'is-done' },
+    { label: 'Changes requested', count: projectTasks.filter(task => taskSubmissionStatus(task) === 'changes requested').length, tone: 'is-blocked' }
+  ]
 
   const sprintStatusBreakdown = [
     { label: 'Completed', count: sprints.filter(sprint => sprintStatus(sprint) === 'completed').length, tone: 'is-done' },
@@ -217,6 +234,7 @@ function getProductionAnalysis(projectTasks, sprints) {
     completion,
     taskStatusBreakdown,
     sprintStatusBreakdown,
+    taskSubmissionStatusBreakdown,
     scheduleBreakdown,
     sprintProgress,
     workload: workloadItems
@@ -843,7 +861,7 @@ function renderTaskSprintSubmissionAttachments(project, task, attachments) {
 
 function renderTaskSprintSubmission(project, task, isProjectOwner, afterReview) {
   const submissionStatus = String(task.sprintSubmissionStatus || 'Not submitted')
-  if (submissionStatus === 'Not submitted') return null
+  if (submissionStatus.trim().toLowerCase() === 'not submitted') return null
 
   const section = make('section', `project-task-sprint-submission is-${submissionStatus.toLowerCase().replaceAll(' ', '-')}`)
   section.append(
@@ -852,10 +870,18 @@ function renderTaskSprintSubmission(project, task, isProjectOwner, afterReview) 
   if (task.sprintSubmittedAt) {
     const submittedAt = new Date(task.sprintSubmittedAt)
     if (!Number.isNaN(submittedAt.getTime())) {
+      const submittedByUid = task.sprintSubmittedByFirebaseUid || task.sprint_submitted_by_firebase_uid
+      const submittedByMember = project.acceptedMembers?.find(member =>
+        member.firebaseUid === submittedByUid
+      )
+      const submittedBy = submittedByUid === project.creatorFirebaseUid
+        ? project.creatorName || project.creatorEmail
+        : submittedByMember?.name || submittedByMember?.email ||
+          task.assigneeName || task.assignee_name || task.assignee_email
       section.append(make(
         'small',
         'project-sprint-submission-metadata',
-        `Submitted ${submittedAt.toLocaleString()}${task.assigneeName ? ` by ${task.assigneeName}` : ''}`
+        `Submitted ${submittedAt.toLocaleString()}${submittedBy ? ` by ${submittedBy}` : ''}`
       ))
     }
   }
@@ -1446,6 +1472,13 @@ export async function openProjectProgressAside(task) {
       centerValue: String(sprints.length),
       centerLabel: pluralize(sprints.length, 'sprint'),
       ariaLabel: `${sprints.length} ${pluralize(sprints.length, 'project sprint')} by delivery status`
+    }),
+    renderStatusDonut(analysis.taskSubmissionStatusBreakdown, {
+      title: 'Task sprint submissions',
+      subtitle: 'Mobile and dashboard task reviews',
+      centerValue: String(projectTasks.length),
+      centerLabel: pluralize(projectTasks.length, 'task'),
+      ariaLabel: `Sprint submission status across ${projectTasks.length} ${pluralize(projectTasks.length, 'task')}`
     }),
     renderProgressBars(
       'Sprint task delivery',
@@ -2208,7 +2241,7 @@ export async function openProjectProgressAside(task) {
               throw new Error(response?.message || 'The server did not confirm that the sprint submission was saved.')
             }
             project.sprints = savedProject.sprints
-            hub.renderTasks?.()
+            await refreshProjectTaskBoard()
             addAuditLog(
               isProjectOwner ? 'Sprint completed' : 'Sprint submitted for review',
               `${currentUser.name} ${isProjectOwner ? 'completed' : 'submitted'} "${sprint.name}" in ${project.name}.`,
@@ -2281,7 +2314,7 @@ export async function openProjectProgressAside(task) {
               throw new Error('The server did not confirm the sprint review.')
             }
             project.sprints = savedProject.sprints
-            hub.renderTasks?.()
+            await refreshProjectTaskBoard()
             addAuditLog(
               decision === 'accept' ? 'Sprint submission accepted' : 'Sprint changes requested',
               `${currentUser.name} ${decision === 'accept' ? 'accepted' : 'requested changes to'} "${sprint.name}" in ${project.name}.${comment ? ` ${comment}` : ''}`,
@@ -2493,9 +2526,11 @@ export async function openProjectProgressAside(task) {
           projectTask.assigneeFirebaseUid === currentUid
         )
       )
-      const taskMovementLocked = projectTask.status === 'In progress' && (
+      const taskMovementLocked = (
         !projectSprints.length ||
-        projectSprints.some(sprint => sprint.status !== 'Completed')
+        projectSprints.some(sprint => String(sprint.status || '').trim().toLowerCase() !== 'completed') ||
+        String(projectTask.sprintSubmissionStatus || projectTask.sprint_submission_status || '')
+          .trim().toLowerCase() !== 'completed'
       )
       if (
         canManageProjectTask &&
@@ -2504,12 +2539,12 @@ export async function openProjectProgressAside(task) {
         const completeTaskButton = make(
           'button',
           'project-progress-aside-task-complete',
-          taskMovementLocked ? 'Locked until sprints complete' : 'Complete task'
+          taskMovementLocked ? 'Locked until deliverables complete' : 'Complete task'
         )
         completeTaskButton.type = 'button'
         completeTaskButton.disabled = taskMovementLocked
         if (taskMovementLocked) {
-          completeTaskButton.title = 'Complete every project sprint before moving this in-progress task.'
+          completeTaskButton.title = 'Accept this task submission and complete every project sprint before moving this task to Done.'
         }
         completeTaskButton.addEventListener('click', async () => {
           if (taskMovementLocked) return

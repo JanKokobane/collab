@@ -39,6 +39,7 @@ export interface HomeProjectSprint {
   id?: string;
   name: string;
   status: string;
+  description?: string;
   assigneeFirebaseUid?: string;
   assigneeName?: string;
   assigneeEmail?: string;
@@ -265,6 +266,7 @@ function parseHomeProject(value: unknown): HomeProject | null {
         id: asText(sprint.id) || undefined,
         name,
         status: asText(sprint.status, 'Upcoming'),
+        description: asText(sprint.description, asText(sprint.sprint_description)) || undefined,
         assigneeFirebaseUid: asText(sprint.assigneeFirebaseUid, asText(sprint.assignee_firebase_uid)) || undefined,
         assigneeName: asText(sprint.assigneeName, asText(sprint.assignee_name)) || undefined,
         assigneeEmail: asText(sprint.assigneeEmail, asText(sprint.assignee_email)) || undefined,

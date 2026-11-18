@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type SetStateAction } from 'react';
 import {
   Alert,
   ActivityIndicator,
@@ -41,7 +41,7 @@ import {
   fetchHomeTaskDetails,
   fetchHomeTasks,
   HomeApiError,
-  submitHomeTaskSprint,
+  submitHomeSprint,
   updateHomeTaskStatus,
   type HomeProject,
   type HomeProjectSprint,
@@ -1072,12 +1072,96 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     setRecordingWaveform((current) => [...current.slice(1), height]);
   }, [sprintRecorderState.isRecording, sprintRecorderState.metering, voiceNotePaused]);
   const [expandedSprintName, setExpandedSprintName] = useState<string | null>(null);
-  const [submissionNote, setSubmissionNote] = useState('');
-  const [submissionAttachments, setSubmissionAttachments] = useState<SprintSubmissionAttachment[]>([]);
-  const [submissionLinks, setSubmissionLinks] = useState<string[]>([]);
-  const [submissionLinkDraft, setSubmissionLinkDraft] = useState('');
-  const [submissionBusy, setSubmissionBusy] = useState(false);
-  const [submissionError, setSubmissionError] = useState('');
+  const [expandedSubmissionKey, setExpandedSubmissionKey] = useState('');
+  const [submissionDrafts, setSubmissionDrafts] = useState<Record<string, {
+    note: string;
+    attachments: SprintSubmissionAttachment[];
+    links: string[];
+    linkDraft: string;
+    busy: boolean;
+    error: string;
+  }>>({});
+
+  const activeSubmissionDraft = submissionDrafts[expandedSubmissionKey] || {
+    note: '',
+    attachments: [] as SprintSubmissionAttachment[],
+    links: [] as string[],
+    linkDraft: '',
+    busy: false,
+    error: '',
+  };
+  const submissionNote = activeSubmissionDraft.note;
+  const submissionAttachments = activeSubmissionDraft.attachments;
+  const submissionLinks = activeSubmissionDraft.links;
+  const submissionLinkDraft = activeSubmissionDraft.linkDraft;
+  const submissionBusy = activeSubmissionDraft.busy;
+  const submissionError = activeSubmissionDraft.error;
+
+  function updateSubmissionDraft(
+    key: string,
+    updater: (current: {
+      note: string;
+      attachments: SprintSubmissionAttachment[];
+      links: string[];
+      linkDraft: string;
+      busy: boolean;
+      error: string;
+    }) => {
+      note: string;
+      attachments: SprintSubmissionAttachment[];
+      links: string[];
+      linkDraft: string;
+      busy: boolean;
+      error: string;
+    },
+  ) {
+    if (!key) return;
+    setSubmissionDrafts((current) => {
+      const existing = current[key] || {
+        note: '',
+        attachments: [],
+        links: [],
+        linkDraft: '',
+        busy: false,
+        error: '',
+      };
+      return { ...current, [key]: updater(existing) };
+    });
+  }
+
+  function updateActiveSubmissionDraft(updater: Parameters<typeof updateSubmissionDraft>[1]) {
+    updateSubmissionDraft(expandedSubmissionKey, updater);
+  }
+
+  function setSubmissionNote(value: string) {
+    updateActiveSubmissionDraft((current) => ({ ...current, note: value }));
+  }
+
+  function setSubmissionAttachments(value: SetStateAction<SprintSubmissionAttachment[]>) {
+    updateActiveSubmissionDraft((current) => ({
+      ...current,
+      attachments: typeof value === 'function' ? value(current.attachments) : value,
+    }));
+  }
+
+  function setSubmissionLinks(value: SetStateAction<string[]>) {
+    updateActiveSubmissionDraft((current) => ({
+      ...current,
+      links: typeof value === 'function' ? value(current.links) : value,
+    }));
+  }
+
+  function setSubmissionLinkDraft(value: string) {
+    updateActiveSubmissionDraft((current) => ({ ...current, linkDraft: value }));
+  }
+
+  function setSubmissionError(value: string) {
+    updateActiveSubmissionDraft((current) => ({ ...current, error: value }));
+  }
+
+  function setSubmissionBusy(value: boolean) {
+    updateActiveSubmissionDraft((current) => ({ ...current, busy: value }));
+  }
 
   useEffect(() => {
     let active = true;
@@ -1238,20 +1322,8 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
 
   useEffect(() => {
     setExpandedSprintName(null);
-    setSubmissionNote('');
-    setSubmissionAttachments([]);
-    setSubmissionLinks([]);
-    setSubmissionLinkDraft('');
-    setSubmissionError('');
+    setExpandedSubmissionKey('');
   }, [selectedTaskId]);
-
-  useEffect(() => {
-    setSubmissionNote('');
-    setSubmissionAttachments([]);
-    setSubmissionLinks([]);
-    setSubmissionLinkDraft('');
-    setSubmissionError('');
-  }, [expandedSprintName]);
 
   async function addSprintSubmissionAttachments() {
     if (submissionBusy || voiceNoteActive) return;
@@ -1429,8 +1501,8 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     }
   }
 
-  async function submitSelectedSprintForReview(task: Task) {
-    if (!task.sprint || submissionBusy) return;
+  async function submitSelectedSprintForReview(task: Task, sprintName: string) {
+    if (!task.projectId || !sprintName || submissionBusy) return;
     const note = submissionNote.trim();
     if (note.length > 5000) {
       setSubmissionError('Submission notes cannot exceed 5,000 characters.');
@@ -1484,39 +1556,64 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
       setSubmissionError('Add a submission note, file or voice note, or link before submitting.');
       return;
     }
-    setSubmissionBusy(true);
-    setSubmissionError('');
+    const submissionKey = `${task.projectId}:${sprintName}`;
+    updateSubmissionDraft(submissionKey, (current) => ({
+      ...current,
+      busy: true,
+      error: '',
+    }));
     try {
-      await submitHomeTaskSprint(
+      const updatedSprints = await submitHomeSprint(
         task.projectId,
-        task.id,
+        sprintName,
         note,
         submissionAttachments,
         submissionLinks,
       );
-      setTasks((current) => current.map((item) => item.id === task.id ? {
+      const submittedSprint = updatedSprints.find((item) => item.name === sprintName);
+      const submittedStatus = submittedSprint?.status || 'Pending Review';
+      const submittedAt = submittedSprint?.submittedAt || new Date().toISOString();
+      setTasks((current) => current.map((item) => item.projectId === task.projectId ? {
         ...item,
-        sprintSubmissionStatus: 'Pending Review',
-        sprintSubmissionNote: note,
-        sprintSubmissionLinks: submissionLinks,
-        sprintSubmissionAttachments: submissionAttachments.map((attachment) => ({
-          fileName: attachment.fileName,
-          mediaType: attachment.mediaType,
-          size: attachment.size,
-          isVoiceNote: attachment.is_voice_note === true,
-        })),
-        sprintSubmittedAt: new Date().toISOString(),
+        assignedSprints: item.assignedSprints.map((assignedSprint) => assignedSprint.name === sprintName
+          ? {
+            ...assignedSprint,
+            status: submittedStatus,
+            submissionNote: note,
+            submittedAt,
+          }
+          : assignedSprint),
+        ...(item.sprint === sprintName ? {
+          sprintSubmissionStatus: submittedStatus,
+          sprintSubmissionNote: note,
+          sprintSubmissionLinks: submissionLinks,
+          sprintSubmissionAttachments: submissionAttachments.map((attachment) => ({
+            fileName: attachment.fileName,
+            mediaType: attachment.mediaType,
+            size: attachment.size,
+            isVoiceNote: attachment.is_voice_note === true,
+          })),
+          sprintSubmittedAt: submittedAt,
+        } : {}),
       } : item));
-      setSubmissionNote('');
-      setSubmissionAttachments([]);
-      setSubmissionLinks([]);
+      updateSubmissionDraft(submissionKey, (current) => ({
+        ...current,
+        note: '',
+        attachments: [],
+        links: [],
+        linkDraft: '',
+        busy: false,
+        error: '',
+      }));
     } catch (error) {
       console.error('Unable to submit task sprint for review:', error);
-      setSubmissionError(error instanceof HomeApiError
-        ? error.message
-        : 'The sprint could not be submitted for review.');
-    } finally {
-      setSubmissionBusy(false);
+      updateSubmissionDraft(submissionKey, (current) => ({
+        ...current,
+        busy: false,
+        error: error instanceof HomeApiError
+          ? error.message
+          : 'The sprint could not be submitted for review.',
+      }));
     }
   }
 
@@ -1988,9 +2085,15 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                             accessibilityRole="button"
                             accessibilityLabel={`View details for ${sprint.name}`}
                             accessibilityState={{ expanded }}
-                            onPress={() => setExpandedSprintName((current) => (
-                              current === sprint.name ? null : sprint.name
-                            ))}
+                            onPress={() => {
+                              const nextSprintName = expandedSprintName === sprint.name
+                                ? null
+                                : sprint.name;
+                              setExpandedSprintName(nextSprintName);
+                              setExpandedSubmissionKey(nextSprintName
+                                ? `${selectedTask.projectId}:${nextSprintName}`
+                                : '');
+                            }}
                             style={styles.assignedSprintExpandButton}>
                             <View style={styles.assignedSprintDescription}>
                               <Text style={styles.assignedSprintBullet}>-</Text>
@@ -2027,11 +2130,12 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                               </Pressable>
                             </View>
                           ) : null}
-                          {expanded ? sprintTask ? (
+                          {expanded ? (
                             <View style={styles.sprintDetails}>
                               <Text style={styles.sprintDescription}>
-                                {sprintTask.description || 'No sprint details have been added.'}
+                                {sprintTask?.description || sprint.description || 'No sprint details have been added.'}
                               </Text>
+                              {sprintTask ? <>
                               <View style={styles.sprintProgressHeading}>
                                 <Text style={styles.sectionLabel}>Progress</Text>
                                 <Text style={styles.sprintProgressPercent}>
@@ -2049,8 +2153,9 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                                   ]}
                                 />
                               </View>
+                              </> : null}
 
-                              {taskStatus === 'in progress' && !alreadySubmitted ? (
+                              {!alreadySubmitted ? (
                             <View style={styles.sprintSubmissionForm}>
                               <TextInput
                                 accessibilityLabel="Sprint submission notes"
@@ -2181,7 +2286,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                                 accessibilityRole="button"
                                 accessibilityLabel="Submit sprint for review"
                                 disabled={submissionBusy || voiceNoteActive}
-                                onPress={() => { void submitSelectedSprintForReview(sprintTask); }}
+                                onPress={() => { void submitSelectedSprintForReview(selectedTask, sprint.name); }}
                                 style={[
                                   styles.assignedSprintStartButton,
                                   styles.assignedSprintSubmitButton,
@@ -2205,19 +2310,21 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                                 ? 'Sprint accepted'
                                 : 'Submitted for review'}
                               </Text>
-                              {sprintTask.sprintSubmissionNote ? (
+                              {sprintTask?.sprintSubmissionNote ? (
                               <Text style={styles.sprintDescription}>
                                 {sprintTask.sprintSubmissionNote}
                               </Text>
+                              ) : sprint.submissionNote ? (
+                              <Text style={styles.sprintDescription}>{sprint.submissionNote}</Text>
                               ) : null}
-                              {sprintTask.sprintSubmissionAttachments.map((attachment) => (
+                              {sprintTask?.sprintSubmissionAttachments.map((attachment) => (
                               <Text
                                 key={attachment.fileName}
                                 style={styles.sprintSubmittedLink}>
                                 - {attachment.fileName}
                               </Text>
                               ))}
-                              {sprintTask.sprintSubmissionLinks.map((link) => (
+                              {sprintTask?.sprintSubmissionLinks.map((link) => (
                               <Text key={link} style={styles.sprintSubmittedLink}>
                                 - {link}
                               </Text>
@@ -2229,10 +2336,6 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                               </Text>
                               ) : null}
                             </View>
-                          ) : (
-                            <Text style={styles.metadataMuted}>
-                              No task is linked to this sprint yet.
-                            </Text>
                           ) : null}
                         </View>
                       );
