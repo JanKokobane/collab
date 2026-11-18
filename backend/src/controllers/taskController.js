@@ -73,6 +73,10 @@ const normalizeTaskSprintSubmissionLinks = value => {
 
 const allowedStatuses = new Set(['Backlog', 'To do', 'In progress', 'Blocked', 'Done']);
 const allowedPriorities = new Set(['low', 'medium', 'high']);
+const areAllProjectSprintsCompleted = sprints =>
+    Array.isArray(sprints) &&
+    sprints.length > 0 &&
+    sprints.every(sprint => String(sprint?.status || '').trim().toLowerCase() === 'completed');
 const allowedTaskTags = new Set([
     'Accessibility',
     'Blocked',
@@ -1053,6 +1057,23 @@ const reviewProjectTaskSprintSubmission = async (req, res) => {
 
         client = await pool.connect();
         await client.query('BEGIN');
+        const lockedProject = await client.query(
+            `SELECT sprints
+             FROM projects
+             WHERE project_id = $1
+             FOR UPDATE`,
+            [project.project_id]
+        );
+        if (!lockedProject.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                success: false,
+                code: 'PROJECT_NOT_FOUND',
+                message: 'Project not found.'
+            });
+        }
+        const allProjectSprintsCompleted =
+            areAllProjectSprintsCompleted(lockedProject.rows[0].sprints);
         const taskResult = await client.query(
             `SELECT task.task_id, task.title, task.sprint_name, task.status,
                     task.assignee_firebase_uid, task.sprint_submission_status,
@@ -1088,9 +1109,9 @@ const reviewProjectTaskSprintSubmission = async (req, res) => {
                  sprint_review_comment = $2,
                  sprint_reviewed_by_firebase_uid = $3,
                  sprint_reviewed_at = $4::timestamptz,
-                 status = CASE WHEN $5::boolean THEN 'Done' ELSE status END,
+                 status = CASE WHEN $5::boolean AND $6::boolean THEN 'Done' ELSE status END,
                  updated_at = NOW()
-             WHERE project_id = $6 AND task_id = $7::uuid
+             WHERE project_id = $7 AND task_id = $8::uuid
              RETURNING task_id, status, sprint_submission_status,
                        sprint_review_comment, sprint_reviewed_by_firebase_uid,
                        sprint_reviewed_at`,
@@ -1100,6 +1121,7 @@ const reviewProjectTaskSprintSubmission = async (req, res) => {
                 req.firebaseUid,
                 reviewedAt,
                 decision === 'accept',
+                allProjectSprintsCompleted,
                 project.project_id,
                 taskId
             ]
@@ -1473,7 +1495,7 @@ const updateProjectTask = async (req, res) => {
         }
 
         const previousTask = await query(
-            `SELECT due_date, status, title FROM project_tasks
+            `SELECT due_date, status, title, sprint_submission_status FROM project_tasks
              WHERE project_id = $1 AND task_id = $2::uuid LIMIT 1`,
             [project.project_id, req.params.taskId]
         );
@@ -1485,11 +1507,21 @@ const updateProjectTask = async (req, res) => {
             });
         }
         if (
+            normalized.value.status === 'Done' &&
+            (previousTask.rows[0].sprint_submission_status !== 'Completed' ||
+                !areAllProjectSprintsCompleted(project.sprints))
+        ) {
+            return res.status(409).json({
+                success: false,
+                code: 'PROJECT_DELIVERABLES_INCOMPLETE',
+                message: 'A task can move to Done after its submission is accepted and every project sprint is completed.'
+            });
+        }
+        if (
             previousTask.rows[0].status === 'In progress' &&
             normalized.value.status !== previousTask.rows[0].status
         ) {
-            const sprints = Array.isArray(project.sprints) ? project.sprints : [];
-            if (!sprints.length || sprints.some(sprint => sprint.status !== 'Completed')) {
+            if (!areAllProjectSprintsCompleted(project.sprints)) {
                 return res.status(409).json({
                     success: false,
                     code: 'PROJECT_SPRINTS_INCOMPLETE',
@@ -1524,6 +1556,33 @@ const updateProjectTask = async (req, res) => {
                     updated_at = NOW()
                 WHERE project_id = $14
                   AND task_id = $15::uuid
+                  AND (
+                    $6 <> 'Done'
+                    OR (
+                        project_tasks.sprint_submission_status = 'Completed'
+                        AND EXISTS (
+                            SELECT 1
+                            FROM projects project
+                            WHERE project.project_id = $14
+                              AND jsonb_array_length(
+                                  CASE
+                                      WHEN jsonb_typeof(project.sprints) = 'array' THEN project.sprints
+                                      ELSE '[]'::jsonb
+                                  END
+                              ) > 0
+                              AND NOT EXISTS (
+                                  SELECT 1
+                                  FROM jsonb_array_elements(
+                                      CASE
+                                          WHEN jsonb_typeof(project.sprints) = 'array' THEN project.sprints
+                                          ELSE '[]'::jsonb
+                                      END
+                                  ) AS sprint(value)
+                                  WHERE lower(trim(coalesce(sprint.value->>'status', ''))) <> 'completed'
+                              )
+                        )
+                    )
+                  )
                 RETURNING task_id
             `,
             [
@@ -1545,6 +1604,13 @@ const updateProjectTask = async (req, res) => {
             ]
         );
         if (!result.rowCount) {
+            if (normalized.value.status === 'Done') {
+                return res.status(409).json({
+                    success: false,
+                    code: 'PROJECT_DELIVERABLES_INCOMPLETE',
+                    message: 'A task can move to Done after its submission is accepted and every project sprint is completed.'
+                });
+            }
             return res.status(404).json({
                 success: false,
                 code: 'TASK_NOT_FOUND',
@@ -1677,11 +1743,45 @@ const updateProjectTaskStatus = async (req, res) => {
                 SET status = $1, updated_at = NOW()
                 WHERE project_id = $2
                   AND task_id = $3::uuid
+                  AND (
+                    $1 <> 'Done'
+                    OR (
+                        project_tasks.sprint_submission_status = 'Completed'
+                        AND EXISTS (
+                            SELECT 1
+                            FROM projects project
+                            WHERE project.project_id = $2
+                              AND jsonb_array_length(
+                                  CASE
+                                      WHEN jsonb_typeof(project.sprints) = 'array' THEN project.sprints
+                                      ELSE '[]'::jsonb
+                                  END
+                              ) > 0
+                              AND NOT EXISTS (
+                                  SELECT 1
+                                  FROM jsonb_array_elements(
+                                      CASE
+                                          WHEN jsonb_typeof(project.sprints) = 'array' THEN project.sprints
+                                          ELSE '[]'::jsonb
+                                      END
+                                  ) AS sprint(value)
+                                  WHERE lower(trim(coalesce(sprint.value->>'status', ''))) <> 'completed'
+                              )
+                        )
+                    )
+                  )
                 RETURNING task_id
             `,
             [status, project.project_id, req.params.taskId]
         );
         if (!result.rowCount) {
+            if (status === 'Done') {
+                return res.status(409).json({
+                    success: false,
+                    code: 'PROJECT_DELIVERABLES_INCOMPLETE',
+                    message: 'A task can move to Done after its submission is accepted and every project sprint is completed.'
+                });
+            }
             return res.status(404).json({
                 success: false,
                 code: 'TASK_NOT_FOUND',

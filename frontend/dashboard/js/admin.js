@@ -19,7 +19,10 @@ import {
   replaceProjectTasksFromBackend
 } from './state.js'
 import { getActiveProject } from './auth.js?v=20261117-no-auto-sprints'
-import { createScheduleCalendarPicker } from './calendar.js?v=20261117-date-input-validation'
+import {
+  createDropdownDatePicker,
+  createScheduleCalendarPicker
+} from './calendar.js?v=20261118-tags-priority-row'
 import {
   addDaysToDateKey,
   normalizeDateKey,
@@ -696,6 +699,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   let sprints = Array.isArray(project.sprints) ? project.sprints : []
   const originalSprints = sprints.map(sprint => ({ ...sprint }))
   let sprintsChanged = false
+  const sprintsWithEditedDueDate = new Set()
   const backdrop = make('div', 'modal-backdrop')
   const form = make('form', 'modal project-task-parent-form')
   const close = make('button', 'close-modal', '×')
@@ -771,6 +775,14 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   let editingDraftSprintId = null
   let editingExistingSprint = null
   let selectedDraftSprintId = null
+  const getSprintDueDate = sprint =>
+    String(sprint.endDate || sprint.end_date || '').slice(0, 10)
+  const sprintDueDateLabel = dateKey => new Intl.DateTimeFormat(undefined, {
+    timeZone: 'UTC',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  }).format(new Date(`${dateKey}T00:00:00Z`))
 
   const createSprintToggle = make('button', 'primary-button gold project-task-create-sprint-toggle', '+ Add Sprint')
   createSprintToggle.type = 'button'
@@ -802,7 +814,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   const newSprintNameLabel = make('label', 'no-input-icon', 'Sprint title')
   const newSprintNameInput = make('input')
   newSprintNameInput.maxLength = 240
-  newSprintNameInput.placeholder = `Sprint ${sprints.length + 1}: Your title`
+  newSprintNameInput.placeholder = `Sprint ${sprints.length + draftSprints.length + 1}: Your title`
   newSprintNameLabel.append(newSprintNameInput)
 
   const newSprintDescriptionLabel = make('label', 'no-input-icon', 'Sprint description (optional)')
@@ -812,7 +824,10 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   newSprintDescriptionInput.placeholder = 'Describe the sprint goals and what the team will deliver.'
   newSprintDescriptionLabel.append(newSprintDescriptionInput)
 
-  const newSprintAssigneeLabel = make('label', 'no-input-icon', `Assign sprint to project member${task ? ' (optional)' : ''}`)
+  const newSprintAssigneeLabel = make('label', 'no-input-icon project-task-sprint-assignment-field')
+  newSprintAssigneeLabel.append(
+    make('span', '', `Assign sprint to project member${task ? ' (optional)' : ''}`)
+  )
   const newSprintAssigneeSelect = document.createElement('select')
   const noSprintAssigneeOption = make('option', '', 'No sprint lead')
   noSprintAssigneeOption.value = ''
@@ -824,7 +839,8 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   })
   newSprintAssigneeLabel.append(newSprintAssigneeSelect)
 
-  const newSprintStatusLabel = make('label', 'no-input-icon', 'Sprint status')
+  const newSprintStatusLabel = make('label', 'no-input-icon project-task-sprint-assignment-field')
+  newSprintStatusLabel.append(make('span', '', 'Sprint status'))
   const newSprintStatusSelect = document.createElement('select')
   ;['Upcoming', 'Active', 'Completed'].forEach(status => {
     const option = make('option', '', status)
@@ -833,10 +849,20 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   })
   newSprintStatusLabel.append(newSprintStatusSelect)
 
-  const sprintCreateRow = make('div', 'form-row')
+  const newSprintDueDateLabel = make('label', 'no-input-icon', 'Sprint due date')
+  const newSprintDueDatePicker = createDropdownDatePicker(toLocalDateKey())
+  newSprintDueDateLabel.append(newSprintDueDatePicker.element)
+  const updateSprintDueDateRange = (startDate, dueDate) => {
+    newSprintDueDatePicker.setRange(startDate, dueDate)
+  }
+  const sprintDueDateRow = make('div', 'project-task-sprint-due-date-row')
+  sprintDueDateRow.append(newSprintDueDateLabel)
+
+  const sprintCreateRow = make('div', 'form-row project-task-sprint-assignment-row')
   sprintCreateRow.append(newSprintAssigneeLabel, newSprintStatusLabel)
   const saveSprintButton = make('button', 'primary-button gold project-task-save-sprint', 'Add Sprint')
   saveSprintButton.type = 'button'
+  sprintDueDateRow.append(saveSprintButton)
   const sprintCreateError = make('p', 'project-form-error')
   sprintCreateError.hidden = true
   sprintCreatePanel.append(
@@ -845,8 +871,8 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     newSprintNameLabel,
     newSprintDescriptionLabel,
     sprintCreateRow,
+    sprintDueDateRow,
     sprintCreateError,
-    saveSprintButton
   )
   const setSprintPanelOpen = isOpen => {
     sprintCreatePanel.hidden = !isOpen
@@ -864,19 +890,25 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   const updateSprintDrafts = () => {
     draftSprints.forEach((sprint, index) => {
       const title = sprint.name.replace(/^Sprint\s+\d+\s*:\s*/i, '').trim()
-      sprint.name = `Sprint ${index + 1}: ${title}`
+      sprint.name = `Sprint ${sprints.length + index + 1}: ${title}`
     })
+    newSprintNameInput.placeholder = `Sprint ${sprints.length + draftSprints.length + 1}: Your title`
 
     existingSprintList.replaceChildren()
-    existingSprintList.hidden = sprints.length === 0
-    if (sprints.length) existingSprintList.append(existingSprintListHeading)
+    existingSprintList.hidden = !task || sprints.length === 0
+    if (!existingSprintList.hidden) existingSprintList.append(existingSprintListHeading)
     sprints.forEach(sprint => {
       const item = make('article', 'project-task-draft-sprint')
       const details = make('div', 'project-task-draft-sprint-details')
       const lead = assignmentMembers.find(member => member.firebaseUid === sprint.assigneeFirebaseUid)
+      const dueDate = getSprintDueDate(sprint)
       details.append(
         make('strong', '', sprint.name),
-        make('small', '', `${sprint.status || 'Upcoming'}${lead ? ` · ${lead.name || lead.email}` : ''}`)
+        make(
+          'small',
+          '',
+          `${sprint.status || 'Upcoming'}${lead ? ` · ${lead.name || lead.email}` : ''}${dueDate ? ` · Due ${sprintDueDateLabel(dueDate)}` : ''}`
+        )
       )
       if (sprint.description) {
         details.append(make('p', 'project-task-draft-sprint-description', sprint.description))
@@ -891,6 +923,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
         newSprintDescriptionInput.value = sprint.description || ''
         newSprintAssigneeSelect.value = sprint.assigneeFirebaseUid || ''
         newSprintStatusSelect.value = sprint.status || 'Upcoming'
+        newSprintDueDatePicker.setValue(getSprintDueDate(sprint))
         saveSprintButton.textContent = 'Save Sprint'
         sprintCreateError.hidden = true
         setSprintPanelOpen(true)
@@ -909,9 +942,14 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
       const item = make('article', 'project-task-draft-sprint')
       const details = make('div', 'project-task-draft-sprint-details')
       const lead = assignmentMembers.find(member => member.firebaseUid === sprint.assigneeFirebaseUid)
+      const dueDate = getSprintDueDate(sprint)
       details.append(
         make('strong', '', sprint.name),
-        make('small', '', `${sprint.status}${lead ? ` · ${lead.name || lead.email}` : ''}`)
+        make(
+          'small',
+          '',
+          `${sprint.status}${lead ? ` · ${lead.name || lead.email}` : ''}${dueDate ? ` · Due ${sprintDueDateLabel(dueDate)}` : ''}`
+        )
       )
       if (sprint.description) {
         details.append(make('p', 'project-task-draft-sprint-description', sprint.description))
@@ -926,6 +964,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
         newSprintDescriptionInput.value = sprint.description || ''
         newSprintAssigneeSelect.value = sprint.assigneeFirebaseUid || ''
         newSprintStatusSelect.value = sprint.status
+        newSprintDueDatePicker.setValue(getSprintDueDate(sprint))
         saveSprintButton.textContent = 'Update Sprint'
         sprintCreateError.hidden = true
         newSprintNameInput.focus()
@@ -944,6 +983,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
           newSprintDescriptionInput.value = ''
           newSprintAssigneeSelect.value = ''
           newSprintStatusSelect.value = 'Upcoming'
+          newSprintDueDatePicker.setValue('')
         }
         updateSprintDrafts()
         const selectedSprint = draftSprints.find(draft => draft.id === selectedDraftSprintId)
@@ -971,6 +1011,21 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
       return
     }
 
+    const taskSchedule = schedulePicker.getValues()
+    const sprintDueDate = newSprintDueDatePicker.getValue()
+    if (!sprintDueDate) {
+      sprintCreateError.textContent = 'Choose a due date for this sprint.'
+      sprintCreateError.hidden = false
+      newSprintDueDatePicker.focus()
+      return
+    }
+    if (sprintDueDate < taskSchedule.startDate || sprintDueDate > taskSchedule.dueDate) {
+      sprintCreateError.textContent = 'Sprint due date must fall within the task schedule.'
+      sprintCreateError.hidden = false
+      newSprintDueDatePicker.focus()
+      return
+    }
+
     const isEditingExistingSprint = Boolean(editingExistingSprint)
     const draftToUpdate = draftSprints.find(sprint => sprint.id === editingDraftSprintId)
     const draftPosition = draftToUpdate
@@ -978,7 +1033,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
       : draftSprints.length
     const sprintName = editingExistingSprint
       ? `${editingExistingSprint.name.match(/^Sprint\s+\d+\s*:/i)?.[0] || ''} ${title}`.trim()
-      : `Sprint ${draftPosition + 1}: ${title}`
+      : `Sprint ${sprints.length + draftPosition + 1}: ${title}`
     const persistedSprintName = editingExistingSprint
       ? sprintName
       : `Sprint ${sprints.length + draftPosition + 1}: ${title}`
@@ -1009,6 +1064,8 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
       name: sprintName,
       description: newSprintDescriptionInput.value.trim(),
       status: newSprintStatusSelect.value,
+      endDate: sprintDueDate || null,
+      end_date: sprintDueDate || null,
       ...(selectedSprintMember ? {
         assigneeFirebaseUid: selectedSprintMember.firebaseUid,
         assigneeName: selectedSprintMember.name || selectedSprintMember.email
@@ -1019,6 +1076,8 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     }
     if (editingExistingSprint) {
       const previousName = editingExistingSprint.name
+      const previousDueDate = getSprintDueDate(editingExistingSprint)
+      if (previousDueDate !== sprintDueDate) sprintsWithEditedDueDate.add(editingExistingSprint)
       Object.assign(editingExistingSprint, draftSprint)
       sprintsChanged = true
       if (selectedSprintName === previousName) {
@@ -1050,6 +1109,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     newSprintDescriptionInput.value = ''
     newSprintAssigneeSelect.value = ''
     newSprintStatusSelect.value = 'Upcoming'
+    newSprintDueDatePicker.setValue('')
     saveSprintButton.textContent = 'Add Sprint'
     sprintCreateError.hidden = true
   })
@@ -1324,13 +1384,6 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   )
   if (taskStatusLocked) statusSelect.disabled = true
   statusLabel.append(statusSelect)
-  if (taskStatusLocked) {
-    statusLabel.append(make(
-      'small',
-      'project-task-status-lock',
-      'Complete every project sprint before moving this task.'
-    ))
-  }
 
   const priorityLabel = make('label', 'no-input-icon', 'Priority')
   const prioritySelect = document.createElement('select')
@@ -1341,6 +1394,8 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     prioritySelect.append(option)
   })
   priorityLabel.append(prioritySelect)
+  const tagsPriorityRow = make('div', 'project-task-tags-priority-row')
+  tagsPriorityRow.append(tagField, priorityLabel)
 
   const initialDueDate = task?.due_date
     ? String(task.due_date).slice(0, 10)
@@ -1352,13 +1407,11 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   const projectDueDate = normalizeDateKey(project.dueDate)
   const schedulePicker = createScheduleCalendarPicker(initialStartDate, initialDueDate, {
     minDate: projectStartDate,
-    maxDate: projectDueDate
+    maxDate: projectDueDate,
+    onDateChange: ({ startDate, dueDate }) => updateSprintDueDateRange(startDate, dueDate)
   })
-
   const assignmentRow = make('div', 'form-row project-task-assignment-row')
   assignmentRow.append(sprintSection, categoryLabel, statusLabel)
-  const priorityRow = make('div', 'form-row project-task-priority-row')
-  priorityRow.append(priorityLabel)
   const submit = make('button', 'primary-button full gold', task ? 'Save Task' : 'Create Task')
   submit.type = 'submit'
   submit.disabled = !selectedSprintIsInProject || !selectedSprintName || !selectedAssigneeFirebaseUid
@@ -1368,14 +1421,13 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     copy,
     titleLabel,
     descriptionLabel,
+    schedulePicker.element,
     descriptionMedia.element,
     ...(discussionButton ? [discussionButton] : []),
     assignmentRow,
-    tagField,
+    tagsPriorityRow,
     ...(isOwner ? [existingSprintList] : []),
-    priorityRow,
     ...(isOwner ? [sprintCreatePanel, draftSprintList] : []),
-    schedulePicker.element,
     submit
   )
   backdrop.append(form)
@@ -1390,6 +1442,28 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
       (projectDueDate && schedule.dueDate > projectDueDate)
     ) {
       showDashboardToast('Task dates must fall within the project timeline.', 'error')
+      return
+    }
+    const invalidSprintDueDate = [...draftSprints, ...sprintsWithEditedDueDate].find(sprint => {
+      const dueDate = getSprintDueDate(sprint)
+      return !dueDate || dueDate < schedule.startDate || dueDate > schedule.dueDate
+    })
+    if (invalidSprintDueDate) {
+      const isDraft = draftSprints.includes(invalidSprintDueDate)
+      editingExistingSprint = isDraft ? null : invalidSprintDueDate
+      editingDraftSprintId = isDraft ? invalidSprintDueDate.id : null
+      newSprintNameInput.value = invalidSprintDueDate.name.replace(/^Sprint\s+\d+\s*:\s*/i, '')
+      newSprintDescriptionInput.value = invalidSprintDueDate.description || ''
+      newSprintAssigneeSelect.value = invalidSprintDueDate.assigneeFirebaseUid || ''
+      newSprintStatusSelect.value = invalidSprintDueDate.status || 'Upcoming'
+      newSprintDueDatePicker.setValue(getSprintDueDate(invalidSprintDueDate))
+      saveSprintButton.textContent = isDraft ? 'Update Sprint' : 'Save Sprint'
+      sprintCreateError.textContent = getSprintDueDate(invalidSprintDueDate)
+        ? 'This sprint due date must fall within the task schedule. Update the task dates or choose a new sprint due date.'
+        : 'Choose a due date for this sprint before saving the task.'
+      sprintCreateError.hidden = false
+      setSprintPanelOpen(true)
+      newSprintDueDatePicker.focus()
       return
     }
     const payload = {

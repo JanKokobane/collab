@@ -65,7 +65,7 @@ import {
   openAddReminderModal,
   openDayScheduleModal,
   createScheduleCalendarPicker
-} from './js/calendar.js?v=20261117-date-input-validation'
+} from './js/calendar.js?v=20261118-tags-priority-row'
 
 import {
   renderAdminProjectsTable,
@@ -78,7 +78,7 @@ import {
   openProjectTaskModal,
   openAdminEditTaskModal,
   openInviteModal
-} from './js/admin.js?v=20261117-project-task-date-compare'
+} from './js/admin.js?v=20261118-task-form-close-on-save'
 
 import {
   switchView,

@@ -20,7 +20,7 @@ import {
   setSelectedCalDate,
   renderActualCalendarGrid,
   setActiveCalendarFilter
-} from './calendar.js?v=20261117-date-input-validation'
+} from './calendar.js?v=20261118-tags-priority-row'
 import {
   renderAdminProjectsTable,
   renderMembersTable,
@@ -32,7 +32,7 @@ import {
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   openInviteModal
-} from './admin.js?v=20261118-sprint-sequence-numbering'
+} from './admin.js?v=20261118-task-form-close-on-save'
 import {
   currentTheme,
   applyTheme,

@@ -1,6 +1,11 @@
 const { pool, query } = require('../config/db');
 const { reconcileUserConversationAccess } = require('../realtime/messageSocket');
 
+const areAllProjectSprintsCompleted = sprints =>
+    Array.isArray(sprints) &&
+    sprints.length > 0 &&
+    sprints.every(sprint => String(sprint?.status || '').trim().toLowerCase() === 'completed');
+
 const isValidDateKey = value => {
     if (value === null || value === undefined || value === '') return true;
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -859,6 +864,16 @@ const updateProject = async (req, res) => {
                         [JSON.stringify(taskSprintMap), projectId]
                     );
                 }
+                if (areAllProjectSprintsCompleted(updatedSprints)) {
+                    await client.query(
+                        `UPDATE project_tasks
+                         SET status = 'Done', updated_at = NOW()
+                         WHERE project_id = $1
+                           AND sprint_submission_status = 'Completed'
+                           AND status <> 'Done'`,
+                        [projectId]
+                    );
+                }
                 for (const assignment of sprintAssignmentNotifications) {
                     const notification = await client.query(
                         `
@@ -1141,6 +1156,16 @@ const submitProjectSprint = async (req, res) => {
         if (!saved.rowCount) {
             throw new Error('Sprint submission update did not persist.');
         }
+        if (areAllProjectSprintsCompleted(sprints)) {
+            await client.query(
+                `UPDATE project_tasks
+                 SET status = 'Done', updated_at = NOW()
+                 WHERE project_id = $1
+                   AND sprint_submission_status = 'Completed'
+                   AND status <> 'Done'`,
+                [projectId]
+            );
+        }
 
         await client.query('COMMIT');
 
@@ -1305,6 +1330,16 @@ const reviewProjectSprint = async (req, res) => {
         );
         if (!saved.rowCount) {
             throw new Error('Sprint review update did not persist.');
+        }
+        if (decision === 'accept' && areAllProjectSprintsCompleted(sprints)) {
+            await client.query(
+                `UPDATE project_tasks
+                 SET status = 'Done', updated_at = NOW()
+                 WHERE project_id = $1
+                   AND sprint_submission_status = 'Completed'
+                   AND status <> 'Done'`,
+                [projectId]
+            );
         }
 
         await client.query('COMMIT');

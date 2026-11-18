@@ -11,7 +11,7 @@ import {
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   renderAuditLogs
-} from './admin.js?v=20261118-sprint-sequence-numbering'
+} from './admin.js?v=20261118-task-form-close-on-save'
 import {
   currentTheme,
   currentAccent,
