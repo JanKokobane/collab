@@ -19,7 +19,7 @@ import {
   hub
 } from './state.js'
 import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } from './auth.js?v=20261117-no-auto-sprints'
-import { createScheduleCalendarPicker } from './calendar.js?v=20261117-date-input-validation'
+import { createScheduleCalendarPicker } from './calendar.js?v=20261118-calendar-controls'
 import { api } from './api.js'
 import { setDashboardButtonLoading, showDashboardToast } from './modalChrome.js'
 import { openProjectProgressAside } from './projectProgressAside.js?v=20261118-aside-media-expand'

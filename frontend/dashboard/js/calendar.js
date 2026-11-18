@@ -539,11 +539,6 @@ export function createScheduleCalendarPicker(
   let startDate = clampToProjectRange(initialStartDate)
   let dueDate = clampToProjectRange(initialDueDate)
   if (dueDate < startDate) dueDate = startDate
-  let activeField = 'due'
-
-  const initialDateObj = parseLocalDate(dueDate)
-  let curYear = isNaN(initialDateObj.getFullYear()) ? new Date().getFullYear() : initialDateObj.getFullYear()
-  let curMonth = isNaN(initialDateObj.getMonth()) ? new Date().getMonth() : initialDateObj.getMonth()
 
   const container = make('div', 'cal-schedule-picker-card')
 
@@ -564,155 +559,126 @@ export function createScheduleCalendarPicker(
     { label: 'Today', start: todayKey, due: todayKey },
     { label: 'Tomorrow', start: todayKey, due: tomorrowKey },
     { label: 'This Week', start: todayKey, due: thisWeekEndKey },
-    { label: 'Next Week', start: nextWeekStartKey, due: nextWeekEndKey },
-    { label: 'Sprint (2 Wks)', start: todayKey, due: addDaysToDateKey(todayKey, 13) }
+    { label: 'Next Week', start: nextWeekStartKey, due: nextWeekEndKey }
   ]
 
-  const inputsRow = make('div', 'cal-date-inputs-row')
-  
-  const startField = make('div', 'cal-date-input-field')
-  const startLabel = make('label', '', 'Start Date')
-  const startInput = make('input')
-  startInput.type = 'date'
-  startInput.min = minDate
-  if (validMaxDate) startInput.max = validMaxDate
-  startInput.value = startDate
-  startField.append(startLabel, startInput)
-
-  const dueField = make('div', 'cal-date-input-field')
-  const dueLabel = make('label', '', 'Due Date')
-  const dueInput = make('input')
-  dueInput.type = 'date'
-  dueInput.min = minDate
-  if (validMaxDate) dueInput.max = validMaxDate
-  dueInput.value = dueDate
-  dueField.append(dueLabel, dueInput)
-
-  inputsRow.append(startField, dueField)
-
-  const modeBar = make('div', 'cal-mode-selector')
-  const modeStartBtn = make('button', 'cal-mode-btn', '📅 Pick Start Date')
-  modeStartBtn.type = 'button'
-  const modeDueBtn = make('button', 'cal-mode-btn active', '🎯 Pick Due Date')
-  modeDueBtn.type = 'button'
-  modeBar.append(modeStartBtn, modeDueBtn)
-
-  const miniCal = make('div', 'mini-cal-container')
-  const calNav = make('div', 'mini-cal-nav')
-  const calTitle = make('span', 'mini-cal-month-title')
-  
-  const btnGroup = make('div', 'mini-cal-btn-group')
-  const prevBtn = make('button', 'mini-cal-nav-btn', '‹')
-  prevBtn.type = 'button'
-  const todayBtn = make('button', 'mini-cal-today-btn', 'Today')
-  todayBtn.type = 'button'
-  const nextBtn = make('button', 'mini-cal-nav-btn', '›')
-  nextBtn.type = 'button'
-  btnGroup.append(prevBtn, todayBtn, nextBtn)
-  calNav.append(calTitle, btnGroup)
-
-  const weekdaysRow = make('div', 'mini-cal-weekdays')
-  ;['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].forEach(w => {
-    weekdaysRow.append(make('span', '', w))
+  const calendarGrid = make('div', 'project-time-span-calendar-grid cal-schedule-calendar-grid')
+  const firstMonth = new Date(parseLocalDate(startDate).getFullYear(), parseLocalDate(startDate).getMonth(), 1)
+  const startDueMonth = new Date(parseLocalDate(dueDate).getFullYear(), parseLocalDate(dueDate).getMonth(), 1)
+  const panels = [
+    { key: 'start', label: 'Start Date', monthDate: firstMonth },
+    { key: 'due', label: 'Due Date', monthDate: startDueMonth }
+  ].map(({ key, label, monthDate }) => {
+    const panel = make('section', 'project-time-span-calendar')
+    const heading = make('h4', 'project-time-span-calendar-heading', label)
+    const navigation = make('div', 'project-time-span-calendar-navigation')
+    const previous = make('button', 'project-time-span-calendar-nav', '‹')
+    previous.type = 'button'
+    previous.setAttribute('aria-label', `Show previous ${label.toLowerCase()} month`)
+    const month = make('div', 'project-time-span-calendar-month')
+    const next = make('button', 'project-time-span-calendar-nav', '›')
+    next.type = 'button'
+    next.setAttribute('aria-label', `Show next ${label.toLowerCase()} month`)
+    navigation.append(previous, month, next)
+    const weekdays = make('div', 'project-time-span-calendar-weekdays')
+    ;['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].forEach(day => {
+      weekdays.append(make('span', '', day))
+    })
+    const days = make('div', 'project-time-span-calendar-days')
+    const selectedDate = make('output', 'project-time-span-selected-date')
+    selectedDate.setAttribute('aria-live', 'polite')
+    panel.append(heading, navigation, weekdays, days, selectedDate)
+    calendarGrid.append(panel)
+    const state = { key, month, days, selectedDate, monthDate, previous, next }
+    previous.addEventListener('click', () => {
+      if (previous.disabled) return
+      state.monthDate = new Date(state.monthDate.getFullYear(), state.monthDate.getMonth() - 1, 1)
+      renderCalendars()
+    })
+    next.addEventListener('click', () => {
+      state.monthDate = new Date(state.monthDate.getFullYear(), state.monthDate.getMonth() + 1, 1)
+      renderCalendars()
+    })
+    return state
   })
 
-  const daysGrid = make('div', 'mini-cal-grid')
-  const instruction = make('div', 'mini-cal-instruction')
-  instruction.innerHTML = `<span>👆 Click any date on the calendar to set Start or Due date</span>`
-
-  miniCal.append(calNav, weekdaysRow, daysGrid, instruction)
-
-  container.append(header, presetsRow, inputsRow, modeBar, miniCal)
+  container.append(header, presetsRow, calendarGrid)
 
   const presetPills = []
 
-  function renderGrid() {
-    daysGrid.replaceChildren()
-    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-    calTitle.textContent = `${monthNames[curMonth]} ${curYear}`
+  function renderCalendars() {
+    const minMonth = parseLocalDate(minDate)
+    const minimumMonth = new Date(minMonth.getFullYear(), minMonth.getMonth(), 1)
+    const maxMonth = validMaxDate ? parseLocalDate(validMaxDate) : null
+    const maximumMonth = maxMonth
+      ? new Date(maxMonth.getFullYear(), maxMonth.getMonth(), 1)
+      : null
+    panels.forEach(panel => {
+      const { monthDate, key, month, days, selectedDate, previous, next } = panel
+      const year = monthDate.getFullYear()
+      const monthIndex = monthDate.getMonth()
+      const monthStart = new Date(year, monthIndex, 1)
+      month.textContent = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(monthDate)
+      previous.disabled = monthStart <= minimumMonth
+      next.disabled = Boolean(maximumMonth && monthStart >= maximumMonth)
+      days.replaceChildren()
 
-    const firstDay = new Date(curYear, curMonth, 1)
-    const lastDay = new Date(curYear, curMonth + 1, 0)
-    const daysInMonth = lastDay.getDate()
-    const minDateObj = parseLocalDate(minDate)
-    const currentMonthStart = new Date(minDateObj.getFullYear(), minDateObj.getMonth(), 1)
-    const displayedMonthStart = new Date(curYear, curMonth, 1)
-    prevBtn.disabled = displayedMonthStart <= currentMonthStart
-    
-    let startDayOfWeek = firstDay.getDay() - 1
-    if (startDayOfWeek === -1) startDayOfWeek = 6
-
-    const prevMonthLastDay = new Date(curYear, curMonth, 0).getDate()
-    for (let i = startDayOfWeek - 1; i >= 0; i--) {
-      const dayNum = prevMonthLastDay - i
-      const cell = make('div', 'mini-cal-day other-month', dayNum)
-      daysGrid.append(cell)
-    }
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-      const cell = make('div', 'mini-cal-day', day)
-      const isOutsideRange = dateStr < minDate || Boolean(validMaxDate && dateStr > validMaxDate)
-      if (isOutsideRange) {
-        cell.classList.add('is-past')
-        cell.setAttribute('aria-disabled', 'true')
+      const firstWeekday = (new Date(year, monthIndex, 1).getDay() + 6) % 7
+      for (let blank = 0; blank < firstWeekday; blank += 1) {
+        days.append(make('span', 'project-time-span-calendar-blank'))
       }
 
-      if (dateStr === toLocalDateKey()) cell.classList.add('is-today')
-
-      const isStart = dateStr === startDate
-      const isDue = dateStr === dueDate
-      const inRange = startDate && dueDate && dateStr > startDate && dateStr < dueDate
-
-      if (isStart) cell.classList.add('range-start')
-      if (isDue) cell.classList.add('range-end')
-      if (inRange) cell.classList.add('in-range')
-
-      cell.addEventListener('click', () => {
-        if (isOutsideRange) return
-        if (activeField === 'start') {
-          startDate = dateStr
-          if (dueDate < startDate) dueDate = startDate
-          activeField = 'due'
-        } else {
-          if (dateStr < startDate) {
-            startDate = dateStr
-            dueDate = dateStr
+      const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
+      const selectedKey = key === 'start' ? startDate : dueDate
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        const dateKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        const isStart = dateKey === startDate
+        const isDue = dateKey === dueDate
+        const beforeStart = key === 'due' && dateKey < startDate
+        const outsideRange = dateKey < minDate || Boolean(validMaxDate && dateKey > validMaxDate)
+        const dayButton = make('button', 'project-time-span-calendar-day', String(day))
+        dayButton.type = 'button'
+        dayButton.dataset.dateKey = dateKey
+        dayButton.disabled = outsideRange || beforeStart
+        dayButton.setAttribute('aria-label', new Intl.DateTimeFormat('en-US', {
+          timeZone: 'UTC',
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric'
+        }).format(new Date(`${dateKey}T00:00:00Z`)))
+        dayButton.setAttribute('aria-pressed', String(dateKey === selectedKey))
+        if (dateKey === todayKey) dayButton.classList.add('is-today')
+        if (isStart) dayButton.classList.add('is-start-date')
+        if (isDue) dayButton.classList.add('is-end-date')
+        if (dateKey > startDate && dateKey < dueDate) dayButton.classList.add('is-in-range')
+        dayButton.addEventListener('click', () => {
+          if (key === 'start') {
+            startDate = dateKey
+            if (dueDate < startDate) {
+              dueDate = startDate
+              panels.find(item => item.key === 'due').monthDate = new Date(year, monthIndex, 1)
+            }
           } else {
-            dueDate = dateStr
+            dueDate = dateKey
           }
-        }
-        updateSummaryAndUI()
-      })
+          updateSummaryAndUI()
+          panel.days.querySelector(`[data-date-key="${dateKey}"]`)?.focus()
+        })
+        days.append(dayButton)
+      }
 
-      daysGrid.append(cell)
-    }
-
-    const totalCells = startDayOfWeek + daysInMonth
-    const remaining = (7 - (totalCells % 7)) % 7
-    for (let i = 1; i <= remaining; i++) {
-      const cell = make('div', 'mini-cal-day other-month', i)
-      daysGrid.append(cell)
-    }
+      selectedDate.textContent = selectedKey
+        ? new Intl.DateTimeFormat('en-US', {
+          timeZone: 'UTC',
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+        }).format(new Date(`${selectedKey}T00:00:00Z`))
+        : 'Select a date'
+    })
   }
 
   function updateSummaryAndUI() {
-    startInput.value = startDate
-    dueInput.value = dueDate
-    startInput.max = validMaxDate && validMaxDate < dueDate ? validMaxDate : dueDate
-    dueInput.min = startDate > minDate ? startDate : minDate
-    if (validMaxDate) dueInput.max = validMaxDate
-
-    modeStartBtn.className = activeField === 'start' ? 'cal-mode-btn active' : 'cal-mode-btn'
-    modeDueBtn.className = activeField === 'due' ? 'cal-mode-btn active' : 'cal-mode-btn'
-
-    if (activeField === 'start') {
-      startField.classList.add('active-field')
-      dueField.classList.remove('active-field')
-    } else {
-      dueField.classList.add('active-field')
-      startField.classList.remove('active-field')
-    }
 
     presetPills.forEach((p, idx) => {
       const preset = presets[idx]
@@ -740,7 +706,7 @@ export function createScheduleCalendarPicker(
 
     summary.innerHTML = `<span>🗓️</span> <strong>${dateRangeStr}</strong>`
 
-    renderGrid()
+    renderCalendars()
   }
 
   presets.forEach(p => {
@@ -750,88 +716,16 @@ export function createScheduleCalendarPicker(
       startDate = clampToProjectRange(p.start)
       dueDate = clampToProjectRange(p.due)
       if (dueDate < startDate) dueDate = startDate
-      activeField = 'due'
-      const d = parseLocalDate(dueDate)
-      curYear = d.getFullYear()
-      curMonth = d.getMonth()
+      const startMonth = parseLocalDate(startDate)
+      const dueMonth = parseLocalDate(dueDate)
+      const startPanel = panels.find(panel => panel.key === 'start')
+      const duePanel = panels.find(panel => panel.key === 'due')
+      startPanel.monthDate = new Date(startMonth.getFullYear(), startMonth.getMonth(), 1)
+      duePanel.monthDate = new Date(dueMonth.getFullYear(), dueMonth.getMonth(), 1)
       updateSummaryAndUI()
     })
     presetsRow.append(pill)
     presetPills.push(pill)
-  })
-
-  startInput.addEventListener('change', () => {
-    if (startInput.value && startInput.value >= minDate &&
-      (!validMaxDate || startInput.value <= validMaxDate)) {
-      startDate = startInput.value
-      if (dueDate < startDate) dueDate = startDate
-      const d = parseLocalDate(startDate)
-      curYear = d.getFullYear()
-      curMonth = d.getMonth()
-      updateSummaryAndUI()
-    }
-  })
-
-  dueInput.addEventListener('change', () => {
-    if (dueInput.value && dueInput.value >= minDate &&
-      (!validMaxDate || dueInput.value <= validMaxDate)) {
-      dueDate = dueInput.value
-      if (startDate > dueDate) startDate = dueDate
-      const d = parseLocalDate(dueDate)
-      curYear = d.getFullYear()
-      curMonth = d.getMonth()
-      updateSummaryAndUI()
-    }
-  })
-
-  startInput.addEventListener('focus', () => {
-    activeField = 'start'
-    updateSummaryAndUI()
-  })
-
-  dueInput.addEventListener('focus', () => {
-    activeField = 'due'
-    updateSummaryAndUI()
-  })
-
-  modeStartBtn.addEventListener('click', () => {
-    activeField = 'start'
-    updateSummaryAndUI()
-  })
-
-  modeDueBtn.addEventListener('click', () => {
-    activeField = 'due'
-    updateSummaryAndUI()
-  })
-
-  prevBtn.addEventListener('click', () => {
-    if (prevBtn.disabled) return
-    curMonth--
-    if (curMonth < 0) {
-      curMonth = 11
-      curYear--
-    }
-    renderGrid()
-  })
-
-  nextBtn.addEventListener('click', () => {
-    curMonth++
-    if (curMonth > 11) {
-      curMonth = 0
-      curYear++
-    }
-    renderGrid()
-  })
-
-  todayBtn.addEventListener('click', () => {
-    const selectedToday = clampToProjectRange(todayKey)
-    const selectedTodayDate = parseLocalDate(selectedToday)
-    curYear = selectedTodayDate.getFullYear()
-    curMonth = selectedTodayDate.getMonth()
-    startDate = selectedToday
-    dueDate = selectedToday
-    activeField = 'due'
-    updateSummaryAndUI()
   })
 
   updateSummaryAndUI()

@@ -19,7 +19,7 @@ import {
   replaceProjectTasksFromBackend
 } from './state.js'
 import { getActiveProject } from './auth.js?v=20261117-no-auto-sprints'
-import { createScheduleCalendarPicker } from './calendar.js?v=20261117-date-input-validation'
+import { createScheduleCalendarPicker } from './calendar.js?v=20261118-calendar-controls'
 import {
   addDaysToDateKey,
   normalizeDateKey,
@@ -802,7 +802,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   const newSprintNameLabel = make('label', 'no-input-icon', 'Sprint title')
   const newSprintNameInput = make('input')
   newSprintNameInput.maxLength = 240
-  newSprintNameInput.placeholder = `Sprint ${sprints.length + 1}: Your title`
+  newSprintNameInput.placeholder = `Sprint ${sprints.length + draftSprints.length + 1}: Your title`
   newSprintNameLabel.append(newSprintNameInput)
 
   const newSprintDescriptionLabel = make('label', 'no-input-icon', 'Sprint description (optional)')
@@ -864,12 +864,13 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   const updateSprintDrafts = () => {
     draftSprints.forEach((sprint, index) => {
       const title = sprint.name.replace(/^Sprint\s+\d+\s*:\s*/i, '').trim()
-      sprint.name = `Sprint ${index + 1}: ${title}`
+      sprint.name = `Sprint ${sprints.length + index + 1}: ${title}`
     })
+    newSprintNameInput.placeholder = `Sprint ${sprints.length + draftSprints.length + 1}: Your title`
 
     existingSprintList.replaceChildren()
-    existingSprintList.hidden = sprints.length === 0
-    if (sprints.length) existingSprintList.append(existingSprintListHeading)
+    existingSprintList.hidden = !task || sprints.length === 0
+    if (!existingSprintList.hidden) existingSprintList.append(existingSprintListHeading)
     sprints.forEach(sprint => {
       const item = make('article', 'project-task-draft-sprint')
       const details = make('div', 'project-task-draft-sprint-details')
@@ -978,7 +979,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
       : draftSprints.length
     const sprintName = editingExistingSprint
       ? `${editingExistingSprint.name.match(/^Sprint\s+\d+\s*:/i)?.[0] || ''} ${title}`.trim()
-      : `Sprint ${draftPosition + 1}: ${title}`
+      : `Sprint ${sprints.length + draftPosition + 1}: ${title}`
     const persistedSprintName = editingExistingSprint
       ? sprintName
       : `Sprint ${sprints.length + draftPosition + 1}: ${title}`
@@ -1324,13 +1325,6 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   )
   if (taskStatusLocked) statusSelect.disabled = true
   statusLabel.append(statusSelect)
-  if (taskStatusLocked) {
-    statusLabel.append(make(
-      'small',
-      'project-task-status-lock',
-      'Complete every project sprint before moving this task.'
-    ))
-  }
 
   const priorityLabel = make('label', 'no-input-icon', 'Priority')
   const prioritySelect = document.createElement('select')
@@ -1368,6 +1362,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     copy,
     titleLabel,
     descriptionLabel,
+    schedulePicker.element,
     descriptionMedia.element,
     ...(discussionButton ? [discussionButton] : []),
     assignmentRow,
@@ -1375,7 +1370,6 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     ...(isOwner ? [existingSprintList] : []),
     priorityRow,
     ...(isOwner ? [sprintCreatePanel, draftSprintList] : []),
-    schedulePicker.element,
     submit
   )
   backdrop.append(form)
@@ -1457,6 +1451,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
       closeModal()
       descriptionMedia.dispose()
       showDashboardToast(task ? 'Project task updated.' : 'Project task created.', 'success')
+      if (!task) openProjectTaskModal(project)
       await renderAdminTasksTable()
       if (task) await loadNotificationsFromAPI()
       await hub.refreshMessagesForCurrentUser?.()
