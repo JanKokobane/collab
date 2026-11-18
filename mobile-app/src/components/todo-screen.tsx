@@ -862,6 +862,28 @@ function taskFromHomeTask(
   };
 }
 
+function sprintSequenceNumber(name: string): number | null {
+  const match = String(name).match(/^\s*Sprint\s+(\d+)\b/i);
+  return match ? Number(match[1]) : null;
+}
+
+function sortSprintsByNumber(sprints: HomeProjectSprint[]): HomeProjectSprint[] {
+  return sprints.map((sprint, originalIndex) => ({ sprint, originalIndex })).sort((first, second) => {
+    const firstNumber = sprintSequenceNumber(first.sprint.name);
+    const secondNumber = sprintSequenceNumber(second.sprint.name);
+    if (firstNumber !== null && secondNumber !== null && firstNumber !== secondNumber) {
+      return firstNumber - secondNumber;
+    }
+    if (firstNumber !== null && secondNumber === null) return -1;
+    if (firstNumber === null && secondNumber !== null) return 1;
+    return first.originalIndex - second.originalIndex;
+  }).map(({ sprint }) => sprint);
+}
+
+function isSprintUnlockedStatus(status: string): boolean {
+  return ['Pending Review', 'Completed'].includes(status);
+}
+
 function formatTaskCountdown(remainingMs: number) {
   const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
   const hours = Math.floor(totalSeconds / 3600);
@@ -1253,7 +1275,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   const completionPercent = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) || null;
   const selectedAssignedSprints = selectedTask
-    ? selectedTask.assignedSprints.map((sprint) => {
+    ? sortSprintsByNumber(selectedTask.assignedSprints).map((sprint) => {
       const sprintTasks = tasks.filter((task) =>
         task.projectId === selectedTask.projectId && task.sprint === sprint.name);
       const sprintTask = sprintTasks[0];
@@ -2073,12 +2095,19 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                     </Text>
                   </View>
                   {selectedAssignedSprints.length > 0 ? (
-                    selectedAssignedSprints.map(({ sprint, task: sprintTask }) => {
+                    selectedAssignedSprints.map(({ sprint, task: sprintTask }, sprintIndex) => {
                       const expanded = expandedSprintName === sprint.name;
                       const taskStatus = sprintTask?.status.trim().toLowerCase() || '';
                       const submissionStatus = sprintTask?.sprintSubmissionStatus || sprint.status;
                       const alreadySubmitted = ['Pending Review', 'Completed']
                         .includes(submissionStatus);
+                      const previousSprint = sprintIndex > 0
+                        ? selectedAssignedSprints[sprintIndex - 1]
+                        : null;
+                      const previousSubmissionStatus = previousSprint
+                        ? (previousSprint.task?.sprintSubmissionStatus || previousSprint.sprint.status)
+                        : 'Completed';
+                      const sprintLocked = !isSprintUnlockedStatus(previousSubmissionStatus);
                       return (
                         <View key={sprint.name} style={styles.assignedSprintItem}>
                           <Pressable
@@ -2086,6 +2115,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                             accessibilityLabel={`View details for ${sprint.name}`}
                             accessibilityState={{ expanded }}
                             onPress={() => {
+                              if (sprintLocked) return;
                               const nextSprintName = expandedSprintName === sprint.name
                                 ? null
                                 : sprint.name;
@@ -2094,7 +2124,11 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                                 ? `${selectedTask.projectId}:${nextSprintName}`
                                 : '');
                             }}
-                            style={styles.assignedSprintExpandButton}>
+                            disabled={sprintLocked}
+                            style={[
+                              styles.assignedSprintExpandButton,
+                              sprintLocked && styles.primaryActionDisabled,
+                            ]}>
                             <View style={styles.assignedSprintDescription}>
                               <Text style={styles.assignedSprintBullet}>-</Text>
                               <Text style={styles.assignedSprintName}>{sprint.name}</Text>
@@ -2107,7 +2141,14 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                               <Icon name="chevronDown" size={15} color="#68736C" />
                             </View>
                           </Pressable>
-                          {sprintTask && taskStatus !== 'in progress' &&
+                          {sprintLocked ? (
+                            <View style={styles.assignedSprintStartRow}>
+                              <Text style={styles.sprintSubmissionError}>
+                                Complete and submit {previousSprint?.sprint.name} first.
+                              </Text>
+                            </View>
+                          ) : null}
+                          {sprintTask && !sprintLocked && taskStatus !== 'in progress' &&
                           taskStatus !== 'done' && !alreadySubmitted ? (
                             <View style={styles.assignedSprintStartRow}>
                               <Pressable
@@ -2155,7 +2196,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                               </View>
                               </> : null}
 
-                              {!alreadySubmitted ? (
+                              {!sprintLocked && !alreadySubmitted ? (
                             <View style={styles.sprintSubmissionForm}>
                               <TextInput
                                 accessibilityLabel="Sprint submission notes"

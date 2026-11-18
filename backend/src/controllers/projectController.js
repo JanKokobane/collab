@@ -6,6 +6,25 @@ const areAllProjectSprintsCompleted = sprints =>
     sprints.length > 0 &&
     sprints.every(sprint => String(sprint?.status || '').trim().toLowerCase() === 'completed');
 
+const sprintSequenceNumber = name => {
+    const match = String(name || '').match(/^\s*Sprint\s+(\d+)\b/i);
+    return match ? Number(match[1]) : null;
+};
+
+const sortSprintsBySequence = sprints => sprints
+    .map((sprint, originalIndex) => ({ sprint, originalIndex }))
+    .sort((first, second) => {
+        const firstNumber = sprintSequenceNumber(first.sprint?.name);
+        const secondNumber = sprintSequenceNumber(second.sprint?.name);
+        if (firstNumber !== null && secondNumber !== null && firstNumber !== secondNumber) {
+            return firstNumber - secondNumber;
+        }
+        if (firstNumber !== null && secondNumber === null) return -1;
+        if (firstNumber === null && secondNumber !== null) return 1;
+        return first.originalIndex - second.originalIndex;
+    })
+    .map(({ sprint }) => sprint);
+
 const isValidDateKey = value => {
     if (value === null || value === undefined || value === '') return true;
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -1106,6 +1125,22 @@ const submitProjectSprint = async (req, res) => {
                 code: 'SPRINT_COMPLETION_FORBIDDEN',
                 message: 'Only the assigned sprint lead can submit this sprint for review.'
             });
+        }
+        const assignedSprints = sortSprintsBySequence(
+            sprints.filter(candidate => candidate?.assigneeFirebaseUid === firebaseUid)
+        );
+        const sprintPosition = assignedSprints.findIndex(candidate => candidate?.name === sprint.name);
+        if (sprintPosition > 0) {
+            const previousStatus = String(assignedSprints[sprintPosition - 1]?.status || '')
+                .trim().toLowerCase();
+            if (!['pending review', 'completed'].includes(previousStatus)) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false,
+                    code: 'SPRINT_LOCKED',
+                    message: `Submit "${assignedSprints[sprintPosition - 1].name}" before submitting this sprint.`
+                });
+            }
         }
         if (sprint.status === 'Completed' || sprint.status === 'Pending Review') {
             await client.query('ROLLBACK');
