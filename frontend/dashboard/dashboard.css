@@ -5594,8 +5594,20 @@ form.modal .brainstorm-board-member-option input[type="checkbox"] {
     gap: 8px;
 }
 
-.project-task-priority-row {
-    grid-template-columns: minmax(0, 1fr);
+.project-task-tags-priority-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: end;
+    gap: 14px;
+}
+
+.project-task-tags-priority-row > * {
+    min-width: 0;
+}
+
+.project-task-tags-priority-row .project-task-tag-picker,
+.project-task-tags-priority-row select {
+    width: 100%;
 }
 
 .task-priority-badge {
@@ -7921,6 +7933,23 @@ body.dark-mode .project-task-close-sprint:hover,
     font-weight: 700;
 }
 
+.project-task-sprint-assignment-row {
+    align-items: start;
+}
+
+.project-task-create-sprint-panel .project-task-sprint-assignment-field {
+    display: grid;
+    grid-template-rows: minmax(30px, auto) 42px;
+    align-content: start;
+}
+
+.project-task-sprint-assignment-field > span {
+    display: flex;
+    min-height: 30px;
+    align-items: flex-end;
+    line-height: 1.25;
+}
+
 .project-task-create-sprint-panel input,
 .project-task-create-sprint-panel select,
 .project-task-create-sprint-panel textarea {
@@ -7941,10 +7970,95 @@ body.dark-mode .project-task-close-sprint:hover,
     resize: vertical;
 }
 
-.project-task-save-sprint {
-    align-self: stretch;
+.cal-sprint-date-picker {
+    position: relative;
+    min-width: 0;
+}
+
+.cal-sprint-date-picker.is-open {
+    z-index: 20;
+}
+
+.cal-sprint-date-trigger {
+    display: flex;
     width: 100%;
-    min-height: 36px;
+    min-height: 42px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 11px;
+    border: 1px solid #D5DDE5;
+    border-radius: 6px;
+    background: #FBFCFD;
+    color: #182230;
+    cursor: pointer;
+    font: 13px 'DM Sans', sans-serif;
+    text-align: left;
+}
+
+.cal-sprint-date-trigger-label {
+    color: #3F3F46;
+    font-weight: 600;
+}
+
+.cal-sprint-date-trigger-date {
+    color: #71717A;
+    font-weight: 500;
+    text-align: right;
+}
+
+.cal-sprint-date-trigger:hover {
+    border-color: #AEBAC7;
+}
+
+.cal-sprint-date-popover {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    z-index: 21;
+    display: grid;
+    width: 100%;
+    min-width: 100%;
+    box-sizing: border-box;
+    grid-template-columns: minmax(0, 1fr);
+    margin: 0;
+}
+
+.cal-sprint-date-popover[hidden] {
+    display: none;
+}
+
+.cal-sprint-date-popover .project-time-span-calendar {
+    grid-template-rows: auto auto auto auto auto;
+}
+
+.cal-sprint-date-header {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.cal-sprint-date-header-value {
+    color: #3F3F46;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: right;
+}
+
+.project-task-sprint-due-date-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 10px;
+}
+
+.project-task-save-sprint {
+    align-self: end;
+    width: auto;
+    min-width: 90px;
+    min-height: 42px;
     padding: 7px 13px;
 }
 
@@ -7960,6 +8074,25 @@ body.dark-mode .project-task-draft-action,
 body.dark-mode .project-task-draft-sprint-description,
 [data-theme="dark"] .project-task-draft-sprint-description {
     color: #CAD2CB;
+}
+
+body.dark-mode .cal-sprint-date-trigger,
+[data-theme="dark"] .cal-sprint-date-trigger {
+    border-color: #3A3A46;
+    background: #22222B;
+    color: #E4E4E7;
+}
+
+body.dark-mode .cal-sprint-date-header-value,
+[data-theme="dark"] .cal-sprint-date-header-value {
+    color: #D4D4D8;
+}
+
+body.dark-mode .cal-sprint-date-trigger-label,
+body.dark-mode .cal-sprint-date-trigger-date,
+[data-theme="dark"] .cal-sprint-date-trigger-label,
+[data-theme="dark"] .cal-sprint-date-trigger-date {
+    color: #A1A1AA;
 }
 
 body.dark-mode .project-task-draft-action:hover,
