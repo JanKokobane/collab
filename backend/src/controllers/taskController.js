@@ -972,13 +972,14 @@ const submitProjectTaskForReview = async (req, res) => {
             try {
                 await query(
                     `INSERT INTO notifications (
-                        recipient_firebase_uid, project_id, related_task_id,
+                        recipient_firebase_uid, project_id, sprint_name, related_task_id,
                         type, title, detail, avatar, tone_class
                      )
-                     VALUES ($1, $2, $3, 'task_sprint_submitted_for_review', $4, $5, $6, 'orange-bg')`,
+                     VALUES ($1, $2, $3, $4, 'task_sprint_submitted_for_review', $5, $6, $7, 'orange-bg')`,
                     [
                         task.creator_firebase_uid,
                         project.project_id,
+                        task.sprint_name,
                         taskId,
                         'Task sprint ready for review',
                         `${req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'A task assignee'} submitted "${task.sprint_name}" for "${task.title}" in "${task.project_name}" for review.`,

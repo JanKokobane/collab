@@ -1359,30 +1359,34 @@ async function loadTaskComments(project, task, container, options = {}) {
   }
 }
 
-export async function openProjectProgressAside(task) {
+export async function openProjectProgressAside(task, targetSprintName = null) {
   const project = projects.find(candidate => candidate.projectId === task.projectId)
   if (!project) {
     showDashboardToast('The project details for this task could not be found.', 'error')
     return
   }
 
-  const currentTask = tasks.find(candidate =>
-    candidate.backendPersistent && candidate.taskId === task.taskId
-  ) || task
-  try {
-    const response = await api.get(
-      `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(currentTask.taskId)}?metadataOnly=true`
-    )
-    if (!response?.data?.task) {
-      throw new Error('The server did not return the latest task details.')
+  const currentTask = task.taskId
+    ? tasks.find(candidate =>
+      candidate.backendPersistent && candidate.taskId === task.taskId
+    ) || task
+    : task
+  if (currentTask.taskId) {
+    try {
+      const response = await api.get(
+        `/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(currentTask.taskId)}?metadataOnly=true`
+      )
+      if (!response?.data?.task) {
+        throw new Error('The server did not return the latest task details.')
+      }
+      applyTaskSprintSubmission(currentTask, response.data.task)
+    } catch (error) {
+      console.error('Unable to refresh task submission details:', error)
+      showDashboardToast(
+        'Latest task submission details could not be refreshed. Showing the most recently loaded task data.',
+        'error'
+      )
     }
-    applyTaskSprintSubmission(currentTask, response.data.task)
-  } catch (error) {
-    console.error('Unable to refresh task submission details:', error)
-    showDashboardToast(
-      'Latest task submission details could not be refreshed. Showing the most recently loaded task data.',
-      'error'
-    )
   }
   task = currentTask
   const projectTasks = tasks.filter(candidate =>
@@ -1472,13 +1476,6 @@ export async function openProjectProgressAside(task) {
       centerValue: String(sprints.length),
       centerLabel: pluralize(sprints.length, 'sprint'),
       ariaLabel: `${sprints.length} ${pluralize(sprints.length, 'project sprint')} by delivery status`
-    }),
-    renderStatusDonut(analysis.taskSubmissionStatusBreakdown, {
-      title: 'Task sprint submissions',
-      subtitle: 'Mobile and dashboard task reviews',
-      centerValue: String(projectTasks.length),
-      centerLabel: pluralize(projectTasks.length, 'task'),
-      ariaLabel: `Sprint submission status across ${projectTasks.length} ${pluralize(projectTasks.length, 'task')}`
     }),
     renderProgressBars(
       'Sprint task delivery',
@@ -1877,8 +1874,6 @@ export async function openProjectProgressAside(task) {
       ['Status', 'is-status'],
       ['Lead', 'is-lead'],
       ['Schedule', 'is-schedule'],
-      ['Tasks', 'is-tasks'],
-      ['Progress', 'is-progress'],
       ['Details', 'is-actions']
     ].forEach(([label, colClass]) => {
       const th = document.createElement('th')
@@ -1976,32 +1971,6 @@ export async function openProjectProgressAside(task) {
         sprintDates
       ))
 
-      const tasksCell = make('td', 'project-sprint-sheet-cell is-tasks')
-      tasksCell.append(make(
-        'span',
-        sprintTasks.length ? 'project-sprint-sheet-task-count' : 'project-sprint-sheet-muted',
-        sprintTasks.length
-          ? `${completedSprintTasks} / ${sprintTasks.length} done`
-          : 'No tasks'
-      ))
-
-      const progressCell = make('td', 'project-sprint-sheet-cell is-progress')
-      const progress = make('div', 'project-sprint-card-progress project-sprint-sheet-progress')
-      const progressTrack = make('div', 'project-sprint-card-track')
-      progressTrack.setAttribute('role', 'progressbar')
-      progressTrack.setAttribute('aria-label', `${sprint.name || 'Sprint'} task completion`)
-      progressTrack.setAttribute('aria-valuemin', '0')
-      progressTrack.setAttribute('aria-valuemax', '100')
-      progressTrack.setAttribute('aria-valuenow', String(sprintProgress))
-      const progressFill = make('span', 'project-sprint-card-fill')
-      progressFill.style.width = `${sprintProgress}%`
-      progressTrack.append(progressFill)
-      progress.append(
-        progressTrack,
-        make('strong', 'project-sprint-card-percent', sprintTasks.length ? `${sprintProgress}%` : '—')
-      )
-      progressCell.append(progress)
-
       const detailsId = `project-sprint-details-${sprintIndex}`
       const actionCell = make('td', 'project-sprint-sheet-cell is-actions')
       const toggle = make('button', 'project-sprint-sheet-toggle')
@@ -2033,15 +2002,13 @@ export async function openProjectProgressAside(task) {
         statusCell,
         leadCell,
         scheduleCell,
-        tasksCell,
-        progressCell,
         actionCell
       )
 
       const detailRow = make('tr', 'project-sprint-sheet-detail-row')
       detailRow.hidden = true
       const detailTd = document.createElement('td')
-      detailTd.colSpan = 8
+      detailTd.colSpan = 6
       detailTd.className = 'project-sprint-sheet-detail-cell'
 
       const details = make('div', 'project-sprint-card-details project-sprint-sheet-details')
@@ -2614,6 +2581,35 @@ export async function openProjectProgressAside(task) {
     }, 5 * 60 * 1000)
   })
   closeButton.focus()
+
+  if (targetSprintName) {
+    requestAnimationFrame(() => {
+      const titleButton = Array.from(aside.querySelectorAll('.project-sprint-sheet-title-btn'))
+        .find(button => button.querySelector('.project-sprint-sheet-name')?.textContent?.trim() === targetSprintName)
+      const toggle = titleButton?.closest('.project-sprint-sheet-row')
+        ?.nextElementSibling?.querySelector('.project-sprint-sheet-toggle')
+      if (toggle?.getAttribute('aria-expanded') !== 'true') toggle?.click()
+      const section = titleButton?.closest('.project-sprint-sheet-row') || aside.querySelector('.project-sprint-sheet-wrap')
+      section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
+}
+
+export function openProjectSprintDetails(projectId, sprintName) {
+  const project = projects.find(candidate => candidate.projectId === projectId)
+  if (!project) {
+    showDashboardToast('The submitted sprint project could not be found.', 'error')
+    return
+  }
+  const sprintTask = tasks.find(candidate =>
+    candidate.backendPersistent &&
+    candidate.projectId === projectId &&
+    candidate.sprint_name === sprintName
+  )
+  void openProjectProgressAside(
+    sprintTask || { projectId, taskId: null },
+    sprintName
+  )
 }
 
 export function openProjectTaskDetails(taskId) {

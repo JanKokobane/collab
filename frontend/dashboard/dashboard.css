@@ -2669,7 +2669,7 @@ body.dark-mode .invite-user-search-result span,
 
 .project-sprint-sheet {
     width: 100%;
-    min-width: 820px;
+    min-width: 760px;
     border-collapse: collapse;
     table-layout: fixed;
     font: 400 12px/1.45 'DM Sans', sans-serif;
@@ -2693,12 +2693,10 @@ body.dark-mode .invite-user-search-result span,
 }
 
 .project-sprint-sheet thead th.is-index { width: 46px; text-align: center; }
-.project-sprint-sheet thead th.is-sprint { width: 28%; }
+.project-sprint-sheet thead th.is-sprint { width: 32%; }
 .project-sprint-sheet thead th.is-status { width: 120px; }
 .project-sprint-sheet thead th.is-lead { width: 170px; }
 .project-sprint-sheet thead th.is-schedule { width: 132px; }
-.project-sprint-sheet thead th.is-tasks { width: 112px; }
-.project-sprint-sheet thead th.is-progress { width: 130px; }
 .project-sprint-sheet thead th.is-actions { width: 92px; text-align: right; }
 
 .project-sprint-sheet-row {
@@ -2816,9 +2814,7 @@ body.dark-mode .invite-user-search-result span,
     white-space: nowrap;
 }
 
-.project-sprint-sheet-progress {
-    gap: 8px;
-}
+
 
 .project-sprint-sheet-toggle {
     position: relative;

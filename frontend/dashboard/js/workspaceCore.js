@@ -407,6 +407,22 @@ export function renderNotifications() {
       })
       actionButtons.append(openBoardButton)
       actionCell.append(actionButtons)
+    } else if (
+      notification.type === 'sprint_submitted_for_review' &&
+      notification.projectId &&
+      notification.sprintName
+    ) {
+      const viewReviewButton = make('button', 'action-btn primary gold', 'View review')
+      viewReviewButton.type = 'button'
+      viewReviewButton.addEventListener('click', () => {
+        hub.switchView?.(projects.find(project => project.projectId === notification.projectId)?.name)
+        hub.openProjectSprintDetails?.(notification.projectId, notification.sprintName)
+        if (notification.unread) markNotificationRead(notification.id).catch(error => {
+          console.error('Unable to mark sprint submission notification as read:', error)
+        })
+      })
+      actionButtons.append(viewReviewButton)
+      actionCell.append(actionButtons)
     } else if (notification.relatedTaskId) {
       const openTaskButton = make('button', 'action-btn primary gold', 'Open task')
       openTaskButton.type = 'button'
