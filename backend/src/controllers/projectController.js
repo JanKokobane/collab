@@ -1209,12 +1209,13 @@ const submitProjectSprint = async (req, res) => {
             try {
                 await client.query(
                     `INSERT INTO notifications (
-                        recipient_firebase_uid, project_id, type, title, detail, avatar, tone_class
+                        recipient_firebase_uid, project_id, sprint_name, type, title, detail, avatar, tone_class
                      )
-                     VALUES ($1, $2, 'sprint_submitted_for_review', $3, $4, $5, 'orange-bg')`,
+                     VALUES ($1, $2, $3, 'sprint_submitted_for_review', $4, $5, $6, 'orange-bg')`,
                     [
                         project.creator_firebase_uid,
                         projectId,
+                        sprint.name,
                         'Sprint ready for review',
                         `${submittedByName} submitted "${sprint.name}" in "${project.name}" for your review.`,
                         project.creator_initials || '•'

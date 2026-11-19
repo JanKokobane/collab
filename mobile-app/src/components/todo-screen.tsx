@@ -2134,20 +2134,21 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                               <Text style={styles.assignedSprintName}>{sprint.name}</Text>
                             </View>
                             <View style={styles.assignedSprintViewDetails}>
-                              <Text style={styles.assignedSprintStatus}>{submissionStatus}</Text>
+                              <Text
+                                style={[
+                                  styles.assignedSprintStatus,
+                                  sprintLocked
+                                    ? styles.assignedSprintStatusLocked
+                                    : styles.assignedSprintStatusActive,
+                                ]}>
+                                {sprintLocked ? 'Locked' : alreadySubmitted ? submissionStatus : 'Active'}
+                              </Text>
                               <Text style={styles.assignedSprintExpandText}>
                                 {expanded ? 'Hide details' : 'View details'}
                               </Text>
                               <Icon name="chevronDown" size={15} color="#68736C" />
                             </View>
                           </Pressable>
-                          {sprintLocked ? (
-                            <View style={styles.assignedSprintStartRow}>
-                              <Text style={styles.sprintSubmissionError}>
-                                Complete and submit {previousSprint?.sprint.name} first.
-                              </Text>
-                            </View>
-                          ) : null}
                           {sprintTask && !sprintLocked && taskStatus !== 'in progress' &&
                           taskStatus !== 'done' && !alreadySubmitted ? (
                             <View style={styles.assignedSprintStartRow}>
@@ -2176,26 +2177,6 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                               <Text style={styles.sprintDescription}>
                                 {sprintTask?.description || sprint.description || 'No sprint details have been added.'}
                               </Text>
-                              {sprintTask ? <>
-                              <View style={styles.sprintProgressHeading}>
-                                <Text style={styles.sectionLabel}>Progress</Text>
-                                <Text style={styles.sprintProgressPercent}>
-                                  {sprintTask.progress}%
-                                </Text>
-                              </View>
-                              <View
-                                accessibilityRole="progressbar"
-                                accessibilityValue={{ min: 0, max: 100, now: sprintTask.progress }}
-                                style={styles.sprintProgressTrack}>
-                                <View
-                                  style={[
-                                    styles.sprintProgressFill,
-                                    { width: `${sprintTask.progress}%` },
-                                  ]}
-                                />
-                              </View>
-                              </> : null}
-
                               {!sprintLocked && !alreadySubmitted ? (
                             <View style={styles.sprintSubmissionForm}>
                               <TextInput
@@ -2346,18 +2327,6 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                             </View>
                               ) : alreadySubmitted ? (
                             <View style={styles.sprintSubmittedDetails}>
-                              <Text style={styles.sprintSubmittedMessage}>
-                              {submissionStatus === 'Completed'
-                                ? 'Sprint accepted'
-                                : 'Submitted for review'}
-                              </Text>
-                              {sprintTask?.sprintSubmissionNote ? (
-                              <Text style={styles.sprintDescription}>
-                                {sprintTask.sprintSubmissionNote}
-                              </Text>
-                              ) : sprint.submissionNote ? (
-                              <Text style={styles.sprintDescription}>{sprint.submissionNote}</Text>
-                              ) : null}
                               {sprintTask?.sprintSubmissionAttachments.map((attachment) => (
                               <Text
                                 key={attachment.fileName}
@@ -2418,6 +2387,202 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     </>
   );
 }
+
+const activeStyles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: '#F7F8F5' },
+  taskContent: { flexGrow: 1, gap: 18, paddingHorizontal: 14, paddingTop: 20 },
+  searchBox: { minHeight: 48, marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 15, borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 16, backgroundColor: '#FFFFFF' },
+  searchInput: { flex: 1, minWidth: 0, paddingVertical: 10, color: '#26352F', fontSize: 14 },
+  clearSearchButton: { padding: 7 },
+  progressCard: {
+    padding: 19,
+    borderWidth: 1,
+    borderColor: '#202020',
+    borderRadius: 22,
+    backgroundColor: '#FFC400',
+    shadowColor: '#202020',
+    shadowOffset: { width: 4, height: 5 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  progressHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  progressEyebrow: { color: '#202020', fontSize: 11, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase' },
+  progressComplete: { paddingHorizontal: 8, paddingVertical: 5, overflow: 'hidden', borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.34)', color: '#202020', fontSize: 9, fontWeight: '800' },
+  progressMain: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 15 },
+  progressCount: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  progressTitle: { color: '#202020', fontSize: 44, lineHeight: 48, fontWeight: '800', letterSpacing: -3 },
+  progressMeta: { color: '#202020', fontSize: 12, fontWeight: '700' },
+  progressPercentBadge: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderWidth: 6, borderColor: '#202020', borderRadius: 27, backgroundColor: 'rgba(255,255,255,0.32)' },
+  progressPercent: { color: '#202020', fontSize: 9, fontWeight: '800' },
+  weeklyTrack: { height: 5, marginTop: 17, overflow: 'hidden', borderRadius: 999, backgroundColor: 'rgba(32,32,32,0.18)' },
+  weeklyTrackFill: { height: '100%', borderRadius: 999, backgroundColor: '#202020' },
+  loadErrorBanner: { padding: 13, borderWidth: 1, borderColor: '#F9C5C8', borderRadius: 14, backgroundColor: '#FFF0EF' },
+  loadErrorText: { color: '#B42318', fontSize: 13, lineHeight: 19, fontWeight: '600' },
+  warningText: { color: '#806700', fontSize: 13, lineHeight: 19, fontWeight: '600' },
+  filterTabsScroll: { height: 58, flexGrow: 0, flexShrink: 0 },
+  filterTabs: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 1, paddingVertical: 4 },
+  filterButton: { width: 93, height: 42, flexShrink: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 7, borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 14, backgroundColor: '#FFFFFF' },
+  filterButtonActive: { borderColor: '#285F50', backgroundColor: '#285F50', shadowColor: '#285F50', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.18, shadowRadius: 8, elevation: 3 },
+  filterButtonPressed: { opacity: 0.9, transform: [{ scale: 0.98 }] },
+  filterButtonContent: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  allFilterButtonContent: { transform: [{ translateX: 0 }] },
+  filterIconContainer: { width: 16, alignItems: 'center', justifyContent: 'center' },
+  todayFilterIcon: { width: 16, height: 16 },
+  allFilterIcon: { width: 16, height: 16 },
+  completedFilterIcon: { width: 16, height: 16 },
+  progressFilterIcon: { width: 16, height: 16 },
+  filterButtonDivider: { width: 1, height: 20, backgroundColor: '#D8DFDA' },
+  progressDividerOffset: { transform: [{ translateX: 0 }] },
+  filterButtonText: { flex: 1, minWidth: 0, gap: 1 },
+  progressTextOffset: { transform: [{ translateX: 0 }] },
+  filterButtonTitle: { color: '#26352F', fontSize: 9, lineHeight: 11, fontWeight: '800' },
+  filterButtonTitleActive: { color: '#FFFFFF' },
+  filterButtonDescription: { color: '#79827E', fontSize: 7, lineHeight: 9, fontWeight: '500' },
+  filterButtonDescriptionActive: { color: '#DCEBE4' },
+  taskSection: { gap: 13, marginTop: 0 },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 9, marginTop: 4, marginBottom: 0 },
+  sectionTitleCopy: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  sectionTitle: { color: '#26352F', fontSize: 21, fontWeight: '800', letterSpacing: -0.5 },
+  taskCount: { color: '#79827E', fontSize: 12, fontWeight: '600' },
+  sectionActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  searchAction: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 14, backgroundColor: '#FFFFFF' },
+  sortButton: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 40, paddingHorizontal: 4 },
+  sortText: { color: '#52665A', fontSize: 12, fontWeight: '700' },
+  sortChevronUp: { transform: [{ rotate: '-90deg' }] },
+  taskList: { gap: 14 },
+  taskCard: { minHeight: 190, padding: 16, borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 20, backgroundColor: '#FFFFFF', shadowColor: '#17241D', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 15, elevation: 3 },
+  taskCardDone: { opacity: 0.78 },
+  cardMain: { flex: 1 },
+  taskTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
+  taskTitleIcon: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#EAF4EF', transform: [{ translateY: 0 }] },
+  taskTitleShift: { transform: [{ translateX: 0 }] },
+  taskTitle: { flex: 1, marginTop: 2, color: '#26352F', fontSize: 16, lineHeight: 21, fontWeight: '800', letterSpacing: -0.3 },
+  taskCountdown: { flexShrink: 0, marginTop: 4, color: '#79827E', fontSize: 9, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  taskCountdownOverdue: { color: '#B42318' },
+  taskTitleDone: { color: '#79827E', textDecorationLine: 'line-through' },
+  taskDescriptionContainer: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#E6EBE7' },
+  taskDescription: { color: '#68736C', fontSize: 12, lineHeight: 18 },
+  taskMeta: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 'auto', paddingTop: 15 },
+  taskMetaPill: { minHeight: 29, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, borderRadius: 999, backgroundColor: '#26352F' },
+  taskMetaText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
+  dueToday: { backgroundColor: '#FFF1F2' },
+  dueTodayText: { color: '#D92D20' },
+  metaIcons: { flexDirection: 'row', alignItems: 'center', gap: 11, marginLeft: 'auto' },
+  metaIconButton: { width: 24, height: 28, alignItems: 'center', justifyContent: 'center' },
+  sprintCount: { flex: 1, minWidth: 0, color: '#68736C', fontSize: 10, fontWeight: '700' },
+  cardFooter: { minHeight: 45, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#E6EBE7' },
+  assigneeRow: { flex: 1.15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 0 },
+  assigneeName: { maxWidth: '75%', flexShrink: 1, color: '#52665A', fontSize: 11, fontWeight: '700' },
+  avatarRing: { width: 36, height: 36, overflow: 'hidden', textAlign: 'center', textAlignVertical: 'center', borderWidth: 2, borderColor: '#FFFFFF', borderRadius: 19, color: '#FFFFFF', backgroundColor: '#285F50', fontSize: 9, fontWeight: '800', lineHeight: 32 },
+  statusButton: { minWidth: 78, minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 11, borderRadius: 12, backgroundColor: '#285F50' },
+  startTaskButton: { backgroundColor: '#F0444F' },
+  continueTaskButton: { width: 36, minWidth: 36, height: 36, minHeight: 36, paddingHorizontal: 0, borderRadius: 18, backgroundColor: '#285F50' },
+  taskActionDisabled: { opacity: 0.6 },
+  statusButtonText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+  emptyState: { alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 42, paddingHorizontal: 22, borderWidth: 1, borderStyle: 'dashed', borderColor: '#BFCBC4', borderRadius: 20, backgroundColor: '#FFFFFF' },
+  emptyIcon: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 27, backgroundColor: '#EAF4EF' },
+  emptyTitle: { marginTop: 13, color: '#35433D', fontSize: 16, fontWeight: '800' },
+  emptyDescription: { marginTop: 4, color: '#79827E', fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  modalBackdrop: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: 'rgba(24,35,29,0.42)' },
+  taskDetailsCard: { width: '100%', overflow: 'hidden', borderTopLeftRadius: 26, borderTopRightRadius: 26, backgroundColor: '#FFFFFF', paddingTop: 16, paddingHorizontal: 20, shadowColor: '#17241D', shadowOffset: { width: 0, height: -8 }, shadowOpacity: 0.16, shadowRadius: 20, elevation: 12 },
+  detailsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 },
+  modalBrand: { flexDirection: 'row', alignItems: 'center' },
+  menuButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', marginRight: 4, borderRadius: 14, backgroundColor: '#F3F4F3' },
+  modalLogo: { width: 108, height: 35, marginLeft: -10 },
+  closeButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: '#F3F4F3' },
+  closeIcon: { color: '#52665A', fontSize: 25, lineHeight: 28, fontWeight: '400' },
+  detailsScroll: { flex: 1 },
+  detailsContent: { paddingBottom: 24, gap: 24 },
+  titleSection: { gap: 8, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: '#E6EBE7' },
+  statusDot: { width: 9, height: 9, borderRadius: 5 },
+  statusDotDone: { backgroundColor: '#35A765' },
+  statusDotInProgress: { backgroundColor: '#3185E8' },
+  statusDotDefault: { backgroundColor: '#B7BFBA' },
+  detailProject: { color: '#79827E', fontSize: 13, fontWeight: '700' },
+  detailTitle: { color: '#26352F', fontSize: 25, lineHeight: 32, fontWeight: '800', letterSpacing: -0.8 },
+  metadataSection: { gap: 12, padding: 14, borderRadius: 16, backgroundColor: '#F7F8F5' },
+  metadataRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', minHeight: 27, columnGap: 12, rowGap: 7 },
+  metadataLabel: { width: 88, color: '#79827E', fontSize: 11, fontWeight: '700' },
+  tagsMetadataLabel: { width: 88 },
+  metadataValueContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 },
+  metadataValue: { flexShrink: 1, color: '#35433D', fontSize: 12, fontWeight: '700' },
+  metadataIcon: { color: '#59665F', fontSize: 17, fontWeight: '700' },
+  creatorAvatar: { width: 23, height: 23, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 12, backgroundColor: '#DCEBE4' },
+  creatorAvatarImage: { width: '100%', height: '100%' },
+  creatorAvatarText: { color: '#245D4D', fontSize: 9, fontWeight: '800' },
+  metadataMuted: { color: '#79827E', fontSize: 12, fontWeight: '500' },
+  tagsContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+  categoryTag: { overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: '#DCEBE4', color: '#245D4D', fontSize: 10, fontWeight: '800' },
+  priorityText: { fontSize: 12, fontWeight: '800' },
+  descriptionSection: { gap: 10 },
+  sectionLabel: { color: '#52665A', fontSize: 12, fontWeight: '800' },
+  descriptionText: { color: '#35433D', fontSize: 13, lineHeight: 21, fontWeight: '400' },
+  attachmentSection: { gap: 9 },
+  assignedSprintSection: { gap: 10, paddingTop: 20, borderTopWidth: 1, borderTopColor: '#E6EBE7' },
+  assignedSprintHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  assignedSprintTitle: { color: '#26352F', fontSize: 16, fontWeight: '800' },
+  assignedSprintCount: { minWidth: 25, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, overflow: 'hidden', color: '#245D4D', backgroundColor: '#DCEBE4', fontSize: 11, fontWeight: '800', textAlign: 'center' },
+  assignedSprintItem: { gap: 7, padding: 12, borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 15, backgroundColor: '#FFFFFF' },
+  assignedSprintExpandButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 0, paddingVertical: 2 },
+  assignedSprintStatus: { fontSize: 10, fontWeight: '800' },
+  assignedSprintStatusActive: { color: '#15803D' },
+  assignedSprintStatusLocked: { color: '#B42318' },
+  assignedSprintViewDetails: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  assignedSprintExpandText: { color: '#68736C', fontSize: 10, fontWeight: '700' },
+  assignedSprintStartRow: { alignItems: 'flex-end' },
+  assignedSprintNoSprintRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: 14, borderRadius: 14, backgroundColor: '#F3F4F3' },
+  sprintDetails: { gap: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#E6EBE7' },
+  sprintDescription: { color: '#52665A', fontSize: 12, lineHeight: 18 },
+  sprintSubmissionForm: { gap: 11, paddingTop: 4 },
+  sprintSubmissionNote: { minHeight: 96, padding: 12, borderWidth: 1, borderColor: '#D9DFDA', borderRadius: 13, backgroundColor: '#FFFFFF', color: '#272D29', fontSize: 12, lineHeight: 18, textAlignVertical: 'top' },
+  sprintMediaHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  sprintMediaLimit: { color: '#858C87', fontSize: 10, fontWeight: '600' },
+  sprintMediaActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  sprintMediaAction: { minHeight: 38, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 11, backgroundColor: '#FFFFFF' },
+  sprintMediaActionWithIcon: { flexDirection: 'row', gap: 6 },
+  sprintMediaIconButton: { width: 38, paddingHorizontal: 0, backgroundColor: '#EAF4EF' },
+  sprintRecordingWaveform: { height: 38, flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 8, borderRadius: 10, backgroundColor: '#FFF8D6' },
+  sprintRecordingWaveformBar: { width: 2, borderRadius: 2, backgroundColor: '#E6B000' },
+  sprintMediaActionText: { color: '#35433D', fontSize: 11, fontWeight: '800' },
+  sprintSubmissionAttachment: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 9, borderRadius: 10, backgroundColor: '#F3F4F3' },
+  sprintSubmissionAttachmentName: { flex: 1, color: '#35433D', fontSize: 11, fontWeight: '700' },
+  sprintSubmissionRemove: { padding: 4 },
+  sprintSubmissionRemoveText: { color: '#B42318', fontSize: 10, fontWeight: '800' },
+  sprintLinkRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sprintLinkInput: { flex: 1, minHeight: 40, paddingHorizontal: 13, borderWidth: 1, borderColor: '#D9DFDA', borderRadius: 12, color: '#272D29', fontSize: 11 },
+  sprintSubmissionError: { color: '#B42318', fontSize: 11, lineHeight: 16, fontWeight: '600' },
+  sprintSubmittedDetails: { gap: 8, paddingTop: 8 },
+  sprintSubmittedLink: { color: '#52665A', fontSize: 11 },
+  assignedSprintDescription: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 5 },
+  assignedSprintBullet: { color: '#285F50', fontSize: 13, fontWeight: '800' },
+  assignedSprintName: { flex: 1, color: '#35433D', fontSize: 12, fontWeight: '800' },
+  assignedSprintStartButton: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 13, borderRadius: 11, backgroundColor: '#F0444F' },
+  assignedSprintSubmitButton: { minHeight: 44, borderRadius: 13, backgroundColor: '#FFC400' },
+  assignedSprintSubmitText: { color: '#202020', fontSize: 11, fontWeight: '800' },
+  assignedSprintStartText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+  taskAttachmentCard: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 7, borderWidth: 1, borderColor: '#E6EBE7', borderRadius: 14, backgroundColor: '#F7F8F5' },
+  attachmentImagePreview: { width: 43, height: 43, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 12, backgroundColor: '#EAF4EF' },
+  attachmentImage: { width: '100%', height: '100%' },
+  attachmentImageUnavailable: { color: '#A33A32', fontSize: 17, fontWeight: '800' },
+  attachmentAudioTile: { width: 43, height: 43, alignItems: 'center', justifyContent: 'center', position: 'relative', borderRadius: 12, backgroundColor: '#EAF4EF' },
+  attachmentVoiceNotePlay: { position: 'absolute', right: 4, bottom: 7 },
+  attachmentFileIconButton: { width: 43, height: 43, alignItems: 'center', justifyContent: 'center' },
+  attachmentFileIcon: { width: 43, height: 43, alignItems: 'center', justifyContent: 'center' },
+  attachmentFileType: { position: 'absolute', top: 25, width: 24, textAlign: 'center', color: '#FFFFFF', fontSize: 6, fontWeight: '800' },
+  taskAttachmentCopy: { flex: 1, minWidth: 0, gap: 3 },
+  taskAttachmentName: { color: '#34433D', fontSize: 11, fontWeight: '800' },
+  taskAttachmentDetails: { color: '#79827E', fontSize: 9, fontWeight: '600' },
+  attachmentAudioProgressTrack: { height: 3, overflow: 'hidden', borderRadius: 2, backgroundColor: '#D8DFDA' },
+  attachmentAudioProgress: { height: '100%', borderRadius: 2, backgroundColor: '#285F50' },
+  attachmentAudioTime: { alignSelf: 'flex-end', color: '#79827E', fontSize: 8, fontWeight: '600' },
+  attachmentError: { color: '#B42318', fontSize: 8, fontWeight: '600' },
+  attachmentDownloadButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#DCEBE4' },
+  attachmentActionDisabled: { opacity: 0.55 },
+  primaryAction: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 3, borderRadius: 14, backgroundColor: '#285F50' },
+  primaryActionDisabled: { opacity: 0.65 },
+  primaryActionText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+});
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F7F8F5' },
@@ -2800,6 +2965,8 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
   },
+  assignedSprintStatusActive: { color: '#15803D' },
+  assignedSprintStatusLocked: { color: '#B42318' },
   assignedSprintViewDetails: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2816,14 +2983,6 @@ const styles = StyleSheet.create({
   },
   sprintDetails: { gap: 12, paddingTop: 8 },
   sprintDescription: { color: '#353B37', fontSize: 12, lineHeight: 18 },
-  sprintProgressHeading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  sprintProgressPercent: { color: '#353B37', fontSize: 11, fontWeight: '700' },
-  sprintProgressTrack: { height: 6, overflow: 'hidden', borderRadius: 3, backgroundColor: '#E4E8E5' },
-  sprintProgressFill: { height: '100%', borderRadius: 3, backgroundColor: '#FFC400' },
   sprintSubmissionForm: { gap: 10, paddingTop: 8 },
   sprintSubmissionNote: {
     minHeight: 80,
@@ -2885,7 +3044,6 @@ const styles = StyleSheet.create({
   },
   sprintSubmissionError: { color: '#B42318', fontSize: 11, lineHeight: 16 },
   sprintSubmittedDetails: { gap: 8, paddingTop: 8 },
-  sprintSubmittedMessage: { color: '#15803D', fontSize: 12, fontWeight: '700' },
   sprintSubmittedLink: { color: '#52665A', fontSize: 11 },
   assignedSprintDescription: {
     flex: 1,
