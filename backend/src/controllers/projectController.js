@@ -25,6 +25,18 @@ const sortSprintsBySequence = sprints => sprints
     })
     .map(({ sprint }) => sprint);
 
+const sprintMemberUids = sprint => {
+    const members = Array.isArray(sprint?.memberFirebaseUids)
+        ? sprint.memberFirebaseUids
+        : Array.isArray(sprint?.member_firebase_uids)
+            ? sprint.member_firebase_uids
+            : [sprint?.assigneeFirebaseUid || sprint?.assignee_firebase_uid];
+    return [...new Set(members
+        .filter(uid => typeof uid === 'string')
+        .map(uid => uid.trim())
+        .filter(Boolean))];
+};
+
 const isValidDateKey = value => {
     if (value === null || value === undefined || value === '') return true;
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -663,7 +675,7 @@ const updateProject = async (req, res) => {
                 ? invited_members
                 : current.invited_members;
 
-        const updatedSprints =
+        let updatedSprints =
             sprints !== undefined
                 ? sprints
                 : current.sprints;
@@ -684,9 +696,44 @@ const updateProject = async (req, res) => {
             });
         }
 
+        if (sprints !== undefined) {
+            const invalidSprint = updatedSprints.find(sprint =>
+                !sprint || typeof sprint !== 'object' || Array.isArray(sprint) ||
+                (sprint.memberFirebaseUids !== undefined && !Array.isArray(sprint.memberFirebaseUids)) ||
+                (sprint.member_firebase_uids !== undefined && !Array.isArray(sprint.member_firebase_uids)) ||
+                [sprint.memberFirebaseUids, sprint.member_firebase_uids]
+                    .filter(Array.isArray)
+                    .some(memberUids => memberUids.some(uid =>
+                        typeof uid !== 'string' || !uid.trim()
+                    ))
+            );
+            if (invalidSprint) {
+                return res.status(400).json({
+                    success: false,
+                    code: 'INVALID_SPRINT_MEMBERS',
+                    message: 'Each sprint must contain a valid memberFirebaseUids array.'
+                });
+            }
+            updatedSprints = updatedSprints.map(sprint => {
+                const normalizedMembers = sprintMemberUids(sprint);
+                const sprintDetails = { ...sprint };
+                delete sprintDetails.member_firebase_uids;
+                delete sprintDetails.assigneeFirebaseUid;
+                delete sprintDetails.assignee_firebase_uid;
+                delete sprintDetails.assigneeName;
+                delete sprintDetails.assignee_name;
+                delete sprintDetails.assigneeProfileImage;
+                delete sprintDetails.assignee_profile_image;
+                return {
+                    ...sprintDetails,
+                    memberFirebaseUids: normalizedMembers
+                };
+            });
+        }
+
         let sprintNameMap = null;
         let taskSprintMap = null;
-        const sprintAssignmentNotifications = [];
+        const sprintMemberNotifications = [];
         if (sprints !== undefined) {
             const currentSprints = Array.isArray(current.sprints) ? current.sprints : [];
             const sprintNameEntries = sprint_name_map &&
@@ -709,27 +756,18 @@ const updateProject = async (req, res) => {
             );
 
             updatedSprints.forEach(sprint => {
-                const assigneeFirebaseUid =
-                    typeof sprint?.assigneeFirebaseUid === 'string'
-                        ? sprint.assigneeFirebaseUid.trim()
-                        : '';
-                if (!assigneeFirebaseUid) return;
-
                 const previousSprint =
                     (sprint?.id !== undefined && sprint?.id !== null
                         ? sprintsById.get(String(sprint.id))
                         : null) ||
                     sprintsByName.get(oldNameByNewName.get(sprint?.name) || sprint?.name);
-                const previousAssigneeFirebaseUid =
-                    typeof previousSprint?.assigneeFirebaseUid === 'string'
-                        ? previousSprint.assigneeFirebaseUid.trim()
-                        : '';
-                if (previousAssigneeFirebaseUid === assigneeFirebaseUid) return;
-
-                sprintAssignmentNotifications.push({
-                    assigneeFirebaseUid,
-                    sprintName: typeof sprint.name === 'string' ? sprint.name : 'Project sprint'
-                });
+                const previousMembers = new Set(sprintMemberUids(previousSprint));
+                sprintMemberUids(sprint)
+                    .filter(memberUid => !previousMembers.has(memberUid))
+                    .forEach(memberFirebaseUid => sprintMemberNotifications.push({
+                        memberFirebaseUid,
+                        sprintName: typeof sprint.name === 'string' ? sprint.name : 'Project sprint'
+                    }));
             });
         }
 
@@ -764,12 +802,10 @@ const updateProject = async (req, res) => {
             );
             taskSprintMap = Object.fromEntries(
                 entries.map(([oldName, newName]) => {
-                    const targetSprint = updatedSprintsByName.get(newName);
                     return [
                         oldName,
                         {
-                            name: newName,
-                            assigneeFirebaseUid: targetSprint.assigneeFirebaseUid || null
+                            name: newName
                         }
                     ];
                 })
@@ -826,14 +862,13 @@ const updateProject = async (req, res) => {
             const client = await pool.connect();
             try {
                 await client.query('BEGIN');
-                const assigneeUids = [
-                    ...new Set(sprintAssignmentNotifications.map(item => item.assigneeFirebaseUid))
+                const memberUids = [
+                    ...new Set(updatedSprints
+                        .flatMap(sprintMemberUids)
+                        .filter(uid => uid !== current.creator_firebase_uid))
                 ];
-                const inviteeAssigneeUids = assigneeUids.filter(
-                    uid => uid !== current.creator_firebase_uid
-                );
-                if (inviteeAssigneeUids.length) {
-                    const acceptedAssignees = await client.query(
+                if (memberUids.length) {
+                    const acceptedMembers = await client.query(
                         `
                             SELECT invited_firebase_uid
                             FROM project_invitations
@@ -841,18 +876,18 @@ const updateProject = async (req, res) => {
                               AND status = 'accepted'
                               AND invited_firebase_uid = ANY($2::text[])
                         `,
-                        [projectId, inviteeAssigneeUids]
+                        [projectId, memberUids]
                     );
                     const acceptedUids = new Set(
-                        acceptedAssignees.rows.map(row => row.invited_firebase_uid)
+                        acceptedMembers.rows.map(row => row.invited_firebase_uid)
                     );
-                    const invalidAssignee = inviteeAssigneeUids.find(uid => !acceptedUids.has(uid));
-                    if (invalidAssignee) {
+                    const invalidMember = memberUids.find(uid => !acceptedUids.has(uid));
+                    if (invalidMember) {
                         await client.query('ROLLBACK');
                         return res.status(400).json({
                             success: false,
-                            code: 'INVALID_SPRINT_ASSIGNEE',
-                            message: 'Sprint leads must be the project owner or accepted invitees.'
+                            code: 'INVALID_SPRINT_MEMBER',
+                            message: 'Sprint members must be the project owner or accepted invitees.'
                         });
                     }
                 }
@@ -871,10 +906,6 @@ const updateProject = async (req, res) => {
                         `
                             UPDATE project_tasks AS task
                             SET sprint_name = sprint_map.target->>'name',
-                                assignee_firebase_uid = COALESCE(
-                                    sprint_map.target->>'assigneeFirebaseUid',
-                                    task.assignee_firebase_uid
-                                ),
                                 updated_at = NOW()
                             FROM jsonb_each($1::jsonb) AS sprint_map(old_name, target)
                             WHERE task.project_id = $2
@@ -893,7 +924,9 @@ const updateProject = async (req, res) => {
                         [projectId]
                     );
                 }
-                for (const assignment of sprintAssignmentNotifications) {
+                for (const assignment of sprintMemberNotifications.filter(
+                    item => item.memberFirebaseUid !== current.creator_firebase_uid
+                )) {
                     const notification = await client.query(
                         `
                             INSERT INTO notifications (
@@ -918,10 +951,10 @@ const updateProject = async (req, res) => {
                                 created_at
                         `,
                         [
-                            assignment.assigneeFirebaseUid,
+                            assignment.memberFirebaseUid,
                             projectId,
-                            'You have been assigned to a sprint',
-                            `You are leading "${assignment.sprintName}" in "${updatedName}".`,
+                            'You have been added to a sprint',
+                            `You are a member of "${assignment.sprintName}" in "${updatedName}".`,
                             current.creator_initials || '•'
                         ]
                     );
@@ -1118,16 +1151,16 @@ const submitProjectSprint = async (req, res) => {
         }
 
         const sprint = sprints[sprintIndex];
-        if (sprint.assigneeFirebaseUid !== firebaseUid) {
+        if (!sprintMemberUids(sprint).includes(firebaseUid)) {
             await client.query('ROLLBACK');
             return res.status(403).json({
                 success: false,
                 code: 'SPRINT_COMPLETION_FORBIDDEN',
-                message: 'Only the assigned sprint lead can submit this sprint for review.'
+                message: 'Only a member assigned to this sprint can submit it for review.'
             });
         }
         const assignedSprints = sortSprintsBySequence(
-            sprints.filter(candidate => candidate?.assigneeFirebaseUid === firebaseUid)
+            sprints.filter(candidate => sprintMemberUids(candidate).includes(firebaseUid))
         );
         const sprintPosition = assignedSprints.findIndex(candidate => candidate?.name === sprint.name);
         if (sprintPosition > 0) {
@@ -1153,7 +1186,7 @@ const submitProjectSprint = async (req, res) => {
             });
         }
 
-        const submittedByName = req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'Sprint lead';
+        const submittedByName = req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'Sprint member';
         const submittedAt = new Date().toISOString();
         const submissionHistory = Array.isArray(sprint.submissionHistory)
             ? sprint.submissionHistory
@@ -1209,13 +1242,12 @@ const submitProjectSprint = async (req, res) => {
             try {
                 await client.query(
                     `INSERT INTO notifications (
-                        recipient_firebase_uid, project_id, sprint_name, type, title, detail, avatar, tone_class
+                        recipient_firebase_uid, project_id, type, title, detail, avatar, tone_class
                      )
-                     VALUES ($1, $2, $3, 'sprint_submitted_for_review', $4, $5, $6, 'orange-bg')`,
+                     VALUES ($1, $2, 'sprint_submitted_for_review', $3, $4, $5, 'orange-bg')`,
                     [
                         project.creator_firebase_uid,
                         projectId,
-                        sprint.name,
                         'Sprint ready for review',
                         `${submittedByName} submitted "${sprint.name}" in "${project.name}" for your review.`,
                         project.creator_initials || '•'
@@ -1381,15 +1413,17 @@ const reviewProjectSprint = async (req, res) => {
         await client.query('COMMIT');
 
         let notificationWarning = null;
-        if (sprint.assigneeFirebaseUid && sprint.assigneeFirebaseUid !== firebaseUid) {
-            try {
+        try {
+            for (const memberFirebaseUid of sprintMemberUids(sprint).filter(
+                memberUid => memberUid !== firebaseUid
+            )) {
                 await client.query(
                     `INSERT INTO notifications (
                         recipient_firebase_uid, project_id, type, title, detail, avatar, tone_class
                      )
                      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                     [
-                        sprint.assigneeFirebaseUid,
+                        memberFirebaseUid,
                         projectId,
                         decision === 'accept' ? 'sprint_submission_accepted' : 'sprint_changes_requested',
                         decision === 'accept' ? 'Sprint submission accepted' : 'Changes requested on sprint',
@@ -1400,10 +1434,10 @@ const reviewProjectSprint = async (req, res) => {
                         decision === 'accept' ? 'green-bg' : 'orange-bg'
                     ]
                 );
-            } catch (notificationError) {
-                console.error('Sprint review saved, but its notification could not be created:', notificationError);
-                notificationWarning = 'The review was saved, but the sprint lead could not be notified.';
             }
+        } catch (notificationError) {
+            console.error('Sprint review saved, but member notifications could not all be created:', notificationError);
+            notificationWarning = 'The review was saved, but one or more sprint members could not be notified.';
         }
 
         return res.status(200).json({

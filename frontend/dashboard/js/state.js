@@ -652,8 +652,18 @@ export function replaceProjectTasksFromBackend(projectTaskGroups = []) {
     const project = projectById.get(projectId)
     if (!project || !Array.isArray(projectTasks)) return []
     return projectTasks.map(task => {
-      const assigneeName = task.assignee_name || task.assignee_email || 'Project Owner'
-      const assignee = assigneeName
+      const assigneeMember = task.assignee_firebase_uid === project.creatorFirebaseUid
+        ? {
+          name: project.creatorName || project.creatorEmail || 'Project owner',
+          initials: project.creatorInitials || '',
+          profileImage: project.creatorProfileImage || '',
+          tone: project.creatorTone || 'teal'
+        }
+        : (project.acceptedMembers || []).find(member =>
+          member.firebaseUid === task.assignee_firebase_uid
+        )
+      const assigneeName = task.assignee_name || assigneeMember?.name || task.assignee_email || 'Project member'
+      const assignee = assigneeMember?.initials || assigneeName
         .trim()
         .split(/\s+/)
         .map(part => part[0])
@@ -692,8 +702,8 @@ export function replaceProjectTasksFromBackend(projectTaskGroups = []) {
         assignee_email: task.assignee_email,
         assigneeFirebaseUid: task.assignee_firebase_uid,
         assignee_firebase_uid: task.assignee_firebase_uid,
-        assigneeProfileImage: task.assignee_profile_image || '',
-        assigneeTone: 'teal',
+        assigneeProfileImage: task.assignee_profile_image || assigneeMember?.profileImage || assigneeMember?.profile_image || '',
+        assigneeTone: assigneeMember?.tone || 'teal',
         status: task.status || 'To do',
         priority: task.priority || 'medium',
         done: task.status === 'Done',
@@ -916,6 +926,54 @@ export function getAvatarSource(person = {}) {
   )
 }
 
+export function getSprintMemberUids(sprint) {
+  const memberUids = Array.isArray(sprint?.memberFirebaseUids)
+    ? sprint.memberFirebaseUids
+    : Array.isArray(sprint?.member_firebase_uids)
+      ? sprint.member_firebase_uids
+      : [sprint?.assigneeFirebaseUid || sprint?.assignee_firebase_uid]
+  return [...new Set(memberUids
+    .filter(uid => typeof uid === 'string')
+    .map(uid => uid.trim())
+    .filter(Boolean))]
+}
+
+export function getSprintMembers(project, sprint) {
+  const memberUids = getSprintMemberUids(sprint)
+  const legacyAssigneeUid = String(
+    sprint?.assigneeFirebaseUid || sprint?.assignee_firebase_uid || ''
+  ).trim()
+  const creatorUid = String(
+    project?.creatorFirebaseUid || project?.creator_firebase_uid || ''
+  ).trim()
+  const acceptedMembers = project?.acceptedMembers || project?.accepted_members || []
+
+  return memberUids.map(uid => {
+    if (uid === creatorUid) {
+      return {
+        firebaseUid: creatorUid,
+        name: project.creatorName || project.creator_name || '',
+        email: project.creatorEmail || project.creator_email || '',
+        initials: project.creatorInitials || project.creator_initials || '',
+        profileImage: project.creatorProfileImage || project.creator_profile_image || '',
+        tone: project.creatorTone || 'teal'
+      }
+    }
+
+    return acceptedMembers.find(member =>
+      String(member.firebaseUid || member.firebase_uid || member.uid || '').trim() === uid
+    ) || {
+      firebaseUid: uid,
+      name: uid === legacyAssigneeUid
+        ? sprint.assigneeName || ''
+        : '',
+      profileImage: uid === legacyAssigneeUid
+        ? sprint.assigneeProfileImage || ''
+        : ''
+    }
+  }).filter(Boolean)
+}
+
 export function renderAvatarElement(
   element,
   person = {},
@@ -1071,7 +1129,6 @@ export const hub = {
   openAdminTaskModal: () => {},
   openProjectTaskModal: () => {},
   openProjectTaskDetails: () => {},
-  openProjectSprintDetails: () => {},
   openMessageContext: () => {},
   openCreateProjectModal: () => {},
   openEditProjectModal: () => {},
@@ -1144,8 +1201,6 @@ function normalizeNotification(notification) {
     detail: notification.detail,
     boardId: notification.brainstorm_board_id || null,
     relatedTaskId: notification.related_task_id || null,
-    projectId: notification.project_id || null,
-    sprintName: notification.sprint_name || null,
     avatar: notification.avatar || '•',
     toneClass: notification.tone_class || 'coral-bg',
     invitationId: notification.invitation_id || null,

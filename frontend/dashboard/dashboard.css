@@ -1678,8 +1678,14 @@ body.dark-mode .invite-user-search-result span,
     gap: 20px;
     overflow-y: auto;
     padding: 22px 26px 32px;
-    scrollbar-color: #D4D4D8 transparent;
-    scrollbar-width: thin;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.project-progress-aside-content::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
 }
 
 .project-progress-aside-summary,
@@ -2663,8 +2669,14 @@ body.dark-mode .invite-user-search-result span,
     border: 1px solid #E2E8F0;
     border-radius: 11px;
     background: #FFFFFF;
-    scrollbar-color: #CBD5E1 transparent;
-    scrollbar-width: thin;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.project-sprint-sheet-wrap::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
 }
 
 .project-sprint-sheet {
@@ -2695,7 +2707,7 @@ body.dark-mode .invite-user-search-result span,
 .project-sprint-sheet thead th.is-index { width: 46px; text-align: center; }
 .project-sprint-sheet thead th.is-sprint { width: 32%; }
 .project-sprint-sheet thead th.is-status { width: 120px; }
-.project-sprint-sheet thead th.is-lead { width: 170px; }
+.project-sprint-sheet thead th.is-members { width: 220px; }
 .project-sprint-sheet thead th.is-schedule { width: 132px; }
 .project-sprint-sheet thead th.is-actions { width: 92px; text-align: right; }
 
@@ -2775,7 +2787,15 @@ body.dark-mode .invite-user-search-result span,
     display: flex;
     min-width: 0;
     align-items: center;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+}
+
+.project-sprint-sheet-member {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 5px;
 }
 
 .project-sprint-sheet-lead-copy {
@@ -4907,6 +4927,29 @@ body.dark-mode .project-task-status-lock,
     margin-bottom: 12px;
 }
 
+.task-card-avatar-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: -5px;
+    margin-bottom: 10px;
+}
+
+.task-card-avatar {
+    display: inline-flex;
+    margin-left: 0;
+}
+
+.task-card-avatar:first-child {
+    margin-left: 0;
+}
+
+.task-card-avatar .avatar {
+    width: 24px;
+    height: 24px;
+}
+
 .task-meta {
     display: flex;
     gap: 12px;
@@ -4916,16 +4959,66 @@ body.dark-mode .project-task-status-lock,
 }
 
 .card-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    display: grid;
+    gap: 8px;
     padding-top: 10px;
     border-top: 1px solid #F4F4F5;
 }
 
+.card-footer-main {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.task-progress-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    width: 100%;
+}
+
+.task-progress-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    color: #71717A;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.card-footer-assignees {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.card-footer-assignee {
+    display: inline-flex;
+    margin-left: -7px;
+}
+
+.card-footer-assignee:first-child {
+    margin-left: 0;
+}
+
+.card-footer-assignee .avatar {
+    width: 28px;
+    height: 28px;
+}
+
+.card-footer-review-row {
+    display: flex;
+    width: 100%;
+    justify-content: flex-end;
+}
+
 .progress {
     flex: 1;
-    max-width: 90px;
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
     height: 5px;
     background: #E4E4E7;
     border-radius: 3px;
@@ -5585,7 +5678,7 @@ form.modal .brainstorm-board-member-option input[type="checkbox"] {
 }
 
 .project-task-assignment-row {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     align-items: end;
     gap: 8px;
 }
@@ -5629,12 +5722,11 @@ form.modal .brainstorm-board-member-option input[type="checkbox"] {
 
 .task-sprint-review-badge {
     align-self: center;
-    padding: 4px 7px;
-    border-radius: 999px;
-    background: #FFF1CB;
-    color: #795B10;
-    font-size: 9px;
-    font-weight: 750;
+    padding: 0;
+    background: transparent;
+    color: #DC2626;
+    font-size: 10px;
+    font-weight: 800;
     white-space: nowrap;
 }
 
@@ -7935,8 +8027,39 @@ body.dark-mode .project-task-close-sprint:hover,
 
 .project-task-create-sprint-panel .project-task-sprint-assignment-field {
     display: grid;
-    grid-template-rows: minmax(30px, auto) 42px;
+    grid-template-rows: auto auto;
     align-content: start;
+}
+
+.project-task-sprint-member-options {
+    display: grid;
+    max-height: 164px;
+    gap: 5px;
+    overflow-y: auto;
+    padding: 8px;
+    border: 1px solid #D5DDE5;
+    border-radius: 6px;
+    background: #FBFCFD;
+}
+
+.project-task-sprint-member-option {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    color: #34435C;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.project-task-create-sprint-panel .project-task-sprint-member-option input[type="checkbox"] {
+    width: 15px;
+    min-width: 15px;
+    min-height: 15px;
+    height: 15px;
+    margin: 0;
+    accent-color: #F5B800;
 }
 
 .project-task-sprint-assignment-field > span {

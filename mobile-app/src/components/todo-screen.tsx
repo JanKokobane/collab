@@ -26,9 +26,11 @@ import {
 import Svg, {
   Circle,
   Defs,
+  Ellipse,
   G,
   LinearGradient,
   Path,
+  RadialGradient,
   Rect,
   Stop,
 } from 'react-native-svg';
@@ -61,6 +63,7 @@ type IconName =
   | 'check'
   | 'close'
   | 'arrow'
+  | 'arrowLeft'
   | 'arrowUp'
   | 'download'
   | 'play'
@@ -78,7 +81,13 @@ type IconName =
   | 'listCheck'
   | 'coloredTaskList'
   | 'doneCircle'
-  | 'workUpdate';
+  | 'workUpdate'
+  | 'clock'
+  | 'sliders'
+  | 'paperclip'
+  | 'fileText'
+  | 'bolt'
+  | 'link';
 
 type Task = {
   id: string;
@@ -128,13 +137,13 @@ const filterCopy: Record<TaskFilter, { title: string; description: string }> = {
   All: { title: 'All', description: 'Available tasks' },
   Today: { title: 'Today', description: 'Due today' },
   'In progress': { title: 'In Progress', description: 'Tasks in progress' },
-  Completed: { title: 'Completed', description: 'Complete tasks' },
+  Completed: { title: 'Completed', description: 'Completed tasks' },
 };
 
 function Icon({
   name,
   size = 20,
-  color = '#65706B',
+  color = '#334155',
 }: {
   name: IconName;
   size?: number;
@@ -262,7 +271,7 @@ function Icon({
     ),
     coloredTaskList: (
       <>
-        <Path d="m1.5 4 1.5 1.5L6 2.5M1.5 12l1.5 1.5L6 10.5M1.5 20l1.5 1.5L6 18.5" stroke="#168FE5" strokeWidth={2.2} />
+        <Path d="m1.5 4 1.5 1.5L6 2.5M1.5 12l1.5 1.5L6 10.5M1.5 20l1.5 1.5L6 18.5" stroke="#1D4ED8" strokeWidth={2.2} />
         <Rect x="9" y="2" width="14" height="4" rx="2" fill="#F97316" fillOpacity={0.2} stroke="#F97316" strokeWidth={1.5} />
         <Rect x="9" y="10" width="14" height="4" rx="2" fill="#EAB308" fillOpacity={0.2} stroke="#EAB308" strokeWidth={1.5} />
         <Rect x="9" y="18" width="14" height="4" rx="2" fill="#22C55E" fillOpacity={0.2} stroke="#22C55E" strokeWidth={1.5} />
@@ -270,7 +279,7 @@ function Icon({
     ),
     doneCircle: (
       <>
-        <Circle cx="12" cy="12" r="10" fill="#22C55E" stroke="none" />
+        <Circle cx="12" cy="12" r="10" fill="#15803D" stroke="none" />
         <Path
           d="m6.5 12.2 3.6 3.6 7.6-7.6"
           fill="none"
@@ -288,6 +297,43 @@ function Icon({
         stroke="none"
       />
     ),
+    arrowLeft: <Path d="M19 12H5M11 6l-6 6 6 6" />,
+    clock: (
+      <>
+        <Circle cx="12" cy="12" r="9" />
+        <Path d="M12 7v5l3 2" />
+      </>
+    ),
+    sliders: (
+      <>
+        <Path d="M4 7h16M4 17h16" />
+        <Circle cx="9" cy="7" r="2.2" fill={color} stroke="none" />
+        <Circle cx="15" cy="17" r="2.2" fill={color} stroke="none" />
+      </>
+    ),
+    paperclip: (
+      <Path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    ),
+    fileText: (
+      <>
+        <Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <Path d="M14 2v6h6M8 13h8M8 17h5" />
+      </>
+    ),
+    bolt: (
+      <Path
+        d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"
+        fill={color}
+        stroke={color}
+        strokeWidth={1.4}
+      />
+    ),
+    link: (
+      <>
+        <Path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+        <Path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+      </>
+    ),
   };
 
   return (
@@ -302,6 +348,63 @@ function Icon({
       strokeLinecap="round"
       strokeLinejoin="round">
       {paths[name]}
+    </Svg>
+  );
+}
+
+function CollabBrandMark() {
+  return (
+    <View style={styles.brandRow} accessibilityLabel="Collab">
+      <Svg width={24} height={22} viewBox="0 0 28 24" fill="none">
+        <Rect x={2} y={12} width={10} height={10} rx={3} fill="#0F172A" />
+        <Rect x={13} y={3} width={11} height={19} rx={3.5} fill="#1E293B" />
+        <Circle cx={7} cy={7} r={3} fill="#0F172A" />
+      </Svg>
+      <Text style={styles.brandWordmark}>
+        Collab<Text style={styles.brandDot}>.</Text>
+      </Text>
+    </View>
+  );
+}
+
+function ProductiveIllustration() {
+  return (
+    <Svg width={116} height={90} viewBox="0 0 120 92" fill="none" accessibilityElementsHidden>
+      <Defs>
+        <LinearGradient id="clipBody" x1="22" y1="14" x2="68" y2="76" gradientUnits="userSpaceOnUse">
+          <Stop stopColor="#334155" />
+          <Stop offset="1" stopColor="#0F172A" />
+        </LinearGradient>
+        <LinearGradient id="goldClock" x1="68" y1="36" x2="108" y2="78" gradientUnits="userSpaceOnUse">
+          <Stop stopColor="#FFE066" />
+          <Stop offset="1" stopColor="#F59E0B" />
+        </LinearGradient>
+        <RadialGradient id="goldOrb" cx="35%" cy="35%" r="65%">
+          <Stop stopColor="#FFE885" />
+          <Stop offset="1" stopColor="#F59E0B" />
+        </RadialGradient>
+      </Defs>
+      <Ellipse cx={60} cy={83} rx={42} ry={5} fill="rgba(15,23,42,0.08)" />
+      <Circle cx={15} cy={60} r={6.5} fill="url(#goldOrb)" />
+      <Circle cx={82} cy={18} r={4.5} fill="url(#goldOrb)" />
+      <G rotation={-8} origin="46, 48">
+        <Rect x={24} y={14} width={46} height={62} rx={10} fill="url(#clipBody)" />
+        <Rect x={29} y={21} width={36} height={49} rx={6} fill="#FFFFFF" />
+        <Rect x={38} y={10} width={18} height={8} rx={4} fill="#94A3B8" />
+        <Circle cx={37} cy={33} r={4} fill="#3B82F6" />
+        <Path d="M35.2 33L36.5 34.3L39 31.8" stroke="#FFFFFF" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+        <Rect x={44} y={31.5} width={15} height={3} rx={1.5} fill="#CBD5E1" />
+        <Circle cx={37} cy={45} r={4} fill="#3B82F6" />
+        <Path d="M35.2 45L36.5 46.3L39 43.8" stroke="#FFFFFF" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+        <Rect x={44} y={43.5} width={15} height={3} rx={1.5} fill="#CBD5E1" />
+        <Circle cx={37} cy={57} r={4} fill="#3B82F6" />
+        <Path d="M35.2 57L36.5 58.3L39 55.8" stroke="#FFFFFF" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+        <Rect x={44} y={55.5} width={12} height={3} rx={1.5} fill="#CBD5E1" />
+      </G>
+      <Circle cx={84} cy={58} r={20} fill="url(#goldClock)" />
+      <Circle cx={84} cy={58} r={15.5} fill="#FEF08A" />
+      <Path d="M84 48V58L91 61" stroke="#111827" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+      <Circle cx={84} cy={58} r={2.2} fill="#111827" />
     </Svg>
   );
 }
@@ -682,7 +785,7 @@ function TaskAttachmentCard({
           ) : attachmentError ? (
             <Text style={styles.attachmentImageUnavailable}>!</Text>
           ) : (
-            <ActivityIndicator size="small" color="#527565" />
+            <ActivityIndicator size="small" color="#1E3A8A" />
           )}
         </View>
       ) : isAudio ? (
@@ -694,10 +797,10 @@ function TaskAttachmentCard({
           style={[styles.attachmentAudioTile, audioBusy && styles.attachmentActionDisabled]}>
           {attachment.isVoiceNote ? (
             <>
-              <Svg width={23} height={23} viewBox="0 0 16 16">
+              <Svg width={22} height={22} viewBox="0 0 16 16">
                 <G
                   fill="none"
-                  stroke="#EF5350"
+                  stroke="#1E3A8A"
                   strokeLinecap="round"
                   strokeLinejoin="round">
                   <Path d="M5.5 12.5a2 2 0 0 1-2 2a2 2 0 0 1-2-2a2 2 0 0 1 2-2a2 2 0 0 1 2 2m9-2a2 2 0 0 1-2 2a2 2 0 0 1-2-2a2 2 0 0 1 2-2a2 2 0 0 1 2 2" />
@@ -707,7 +810,7 @@ function TaskAttachmentCard({
               <View style={styles.attachmentVoiceNotePlay}>
                 <Svg width={10} height={10} viewBox="0 0 24 24">
                   <Path
-                    fill="#000000"
+                    fill="#1D4ED8"
                     stroke="none"
                     d="M7.01 2a3 3 0 0 1 1.502.41l11.994 6.995A3 3 0 0 1 22 11.998a3 3 0 0 1-1.323 2.49l-.166.105l-12 7A3.002 3.002 0 0 1 4 19V5.001A3 3 0 0 1 7.01 2"
                   />
@@ -715,9 +818,9 @@ function TaskAttachmentCard({
               </View>
             </>
           ) : (
-            <Svg width={20} height={20} viewBox="0 0 24 24">
+            <Svg width={18} height={18} viewBox="0 0 24 24">
               <Path
-                fill="#000000"
+                fill="#1E3A8A"
                 stroke="none"
                 d="M7.01 2a3 3 0 0 1 1.502.41l11.994 6.995A3 3 0 0 1 22 11.998a3 3 0 0 1-1.323 2.49l-.166.105l-12 7A3.002 3.002 0 0 1 4 19V5.001A3 3 0 0 1 7.01 2"
               />
@@ -769,9 +872,9 @@ function TaskAttachmentCard({
         onPress={() => { void saveAttachment(); }}
         style={[styles.attachmentDownloadButton, actionBusy && styles.attachmentActionDisabled]}>
         {actionBusy ? (
-          <ActivityIndicator size="small" color="#33443B" />
+          <ActivityIndicator size="small" color="#475569" />
         ) : (
-          <Icon name="download" size={14} color="#33443B" />
+          <Icon name="download" size={14} color="#475569" />
         )}
       </Pressable>
     </View>
@@ -926,12 +1029,20 @@ function TaskCountdown({ due, status }: { due: string | null; status: string }) 
     ? 'OVERDUE'
     : formatTaskCountdown(deadline - now);
   return (
-    <Text
+    <View
       accessibilityLabel={isOverdue ? 'Task overdue' : `Time remaining: ${label}`}
-      numberOfLines={1}
-      style={[styles.taskCountdown, isOverdue && styles.taskCountdownOverdue]}>
-      {label}
-    </Text>
+      style={[styles.taskCountdownPill, isOverdue && styles.taskCountdownPillOverdue]}>
+      <Icon
+        name="clock"
+        size={11}
+        color={isOverdue ? '#DC2626' : '#1E3A8A'}
+      />
+      <Text
+        numberOfLines={1}
+        style={[styles.taskCountdownText, isOverdue && styles.taskCountdownTextOverdue]}>
+        {label}
+      </Text>
+    </View>
   );
 }
 
@@ -950,15 +1061,19 @@ function TaskCard({
   const done = status === 'done';
   const inProgress = status === 'in progress';
   return (
-    <View
-      style={[
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open task ${task.title}`}
+      onPress={onOpen}
+      style={({ pressed }) => [
         styles.taskCard,
         done && styles.taskCardDone,
+        pressed && { opacity: 0.96 },
       ]}>
       <View style={styles.cardMain}>
         <View style={styles.taskTitleRow}>
           <View style={styles.taskTitleIcon}>
-            <Icon name="campaign" size={20} color="#000000" />
+            <Icon name="campaign" size={18} color="#1E3A8A" />
           </View>
           <Text
             numberOfLines={2}
@@ -988,8 +1103,8 @@ function TaskCard({
             ]}>
             <Icon
               name="calendarSolid"
-              size={15}
-              color="#929292"
+              size={14}
+              color={isDueToday(task.due) ? '#DC2626' : '#FFFFFF'}
             />
             <Text
               style={[
@@ -1002,31 +1117,32 @@ function TaskCard({
 
           <View style={styles.metaIcons}>
             <View style={styles.metaIconButton}>
-              <Icon name="listCheck" size={17} color="#858585" />
+              <Icon name="listCheck" size={15} color="#334155" />
             </View>
             <View style={styles.metaIconButton}>
-              <Icon name="tag" size={17} color="#858585" />
+              <Icon name="tag" size={15} color="#334155" />
             </View>
             <View style={styles.metaIconButton}>
-              <Icon name="users" size={17} color="#858585" />
+              <Icon name="users" size={15} color="#334155" />
             </View>
           </View>
         </View>
       </View>
 
       <View style={styles.cardFooter}>
-        <Text
+        <View
           accessibilityLabel={`${task.assignedSprintCount} sprints assigned`}
-          numberOfLines={1}
-          style={styles.sprintCount}>
-          {`Sprints assigned: ${task.assignedSprintCount}`}
-        </Text>
+          style={styles.sprintCountWrap}>
+          <View style={styles.sprintCountDot} />
+          <Text numberOfLines={1} style={styles.sprintCount}>
+            {`Sprints assigned: ${task.assignedSprintCount}`}
+          </Text>
+        </View>
 
         <View
           accessibilityLabel={`Project ${task.project}`}
           style={styles.assigneeRow}>
           <Text numberOfLines={1} style={styles.assigneeName}>{task.project}</Text>
-          <Icon name="chevronDown" size={13} color="#858585" />
         </View>
 
         <Pressable
@@ -1047,12 +1163,12 @@ function TaskCard({
               {!inProgress ? (
                 <Text style={styles.statusButtonText}>{done ? 'View' : 'Start'}</Text>
               ) : null}
-              <Icon name="arrow" size={17} color="#FFFFFF" />
+              <Icon name="arrow" size={16} color="#FFFFFF" />
             </>
           )}
         </Pressable>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -1076,7 +1192,6 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [filter, setFilter] = useState<TaskFilter>('All');
   const [query, setQuery] = useState('');
-  const [searchOpen, setSearchOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [dueDateAscending, setDueDateAscending] = useState<boolean | null>(null);
   const [profileImagesByUid, setProfileImagesByUid] = useState<Record<string, string>>({});
@@ -1676,9 +1791,22 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     }
   }
 
-  function toggleSearch() {
-    setSearchOpen((open) => !open);
-    setQuery('');
+  const firstOpenSprint = selectedAssignedSprints.find(({ sprint, task: sprintTask }, sprintIndex) => {
+    const submissionStatus = sprintTask?.sprintSubmissionStatus || sprint.status;
+    const alreadySubmitted = ['Pending Review', 'Completed'].includes(submissionStatus);
+    const previousSprint = sprintIndex > 0 ? selectedAssignedSprints[sprintIndex - 1] : null;
+    const previousSubmissionStatus = previousSprint
+      ? (previousSprint.task?.sprintSubmissionStatus || previousSprint.sprint.status)
+      : 'Completed';
+    const sprintLocked = !isSprintUnlockedStatus(previousSubmissionStatus);
+    return !sprintLocked && !alreadySubmitted;
+  });
+
+  function openFirstActiveSprintForm() {
+    if (!selectedTask || !firstOpenSprint) return;
+    const sprintName = firstOpenSprint.sprint.name;
+    setExpandedSprintName(sprintName);
+    setExpandedSubmissionKey(`${selectedTask.projectId}:${sprintName}`);
   }
 
   return (
@@ -1699,161 +1827,115 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
 
         <View style={styles.sectionTitleRow}>
           <View style={styles.sectionTitleCopy}>
-            <Text style={styles.sectionTitle}>
-              {filter === 'All' ? 'Assigned to me' : filter}
-            </Text>
+            <View style={styles.sectionTitleWrap}>
+              <Text style={styles.sectionTitle}>
+                {filter === 'All' || filter === 'Today' ? 'Assigned to me' : filter}
+              </Text>
+              <View style={styles.sectionTitleUnderline} />
+            </View>
             <Text style={styles.taskCount}>
               {visibleTasks.length} task{visibleTasks.length === 1 ? '' : 's'}
             </Text>
           </View>
-          <View style={styles.sectionActions}>
+        </View>
+
+        <View style={styles.searchBox}>
+          <Icon name="search" size={17} color="#64748B" />
+          <TextInput
+            accessibilityLabel="Search your tasks"
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search your tasks..."
+            placeholderTextColor="#94A3B8"
+            returnKeyType="search"
+            style={styles.searchInput}
+          />
+          {query ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={searchOpen ? 'Close task search' : 'Search tasks'}
-              onPress={toggleSearch}
-              style={styles.searchAction}>
-              <Icon name="search" size={16} />
+              accessibilityLabel="Clear task search"
+              onPress={() => setQuery('')}
+              style={styles.clearSearchButton}>
+              <Icon name="close" size={16} color="#334155" />
             </Pressable>
+          ) : (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Sort by due date${dueDateAscending === null
                 ? ''
                 : `, currently ${dueDateAscending ? 'ascending' : 'descending'}`}`}
               onPress={() => setDueDateAscending((ascending) => ascending === null || !ascending)}
-              style={styles.sortButton}>
-              <Text style={styles.sortText}>Due date</Text>
-              <View style={dueDateAscending === true && styles.sortChevronUp}>
-                <Icon name="chevron" size={14} color="#79827E" />
-              </View>
+              style={[
+                styles.searchFilterButton,
+                dueDateAscending !== null && styles.searchFilterButtonActive,
+              ]}>
+              <Icon name="sliders" size={15} color="#0F172A" />
             </Pressable>
-          </View>
+          )}
         </View>
 
-        {searchOpen ? (
-          <View style={styles.searchBox}>
-            <Icon name="search" size={18} />
-            <TextInput
-              accessibilityLabel="Search your tasks"
-              autoFocus
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search your tasks"
-              placeholderTextColor="#7F8A84"
-              returnKeyType="search"
-              style={styles.searchInput}
-            />
-            {query ? (
+        <View style={styles.filterTabsRow} accessibilityLabel="Filter tasks">
+          {filters.map((item) => {
+            const { title, description } = filterCopy[item];
+            const isActive = filter === item;
+            const iconColor = isActive ? '#FFFFFF' : '#334155';
+            const iconName: IconName = item === 'Today'
+              ? 'calendar'
+              : item === 'All'
+                ? 'users'
+                : item === 'In progress'
+                  ? 'listCheck'
+                  : 'check';
+
+            return (
               <Pressable
+                key={item}
                 accessibilityRole="button"
-                accessibilityLabel="Clear task search"
-                onPress={() => setQuery('')}
-                style={styles.clearSearchButton}>
-                <Icon name="close" size={16} />
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
-
-        <ScrollView
-          horizontal
-          style={styles.filterTabsScroll}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterTabs}
-          accessibilityLabel="Filter tasks">
-            {filters.map((item) => {
-              const { title, description } = filterCopy[item];
-              const isActive = filter === item;
-
-              return (
-                <Pressable
-                  key={item}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${title}: ${description}`}
-                  accessibilityState={{ selected: isActive }}
-                  onPress={() => setFilter(item)}
-                  style={({ pressed }) => [
-                    styles.filterButton,
-                    isActive && styles.filterButtonActive,
-                    pressed && styles.filterButtonPressed,
-                  ]}>
-                  <View
-                    style={[
-                      styles.filterButtonContent,
-                      styles.allFilterButtonContent,
-                    ]}>
-                    <View style={styles.filterIconContainer}>
-                      {item === 'Today' ? (
-                        <Image
-                          source={require('../../assets/images/today-filter-sliders.png')}
-                          style={styles.todayFilterIcon}
-                          resizeMode="contain"
-                        />
-                      ) : null}
-                      {item === 'All' ? (
-                        <Image
-                          source={require('../../assets/images/all-tasks-planner.png')}
-                          style={styles.allFilterIcon}
-                          resizeMode="contain"
-                        />
-                      ) : null}
-                      {item === 'In progress' ? (
-                        <Image
-                          source={require('../../assets/images/in-progress-laptop.png')}
-                          style={styles.progressFilterIcon}
-                          resizeMode="contain"
-                        />
-                      ) : null}
-                      {item === 'Completed' ? (
-                        <Image
-                          source={require('../../assets/images/completed-party-popper.png')}
-                          style={styles.completedFilterIcon}
-                          resizeMode="contain"
-                        />
-                      ) : null}
-                    </View>
-                    <View
-                      style={[
-                        styles.filterButtonDivider,
-                        item === 'In progress' && styles.progressDividerOffset,
-                      ]}
-                    />
-                    <View
-                      style={[
-                        styles.filterButtonText,
-                        item === 'In progress' && styles.progressTextOffset,
-                      ]}>
-                      <Text
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        allowFontScaling={false}
-                        style={[
-                          styles.filterButtonTitle,
-                          isActive && styles.filterButtonTitleActive,
-                        ]}>
-                        {title}
-                      </Text>
-                      <Text
-                        numberOfLines={2}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.65}
-                        allowFontScaling={false}
-                        style={[
-                          styles.filterButtonDescription,
-                          isActive && styles.filterButtonDescriptionActive,
-                        ]}>
-                        {description}
-                      </Text>
-                    </View>
+                accessibilityLabel={`${title}: ${description}`}
+                accessibilityState={{ selected: isActive }}
+                onPress={() => setFilter(item)}
+                style={({ pressed }) => [
+                  styles.filterButton,
+                  isActive && styles.filterButtonActive,
+                  pressed && styles.filterButtonPressed,
+                ]}>
+                <View style={styles.filterButtonContent}>
+                  <View style={styles.filterIconContainer}>
+                    <Icon name={iconName} size={17} color={iconColor} />
                   </View>
-                </Pressable>
-              );
-            })}
-        </ScrollView>
+                  <View style={styles.filterButtonText}>
+                    <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      allowFontScaling={false}
+                      style={[
+                        styles.filterButtonTitle,
+                        isActive && styles.filterButtonTitleActive,
+                      ]}>
+                      {title}
+                    </Text>
+                    <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.7}
+                      allowFontScaling={false}
+                      style={[
+                        styles.filterButtonDescription,
+                        isActive && styles.filterButtonDescriptionActive,
+                      ]}>
+                      {description}
+                    </Text>
+                  </View>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
 
         <View style={styles.taskSection}>
           {loading ? (
             <View style={styles.emptyState}>
-              <ActivityIndicator color="#245D4D" />
+              <ActivityIndicator color="#0F172A" />
               <Text style={styles.emptyDescription}>Loading your assigned tasks...</Text>
             </View>
           ) : (
@@ -1867,18 +1949,20 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   starting={busyTaskId === task.id}
                 />
               ))}
-              {visibleTasks.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <View style={styles.emptyIcon}>
-                    <Icon name="check" size={24} color="#39816C" />
-                  </View>
-                  <Text style={styles.emptyTitle}>
-                    {tasks.length === 0 ? 'No tasks assigned to you' : 'No tasks here'}
+              {visibleTasks.length <= 1 ? (
+                <View style={styles.productiveWrap}>
+                  <ProductiveIllustration />
+                  <Text style={styles.productiveTitle}>
+                    {visibleTasks.length === 0
+                      ? (tasks.length === 0 ? 'No tasks assigned to you' : 'All caught up!')
+                      : 'Stay productive!'}
                   </Text>
-                  <Text style={styles.emptyDescription}>
-                    {tasks.length === 0
-                      ? 'Tasks assigned to your account will appear here.'
-                      : 'You’re clear for this view. Try another filter.'}
+                  <Text style={styles.productiveSubtitle}>
+                    {visibleTasks.length === 0
+                      ? (tasks.length === 0
+                        ? 'Tasks assigned to your account will appear here.'
+                        : 'You are clear for this filter. Try switching to All.')
+                      : 'You’re all caught up for now.'}
                   </Text>
                 </View>
               ) : null}
@@ -1905,32 +1989,31 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
               style={[
                 styles.taskDetailsCard,
                 { height: windowHeight },
+                { paddingTop: Math.max(insets.top, 16) },
                 { paddingBottom: Math.max(insets.bottom, 12) },
               ]}>
               <View style={styles.detailsHeader}>
-                <View style={styles.modalBrand}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Open menu"
-                    onPress={onOpenMenu}
-                    style={styles.menuButton}>
-                    <Svg width={30} height={30} viewBox="0 0 24 24" fill="none">
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={expandedSprintName ? 'Open menu' : 'Back to task list'}
+                  onPress={expandedSprintName ? onOpenMenu : () => setSelectedTaskId(null)}
+                  style={styles.menuButton}>
+                  {expandedSprintName ? (
+                    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
                       <Path
                         d="M3.75 6h16.5M3.75 18h16.5m-16.5-6h10.5"
-                        stroke="#29292D"
-                        strokeWidth={1.5}
-                        strokeLinecap="square"
-                        strokeMiterlimit={2}
+                        stroke="#0F172A"
+                        strokeWidth={1.8}
+                        strokeLinecap="round"
                       />
                     </Svg>
-                  </Pressable>
-                  <Image
-                    source={require('../../assets/images/logo.png')}
-                    resizeMode="contain"
-                    style={styles.modalLogo}
-                    accessibilityLabel="Collab"
-                  />
-                </View>
+                  ) : (
+                    <Icon name="arrowLeft" size={18} color="#0F172A" />
+                  )}
+                </Pressable>
+
+                <CollabBrandMark />
+
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Close task details"
@@ -1939,12 +2022,20 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   <Text style={styles.closeIcon}>×</Text>
                 </Pressable>
               </View>
+
               <ScrollView
                 style={styles.detailsScroll}
                 contentContainerStyle={styles.detailsContent}
                 showsVerticalScrollIndicator={false}>
                 <View style={styles.titleSection}>
-                  <Text style={styles.detailTitle}>{selectedTask.title}</Text>
+                  <View style={styles.detailTitleRow}>
+                    <View style={styles.detailTitleIcon}>
+                      <Icon name="campaign" size={20} color="#1E3A8A" />
+                    </View>
+                    <View style={styles.detailTitleCopy}>
+                      <Text style={styles.detailTitle}>{selectedTask.title}</Text>
+                    </View>
+                  </View>
                   <Text style={styles.detailProject}>
                     {[selectedTask.project, selectedTask.sprint]
                       .filter(Boolean)
@@ -1976,7 +2067,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   </View>
 
                   <View style={styles.metadataRow}>
-                    <Text style={styles.metadataLabel}>Assignee</Text>
+                    <Text style={styles.metadataLabel}>Assigned to</Text>
                     <View style={styles.metadataValueContainer}>
                       <View style={styles.creatorAvatar}>
                         {selectedAssigneeProfileImage ? (
@@ -2000,7 +2091,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   <View style={styles.metadataRow}>
                     <Text style={styles.metadataLabel}>Last modified</Text>
                     <View style={styles.metadataValueContainer}>
-                      <Icon name="workUpdate" size={16} color="#59665F" />
+                      <Icon name="calendar" size={15} color="#334155" />
                       <Text style={styles.metadataValue}>
                         {formatTaskUpdatedAt(selectedTask.updatedAt)}
                       </Text>
@@ -2010,7 +2101,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   <View style={styles.metadataRow}>
                     <Text style={styles.metadataLabel}>Due date</Text>
                     <View style={styles.metadataValueContainer}>
-                      <Icon name="calendar" size={16} color="#59665F" />
+                      <Icon name="calendar" size={15} color="#334155" />
                       <Text style={styles.metadataValue}>
                         {formatDueDate(selectedTask.due)}
                       </Text>
@@ -2020,28 +2111,63 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   <View style={styles.metadataRow}>
                     <Text style={styles.metadataLabel}>Status</Text>
                     <View style={styles.metadataValueContainer}>
-                      <Text style={styles.metadataValue}>{selectedTask.status}</Text>
+                      <View
+                        style={[
+                          styles.statusBadgePill,
+                          (selectedTask.status.trim().toLowerCase() === 'in progress' ||
+                            selectedTask.status.trim().toLowerCase() === 'done') &&
+                            styles.statusBadgePillActive,
+                        ]}>
+                        <View
+                          style={[
+                            styles.statusDot,
+                            selectedTask.status.trim().toLowerCase() === 'done'
+                              ? styles.statusDotDone
+                              : selectedTask.status.trim().toLowerCase() === 'in progress'
+                                ? styles.statusDotInProgress
+                                : styles.statusDotDefault,
+                          ]}
+                        />
+                        <Text
+                          style={[
+                            styles.statusBadgeText,
+                            (selectedTask.status.trim().toLowerCase() === 'in progress' ||
+                              selectedTask.status.trim().toLowerCase() === 'done') &&
+                              styles.statusBadgeTextActive,
+                          ]}>
+                          {selectedTask.status.trim().toLowerCase() === 'in progress'
+                            ? 'In Progress'
+                            : selectedTask.status}
+                        </Text>
+                      </View>
                     </View>
                   </View>
 
                   <View style={styles.metadataRow}>
                     <Text style={styles.metadataLabel}>Priority</Text>
                     <View style={styles.metadataValueContainer}>
-                      <Text
+                      <View
                         style={[
-                          styles.priorityText,
-                          {
-                            color: selectedTask.priority.trim().toLowerCase() === 'high'
-                              ? '#DC2626'
-                              : selectedTask.priority.trim().toLowerCase() === 'medium'
-                                ? '#D97706'
-                                : selectedTask.priority.trim().toLowerCase() === 'low'
-                                  ? '#16A34A'
-                                  : '#6B7280',
-                          },
+                          styles.priorityBadgePill,
+                          selectedTask.priority.trim().toLowerCase() === 'medium' &&
+                            styles.priorityBadgeMedium,
+                          !['high', 'medium', 'low'].includes(selectedTask.priority.trim().toLowerCase()) &&
+                            styles.priorityBadgeNormal,
                         ]}>
-                        {selectedTask.priority || 'Normal'}
-                      </Text>
+                        <Text
+                          style={[
+                            styles.priorityText,
+                            {
+                              color: selectedTask.priority.trim().toLowerCase() === 'medium'
+                                ? '#B45309'
+                                : ['high', 'low'].includes(selectedTask.priority.trim().toLowerCase())
+                                  ? '#DC2626'
+                                  : '#64748B',
+                            },
+                          ]}>
+                          {selectedTask.priority || 'Normal'}
+                        </Text>
+                      </View>
                     </View>
                   </View>
 
@@ -2050,7 +2176,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                     <View style={styles.tagsContainer}>
                       {selectedTask.tags.length ? (
                         selectedTask.tags.map((tag) => (
-                          <Text key={tag} style={styles.categoryTag}>#{tag}</Text>
+                          <Text key={tag} style={styles.categoryTag}>{tag}</Text>
                         ))
                       ) : (
                         <Text style={styles.metadataMuted}>No tags</Text>
@@ -2063,16 +2189,27 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                 </View>
 
                 <View style={styles.descriptionSection}>
-                  <Text style={styles.sectionLabel}>Description</Text>
+                  <View style={styles.sectionHeadingRow}>
+                    <View style={styles.sectionHeadingIconBadge}>
+                      <Icon name="fileText" size={14} color="#D97706" />
+                    </View>
+                    <Text style={styles.sectionLabel}>Description</Text>
+                  </View>
                   <Text style={styles.descriptionText}>
                     {selectedTask.description || 'No description provided.'}
                   </Text>
                 </View>
 
                 <View style={styles.attachmentSection}>
-                  <Text style={styles.sectionLabel}>
-                    Attachments ({selectedTask.attachments.length})
-                  </Text>
+                  <View style={styles.attachmentHeaderRow}>
+                    <View style={styles.attachmentHeaderLeft}>
+                      <Icon name="paperclip" size={16} color="#334155" />
+                      <Text style={styles.sectionLabel}>
+                        Attachments ({selectedTask.attachments.length})
+                      </Text>
+                    </View>
+                    <Icon name="chevron" size={15} color="#64748B" />
+                  </View>
                   {selectedTask.attachments.length ? (
                     selectedTask.attachments.map((attachment) => (
                       <TaskAttachmentCard
@@ -2130,7 +2267,11 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                               sprintLocked && styles.primaryActionDisabled,
                             ]}>
                             <View style={styles.assignedSprintDescription}>
-                              <Text style={styles.assignedSprintBullet}>-</Text>
+                              <Icon
+                                name="bolt"
+                                size={15}
+                                color={sprintLocked ? '#94A3B8' : '#1E293B'}
+                              />
                               <Text style={styles.assignedSprintName}>{sprint.name}</Text>
                             </View>
                             <View style={styles.assignedSprintViewDetails}>
@@ -2143,12 +2284,14 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                                 ]}>
                                 {sprintLocked ? 'Locked' : alreadySubmitted ? submissionStatus : 'Active'}
                               </Text>
-                              <Text style={styles.assignedSprintExpandText}>
-                                {expanded ? 'Hide details' : 'View details'}
-                              </Text>
-                              <Icon name="chevronDown" size={15} color="#68736C" />
+                              <Icon name={expanded ? 'chevronDown' : 'chevron'} size={15} color="#64748B" />
                             </View>
                           </Pressable>
+                          {!expanded && (sprintTask?.description || sprint.description) ? (
+                            <Text numberOfLines={2} style={styles.sprintDescription}>
+                              {sprintTask?.description || sprint.description}
+                            </Text>
+                          ) : null}
                           {sprintTask && !sprintLocked && taskStatus !== 'in progress' &&
                           taskStatus !== 'done' && !alreadySubmitted ? (
                             <View style={styles.assignedSprintStartRow}>
@@ -2177,12 +2320,32 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                               <Text style={styles.sprintDescription}>
                                 {sprintTask?.description || sprint.description || 'No sprint details have been added.'}
                               </Text>
+                              {sprintTask ? <>
+                              <View style={styles.sprintProgressHeading}>
+                                <Text style={styles.sectionLabel}>Progress</Text>
+                                <Text style={styles.sprintProgressPercent}>
+                                  {sprintTask.progress}%
+                                </Text>
+                              </View>
+                              <View
+                                accessibilityRole="progressbar"
+                                accessibilityValue={{ min: 0, max: 100, now: sprintTask.progress }}
+                                style={styles.sprintProgressTrack}>
+                                <View
+                                  style={[
+                                    styles.sprintProgressFill,
+                                    { width: `${sprintTask.progress}%` },
+                                  ]}
+                                />
+                              </View>
+                              </> : null}
+
                               {!sprintLocked && !alreadySubmitted ? (
                             <View style={styles.sprintSubmissionForm}>
                               <TextInput
                                 accessibilityLabel="Sprint submission notes"
                                 placeholder="Summarize the completed sprint work..."
-                                placeholderTextColor="#858C87"
+                                placeholderTextColor="#94A3B8"
                                 value={submissionNote}
                                 onChangeText={setSubmissionNote}
                                 multiline
@@ -2200,7 +2363,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                                   disabled={submissionBusy || voiceNoteActive}
                                   onPress={() => { void addSprintSubmissionAttachments(); }}
                                   style={[styles.sprintMediaAction, styles.sprintMediaActionWithIcon]}>
-                                  <Icon name="folder" size={15} color="#353B37" />
+                                  <Icon name="folder" size={15} color="#0F172A" />
                                   <Text style={styles.sprintMediaActionText}>Attach file</Text>
                                 </Pressable>
                                 <Pressable
@@ -2213,8 +2376,8 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                                   style={[styles.sprintMediaAction, styles.sprintMediaIconButton]}>
                                   <Icon
                                     name={voiceNoteActive ? 'stop' : 'mic'}
-                                    size={voiceNoteActive ? 34 : 24}
-                                    color="#353B37"
+                                    size={voiceNoteActive ? 20 : 19}
+                                    color="#FFFFFF"
                                   />
                                 </Pressable>
                                 {voiceNoteActive ? (
@@ -2228,8 +2391,8 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                                     style={[styles.sprintMediaAction, styles.sprintMediaIconButton]}>
                                     <Icon
                                       name={voiceNotePaused ? 'play' : 'pause'}
-                                      size={34}
-                                      color="#353B37"
+                                      size={18}
+                                      color="#FFFFFF"
                                     />
                                   </Pressable>
                                 ) : null}
@@ -2265,22 +2428,25 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                                 </View>
                               ))}
                               <View style={styles.sprintLinkRow}>
-                                <TextInput
-                                  accessibilityLabel="Sprint submission link"
-                                  placeholder="Add a link (https://...)"
-                                  placeholderTextColor="#858C87"
-                                  value={submissionLinkDraft}
-                                  onChangeText={setSubmissionLinkDraft}
-                                  autoCapitalize="none"
-                                  keyboardType="url"
-                                  style={styles.sprintLinkInput}
-                                />
+                                <View style={styles.sprintLinkInputWrap}>
+                                  <Icon name="link" size={14} color="#94A3B8" />
+                                  <TextInput
+                                    accessibilityLabel="Sprint submission link"
+                                    placeholder="Add a link (https://...)"
+                                    placeholderTextColor="#94A3B8"
+                                    value={submissionLinkDraft}
+                                    onChangeText={setSubmissionLinkDraft}
+                                    autoCapitalize="none"
+                                    keyboardType="url"
+                                    style={styles.sprintLinkInputField}
+                                  />
+                                </View>
                                 <Pressable
                                   accessibilityRole="button"
                                   accessibilityLabel="Add link"
                                   onPress={addSprintSubmissionLink}
                                   style={[styles.sprintMediaAction, styles.sprintMediaActionWithIcon]}>
-                                  <Icon name="webPhone" size={16} color="#353B37" />
+                                  <Icon name="webPhone" size={15} color="#0F172A" />
                                   <Text style={styles.sprintMediaActionText}>Add link</Text>
                                 </Pressable>
                               </View>
@@ -2316,17 +2482,29 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                                     styles.primaryActionDisabled,
                                 ]}>
                                 {submissionBusy ? (
-                                <ActivityIndicator size="small" color="#202020" />
+                                <ActivityIndicator size="small" color="#FFFFFF" />
                                 ) : (
                                   <>
                                   <Text style={styles.assignedSprintSubmitText}>Submit for review</Text>
-                                  <Icon name="check" size={16} color="#FFFDD0" />
+                                  <Icon name="check" size={16} color="#FFFFFF" />
                                   </>
                                 )}
                               </Pressable>
                             </View>
                               ) : alreadySubmitted ? (
                             <View style={styles.sprintSubmittedDetails}>
+                              <Text style={styles.sprintSubmittedMessage}>
+                              {submissionStatus === 'Completed'
+                                ? 'Sprint accepted'
+                                : 'Submitted for review'}
+                              </Text>
+                              {sprintTask?.sprintSubmissionNote ? (
+                              <Text style={styles.sprintDescription}>
+                                {sprintTask.sprintSubmissionNote}
+                              </Text>
+                              ) : sprint.submissionNote ? (
+                              <Text style={styles.sprintDescription}>{sprint.submissionNote}</Text>
+                              ) : null}
                               {sprintTask?.sprintSubmissionAttachments.map((attachment) => (
                               <Text
                                 key={attachment.fileName}
@@ -2380,6 +2558,36 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                 ) : null}
 
               </ScrollView>
+
+              {!expandedSprintName && firstOpenSprint ? (
+                <View style={styles.modalQuickFooter}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Attach file to sprint"
+                    onPress={openFirstActiveSprintForm}
+                    style={styles.modalQuickPill}>
+                    <Icon name="folder" size={15} color="#0F172A" />
+                    <Text style={styles.modalQuickPillText}>Attach File</Text>
+                  </Pressable>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Record voice note for sprint"
+                    onPress={openFirstActiveSprintForm}
+                    style={styles.modalQuickMic}>
+                    <Icon name="mic" size={17} color="#0F172A" />
+                  </Pressable>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Add link to sprint"
+                    onPress={openFirstActiveSprintForm}
+                    style={styles.modalQuickGoldPill}>
+                    <Icon name="link" size={15} color="#FFFFFF" />
+                    <Text style={styles.modalQuickGoldText}>Add Link</Text>
+                  </Pressable>
+                </View>
+              ) : null}
             </View>
           </View>
         ) : null}
@@ -2388,513 +2596,493 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   );
 }
 
-const activeStyles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F7F8F5' },
-  taskContent: { flexGrow: 1, gap: 18, paddingHorizontal: 14, paddingTop: 20 },
-  searchBox: { minHeight: 48, marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 15, borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 16, backgroundColor: '#FFFFFF' },
-  searchInput: { flex: 1, minWidth: 0, paddingVertical: 10, color: '#26352F', fontSize: 14 },
-  clearSearchButton: { padding: 7 },
-  progressCard: {
-    padding: 19,
-    borderWidth: 1,
-    borderColor: '#202020',
-    borderRadius: 22,
-    backgroundColor: '#FFC400',
-    shadowColor: '#202020',
-    shadowOffset: { width: 4, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 3,
-  },
-  progressHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  progressEyebrow: { color: '#202020', fontSize: 11, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase' },
-  progressComplete: { paddingHorizontal: 8, paddingVertical: 5, overflow: 'hidden', borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.34)', color: '#202020', fontSize: 9, fontWeight: '800' },
-  progressMain: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 15 },
-  progressCount: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  progressTitle: { color: '#202020', fontSize: 44, lineHeight: 48, fontWeight: '800', letterSpacing: -3 },
-  progressMeta: { color: '#202020', fontSize: 12, fontWeight: '700' },
-  progressPercentBadge: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderWidth: 6, borderColor: '#202020', borderRadius: 27, backgroundColor: 'rgba(255,255,255,0.32)' },
-  progressPercent: { color: '#202020', fontSize: 9, fontWeight: '800' },
-  weeklyTrack: { height: 5, marginTop: 17, overflow: 'hidden', borderRadius: 999, backgroundColor: 'rgba(32,32,32,0.18)' },
-  weeklyTrackFill: { height: '100%', borderRadius: 999, backgroundColor: '#202020' },
-  loadErrorBanner: { padding: 13, borderWidth: 1, borderColor: '#F9C5C8', borderRadius: 14, backgroundColor: '#FFF0EF' },
-  loadErrorText: { color: '#B42318', fontSize: 13, lineHeight: 19, fontWeight: '600' },
-  warningText: { color: '#806700', fontSize: 13, lineHeight: 19, fontWeight: '600' },
-  filterTabsScroll: { height: 58, flexGrow: 0, flexShrink: 0 },
-  filterTabs: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 1, paddingVertical: 4 },
-  filterButton: { width: 93, height: 42, flexShrink: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 7, borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 14, backgroundColor: '#FFFFFF' },
-  filterButtonActive: { borderColor: '#285F50', backgroundColor: '#285F50', shadowColor: '#285F50', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.18, shadowRadius: 8, elevation: 3 },
-  filterButtonPressed: { opacity: 0.9, transform: [{ scale: 0.98 }] },
-  filterButtonContent: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  allFilterButtonContent: { transform: [{ translateX: 0 }] },
-  filterIconContainer: { width: 16, alignItems: 'center', justifyContent: 'center' },
-  todayFilterIcon: { width: 16, height: 16 },
-  allFilterIcon: { width: 16, height: 16 },
-  completedFilterIcon: { width: 16, height: 16 },
-  progressFilterIcon: { width: 16, height: 16 },
-  filterButtonDivider: { width: 1, height: 20, backgroundColor: '#D8DFDA' },
-  progressDividerOffset: { transform: [{ translateX: 0 }] },
-  filterButtonText: { flex: 1, minWidth: 0, gap: 1 },
-  progressTextOffset: { transform: [{ translateX: 0 }] },
-  filterButtonTitle: { color: '#26352F', fontSize: 9, lineHeight: 11, fontWeight: '800' },
-  filterButtonTitleActive: { color: '#FFFFFF' },
-  filterButtonDescription: { color: '#79827E', fontSize: 7, lineHeight: 9, fontWeight: '500' },
-  filterButtonDescriptionActive: { color: '#DCEBE4' },
-  taskSection: { gap: 13, marginTop: 0 },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 9, marginTop: 4, marginBottom: 0 },
-  sectionTitleCopy: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  sectionTitle: { color: '#26352F', fontSize: 21, fontWeight: '800', letterSpacing: -0.5 },
-  taskCount: { color: '#79827E', fontSize: 12, fontWeight: '600' },
-  sectionActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  searchAction: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 14, backgroundColor: '#FFFFFF' },
-  sortButton: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 40, paddingHorizontal: 4 },
-  sortText: { color: '#52665A', fontSize: 12, fontWeight: '700' },
-  sortChevronUp: { transform: [{ rotate: '-90deg' }] },
-  taskList: { gap: 14 },
-  taskCard: { minHeight: 190, padding: 16, borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 20, backgroundColor: '#FFFFFF', shadowColor: '#17241D', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 15, elevation: 3 },
-  taskCardDone: { opacity: 0.78 },
-  cardMain: { flex: 1 },
-  taskTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
-  taskTitleIcon: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#EAF4EF', transform: [{ translateY: 0 }] },
-  taskTitleShift: { transform: [{ translateX: 0 }] },
-  taskTitle: { flex: 1, marginTop: 2, color: '#26352F', fontSize: 16, lineHeight: 21, fontWeight: '800', letterSpacing: -0.3 },
-  taskCountdown: { flexShrink: 0, marginTop: 4, color: '#79827E', fontSize: 9, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  taskCountdownOverdue: { color: '#B42318' },
-  taskTitleDone: { color: '#79827E', textDecorationLine: 'line-through' },
-  taskDescriptionContainer: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#E6EBE7' },
-  taskDescription: { color: '#68736C', fontSize: 12, lineHeight: 18 },
-  taskMeta: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 'auto', paddingTop: 15 },
-  taskMetaPill: { minHeight: 29, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, borderRadius: 999, backgroundColor: '#26352F' },
-  taskMetaText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
-  dueToday: { backgroundColor: '#FFF1F2' },
-  dueTodayText: { color: '#D92D20' },
-  metaIcons: { flexDirection: 'row', alignItems: 'center', gap: 11, marginLeft: 'auto' },
-  metaIconButton: { width: 24, height: 28, alignItems: 'center', justifyContent: 'center' },
-  sprintCount: { flex: 1, minWidth: 0, color: '#68736C', fontSize: 10, fontWeight: '700' },
-  cardFooter: { minHeight: 45, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#E6EBE7' },
-  assigneeRow: { flex: 1.15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 0 },
-  assigneeName: { maxWidth: '75%', flexShrink: 1, color: '#52665A', fontSize: 11, fontWeight: '700' },
-  avatarRing: { width: 36, height: 36, overflow: 'hidden', textAlign: 'center', textAlignVertical: 'center', borderWidth: 2, borderColor: '#FFFFFF', borderRadius: 19, color: '#FFFFFF', backgroundColor: '#285F50', fontSize: 9, fontWeight: '800', lineHeight: 32 },
-  statusButton: { minWidth: 78, minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 11, borderRadius: 12, backgroundColor: '#285F50' },
-  startTaskButton: { backgroundColor: '#F0444F' },
-  continueTaskButton: { width: 36, minWidth: 36, height: 36, minHeight: 36, paddingHorizontal: 0, borderRadius: 18, backgroundColor: '#285F50' },
-  taskActionDisabled: { opacity: 0.6 },
-  statusButtonText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
-  emptyState: { alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 42, paddingHorizontal: 22, borderWidth: 1, borderStyle: 'dashed', borderColor: '#BFCBC4', borderRadius: 20, backgroundColor: '#FFFFFF' },
-  emptyIcon: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 27, backgroundColor: '#EAF4EF' },
-  emptyTitle: { marginTop: 13, color: '#35433D', fontSize: 16, fontWeight: '800' },
-  emptyDescription: { marginTop: 4, color: '#79827E', fontSize: 12, lineHeight: 18, textAlign: 'center' },
-  modalBackdrop: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: 'rgba(24,35,29,0.42)' },
-  taskDetailsCard: { width: '100%', overflow: 'hidden', borderTopLeftRadius: 26, borderTopRightRadius: 26, backgroundColor: '#FFFFFF', paddingTop: 16, paddingHorizontal: 20, shadowColor: '#17241D', shadowOffset: { width: 0, height: -8 }, shadowOpacity: 0.16, shadowRadius: 20, elevation: 12 },
-  detailsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 },
-  modalBrand: { flexDirection: 'row', alignItems: 'center' },
-  menuButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', marginRight: 4, borderRadius: 14, backgroundColor: '#F3F4F3' },
-  modalLogo: { width: 108, height: 35, marginLeft: -10 },
-  closeButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: '#F3F4F3' },
-  closeIcon: { color: '#52665A', fontSize: 25, lineHeight: 28, fontWeight: '400' },
-  detailsScroll: { flex: 1 },
-  detailsContent: { paddingBottom: 24, gap: 24 },
-  titleSection: { gap: 8, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: '#E6EBE7' },
-  statusDot: { width: 9, height: 9, borderRadius: 5 },
-  statusDotDone: { backgroundColor: '#35A765' },
-  statusDotInProgress: { backgroundColor: '#3185E8' },
-  statusDotDefault: { backgroundColor: '#B7BFBA' },
-  detailProject: { color: '#79827E', fontSize: 13, fontWeight: '700' },
-  detailTitle: { color: '#26352F', fontSize: 25, lineHeight: 32, fontWeight: '800', letterSpacing: -0.8 },
-  metadataSection: { gap: 12, padding: 14, borderRadius: 16, backgroundColor: '#F7F8F5' },
-  metadataRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', minHeight: 27, columnGap: 12, rowGap: 7 },
-  metadataLabel: { width: 88, color: '#79827E', fontSize: 11, fontWeight: '700' },
-  tagsMetadataLabel: { width: 88 },
-  metadataValueContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 },
-  metadataValue: { flexShrink: 1, color: '#35433D', fontSize: 12, fontWeight: '700' },
-  metadataIcon: { color: '#59665F', fontSize: 17, fontWeight: '700' },
-  creatorAvatar: { width: 23, height: 23, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 12, backgroundColor: '#DCEBE4' },
-  creatorAvatarImage: { width: '100%', height: '100%' },
-  creatorAvatarText: { color: '#245D4D', fontSize: 9, fontWeight: '800' },
-  metadataMuted: { color: '#79827E', fontSize: 12, fontWeight: '500' },
-  tagsContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
-  categoryTag: { overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: '#DCEBE4', color: '#245D4D', fontSize: 10, fontWeight: '800' },
-  priorityText: { fontSize: 12, fontWeight: '800' },
-  descriptionSection: { gap: 10 },
-  sectionLabel: { color: '#52665A', fontSize: 12, fontWeight: '800' },
-  descriptionText: { color: '#35433D', fontSize: 13, lineHeight: 21, fontWeight: '400' },
-  attachmentSection: { gap: 9 },
-  assignedSprintSection: { gap: 10, paddingTop: 20, borderTopWidth: 1, borderTopColor: '#E6EBE7' },
-  assignedSprintHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  assignedSprintTitle: { color: '#26352F', fontSize: 16, fontWeight: '800' },
-  assignedSprintCount: { minWidth: 25, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, overflow: 'hidden', color: '#245D4D', backgroundColor: '#DCEBE4', fontSize: 11, fontWeight: '800', textAlign: 'center' },
-  assignedSprintItem: { gap: 7, padding: 12, borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 15, backgroundColor: '#FFFFFF' },
-  assignedSprintExpandButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 0, paddingVertical: 2 },
-  assignedSprintStatus: { fontSize: 10, fontWeight: '800' },
-  assignedSprintStatusActive: { color: '#15803D' },
-  assignedSprintStatusLocked: { color: '#B42318' },
-  assignedSprintViewDetails: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  assignedSprintExpandText: { color: '#68736C', fontSize: 10, fontWeight: '700' },
-  assignedSprintStartRow: { alignItems: 'flex-end' },
-  assignedSprintNoSprintRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: 14, borderRadius: 14, backgroundColor: '#F3F4F3' },
-  sprintDetails: { gap: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#E6EBE7' },
-  sprintDescription: { color: '#52665A', fontSize: 12, lineHeight: 18 },
-  sprintSubmissionForm: { gap: 11, paddingTop: 4 },
-  sprintSubmissionNote: { minHeight: 96, padding: 12, borderWidth: 1, borderColor: '#D9DFDA', borderRadius: 13, backgroundColor: '#FFFFFF', color: '#272D29', fontSize: 12, lineHeight: 18, textAlignVertical: 'top' },
-  sprintMediaHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  sprintMediaLimit: { color: '#858C87', fontSize: 10, fontWeight: '600' },
-  sprintMediaActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  sprintMediaAction: { minHeight: 38, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 11, backgroundColor: '#FFFFFF' },
-  sprintMediaActionWithIcon: { flexDirection: 'row', gap: 6 },
-  sprintMediaIconButton: { width: 38, paddingHorizontal: 0, backgroundColor: '#EAF4EF' },
-  sprintRecordingWaveform: { height: 38, flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 8, borderRadius: 10, backgroundColor: '#FFF8D6' },
-  sprintRecordingWaveformBar: { width: 2, borderRadius: 2, backgroundColor: '#E6B000' },
-  sprintMediaActionText: { color: '#35433D', fontSize: 11, fontWeight: '800' },
-  sprintSubmissionAttachment: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 9, borderRadius: 10, backgroundColor: '#F3F4F3' },
-  sprintSubmissionAttachmentName: { flex: 1, color: '#35433D', fontSize: 11, fontWeight: '700' },
-  sprintSubmissionRemove: { padding: 4 },
-  sprintSubmissionRemoveText: { color: '#B42318', fontSize: 10, fontWeight: '800' },
-  sprintLinkRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sprintLinkInput: { flex: 1, minHeight: 40, paddingHorizontal: 13, borderWidth: 1, borderColor: '#D9DFDA', borderRadius: 12, color: '#272D29', fontSize: 11 },
-  sprintSubmissionError: { color: '#B42318', fontSize: 11, lineHeight: 16, fontWeight: '600' },
-  sprintSubmittedDetails: { gap: 8, paddingTop: 8 },
-  sprintSubmittedLink: { color: '#52665A', fontSize: 11 },
-  assignedSprintDescription: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 5 },
-  assignedSprintBullet: { color: '#285F50', fontSize: 13, fontWeight: '800' },
-  assignedSprintName: { flex: 1, color: '#35433D', fontSize: 12, fontWeight: '800' },
-  assignedSprintStartButton: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 13, borderRadius: 11, backgroundColor: '#F0444F' },
-  assignedSprintSubmitButton: { minHeight: 44, borderRadius: 13, backgroundColor: '#FFC400' },
-  assignedSprintSubmitText: { color: '#202020', fontSize: 11, fontWeight: '800' },
-  assignedSprintStartText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
-  taskAttachmentCard: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 7, borderWidth: 1, borderColor: '#E6EBE7', borderRadius: 14, backgroundColor: '#F7F8F5' },
-  attachmentImagePreview: { width: 43, height: 43, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 12, backgroundColor: '#EAF4EF' },
-  attachmentImage: { width: '100%', height: '100%' },
-  attachmentImageUnavailable: { color: '#A33A32', fontSize: 17, fontWeight: '800' },
-  attachmentAudioTile: { width: 43, height: 43, alignItems: 'center', justifyContent: 'center', position: 'relative', borderRadius: 12, backgroundColor: '#EAF4EF' },
-  attachmentVoiceNotePlay: { position: 'absolute', right: 4, bottom: 7 },
-  attachmentFileIconButton: { width: 43, height: 43, alignItems: 'center', justifyContent: 'center' },
-  attachmentFileIcon: { width: 43, height: 43, alignItems: 'center', justifyContent: 'center' },
-  attachmentFileType: { position: 'absolute', top: 25, width: 24, textAlign: 'center', color: '#FFFFFF', fontSize: 6, fontWeight: '800' },
-  taskAttachmentCopy: { flex: 1, minWidth: 0, gap: 3 },
-  taskAttachmentName: { color: '#34433D', fontSize: 11, fontWeight: '800' },
-  taskAttachmentDetails: { color: '#79827E', fontSize: 9, fontWeight: '600' },
-  attachmentAudioProgressTrack: { height: 3, overflow: 'hidden', borderRadius: 2, backgroundColor: '#D8DFDA' },
-  attachmentAudioProgress: { height: '100%', borderRadius: 2, backgroundColor: '#285F50' },
-  attachmentAudioTime: { alignSelf: 'flex-end', color: '#79827E', fontSize: 8, fontWeight: '600' },
-  attachmentError: { color: '#B42318', fontSize: 8, fontWeight: '600' },
-  attachmentDownloadButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#DCEBE4' },
-  attachmentActionDisabled: { opacity: 0.55 },
-  primaryAction: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 3, borderRadius: 14, backgroundColor: '#285F50' },
-  primaryActionDisabled: { opacity: 0.65 },
-  primaryActionText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-});
-
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F7F8F5' },
-  taskContent: { flexGrow: 1, gap: 22, paddingHorizontal: 3, paddingTop: 24 },
-  searchBox: { minHeight: 48, marginTop: 20, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, borderWidth: 1, borderColor: '#D8DFDA', borderRadius: 50, backgroundColor: '#FFFFFF' },
-  searchInput: { flex: 1, minWidth: 0, paddingVertical: 9, color: '#26352F', fontSize: 14 },
-  clearSearchButton: { padding: 6 },
-  progressCard: {
-    padding: 19,
-    borderWidth: 1,
-    borderColor: '#202020',
-    borderRadius: 22,
-    backgroundColor: '#FFC400',
-    shadowColor: '#202020',
-    shadowOffset: { width: 4, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 3,
-  },
-  progressHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  progressEyebrow: { color: '#202020', fontSize: 11, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase' },
-  progressComplete: { paddingHorizontal: 8, paddingVertical: 5, overflow: 'hidden', borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.34)', color: '#202020', fontSize: 9, fontWeight: '800' },
-  progressMain: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 15 },
-  progressCount: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  progressTitle: { color: '#202020', fontSize: 44, lineHeight: 48, fontWeight: '800', letterSpacing: -3 },
-  progressMeta: { color: '#202020', fontSize: 12, fontWeight: '700' },
-  progressPercentBadge: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderWidth: 6, borderColor: '#202020', borderRadius: 27, backgroundColor: 'rgba(255,255,255,0.32)' },
-  progressPercent: { color: '#202020', fontSize: 9, fontWeight: '800' },
-  weeklyTrack: { height: 5, marginTop: 17, overflow: 'hidden', borderRadius: 999, backgroundColor: 'rgba(32,32,32,0.18)' },
-  weeklyTrackFill: { height: '100%', borderRadius: 999, backgroundColor: '#202020' },
-  loadErrorBanner: { padding: 13, borderRadius: 11, backgroundColor: '#FFF0EF' },
-  loadErrorText: { color: '#9F2D25', fontSize: 13, lineHeight: 19 },
-  warningText: { color: '#806700', fontSize: 13, lineHeight: 19 },
-  filterTabsScroll: { height: 54, flexGrow: 0, flexShrink: 0 },
-  filterTabs: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 4 },
-  filterButton: {
-    position: 'relative',
-    width:75,
-    height: 30,
-    flexShrink: 0,
+  screen: { flex: 1, backgroundColor: '#F4F6FA' },
+  taskContent: { flexGrow: 1, gap: 18, paddingHorizontal: 16, paddingTop: 18 },
+  searchBox: {
+    minHeight: 48,
+    marginTop: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 2,
+    gap: 10,
+    paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: '#E0E4DF',
-    borderRadius: 15,
+    borderColor: '#E5EAF2',
+    borderRadius: 999,
     backgroundColor: '#FFFFFF',
-    shadowColor: '#090A0E',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.9,
-    shadowRadius: 0,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    elevation: 3,
+  },
+  searchInput: { flex: 1, minWidth: 0, paddingVertical: 10, color: '#0F172A', fontSize: 14 },
+  clearSearchButton: { padding: 6 },
+  progressCard: {
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    borderRadius: 24,
+    backgroundColor: '#0F172A',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
     elevation: 5,
   },
-  filterButtonActive: {
-    borderColor: '#333333',
-    backgroundColor: '#333333',
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.95,
-    shadowRadius: 1,
-    elevation: 7,
+  progressHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  progressEyebrow: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
   },
-  filterButtonPressed: {
-    opacity: 0.96,
-    transform: [{ translateY: 2 }],
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+  progressComplete: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    overflow: 'hidden',
+    borderRadius: 999,
+    backgroundColor: 'rgba(17,24,39,0.08)',
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
   },
-  filterButtonContent: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 },
-  allFilterButtonContent: { transform: [{ translateX: 5 }] },
-  filterIconContainer: { width: 13, alignItems: 'center', justifyContent: 'center' },
-  todayFilterIcon: { width: 13, height: 13 },
-  allFilterIcon: { width: 13, height: 13 },
-  completedFilterIcon: { width: 13, height: 13 },
-  progressFilterIcon: { width: 13, height: 13 },
-  filterButtonDivider: { width: 1, height: 16, backgroundColor: 'rgba(190,198,219,0.42)' },
-  progressDividerOffset: { transform: [{ translateX: -1 }] },
-  filterButtonText: { flex: 1, minWidth: 0, gap: 0 },
-  progressTextOffset: { transform: [{ translateX: -1 }] },
-  filterButtonTitle: { color: '#26352F', fontSize: 7, lineHeight: 8, fontWeight: '700' },
-  filterButtonTitleActive: { color: '#FFFFFF' },
-  filterButtonDescription: { color: '#79827E', fontSize: 5.5, lineHeight: 6, fontWeight: '400' },
-  filterButtonDescriptionActive: { color: '#FFFFFF' },
-  taskSection: { gap: 13, marginTop: 0 },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 9, paddingHorizontal: 2, marginBottom: -30, marginTop: -25 },
-  sectionTitleCopy: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  sectionTitle: { color: '#26352F', fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
-  taskCount: { color: '#98A09C', fontSize: 12 },
-  sectionActions: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  searchAction: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E0E4DF', borderRadius: 999, backgroundColor: '#FFFFFF' },
-  sortButton: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingVertical: 8 },
-  sortText: { color: '#79827E', fontSize: 12, fontWeight: '700' },
-  sortChevronUp: { transform: [{ rotate: '-90deg' }] },
-  taskList: { gap: 13 },
-  taskCard: {
-    minHeight: 200,
-    paddingHorizontal: 15,
-    paddingTop: 15,
-    paddingBottom: 12,
+  progressMain: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 },
+  progressCount: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  progressTitle: { color: '#FFFFFF', fontSize: 40, lineHeight: 44, fontWeight: '800', letterSpacing: -1.5 },
+  progressMeta: { color: '#94A3B8', fontSize: 13, fontWeight: '600' },
+  progressPercentBadge: {
+    width: 54,
+    height: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#3B82F6',
+    borderRadius: 27,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  progressPercent: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+  weeklyTrack: {
+    height: 6,
+    marginTop: 16,
+    overflow: 'hidden',
+    borderRadius: 999,
+    backgroundColor: 'rgba(17,24,39,0.12)',
+  },
+  weeklyTrackFill: { height: '100%', borderRadius: 999, backgroundColor: '#3B82F6' },
+  loadErrorBanner: {
+    padding: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 9 },
-    shadowOpacity: 0.42,
+    borderColor: '#FECACA',
+    borderRadius: 16,
+    backgroundColor: '#FEE2E2',
+  },
+  loadErrorText: { color: '#DC2626', fontSize: 13, lineHeight: 19, fontWeight: '600' },
+  warningText: { color: '#B45309', fontSize: 13, lineHeight: 19, fontWeight: '600' },
+  filterTabsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+  },
+  filterButton: {
+    position: 'relative',
+    flex: 1,
+    minHeight: 78,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#E5EAF2',
+    borderRadius: 20,
+    backgroundColor: '#EFF2F7',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  filterButtonActive: {
+    borderColor: '#1E293B',
+    backgroundColor: '#0F172A',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.36,
     shadowRadius: 14,
     elevation: 5,
   },
-  taskCardDone: { opacity: 1 },
+  filterButtonPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.97 }],
+  },
+  filterButtonContent: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  filterIconContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 1,
+  },
+  filterButtonText: { alignItems: 'center', justifyContent: 'center', gap: 1, minWidth: 0 },
+  filterButtonTitle: {
+    color: '#0F172A',
+    fontSize: 11.5,
+    lineHeight: 14,
+    fontWeight: '800',
+    letterSpacing: -0.1,
+    textAlign: 'center',
+  },
+  filterButtonTitleActive: { color: '#FFFFFF' },
+  filterButtonDescription: {
+    color: '#64748B',
+    fontSize: 8.5,
+    lineHeight: 11,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  filterButtonDescriptionActive: { color: '#CBD5E1' },
+  taskSection: { gap: 14, marginTop: 0 },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 2,
+    marginBottom: 0,
+    marginTop: 2,
+  },
+  sectionTitleCopy: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  sectionTitleWrap: { alignSelf: 'flex-start' },
+  sectionTitle: {
+    color: '#0F172A',
+    fontSize: 23,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  sectionTitleUnderline: {
+    height: 3,
+    marginTop: 4,
+    borderRadius: 999,
+    backgroundColor: '#0F172A',
+  },
+  taskCount: {
+    overflow: 'hidden',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#EFF2F7',
+    color: '#475569',
+    fontSize: 11.5,
+    fontWeight: '600',
+  },
+  searchFilterButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+    backgroundColor: '#EFF2F7',
+  },
+  searchFilterButtonActive: {
+    backgroundColor: '#EEF4FF',
+  },
+  taskList: { gap: 16 },
+  taskCard: {
+    minHeight: 204,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 15,
+    borderWidth: 1,
+    borderColor: '#E5EAF2',
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.07,
+    shadowRadius: 22,
+    elevation: 4,
+  },
+  taskCardDone: { opacity: 0.78, backgroundColor: '#EFF2F7' },
   cardMain: { flex: 1 },
-  taskTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  taskTitleIcon: { transform: [{ translateY: -5 }] },
-  taskTitleShift: { transform: [{ translateX: -7 }] },
+  taskTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 11 },
+  taskTitleIcon: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D6E4FF',
+    backgroundColor: '#EEF4FF',
+    transform: [{ translateY: 0 }],
+  },
+  taskTitleShift: { transform: [{ translateX: 0 }] },
   taskTitle: {
     flex: 1,
-    marginTop: -2,
-    color: '#555555',
-    fontSize: 15,
-    lineHeight: 19,
-    fontWeight: '700',
-    letterSpacing: -0.2,
+    marginTop: 1,
+    color: '#0F172A',
+    fontSize: 15.5,
+    lineHeight: 21.5,
+    fontWeight: '800',
+    letterSpacing: -0.3,
   },
   taskCountdown: {
     flexShrink: 0,
-    marginTop: 1,
-    color: '#777777',
-    fontSize: 9,
+    marginTop: 2,
+    overflow: 'hidden',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#EFF6FF',
+    color: '#1E3A8A',
+    fontSize: 10.5,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
-  taskCountdownOverdue: { color: '#B91C1C' },
-  taskTitleDone: { color: '#898989', textDecorationLine: 'line-through' },
+  taskCountdownOverdue: {
+    backgroundColor: '#FEE2E2',
+    color: '#DC2626',
+    fontWeight: '700',
+  },
+  taskTitleDone: { color: '#64748B', textDecorationLine: 'line-through' },
   taskDescriptionContainer: {
-    marginTop: 0,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#D9D9D9',
+    marginTop: 12,
+    paddingTop: 0,
   },
   taskDescription: {
-    color: '#A6A6A6',
-    fontSize: 11,
-    lineHeight: 15,
+    color: '#475569',
+    fontSize: 13,
+    lineHeight: 19.5,
   },
   taskMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 10,
     marginTop: 'auto',
-    paddingTop: 13,
+    paddingTop: 16,
   },
   taskMetaPill: {
-    minHeight: 27,
+    minHeight: 34,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 9,
+    gap: 7,
+    paddingHorizontal: 13,
     borderRadius: 999,
-    backgroundColor: '#242424',
+    backgroundColor: '#0F172A',
   },
-  taskMetaText: { color: '#D0D0D0', fontSize: 10, fontWeight: '700' },
-  dueToday: { backgroundColor: '#333333' },
-  dueTodayText: { color: '#FF4D4F' },
-  metaIcons: { flexDirection: 'row', alignItems: 'center', gap: 14, marginLeft: 'auto' },
+  taskMetaText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  dueToday: { backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#FECACA' },
+  dueTodayText: { color: '#DC2626' },
+  metaIcons: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
   metaIconButton: {
-    width: 18,
-    height: 28,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#EFF2F7',
     alignItems: 'center',
     justifyContent: 'center',
   },
   sprintCount: {
-    flex: 0.9,
+    flexShrink: 0,
     textAlignVertical: 'center',
     minWidth: 0,
-    color: '#666666',
-    fontSize: 9,
+    color: '#0F172A',
+    fontSize: 11.5,
     fontWeight: '700',
     textAlign: 'left',
   },
   cardFooter: {
-    minHeight: 44,
+    minHeight: 46,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-    marginTop: 8,
-    paddingTop: 8,
+    marginTop: 14,
+    paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#D9D9D9',
+    borderTopColor: '#F1F5F9',
   },
   assigneeRow: {
-    flex: 1.4,
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
     minWidth: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#EFF2F7',
   },
-  assigneeName: { maxWidth: '75%', flexShrink: 1, color: '#666666', fontSize: 11, fontWeight: '600' },
+  assigneeName: { maxWidth: '88%', flexShrink: 1, color: '#475569', fontSize: 11, fontWeight: '600' },
   avatarRing: {
-    width: 36,
-    height: 36,
+    width: 34,
+    height: 34,
     overflow: 'hidden',
     textAlign: 'center',
     textAlignVertical: 'center',
     borderWidth: 2,
     borderColor: '#FFFFFF',
-    borderRadius: 19,
+    borderRadius: 17,
     color: '#FFFFFF',
-    backgroundColor: '#285F50',
-    fontSize: 9,
-    fontWeight: '800',
-    lineHeight: 32,
+    backgroundColor: '#0F172A',
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 30,
   },
   statusButton: {
-    minWidth: 76,
-    minHeight: 26,
+    minWidth: 84,
+    minHeight: 38,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    paddingHorizontal: 8,
+    gap: 6,
+    paddingHorizontal: 14,
     borderRadius: 999,
-    backgroundColor: '#285F50',
+    backgroundColor: '#0F172A',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 3,
   },
-  startTaskButton: { backgroundColor: '#F0444F' },
+  startTaskButton: {
+    backgroundColor: '#1D4ED8',
+    shadowColor: '#1D4ED8',
+  },
   continueTaskButton: {
-    width: 31,
-    minWidth: 31,
-    height: 31,
-    minHeight: 31,
+    width: 38,
+    minWidth: 38,
+    height: 38,
+    minHeight: 38,
     paddingHorizontal: 0,
-    borderRadius: 15.5,
-    backgroundColor: '#F0444F',
+    borderRadius: 19,
+    backgroundColor: '#0F172A',
   },
-  taskActionDisabled: { opacity: 0.65 },
-  statusButtonText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
-  emptyState: { alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 40, paddingHorizontal: 22, borderWidth: 1, borderStyle: 'dashed', borderColor: '#D8DEDA', borderRadius: 17, backgroundColor: '#FFFFFF' },
-  emptyIcon: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 27, backgroundColor: '#EAF4EF' },
-  emptyTitle: { marginTop: 13, color: '#35433D', fontSize: 16, fontWeight: '800' },
-  emptyDescription: { marginTop: 4, color: '#82908A', fontSize: 12, lineHeight: 17, textAlign: 'center' },
+  taskActionDisabled: { opacity: 0.55 },
+  statusButtonText: { color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#CBD5E1',
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+  },
+  emptyIcon: {
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: '#D6E4FF',
+    backgroundColor: '#EEF4FF',
+  },
+  emptyTitle: { marginTop: 12, color: '#0F172A', fontSize: 16, fontWeight: '800' },
+  emptyDescription: { marginTop: 4, color: '#64748B', fontSize: 13, lineHeight: 19, textAlign: 'center' },
   modalBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',
     alignItems: 'center',
-    backgroundColor: 'rgba(24,35,29,0.42)',
+    backgroundColor: 'rgba(15, 23, 42, 0.48)',
   },
   taskDetailsCard: {
     width: '100%',
     overflow: 'hidden',
-    borderRadius: 0,
-    backgroundColor: '#FFFFFF',
-    paddingTop: 22,
-    paddingHorizontal: 20,
-    shadowColor: '#17241D',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.12,
-    shadowRadius: 25,
-    elevation: 12,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    backgroundColor: '#F4F6FA',
+    paddingTop: 16,
+    paddingHorizontal: 18,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.16,
+    shadowRadius: 26,
+    elevation: 14,
   },
   detailsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 27,
+    marginBottom: 18,
+    paddingBottom: 10,
   },
-  modalBrand: { flexDirection: 'row', alignItems: 'center' },
+  modalBrand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   menuButton: {
-    width: 42,
-    height: 42,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 2,
-    borderRadius: 10,
-  },
-  modalLogo: { width: 116, height: 35, marginLeft: -18 },
-  closeButton: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E5EAF2',
     borderRadius: 20,
-    backgroundColor: '#F7F8F6',
+    backgroundColor: '#EFF2F7',
   },
-  closeIcon: { color: '#64716A', fontSize: 27, lineHeight: 30 },
+  modalLogo: { width: 108, height: 30 },
+  closeButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E5EAF2',
+    borderRadius: 20,
+    backgroundColor: '#EFF2F7',
+  },
+  closeIcon: { color: '#0F172A', fontSize: 22, lineHeight: 24, fontWeight: '500' },
   detailsScroll: { flex: 1 },
-  detailsContent: { paddingBottom: 24, gap: 23 },
-  titleSection: { gap: 13 },
-  statusDot: { width: 9, height: 9, borderRadius: 5 },
-  statusDotDone: { backgroundColor: '#35A765' },
-  statusDotInProgress: { backgroundColor: '#3185E8' },
-  statusDotDefault: { backgroundColor: '#B7BFBA' },
-  detailProject: { color: '#858C87', fontSize: 13, fontWeight: '600' },
+  detailsContent: { paddingBottom: 32, gap: 18 },
+  titleSection: { gap: 6, paddingBottom: 4 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  statusDotDone: { backgroundColor: '#15803D' },
+  statusDotInProgress: { backgroundColor: '#15803D' },
+  statusDotDefault: { backgroundColor: '#94A3B8' },
+  detailProject: { color: '#64748B', fontSize: 12.5, lineHeight: 18, fontWeight: '500' },
   detailTitle: {
-    color: '#171B18',
-    fontSize: 24,
-    lineHeight: 30,
+    color: '#0F172A',
+    fontSize: 22,
+    lineHeight: 28,
     fontWeight: '800',
-    letterSpacing: -0.9,
+    letterSpacing: -0.5,
   },
-  metadataSection: { gap: 8 },
+  metadataSection: {
+    gap: 13,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E5EAF2',
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 3,
+  },
   metadataRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     flexWrap: 'wrap',
-    minHeight: 25,
+    minHeight: 28,
     columnGap: 12,
-    rowGap: 7,
+    rowGap: 6,
   },
-  metadataLabel: { width: 83, color: '#858C87', fontSize: 12, fontWeight: '500' },
-  tagsMetadataLabel: { width: 83 },
+  metadataLabel: { width: 92, color: '#64748B', fontSize: 12.5, fontWeight: '500' },
+  tagsMetadataLabel: { width: 92 },
   metadataValueContainer: {
     flex: 1,
     flexDirection: 'row',
@@ -2902,20 +3090,22 @@ const styles = StyleSheet.create({
     gap: 8,
     minWidth: 0,
   },
-  metadataValue: { flexShrink: 1, color: '#202622', fontSize: 12, fontWeight: '700' },
-  metadataIcon: { color: '#59665F', fontSize: 17, fontWeight: '700' },
+  metadataValue: { flexShrink: 1, color: '#0F172A', fontSize: 13, fontWeight: '700' },
+  metadataIcon: { color: '#334155', fontSize: 16, fontWeight: '600' },
   creatorAvatar: {
-    width: 20,
-    height: 20,
+    width: 26,
+    height: 26,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    borderRadius: 10,
-    backgroundColor: '#DCEBE4',
+    borderWidth: 1,
+    borderColor: '#D6E4FF',
+    borderRadius: 13,
+    backgroundColor: '#EEF4FF',
   },
   creatorAvatarImage: { width: '100%', height: '100%' },
-  creatorAvatarText: { color: '#245D4D', fontSize: 9, fontWeight: '800' },
-  metadataMuted: { color: '#9BA29D', fontSize: 12, fontWeight: '500' },
+  creatorAvatarText: { color: '#1E3A8A', fontSize: 10, fontWeight: '700' },
+  metadataMuted: { color: '#64748B', fontSize: 12, fontWeight: '500' },
   tagsContainer: {
     flex: 1,
     flexDirection: 'row',
@@ -2925,73 +3115,137 @@ const styles = StyleSheet.create({
   },
   categoryTag: {
     overflow: 'hidden',
-    paddingHorizontal: 2,
-    paddingVertical: 2,
-    borderRadius: 12,
-    backgroundColor: 'transparent',
-    color: '#6B7280',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    backgroundColor: '#EEF2FF',
+    color: '#3730A3',
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
   },
-  priorityText: { fontSize: 12, fontWeight: '700' },
-  descriptionSection: { gap: 11 },
-  sectionLabel: { color: '#858C87', fontSize: 12, fontWeight: '700' },
-  descriptionText: { color: '#272D29', fontSize: 13, lineHeight: 22, fontWeight: '400' },
-  attachmentSection: { gap: 7 },
+  priorityText: { fontSize: 12.5, fontWeight: '700' },
+  descriptionSection: { gap: 8, paddingHorizontal: 2 },
+  sectionLabel: { color: '#0F172A', fontSize: 13.5, fontWeight: '700', letterSpacing: -0.1 },
+  descriptionText: { color: '#475569', fontSize: 13.5, lineHeight: 21, fontWeight: '400' },
+  attachmentSection: {
+    gap: 10,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E5EAF2',
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 2,
+  },
   assignedSprintSection: {
-    gap: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#D9D9D9',
+    gap: 12,
+    paddingTop: 6,
   },
   assignedSprintHeading: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 2,
   },
-  assignedSprintTitle: { color: '#353B37', fontSize: 14, fontWeight: '700' },
-  assignedSprintCount: { color: '#68736C', fontSize: 12, fontWeight: '700' },
-  assignedSprintItem: { gap: 5 },
+  assignedSprintTitle: { color: '#0F172A', fontSize: 15.5, fontWeight: '800', letterSpacing: -0.2 },
+  assignedSprintCount: {
+    minWidth: 26,
+    height: 26,
+    lineHeight: 22,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    overflow: 'hidden',
+    color: '#1E3A8A',
+    backgroundColor: '#EEF4FF',
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  assignedSprintItem: {
+    gap: 10,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E5EAF2',
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 3,
+  },
   assignedSprintExpandButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-    marginTop: 20,
-    paddingVertical: 8,
+    marginTop: 0,
+    paddingVertical: 2,
   },
   assignedSprintStatus: {
-    color: '#68736C',
-    fontSize: 10,
+    overflow: 'hidden',
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: '#EFF2F7',
+    color: '#64748B',
+    fontSize: 11,
     fontWeight: '700',
   },
-  assignedSprintStatusActive: { color: '#15803D' },
-  assignedSprintStatusLocked: { color: '#B42318' },
+  assignedSprintStatusActive: {
+    backgroundColor: '#DCFCE7',
+    color: '#15803D',
+  },
+  assignedSprintStatusLocked: {
+    backgroundColor: '#FEE2E2',
+    color: '#DC2626',
+  },
   assignedSprintViewDetails: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
     transform: [{ translateY: 0 }],
   },
-  assignedSprintExpandText: { color: '#68736C', fontSize: 10, fontWeight: '600' },
-  assignedSprintStartRow: { alignItems: 'flex-end' },
+  assignedSprintExpandText: { color: '#64748B', fontSize: 11.5, fontWeight: '600' },
+  assignedSprintStartRow: { alignItems: 'flex-end', marginTop: 4 },
   assignedSprintNoSprintRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-  },
-  sprintDetails: { gap: 12, paddingTop: 8 },
-  sprintDescription: { color: '#353B37', fontSize: 12, lineHeight: 18 },
-  sprintSubmissionForm: { gap: 10, paddingTop: 8 },
-  sprintSubmissionNote: {
-    minHeight: 80,
-    padding: 10,
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D9DFDA',
-    borderRadius: 8,
-    color: '#272D29',
-    fontSize: 12,
+    borderColor: '#E5EAF2',
+  },
+  sprintDetails: { gap: 13, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  sprintDescription: { color: '#475569', fontSize: 13, lineHeight: 20 },
+  sprintProgressHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sprintProgressPercent: { color: '#0F172A', fontSize: 12, fontWeight: '700' },
+  sprintProgressTrack: { height: 7, overflow: 'hidden', borderRadius: 999, backgroundColor: '#E2E8F0' },
+  sprintProgressFill: { height: '100%', borderRadius: 999, backgroundColor: '#1D4ED8' },
+  sprintSubmissionForm: { gap: 12, paddingTop: 4 },
+  sprintSubmissionNote: {
+    minHeight: 104,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    color: '#0F172A',
+    fontSize: 13,
+    lineHeight: 20,
     textAlignVertical: 'top',
   },
   sprintMediaHeading: {
@@ -3000,114 +3254,155 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
-  sprintMediaLimit: { color: '#858C87', fontSize: 10 },
-  sprintMediaActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  sprintMediaLimit: { color: '#64748B', fontSize: 11.5, fontWeight: '500' },
+  sprintMediaActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 },
   sprintMediaAction: {
-    minHeight: 32,
+    minHeight: 42,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: '#D9DFDA',
-    borderRadius: 5,
+    borderColor: '#E5EAF2',
+    borderRadius: 999,
     backgroundColor: '#FFFFFF',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  sprintMediaActionWithIcon: { flexDirection: 'row', gap: 6 },
-  sprintMediaIconButton: { width: 32, paddingHorizontal: 0, borderWidth: 0 },
+  sprintMediaActionWithIcon: { flexDirection: 'row', gap: 7 },
+  sprintMediaIconButton: {
+    width: 42,
+    height: 42,
+    paddingHorizontal: 0,
+    borderRadius: 21,
+    borderWidth: 0,
+    backgroundColor: '#0F172A',
+  },
   sprintRecordingWaveform: {
-    height: 32,
+    height: 42,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 2.5,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: '#EEF4FF',
   },
-  sprintRecordingWaveformBar: { width: 1, borderRadius: 1, backgroundColor: '#E6B000' },
-  sprintMediaActionText: { color: '#353B37', fontSize: 11, fontWeight: '700' },
+  sprintRecordingWaveformBar: { width: 2, borderRadius: 2, backgroundColor: '#1D4ED8' },
+  sprintMediaActionText: { color: '#0F172A', fontSize: 12.5, fontWeight: '700' },
   sprintSubmissionAttachment: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: '#EFF2F7',
+    borderWidth: 1,
+    borderColor: '#E5EAF2',
   },
-  sprintSubmissionAttachmentName: { flex: 1, color: '#353B37', fontSize: 11 },
+  sprintSubmissionAttachmentName: { flex: 1, color: '#0F172A', fontSize: 12, fontWeight: '600' },
   sprintSubmissionRemove: { padding: 4 },
-  sprintSubmissionRemoveText: { color: '#B42318', fontSize: 10, fontWeight: '700' },
+  sprintSubmissionRemoveText: { color: '#DC2626', fontSize: 11, fontWeight: '700' },
   sprintLinkRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sprintLinkInput: {
     flex: 1,
-    minHeight: 36,
-    paddingHorizontal: 24,
+    minHeight: 44,
+    paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: '#D9DFDA',
+    borderColor: '#CBD5E1',
     borderRadius: 999,
-    color: '#272D29',
-    fontSize: 11,
+    backgroundColor: '#FFFFFF',
+    color: '#0F172A',
+    fontSize: 12.5,
   },
-  sprintSubmissionError: { color: '#B42318', fontSize: 11, lineHeight: 16 },
-  sprintSubmittedDetails: { gap: 8, paddingTop: 8 },
-  sprintSubmittedLink: { color: '#52665A', fontSize: 11 },
+  sprintSubmissionError: { color: '#DC2626', fontSize: 12, lineHeight: 17, fontWeight: '600' },
+  sprintSubmittedDetails: {
+    gap: 8,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: '#DCFCE7',
+  },
+  sprintSubmittedMessage: { color: '#15803D', fontSize: 13, fontWeight: '700' },
+  sprintSubmittedLink: { color: '#475569', fontSize: 12 },
   assignedSprintDescription: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 5,
+    gap: 7,
   },
-  assignedSprintBullet: { color: '#353B37', fontSize: 12, fontWeight: '600' },
-  assignedSprintName: { flex: 1, color: '#353B37', fontSize: 12, fontWeight: '600' },
+  assignedSprintBullet: { color: '#0F172A', fontSize: 15, fontWeight: '800' },
+  assignedSprintName: { flex: 1, color: '#0F172A', fontSize: 13.5, lineHeight: 19, fontWeight: '700' },
   assignedSprintStartButton: {
-    minHeight: 28,
+    minHeight: 42,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    paddingHorizontal: 9,
-    borderRadius: 5,
-    backgroundColor: '#F0444F',
+    gap: 6,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    backgroundColor: '#1D4ED8',
   },
-  assignedSprintSubmitButton: { borderRadius: 999, backgroundColor: '#E6B000' },
-  assignedSprintSubmitText: { color: '#FFFDD0', fontSize: 10, fontWeight: '800' },
-  assignedSprintStartText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
-  taskAttachmentCard: {
+  assignedSprintSubmitButton: {
     minHeight: 48,
+    borderRadius: 999,
+    backgroundColor: '#0F172A',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.32,
+    shadowRadius: 14,
+    elevation: 4,
+  },
+  assignedSprintSubmitText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  assignedSprintStartText: { color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' },
+  taskAttachmentCard: {
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 3,
-    paddingHorizontal: 4,
-    borderRadius: 12,
-    backgroundColor: '#F3F4F3',
+    gap: 11,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#E5EAF2',
+    borderRadius: 14,
+    backgroundColor: '#EFF2F7',
   },
   attachmentImagePreview: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    borderRadius: 20,
-    backgroundColor: '#F0F3F0',
+    borderRadius: 10,
+    backgroundColor: '#EEF4FF',
   },
   attachmentImage: { width: '100%', height: '100%' },
-  attachmentImageUnavailable: { color: '#A33A32', fontSize: 17, fontWeight: '800' },
+  attachmentImageUnavailable: { color: '#DC2626', fontSize: 16, fontWeight: '700' },
   attachmentAudioTile: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D6E4FF',
+    backgroundColor: '#EEF4FF',
   },
   attachmentVoiceNotePlay: {
     position: 'absolute',
-    right: -2,
-    bottom: 9,
+    right: 3,
+    bottom: 6,
   },
   attachmentFileIconButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
   attachmentFileIcon: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3120,40 +3415,279 @@ const styles = StyleSheet.create({
     fontSize: 6,
     fontWeight: '800',
   },
-  taskAttachmentCopy: { flex: 1, minWidth: 0, gap: 2 },
-  taskAttachmentName: { color: '#34433D', fontSize: 11, fontWeight: '700' },
-  taskAttachmentDetails: { color: '#858C87', fontSize: 9, fontWeight: '500' },
+  taskAttachmentCopy: { flex: 1, minWidth: 0, gap: 3 },
+  taskAttachmentName: { color: '#0F172A', fontSize: 12.5, fontWeight: '700' },
+  taskAttachmentDetails: { color: '#64748B', fontSize: 10.5, fontWeight: '500' },
   attachmentAudioProgressTrack: {
-    height: 3,
+    height: 4,
     overflow: 'hidden',
     borderRadius: 2,
-    backgroundColor: '#E8ECE9',
+    backgroundColor: '#E2E8F0',
   },
-  attachmentAudioProgress: { height: '100%', borderRadius: 2, backgroundColor: '#315F4D' },
+  attachmentAudioProgress: { height: '100%', borderRadius: 2, backgroundColor: '#1D4ED8' },
   attachmentAudioTime: {
     alignSelf: 'flex-end',
-    color: '#858C87',
-    fontSize: 8,
-    fontWeight: '500',
+    color: '#64748B',
+    fontSize: 9.5,
+    fontWeight: '600',
   },
-  attachmentError: { color: '#B42318', fontSize: 8, fontWeight: '500' },
+  attachmentError: { color: '#DC2626', fontSize: 9.5, fontWeight: '600' },
   attachmentDownloadButton: {
-    width: 22,
-    height: 22,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5EAF2',
   },
   attachmentActionDisabled: { opacity: 0.55 },
   primaryAction: {
-    minHeight: 49,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    marginTop: 3,
-    borderRadius: 13,
-    backgroundColor: '#245D4D',
+    gap: 8,
+    marginTop: 4,
+    borderRadius: 999,
+    backgroundColor: '#0F172A',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    elevation: 3,
   },
   primaryActionDisabled: { opacity: 0.65 },
-  primaryActionText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  primaryActionText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  taskCountdownPill: {
+    flexShrink: 0,
+    marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#EFF6FF',
+  },
+  taskCountdownPillOverdue: {
+    backgroundColor: '#FEE2E2',
+  },
+  taskCountdownText: {
+    color: '#1E3A8A',
+    fontSize: 10.5,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  taskCountdownTextOverdue: {
+    color: '#DC2626',
+  },
+  sprintCountWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  sprintCountDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#0F172A',
+  },
+  productiveWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 20,
+    paddingBottom: 12,
+  },
+  productiveTitle: {
+    marginTop: 8,
+    color: '#0F172A',
+    fontSize: 14.5,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  productiveSubtitle: {
+    marginTop: 3,
+    color: '#64748B',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  brandWordmark: {
+    color: '#0F172A',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+  },
+  brandDot: {
+    color: '#0F172A',
+  },
+  detailTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  detailTitleIcon: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#D6E4FF',
+    backgroundColor: '#EEF4FF',
+  },
+  detailTitleCopy: {
+    flex: 1,
+  },
+  statusBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#EFF2F7',
+  },
+  statusBadgePillActive: {
+    backgroundColor: '#DCFCE7',
+  },
+  statusBadgeText: {
+    color: '#475569',
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  statusBadgeTextActive: {
+    color: '#15803D',
+  },
+  priorityBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#FEE2E2',
+  },
+  priorityBadgeMedium: {
+    backgroundColor: '#FEF3C7',
+  },
+  priorityBadgeNormal: {
+    backgroundColor: '#EFF2F7',
+  },
+  sectionHeadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionHeadingIconBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EEF4FF',
+  },
+  attachmentHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  attachmentHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sprintLinkInputWrap: {
+    flex: 1,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+  },
+  sprintLinkInputField: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 8,
+    color: '#0F172A',
+    fontSize: 12.5,
+  },
+  modalQuickFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 12,
+    paddingBottom: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    backgroundColor: '#F4F6FA',
+  },
+  modalQuickPill: {
+    flex: 1,
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E5EAF2',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  modalQuickPillText: {
+    color: '#0F172A',
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  modalQuickMic: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: '#E5EAF2',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  modalQuickGoldPill: {
+    flex: 1,
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 999,
+    backgroundColor: '#0F172A',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.34,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  modalQuickGoldText: {
+    color: '#FFFFFF',
+    fontSize: 12.5,
+    fontWeight: '800',
+  },
 });

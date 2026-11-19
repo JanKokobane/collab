@@ -1,4 +1,14 @@
-import { currentUser, make, projects, tasks, root, addAuditLog, hub, renderAvatarElement } from './state.js'
+import {
+  currentUser,
+  getSprintMembers,
+  make,
+  projects,
+  tasks,
+  root,
+  addAuditLog,
+  hub,
+  renderAvatarElement
+} from './state.js'
 import { api } from './api.js'
 import {
   createFileTypeIcon,
@@ -637,26 +647,6 @@ function downloadProjectAnalysis(project, projectTasks, analysis) {
   }, { once: true })
 }
 
-function sprintLeadName(project, sprint) {
-  if (sprint.assigneeName) return sprint.assigneeName
-  const member = sprintLeadMember(project, sprint)
-  return member?.name || member?.email || 'No sprint lead'
-}
-
-function sprintLeadMember(project, sprint) {
-  return [
-    {
-      firebaseUid: project.creatorFirebaseUid,
-      name: project.creatorName,
-      email: project.creatorEmail,
-      initials: project.creatorInitials,
-      profileImage: project.creatorProfileImage,
-      tone: project.creatorTone
-    },
-    ...(project.acceptedMembers || [])
-  ].find(candidate => candidate.firebaseUid === sprint.assigneeFirebaseUid)
-}
-
 function openSprintAttachmentPreview(attachment, trigger) {
   const backdrop = make('div', 'project-comment-media-preview-backdrop')
   backdrop.classList.add('is-sprint-attachment-preview')
@@ -1236,13 +1226,10 @@ async function removeProjectSprint(project, sprint, task, removeButton) {
   })
   const taskDestination = remainingSprints[Math.min(sprintIndex, remainingSprints.length - 1)]
   const destinationName = updatedSprints[Math.min(sprintIndex, updatedSprints.length - 1)]?.name
-  const destinationAssignment = taskDestination?.assigneeFirebaseUid
-    ? `assigned to ${sprintLeadName(project, taskDestination)}`
-    : 'keeping their current assignees'
   const confirmed = await showDashboardConfirmation({
     title: 'Remove project sprint?',
     message: linkedTasks.length
-      ? `Remove "${sprint.name}"? Its ${linkedTasks.length} ${linkedTasks.length === 1 ? 'task will' : 'tasks will'} move to "${destinationName}", ${destinationAssignment}, and sprint numbers will be updated.`
+      ? `Remove "${sprint.name}"? Its ${linkedTasks.length} ${linkedTasks.length === 1 ? 'task will' : 'tasks will'} move to "${destinationName}", and sprint numbers will be updated.`
       : `Remove "${sprint.name}" and update the numbering of the remaining sprints?`,
     confirmText: 'Remove sprint',
     danger: true,
@@ -1359,7 +1346,7 @@ async function loadTaskComments(project, task, container, options = {}) {
   }
 }
 
-export async function openProjectProgressAside(task, targetSprintName = null) {
+export async function openProjectProgressAside(task) {
   const project = projects.find(candidate => candidate.projectId === task.projectId)
   if (!project) {
     showDashboardToast('The project details for this task could not be found.', 'error')
@@ -1872,7 +1859,7 @@ export async function openProjectProgressAside(task, targetSprintName = null) {
       ['#', 'is-index'],
       ['Sprint', 'is-sprint'],
       ['Status', 'is-status'],
-      ['Lead', 'is-lead'],
+      ['Members', 'is-members'],
       ['Schedule', 'is-schedule'],
       ['Details', 'is-actions']
     ].forEach(([label, colClass]) => {
@@ -1902,14 +1889,7 @@ export async function openProjectProgressAside(task, targetSprintName = null) {
         ? Math.round((completedSprintTasks / sprintTasks.length) * 100)
         : 0
 
-      const sprintLead = sprintLeadMember(project, sprint)
-      const lead = sprintLead || (sprint.assigneeName
-        ? { name: sprint.assigneeName, firebaseUid: sprint.assigneeFirebaseUid }
-        : null)
-      const leadDisplayName = lead
-        ? (lead.name || lead.email || sprintLeadName(project, sprint))
-        : ''
-      const leadIsOwner = Boolean(lead?.firebaseUid && lead.firebaseUid === project.creatorFirebaseUid)
+      const sprintMembers = getSprintMembers(project, sprint)
 
       const sprintStart = sprint.startDate || sprint.start_date
       const sprintEnd = sprint.endDate || sprint.end_date
@@ -1947,21 +1927,24 @@ export async function openProjectProgressAside(task, targetSprintName = null) {
       const statusCell = make('td', 'project-sprint-sheet-cell is-status')
       statusCell.append(make('span', `project-sprint-status is-${normalizedStatus}`, sprintStatus))
 
-      const leadCell = make('td', 'project-sprint-sheet-cell is-lead')
-      if (lead) {
-        const leadWrap = make('div', 'project-sprint-sheet-lead')
-        const leadAvatar = make('span')
-        renderAvatarElement(leadAvatar, lead, 'project-sprint-lead-avatar')
-        leadAvatar.setAttribute('aria-hidden', 'true')
-        const leadMeta = make('div', 'project-sprint-sheet-lead-copy')
-        leadMeta.append(make('span', 'project-sprint-sheet-lead-name', leadDisplayName || 'Assigned lead'))
-        if (leadIsOwner) {
-          leadMeta.append(make('small', 'project-sprint-sheet-lead-role', 'Owner'))
-        }
-        leadWrap.append(leadAvatar, leadMeta)
-        leadCell.append(leadWrap)
+      const membersCell = make('td', 'project-sprint-sheet-cell is-members')
+      if (sprintMembers.length) {
+        const membersWrap = make('div', 'project-sprint-sheet-lead')
+        sprintMembers.forEach(member => {
+          const memberItem = make('span', 'project-sprint-sheet-member')
+          const avatar = make('span')
+          renderAvatarElement(avatar, member, 'project-sprint-lead-avatar')
+          avatar.setAttribute('aria-hidden', 'true')
+          memberItem.append(
+            avatar,
+            make('span', 'project-sprint-sheet-lead-name', member.name || member.email || 'Project member')
+          )
+          memberItem.title = member.name || member.email || 'Project member'
+          membersWrap.append(memberItem)
+        })
+        membersCell.append(membersWrap)
       } else {
-        leadCell.append(make('span', 'project-sprint-sheet-muted', 'Unassigned'))
+        membersCell.append(make('span', 'project-sprint-sheet-muted', 'No members assigned'))
       }
 
       const scheduleCell = make('td', 'project-sprint-sheet-cell is-schedule')
@@ -1981,7 +1964,9 @@ export async function openProjectProgressAside(task, targetSprintName = null) {
 
       const canSubmitSprint = Boolean(
         currentUid &&
-        sprint.assigneeFirebaseUid === currentUid &&
+        sprintMembers.some(member =>
+          (member.firebaseUid || member.firebase_uid || member.uid) === currentUid
+        ) &&
         !['Completed', 'Pending Review'].includes(sprint.status)
       )
       const canReviewSprint = Boolean(isProjectOwner && sprint.status === 'Pending Review')
@@ -2000,7 +1985,7 @@ export async function openProjectProgressAside(task, targetSprintName = null) {
         indexCell,
         sprintCell,
         statusCell,
-        leadCell,
+        membersCell,
         scheduleCell,
         actionCell
       )
@@ -2240,7 +2225,7 @@ export async function openProjectProgressAside(task, targetSprintName = null) {
         const reviewInput = document.createElement('textarea')
         reviewInput.rows = 3
         reviewInput.maxLength = 5000
-        reviewInput.placeholder = 'Add optional feedback for the sprint lead…'
+        reviewInput.placeholder = 'Add optional feedback for sprint members…'
         reviewInput.setAttribute('aria-label', `Review comment for ${sprint.name}`)
         const reviewMedia = createTaskMediaEditor({
           label: 'Attach feedback file or voice note',
@@ -2581,36 +2566,8 @@ export async function openProjectProgressAside(task, targetSprintName = null) {
     }, 5 * 60 * 1000)
   })
   closeButton.focus()
-
-  if (targetSprintName) {
-    requestAnimationFrame(() => {
-      const titleButton = Array.from(aside.querySelectorAll('.project-sprint-sheet-title-btn'))
-        .find(button => button.querySelector('.project-sprint-sheet-name')?.textContent?.trim() === targetSprintName)
-      const toggle = titleButton?.closest('.project-sprint-sheet-row')
-        ?.nextElementSibling?.querySelector('.project-sprint-sheet-toggle')
-      if (toggle?.getAttribute('aria-expanded') !== 'true') toggle?.click()
-      const section = titleButton?.closest('.project-sprint-sheet-row') || aside.querySelector('.project-sprint-sheet-wrap')
-      section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
-  }
 }
 
-export function openProjectSprintDetails(projectId, sprintName) {
-  const project = projects.find(candidate => candidate.projectId === projectId)
-  if (!project) {
-    showDashboardToast('The submitted sprint project could not be found.', 'error')
-    return
-  }
-  const sprintTask = tasks.find(candidate =>
-    candidate.backendPersistent &&
-    candidate.projectId === projectId &&
-    candidate.sprint_name === sprintName
-  )
-  void openProjectProgressAside(
-    sprintTask || { projectId, taskId: null },
-    sprintName
-  )
-}
 
 export function openProjectTaskDetails(taskId) {
   const task = tasks.find(candidate =>

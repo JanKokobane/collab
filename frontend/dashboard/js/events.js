@@ -2,6 +2,7 @@ import {
   projects,
   tasks,
   currentUser,
+  getSprintMemberUids,
   getAccessibleMembers,
   getAccessibleTasks,
   saveTasks,
@@ -581,7 +582,7 @@ export function setupAICommandBar() {
       }
       const activeProjectName = document.querySelector('.project-nav .nav-item.active')?.dataset.view
       const project = projects.find(item => item.name === activeProjectName) ||
-        projects.find(item => Array.isArray(item.sprints) && item.sprints.some(sprint => sprint.assigneeFirebaseUid)) ||
+        projects.find(item => Array.isArray(item.sprints) && item.sprints.some(sprint => getSprintMemberUids(sprint).length)) ||
         projects[0]
       if (!project) throw new Error('Create or join a project before creating a task.')
       const dueDate = response.task.dueDate &&

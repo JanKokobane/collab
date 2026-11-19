@@ -428,7 +428,14 @@ const dispatchProjectMeetingActionItem = async (req, res) => {
         }
         const attendees = Array.isArray(meeting.attendee_firebase_uids) ? meeting.attendee_firebase_uids : [];
         const sprint = (Array.isArray(meeting.sprints) ? meeting.sprints : [])
-            .find(item => item?.name === sprintName && item.assigneeFirebaseUid === assigneeUid);
+            .find(item => {
+                const memberUids = Array.isArray(item?.memberFirebaseUids)
+                    ? item.memberFirebaseUids
+                    : Array.isArray(item?.member_firebase_uids)
+                        ? item.member_firebase_uids
+                        : [item?.assigneeFirebaseUid || item?.assignee_firebase_uid];
+                return item?.name === sprintName && memberUids.includes(assigneeUid);
+            });
         const assigneeIsProjectMember = assigneeUid === meeting.creator_firebase_uid || attendees.includes(assigneeUid);
         const acceptedAssignee = assigneeUid === meeting.creator_firebase_uid
             ? { rowCount: 1 }
@@ -440,7 +447,7 @@ const dispatchProjectMeetingActionItem = async (req, res) => {
             );
         if (!sprint || !assigneeIsProjectMember || !attendees.includes(assigneeUid) || !acceptedAssignee.rowCount) {
             await client.query('ROLLBACK');
-            return res.status(400).json({ success: false, code: 'INVALID_ACTION_ITEM_ASSIGNEE', message: 'Choose a meeting attendee who leads the selected project sprint.' });
+            return res.status(400).json({ success: false, code: 'INVALID_ACTION_ITEM_ASSIGNEE', message: 'Choose a meeting attendee assigned to the selected project sprint.' });
         }
         const taskId = randomUUID();
         const title = actionItem.content.slice(0, 255);

@@ -457,15 +457,6 @@ const validateAssignmentAndSprint = async (project, task, { allowLegacyTaskAssig
     if (!sprint) {
         return 'Choose a sprint that belongs to this project.';
     }
-    if (!sprint.assigneeFirebaseUid && !allowLegacyTaskAssignee) {
-        return 'Assign a project member as the sprint lead before creating tasks in this sprint.';
-    }
-    if (
-        sprint.assigneeFirebaseUid &&
-        sprint.assigneeFirebaseUid !== task.assigneeFirebaseUid
-    ) {
-        return 'Tasks must be assigned to the project member assigned to their sprint.';
-    }
 
     if (task.assigneeFirebaseUid === project.creator_firebase_uid) {
         return null;
@@ -557,8 +548,19 @@ const getProjectTasks = async (req, res) => {
                             WITH ORDINALITY AS attachment(value, ordinality)
                     ), '[]'::jsonb) AS description_attachments,
                     t.assignee_firebase_uid,
-                    i.invited_name AS assignee_name,
-                    i.invited_email AS assignee_email,
+                    COALESCE(
+                        i.invited_name,
+                        CASE WHEN t.assignee_firebase_uid = p.creator_firebase_uid
+                            THEN p.creator_name END,
+                        i.invited_email,
+                        CASE WHEN t.assignee_firebase_uid = p.creator_firebase_uid
+                            THEN p.creator_email END
+                    ) AS assignee_name,
+                    COALESCE(
+                        i.invited_email,
+                        CASE WHEN t.assignee_firebase_uid = p.creator_firebase_uid
+                            THEN p.creator_email END
+                    ) AS assignee_email,
                     up.profile_image AS assignee_profile_image,
                     t.status,
                     t.priority,
@@ -686,8 +688,33 @@ const getProjectTaskDetails = async (req, res) => {
                         FROM jsonb_array_elements(task.description_attachments)
                             WITH ORDINALITY AS attachment(value, ordinality)
                     ), '[]'::jsonb) ELSE task.description_attachments END AS description_attachments,
+                    COALESCE(
+                        assignee_invite.invited_name,
+                        CASE WHEN task.assignee_firebase_uid = project.creator_firebase_uid
+                            THEN project.creator_name END,
+                        assignee_invite.invited_email,
+                        CASE WHEN task.assignee_firebase_uid = project.creator_firebase_uid
+                            THEN project.creator_email END
+                    ) AS assignee_name,
+                    COALESCE(
+                        assignee_invite.invited_email,
+                        CASE WHEN task.assignee_firebase_uid = project.creator_firebase_uid
+                            THEN project.creator_email END
+                    ) AS assignee_email,
+                    assignee_profile.profile_image AS assignee_profile_image,
                     task.created_at, task.updated_at
              FROM project_tasks task
+                         JOIN projects project ON project.project_id = task.project_id
+                         LEFT JOIN LATERAL (
+                            SELECT invited_name, invited_email
+                            FROM project_invitations
+                            WHERE project_id = task.project_id
+                              AND invited_firebase_uid = task.assignee_firebase_uid
+                            ORDER BY created_at DESC
+                            LIMIT 1
+                         ) assignee_invite ON TRUE
+                         LEFT JOIN user_profiles assignee_profile
+                           ON assignee_profile.firebase_uid = task.assignee_firebase_uid
                          LEFT JOIN messages message
                              ON message.message_id = task.chat_message_id
                             AND EXISTS (
@@ -972,14 +999,13 @@ const submitProjectTaskForReview = async (req, res) => {
             try {
                 await query(
                     `INSERT INTO notifications (
-                        recipient_firebase_uid, project_id, sprint_name, related_task_id,
+                        recipient_firebase_uid, project_id, related_task_id,
                         type, title, detail, avatar, tone_class
                      )
-                     VALUES ($1, $2, $3, $4, 'task_sprint_submitted_for_review', $5, $6, $7, 'orange-bg')`,
+                     VALUES ($1, $2, $3, 'task_sprint_submitted_for_review', $4, $5, $6, 'orange-bg')`,
                     [
                         task.creator_firebase_uid,
                         project.project_id,
-                        task.sprint_name,
                         taskId,
                         'Task sprint ready for review',
                         `${req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'A task assignee'} submitted "${task.sprint_name}" for "${task.title}" in "${task.project_name}" for review.`,

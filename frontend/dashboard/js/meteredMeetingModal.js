@@ -1,6 +1,6 @@
 import { api } from './api.js'
 import { firebaseAuth } from '../../firebase.js'
-import { hub, projects } from './state.js'
+import { getSprintMemberUids, hub, projects } from './state.js'
 
 const SDK_URL = 'https://cdn.metered.ca/sdk/video/1.4.6/sdk.min.js'
 const iconPaths = {
@@ -1244,7 +1244,7 @@ export function openMeteredMeetingModal(meeting) {
         const updateSprintChoices = () => {
           sprintSelect.replaceChildren(sprintPlaceholder)
           const eligibleSprints = (session.projectRecord?.sprints || []).filter(sprint =>
-            sprint.assigneeFirebaseUid === attendeeSelect.value
+            getSprintMemberUids(sprint).includes(attendeeSelect.value)
           )
           eligibleSprints.forEach(sprint => {
             const option = element('option', '', sprint.name)
@@ -1252,7 +1252,7 @@ export function openMeteredMeetingModal(meeting) {
             sprintSelect.append(option)
           })
           noSprintMessage.textContent = attendeeSelect.value && !eligibleSprints.length
-            ? 'This attendee does not lead a project sprint yet.'
+            ? 'This attendee is not assigned to a project sprint yet.'
             : ''
           dispatch.disabled = !attendeeSelect.value || !eligibleSprints.length
         }

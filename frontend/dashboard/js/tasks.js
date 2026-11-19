@@ -9,13 +9,14 @@ import {
   activeFilter,
   activeSprintFilter,
   loadNotificationsFromAPI,
+  getSprintMembers,
+  renderAvatarElement,
   make,
   closeModal,
   root,
   saveTasks,
   addAuditLog,
   pushNotification,
-  renderAvatarElement,
   hub
 } from './state.js'
 import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } from './auth.js?v=20261117-no-auto-sprints'
@@ -299,8 +300,30 @@ export function taskCard(task) {
     `task-priority-badge is-${task.priority || 'medium'}`,
     `${priorityLabel} priority`
   )
-  const submissionBadge = task.sprintSubmissionStatus === 'Pending Review'
-    ? make('span', 'task-sprint-review-badge', 'Review pending')
+  const isProjectOwner = Boolean(project && isCurrentUserProjectCreator(project))
+  const projectTasks = isProjectOwner
+    ? tasks.filter(candidate =>
+      candidate.backendPersistent && candidate.projectId === task.projectId
+    )
+    : []
+  const pendingSprints = isProjectOwner && Array.isArray(project?.sprints)
+    ? project.sprints.filter(candidate =>
+      String(candidate.status || '').trim().toLowerCase() === 'pending review'
+    )
+    : []
+  const pendingSprintNames = new Set(
+    pendingSprints.map(candidate => String(candidate.name || '').trim().toLowerCase()).filter(Boolean)
+  )
+  const standaloneTaskReviews = projectTasks.filter(candidate => {
+    const status = String(candidate.sprintSubmissionStatus || candidate.sprint_submission_status || '')
+      .trim().toLowerCase()
+    const sprintName = String(candidate.sprint_name || candidate.sprint || '')
+      .trim().toLowerCase()
+    return status === 'pending review' && !pendingSprintNames.has(sprintName)
+  }).length
+  const uniquePendingReviews = pendingSprints.length + standaloneTaskReviews
+  const submissionBadge = isProjectOwner && uniquePendingReviews > 0
+    ? make('span', 'task-sprint-review-badge', `${uniquePendingReviews} Awaiting Review`)
     : null
   const actionMenu = make('div', 'task-card-action-menu')
   const moreBtn = make('button', 'card-more-btn')
@@ -362,11 +385,61 @@ export function taskCard(task) {
   top.append(
     tagWrap,
     ...(task.backendPersistent ? [priority] : []),
-    ...(submissionBadge ? [submissionBadge] : []),
     actionMenu
   )
 
   const title = make('h4', '', task.title)
+
+  const avatarRow = make('div', 'task-card-avatar-row')
+  const visiblePeople = []
+  const seenPeople = new Set()
+  const currentUid = String(currentUser?.uid || '')
+  const currentInitials = String(currentUser?.initials || '').trim().toUpperCase()
+
+  const addVisiblePerson = person => {
+    if (!person) return
+    const uid = String(person.uid || person.firebaseUid || '').trim()
+    const initials = String(person.initials || '').trim().toUpperCase()
+    const name = String(person.name || '').trim()
+
+    if (
+      (currentUid && uid && uid === currentUid) ||
+      ((!currentUid || !uid) && currentInitials && initials === currentInitials)
+    ) return
+
+    const key = uid || name.toLowerCase() || initials
+    if (!key || seenPeople.has(key)) return
+    seenPeople.add(key)
+    visiblePeople.push({ ...person, uid, name, initials })
+  }
+
+  if (task.backendPersistent && project) {
+    const sprintName = String(task.sprint_name || task.sprint || '').trim()
+    const sprint = (project.sprints || []).find(candidate =>
+      String(candidate.name || '').trim() === sprintName
+    )
+    getSprintMembers(project, sprint).forEach(member => {
+      addVisiblePerson({
+        ...member,
+        uid: member.firebaseUid || member.firebase_uid || member.uid,
+        profileImage: member.profileImage || member.profile_image,
+        tone: member.tone || 'teal'
+      })
+    })
+  }
+
+  visiblePeople.forEach(person => {
+    const avatar = make('span', 'task-card-avatar')
+    renderAvatarElement(avatar, {
+      name: person.name,
+      initials: person.initials,
+      profileImage: person.profileImage,
+      tone: person.tone || 'teal'
+    })
+    avatar.title = person.name || 'Project member'
+    avatarRow.append(avatar)
+  })
+
   let discussionButton = null
   if (task.backendPersistent && task.chatMessageId && task.chatConversationId) {
     discussionButton = make('button', 'task-discussion-link', 'View discussion')
@@ -430,50 +503,54 @@ export function taskCard(task) {
   }
 
   const footer = make('div', 'card-footer')
-  const assigneeEl = make('div')
-  renderAvatarElement(assigneeEl, {
-    name: task.assigneeName || task.assignee,
-    initials: task.assignee,
-    profileImage: task.assigneeProfileImage,
-    tone: task.assigneeTone || 'teal'
-  })
-  assigneeEl.title = `${task.assigneeName || task.assignee}`
-  footer.append(assigneeEl)
+  const footerMain = make('div', 'card-footer-main')
 
-  if (task.status === 'Done') {
-    const doneLabel = make('span', 'done-label')
-    doneLabel.innerHTML = `${getSvg('check', 'done-icon', 12, 12)} <span>Done</span>`
-    footer.append(doneLabel)
-  } else {
-    const progress = make('div', 'progress')
-    const bar = make('span')
-    const projectSprints = Array.isArray(project?.sprints) ? project.sprints : []
-    const completedSprintCount = projectSprints.filter(
-      sprint => String(sprint.status || '').trim().toLowerCase() === 'completed'
-    ).length
-    const taskProgress = task.backendPersistent
+  const projectSprints = Array.isArray(project?.sprints) ? project.sprints : []
+  const completedSprintCount = projectSprints.filter(
+    sprint => String(sprint.status || '').trim().toLowerCase() === 'completed'
+  ).length
+  const taskProgress = task.status === 'Done'
+    ? 100
+    : task.backendPersistent
       ? projectSprints.length
         ? Math.round((completedSprintCount / projectSprints.length) * 100)
         : 0
       : task.progress || 0
-    progress.setAttribute('role', 'progressbar')
-    progress.setAttribute('aria-valuemin', '0')
-    progress.setAttribute('aria-valuemax', '100')
-    progress.setAttribute('aria-valuenow', String(taskProgress))
-    progress.setAttribute(
-      'aria-label',
-      task.backendPersistent
-        ? `${completedSprintCount} of ${projectSprints.length} project sprints completed`
-        : 'Task progress'
-    )
-    bar.style.width = `${taskProgress}%`
-    progress.append(bar)
-    footer.append(progress)
+
+  const progressWrap = make('div', 'task-progress-wrap')
+  const progressHeader = make('div', 'task-progress-header')
+  progressHeader.append(
+    make('span', '', 'Progress'),
+    make('span', '', `${taskProgress}%`)
+  )
+  const progress = make('div', 'progress')
+  const bar = make('span')
+  progress.setAttribute('role', 'progressbar')
+  progress.setAttribute('aria-valuemin', '0')
+  progress.setAttribute('aria-valuemax', '100')
+  progress.setAttribute('aria-valuenow', String(taskProgress))
+  progress.setAttribute(
+    'aria-label',
+    task.backendPersistent
+      ? `${completedSprintCount} of ${projectSprints.length} project sprints completed`
+      : 'Task progress'
+  )
+  bar.style.width = `${taskProgress}%`
+  progress.append(bar)
+  progressWrap.append(progressHeader, progress)
+  footerMain.append(progressWrap)
+
+  footer.append(footerMain)
+  if (submissionBadge) {
+    const reviewRow = make('div', 'card-footer-review-row')
+    reviewRow.append(submissionBadge)
+    footer.append(reviewRow)
   }
 
   card.append(
     top,
     title,
+    ...(visiblePeople.length ? [avatarRow] : []),
     ...(discussionButton ? [discussionButton] : []),
     meta,
     footer
@@ -656,7 +733,26 @@ export function openTaskModal() {
 
   const assigneeLabel = make('label', '', 'Assign Task To')
   const assigneeSelect = document.createElement('select')
-  const eligibleAssignees = proj.invitedMembers && proj.invitedMembers.length > 0 ? proj.invitedMembers : members
+  const ownerAsAssignee = proj.creatorFirebaseUid ? {
+    firebaseUid: proj.creatorFirebaseUid,
+    uid: proj.creatorFirebaseUid,
+    name: proj.creatorName || proj.creatorEmail || 'Project owner',
+    email: proj.creatorEmail || '',
+    initials: proj.creatorInitials || currentUser.initials,
+    profileImage: proj.creatorProfileImage || '',
+    role: 'Project owner'
+  } : null
+  const eligibleAssignees = [
+    ...(ownerAsAssignee ? [ownerAsAssignee] : []),
+    ...(proj.acceptedMembers || proj.invitedMembers || members).filter(member =>
+      !ownerAsAssignee || member.firebaseUid !== ownerAsAssignee.firebaseUid
+    )
+  ].filter((member, index, list) =>
+    list.findIndex(candidate =>
+      (candidate.firebaseUid && candidate.firebaseUid === member.firebaseUid) ||
+      (!candidate.firebaseUid && candidate.initials === member.initials)
+    ) === index
+  )
   eligibleAssignees.forEach(m => {
     const opt = make('option', '', `${m.name} (${m.role})`)
     opt.value = m.initials
