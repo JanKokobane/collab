@@ -10,6 +10,14 @@ const { sweepTaskDeadlines } = require('./src/services/taskDeadlineService');
 
 const PORT = Number(process.env.PORT) || 3000;
 
+const runTaskDeadlineSweep = async () => {
+    try {
+        await sweepTaskDeadlines();
+    } catch (error) {
+        console.error('Task deadline sweep failed:', error);
+    }
+};
+
 const startServer = async () => {
     try {
         console.log('🚀 Starting backend...');
@@ -18,12 +26,8 @@ const startServer = async () => {
 
         await connectDB();
         await runMigrations();
-        await sweepTaskDeadlines();
-        const deadlineSweepTimer = setInterval(() => {
-            sweepTaskDeadlines().catch(error => {
-                console.error('Task deadline sweep failed:', error);
-            });
-        }, 60 * 1000);
+        await runTaskDeadlineSweep();
+        const deadlineSweepTimer = setInterval(runTaskDeadlineSweep, 60 * 1000);
 
         const server = createServer(app);
         const io = attachMessageSocket(server);
