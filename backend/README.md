@@ -167,7 +167,10 @@ Migration `005_project_tasks.sql` adds PostgreSQL-backed, project-scoped tasks;
 task media attachments, cross-project dependencies, and meeting notes/action items.
 Migration `035_remove_task_assignee.sql` removes the task-level assignee column.
 Migration `036_remove_task_sprint_link.sql` removes the task-to-sprint column
-and renames task submission/review fields without discarding their data.
+and renames task submission/review fields without discarding their data. It
+recognizes fields already renamed in the database and fills in missing
+task-level submission fields, so it can complete after a partial manual schema
+change.
 Project tasks belong to the project and are independent of sprint status.
 Authenticated project owners can create, edit, and delete tasks; project owners
 and accepted project invitees can read them. The project owner and members of
