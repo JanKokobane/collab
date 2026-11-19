@@ -1,6 +1,6 @@
 const { pool } = require('../config/db');
 
-const getTaskSprintRecipients = async (client, projectId, sprintName) => {
+const getProjectTaskRecipients = async (client, projectId) => {
     const result = await client.query(
         'SELECT creator_firebase_uid, sprints FROM projects WHERE project_id = $1',
         [projectId]
@@ -8,12 +8,11 @@ const getTaskSprintRecipients = async (client, projectId, sprintName) => {
     const project = result.rows[0];
     if (!project) return [];
     const sprints = Array.isArray(project.sprints) ? project.sprints : [];
-    const sprint = sprints.find(item => item?.name === sprintName);
-    const members = Array.isArray(sprint?.memberFirebaseUids)
-        ? sprint.memberFirebaseUids
-        : Array.isArray(sprint?.member_firebase_uids)
-            ? sprint.member_firebase_uids
-            : [sprint?.assigneeFirebaseUid || sprint?.assignee_firebase_uid];
+    const members = sprints.flatMap(sprint => {
+        if (Array.isArray(sprint?.memberFirebaseUids)) return sprint.memberFirebaseUids;
+        if (Array.isArray(sprint?.member_firebase_uids)) return sprint.member_firebase_uids;
+        return [sprint?.assigneeFirebaseUid || sprint?.assignee_firebase_uid];
+    });
     return [...new Set([project.creator_firebase_uid, ...members]
         .filter(uid => typeof uid === 'string' && uid.trim())
         .map(uid => uid.trim()))];
@@ -34,15 +33,11 @@ const sweepTaskDeadlines = async () => {
                   AND deadline_warning_sent_at IS NULL
                   AND due_date::timestamp + INTERVAL '16 hours' <= NOW()
                   AND due_date::timestamp + INTERVAL '1 day' > NOW()
-                RETURNING task_id, project_id, sprint_name, title
+                RETURNING task_id, project_id, title
             `
         ).then(async result => {
             for (const task of result.rows) {
-                const recipients = await getTaskSprintRecipients(
-                    client,
-                    task.project_id,
-                    task.sprint_name
-                );
+                const recipients = await getProjectTaskRecipients(client, task.project_id);
                 for (const recipientUid of recipients) {
                     await client.query(
                         `
@@ -81,15 +76,11 @@ const sweepTaskDeadlines = async () => {
                   AND status NOT IN ('Done', 'Blocked')
                   AND due_date::timestamp + INTERVAL '1 day' <= NOW()
                   AND deadline_blocked_at IS NULL
-                RETURNING task_id, project_id, sprint_name, title
+                RETURNING task_id, project_id, title
             `
         );
         for (const task of overdue.rows) {
-            const recipients = await getTaskSprintRecipients(
-                client,
-                task.project_id,
-                task.sprint_name
-            );
+            const recipients = await getProjectTaskRecipients(client, task.project_id);
             for (const recipientUid of recipients) {
                 await client.query(
                     `

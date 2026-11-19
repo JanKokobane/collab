@@ -1595,10 +1595,10 @@ function openLegacyManageCollaboratorsModal() {
       tasks.filter(
         task => {
           if (task.project !== proj.name) return false
-          const sprint = (proj.sprints || []).find(candidate =>
-            candidate.name === (task.sprint_name || task.sprint)
-          )
-          return getSprintMemberUids(sprint).includes(member.firebaseUid)
+          return proj.creatorFirebaseUid === member.firebaseUid ||
+            (proj.sprints || []).some(sprint =>
+              getSprintMemberUids(sprint).includes(member.firebaseUid)
+            )
         }
       ).length
 

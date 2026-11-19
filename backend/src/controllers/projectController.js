@@ -1,10 +1,6 @@
 const { pool, query } = require('../config/db');
 const { reconcileUserConversationAccess } = require('../realtime/messageSocket');
 
-const areAllProjectSprintsCompleted = sprints =>
-    Array.isArray(sprints) &&
-    sprints.length > 0 &&
-    sprints.every(sprint => String(sprint?.status || '').trim().toLowerCase() === 'completed');
 
 const sprintSequenceNumber = name => {
     const match = String(name || '').match(/^\s*Sprint\s+(\d+)\b/i);
@@ -590,8 +586,7 @@ const updateProject = async (req, res) => {
             description,
             color,
             invited_members,
-            sprints,
-            sprint_name_map
+            sprints
         } = req.body;
 
         /*
@@ -731,19 +726,9 @@ const updateProject = async (req, res) => {
             });
         }
 
-        let sprintNameMap = null;
-        let taskSprintMap = null;
         const sprintMemberNotifications = [];
         if (sprints !== undefined) {
             const currentSprints = Array.isArray(current.sprints) ? current.sprints : [];
-            const sprintNameEntries = sprint_name_map &&
-                typeof sprint_name_map === 'object' &&
-                !Array.isArray(sprint_name_map)
-                ? Object.entries(sprint_name_map)
-                : [];
-            const oldNameByNewName = new Map(
-                sprintNameEntries.map(([oldName, newName]) => [newName, oldName])
-            );
             const sprintsById = new Map(
                 currentSprints
                     .filter(sprint => sprint?.id !== undefined && sprint?.id !== null)
@@ -755,12 +740,13 @@ const updateProject = async (req, res) => {
                     .map(sprint => [sprint.name, sprint])
             );
 
-            updatedSprints.forEach(sprint => {
+            updatedSprints.forEach((sprint, sprintIndex) => {
                 const previousSprint =
                     (sprint?.id !== undefined && sprint?.id !== null
                         ? sprintsById.get(String(sprint.id))
                         : null) ||
-                    sprintsByName.get(oldNameByNewName.get(sprint?.name) || sprint?.name);
+                    sprintsByName.get(sprint?.name) ||
+                    currentSprints[sprintIndex];
                 const previousMembers = new Set(sprintMemberUids(previousSprint));
                 sprintMemberUids(sprint)
                     .filter(memberUid => !previousMembers.has(memberUid))
@@ -769,47 +755,6 @@ const updateProject = async (req, res) => {
                         sprintName: typeof sprint.name === 'string' ? sprint.name : 'Project sprint'
                     }));
             });
-        }
-
-        if (sprint_name_map !== undefined) {
-            const currentSprints = Array.isArray(current.sprints) ? current.sprints : [];
-            const currentSprintNames = new Set(currentSprints.map(sprint => sprint?.name));
-            const updatedSprintNames = new Set(updatedSprints.map(sprint => sprint?.name));
-            const entries = sprint_name_map &&
-                typeof sprint_name_map === 'object' &&
-                !Array.isArray(sprint_name_map)
-                ? Object.entries(sprint_name_map)
-                : [];
-            const isValidMap =
-                entries.length === currentSprints.length &&
-                entries.every(([oldName, newName]) =>
-                    typeof oldName === 'string' &&
-                    currentSprintNames.has(oldName) &&
-                    typeof newName === 'string' &&
-                    updatedSprintNames.has(newName)
-                );
-
-            if (!isValidMap) {
-                return res.status(400).json({
-                    success: false,
-                    code: 'INVALID_SPRINT_NAME_MAP',
-                    message: 'sprint_name_map must map every existing sprint to a remaining project sprint.'
-                });
-            }
-            sprintNameMap = sprint_name_map;
-            const updatedSprintsByName = new Map(
-                updatedSprints.map(sprint => [sprint?.name, sprint])
-            );
-            taskSprintMap = Object.fromEntries(
-                entries.map(([oldName, newName]) => {
-                    return [
-                        oldName,
-                        {
-                            name: newName
-                        }
-                    ];
-                })
-            );
         }
 
         const sql = `
@@ -858,7 +803,7 @@ const updateProject = async (req, res) => {
         ];
         let result;
         let createdNotifications = [];
-        if (sprints !== undefined || sprintNameMap) {
+        if (sprints !== undefined) {
             const client = await pool.connect();
             try {
                 await client.query('BEGIN');
@@ -900,29 +845,6 @@ const updateProject = async (req, res) => {
                         code: 'PROJECT_NOT_FOUND',
                         message: 'Project not found.'
                     });
-                }
-                if (taskSprintMap) {
-                    await client.query(
-                        `
-                            UPDATE project_tasks AS task
-                            SET sprint_name = sprint_map.target->>'name',
-                                updated_at = NOW()
-                            FROM jsonb_each($1::jsonb) AS sprint_map(old_name, target)
-                            WHERE task.project_id = $2
-                              AND task.sprint_name = sprint_map.old_name
-                        `,
-                        [JSON.stringify(taskSprintMap), projectId]
-                    );
-                }
-                if (areAllProjectSprintsCompleted(updatedSprints)) {
-                    await client.query(
-                        `UPDATE project_tasks
-                         SET status = 'Done', updated_at = NOW()
-                         WHERE project_id = $1
-                           AND sprint_submission_status = 'Completed'
-                           AND status <> 'Done'`,
-                        [projectId]
-                    );
                 }
                 for (const assignment of sprintMemberNotifications.filter(
                     item => item.memberFirebaseUid !== current.creator_firebase_uid
@@ -1224,17 +1146,6 @@ const submitProjectSprint = async (req, res) => {
         if (!saved.rowCount) {
             throw new Error('Sprint submission update did not persist.');
         }
-        if (areAllProjectSprintsCompleted(sprints)) {
-            await client.query(
-                `UPDATE project_tasks
-                 SET status = 'Done', updated_at = NOW()
-                 WHERE project_id = $1
-                   AND sprint_submission_status = 'Completed'
-                   AND status <> 'Done'`,
-                [projectId]
-            );
-        }
-
         await client.query('COMMIT');
 
         let notificationWarning = null;
@@ -1399,17 +1310,6 @@ const reviewProjectSprint = async (req, res) => {
         if (!saved.rowCount) {
             throw new Error('Sprint review update did not persist.');
         }
-        if (decision === 'accept' && areAllProjectSprintsCompleted(sprints)) {
-            await client.query(
-                `UPDATE project_tasks
-                 SET status = 'Done', updated_at = NOW()
-                 WHERE project_id = $1
-                   AND sprint_submission_status = 'Completed'
-                   AND status <> 'Done'`,
-                [projectId]
-            );
-        }
-
         await client.query('COMMIT');
 
         let notificationWarning = null;

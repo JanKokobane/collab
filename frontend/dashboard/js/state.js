@@ -628,11 +628,10 @@ export function replaceProjectTasksFromBackend(projectTaskGroups = []) {
     const project = projectById.get(projectId)
     if (!project || !Array.isArray(projectTasks)) return []
     return projectTasks.map(task => {
-      const taskSprintName = String(task.sprint_name || '').trim()
-      const sprint = (project.sprints || []).find(item =>
-        String(item?.name || '').trim() === taskSprintName
-      )
-      const sprintMembers = getSprintMembers(project, sprint).map(member => ({
+      const sprintMembers = [...new Map((project.sprints || [])
+        .flatMap(sprint => getSprintMembers(project, sprint))
+        .map(member => [member.firebaseUid || member.email || member.name, member]))
+        .values()].map(member => ({
         ...member,
         uid: member.firebaseUid || member.firebase_uid || member.uid || '',
         profileImage: member.profileImage || member.profile_image || ''
@@ -667,22 +666,20 @@ export function replaceProjectTasksFromBackend(projectTaskGroups = []) {
         priority: task.priority || 'medium',
         done: task.status === 'Done',
         progress: task.status === 'Done' ? 100 : task.status === 'In progress' ? 50 : 0,
-        sprint: task.sprint_name,
-        sprint_name: task.sprint_name,
         sprintMembers,
-        sprintSubmissionStatus: task.sprint_submission_status || 'Not submitted',
-        sprintSubmissionNote: task.sprint_submission_note || '',
-        sprintSubmissionLinks: Array.isArray(task.sprint_submission_links)
-          ? task.sprint_submission_links
+        taskSubmissionStatus: task.task_submission_status || 'Not submitted',
+        taskSubmissionNote: task.task_submission_note || '',
+        taskSubmissionLinks: Array.isArray(task.task_submission_links)
+          ? task.task_submission_links
           : [],
-        sprintSubmissionAttachments: Array.isArray(task.sprint_submission_attachments)
-          ? task.sprint_submission_attachments
+        taskSubmissionAttachments: Array.isArray(task.task_submission_attachments)
+          ? task.task_submission_attachments
           : [],
-        sprintSubmittedAt: task.sprint_submitted_at || null,
-        sprintSubmittedByFirebaseUid: task.sprint_submitted_by_firebase_uid || null,
-        sprintReviewComment: task.sprint_review_comment || '',
-        sprintReviewedByFirebaseUid: task.sprint_reviewed_by_firebase_uid || null,
-        sprintReviewedAt: task.sprint_reviewed_at || null,
+        taskSubmittedAt: task.task_submitted_at || null,
+        taskSubmittedByFirebaseUid: task.task_submitted_by_firebase_uid || null,
+        taskReviewComment: task.task_review_comment || '',
+        taskReviewedByFirebaseUid: task.task_reviewed_by_firebase_uid || null,
+        taskReviewedAt: task.task_reviewed_at || null,
         chatMessageId: task.chat_message_id || task.chatMessageId || null,
         chat_message_id: task.chat_message_id || task.chatMessageId || null,
         chatConversationId: task.chat_conversation_id || task.chatConversationId || null,
@@ -809,10 +806,6 @@ tasks.forEach(task => {
         : 'none'
   }
 
-  if (!task.sprint) {
-    task.sprint =
-      'Sprint 2: Core Implementation'
-  }
 })
 
 // ============================================================
@@ -1013,12 +1006,6 @@ export function setActiveFilter(f) {
 // ============================================================
 // ACTIVE SPRINT FILTER
 // ============================================================
-
-export let activeSprintFilter = 'all'
-
-export function setActiveSprintFilter(s) {
-  activeSprintFilter = s
-}
 
 // ============================================================
 // DISPLAY MODE

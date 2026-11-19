@@ -55,12 +55,11 @@ export interface HomeTask {
   projectId: string;
   description?: string;
   category?: string;
-  sprintName?: string;
-  sprintSubmissionStatus?: string;
-  sprintSubmissionNote?: string;
-  sprintSubmissionLinks?: string[];
-  sprintSubmissionAttachments?: HomeTaskSprintSubmissionAttachment[];
-  sprintSubmittedAt?: string;
+  taskSubmissionStatus?: string;
+  taskSubmissionNote?: string;
+  taskSubmissionLinks?: string[];
+  taskSubmissionAttachments?: HomeTaskSubmissionAttachment[];
+  taskSubmittedAt?: string;
   createdByFirebaseUid?: string;
   descriptionAttachments?: HomeTaskAttachment[];
   tags?: string[];
@@ -76,7 +75,7 @@ export interface HomeTaskAttachment {
   data?: string;
 }
 
-export interface HomeTaskSprintSubmissionAttachment {
+export interface HomeTaskSubmissionAttachment {
   fileName: string;
   mediaType: string;
   size: number | null;
@@ -342,14 +341,13 @@ export async function fetchHomeTasks(
       tags: Array.isArray(row.tags)
         ? row.tags.filter((tag): tag is string => typeof tag === 'string')
         : [],
-      sprintName: asText(row.sprint_name, asText(row.sprintName)),
-      sprintSubmissionStatus: asText(row.sprint_submission_status, 'Not submitted'),
-      sprintSubmissionNote: asText(row.sprint_submission_note),
-      sprintSubmissionLinks: Array.isArray(row.sprint_submission_links)
-        ? row.sprint_submission_links.filter((link): link is string => typeof link === 'string')
+      taskSubmissionStatus: asText(row.task_submission_status, 'Not submitted'),
+      taskSubmissionNote: asText(row.task_submission_note),
+      taskSubmissionLinks: Array.isArray(row.task_submission_links)
+        ? row.task_submission_links.filter((link): link is string => typeof link === 'string')
         : [],
-      sprintSubmissionAttachments: Array.isArray(row.sprint_submission_attachments)
-        ? row.sprint_submission_attachments.flatMap((attachmentValue) => {
+      taskSubmissionAttachments: Array.isArray(row.task_submission_attachments)
+        ? row.task_submission_attachments.flatMap((attachmentValue) => {
           const attachment = asRecord(attachmentValue);
           const fileName = asText(attachment.fileName);
           return fileName ? [{
@@ -362,7 +360,7 @@ export async function fetchHomeTasks(
           }] : [];
         })
         : [],
-      sprintSubmittedAt: asText(row.sprint_submitted_at) || undefined,
+      taskSubmittedAt: asText(row.task_submitted_at) || undefined,
       createdByFirebaseUid: asText(row.created_by_firebase_uid) || undefined,
       descriptionAttachments,
       priority: asText(row.priority),
@@ -375,12 +373,11 @@ export async function fetchHomeTaskDetails(
   taskId: string,
 ): Promise<{
   tags: string[] | null;
-  sprintName: string | null;
-  sprintSubmissionStatus: string;
-  sprintSubmissionNote: string;
-  sprintSubmissionLinks: string[];
-  sprintSubmissionAttachments: HomeTaskSprintSubmissionAttachment[];
-  sprintSubmittedAt: string | null;
+  taskSubmissionStatus: string;
+  taskSubmissionNote: string;
+  taskSubmissionLinks: string[];
+  taskSubmissionAttachments: HomeTaskSubmissionAttachment[];
+  taskSubmittedAt: string | null;
 }> {
   const data = await request<{ task?: unknown }>(
     `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}?metadataOnly=true`,
@@ -390,14 +387,13 @@ export async function fetchHomeTaskDetails(
     tags: Array.isArray(task.tags)
       ? task.tags.filter((tag): tag is string => typeof tag === 'string')
       : null,
-    sprintName: asText(task.sprint_name, asText(task.sprintName)) || null,
-    sprintSubmissionStatus: asText(task.sprint_submission_status, 'Not submitted'),
-    sprintSubmissionNote: asText(task.sprint_submission_note),
-    sprintSubmissionLinks: Array.isArray(task.sprint_submission_links)
-      ? task.sprint_submission_links.filter((link): link is string => typeof link === 'string')
+    taskSubmissionStatus: asText(task.task_submission_status, 'Not submitted'),
+    taskSubmissionNote: asText(task.task_submission_note),
+    taskSubmissionLinks: Array.isArray(task.task_submission_links)
+      ? task.task_submission_links.filter((link): link is string => typeof link === 'string')
       : [],
-    sprintSubmissionAttachments: Array.isArray(task.sprint_submission_attachments)
-      ? task.sprint_submission_attachments.flatMap((attachmentValue) => {
+    taskSubmissionAttachments: Array.isArray(task.task_submission_attachments)
+      ? task.task_submission_attachments.flatMap((attachmentValue) => {
         const attachment = asRecord(attachmentValue);
         const fileName = asText(attachment.fileName);
         return fileName ? [{
@@ -410,7 +406,7 @@ export async function fetchHomeTaskDetails(
         }] : [];
       })
       : [],
-    sprintSubmittedAt: asText(task.sprint_submitted_at) || null,
+    taskSubmittedAt: asText(task.task_submitted_at) || null,
   };
 }
 
@@ -552,7 +548,6 @@ export async function createHomeTask(input: {
   title: string;
   description: string;
   category: string;
-  sprintName: string;
   priority: string;
   dueDate: string | null;
 }): Promise<void> {
@@ -564,7 +559,6 @@ export async function createHomeTask(input: {
         title: input.title.trim(),
         description: input.description.trim(),
         category: input.category,
-        sprintName: input.sprintName,
         status: 'To do',
         priority: input.priority,
         startDate: null,
@@ -602,7 +596,7 @@ export async function submitHomeSprint(
   return project?.sprints || [];
 }
 
-export async function submitHomeTaskSprint(
+export async function submitHomeTaskForReview(
   projectId: string,
   taskId: string,
   note: string,

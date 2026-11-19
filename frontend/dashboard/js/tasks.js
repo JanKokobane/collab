@@ -6,7 +6,6 @@ import {
   currentUser,
   activeView,
   activeFilter,
-  activeSprintFilter,
   loadNotificationsFromAPI,
   getSprintMembers,
   getSprintMemberUids,
@@ -20,10 +19,10 @@ import {
   hub
 } from './state.js'
 import { getActiveProject, isCurrentUserProjectCreator, showPermissionNotice } from './auth.js?v=20261117-no-auto-sprints'
-import { createScheduleCalendarPicker } from './calendar.js?v=20261118-tags-priority-row'
+import { createScheduleCalendarPicker } from './calendar.js?v=20261121-task-sprint-decoupling'
 import { api } from './api.js'
 import { setDashboardButtonLoading, showDashboardToast } from './modalChrome.js'
-import { openProjectProgressAside } from './projectProgressAside.js?v=20261118-aside-media-expand'
+import { openProjectProgressAside } from './projectProgressAside.js?v=20261121-task-sprint-decoupling'
 import { toLocalDateKey } from './dateUtils.js?v=20261117-date-input-validation'
 
 // ============================================================
@@ -37,17 +36,13 @@ export function getFilteredTasks() {
   if (activeView === 'Workspace') {
     // Show all tasks across active projects
   } else if (activeView === 'My Tasks') {
-    list = list.filter(isCurrentUserSprintTask)
+    list = list.filter(isCurrentUserProjectTask)
   } else if (activeView !== 'Admin Console' && activeView !== 'Calendar' && activeView !== 'Overview') {
     list = list.filter(t => t.project === activeView)
   }
 
-  if (activeSprintFilter !== 'all' && activeView !== 'Workspace' && activeView !== 'Overview' && activeView !== 'Calendar' && activeView !== 'My Tasks' && activeView !== 'Admin Console') {
-    list = list.filter(t => t.sprint === activeSprintFilter)
-  }
-
   if (activeFilter === 'mine') {
-    list = list.filter(isCurrentUserSprintTask)
+    list = list.filter(isCurrentUserProjectTask)
   } else if (activeFilter === 'backlog') {
     list = list.filter(t => t.status === 'Backlog')
   } else if (activeFilter === 'todo') {
@@ -63,14 +58,13 @@ export function getFilteredTasks() {
   return list
 }
 
-export function isCurrentUserSprintTask(task) {
+export function isCurrentUserProjectTask(task) {
   if (!task.backendPersistent || !currentUser.uid) return false
   const project = projects.find(candidate => candidate.projectId === task.projectId)
-  const sprintName = String(task.sprint_name || task.sprint || '').trim()
-  const sprint = project?.sprints?.find(candidate =>
-    String(candidate.name || '').trim() === sprintName
-  )
-  return getSprintMemberUids(sprint).includes(currentUser.uid)
+  return project?.creatorFirebaseUid === currentUser.uid ||
+    (project?.sprints || []).some(sprint =>
+      getSprintMemberUids(sprint).includes(currentUser.uid)
+    )
 }
 
 export function updateTaskCounts(filtered) {
@@ -100,13 +94,6 @@ function canCurrentUserMoveTask(task) {
   return !getTaskMoveRestriction(task)
 }
 
-function isTaskLockedUntilSprintsComplete(task) {
-  if (!task.backendPersistent || task.status !== 'In progress') return false
-  const project = projects.find(candidate => candidate.projectId === task.projectId)
-  const sprints = Array.isArray(project?.sprints) ? project.sprints : []
-  return !sprints.length || sprints.some(sprint => sprint.status !== 'Completed')
-}
-
 function getTaskMoveRestriction(task) {
   if (!task.backendPersistent) return ''
 
@@ -114,15 +101,11 @@ function getTaskMoveRestriction(task) {
   const isProjectOwner = Boolean(
     currentUser.uid && project?.creatorFirebaseUid === currentUser.uid
   )
-  const isSprintMember = Boolean(
-    currentUser.uid && isCurrentUserSprintTask(task)
+  const isProjectSprintMember = Boolean(
+    currentUser.uid && isCurrentUserProjectTask(task)
   )
-  if (!isProjectOwner && !isSprintMember) {
-    return 'Only the project owner or a member of this sprint can move this task.'
-  }
-
-  if (isTaskLockedUntilSprintsComplete(task)) {
-    return 'This in-progress task cannot be moved until every project sprint is complete.'
+  if (!isProjectOwner && !isProjectSprintMember) {
+    return 'Only the project owner or a project sprint member can move this task.'
   }
 
   return ''
@@ -273,9 +256,6 @@ export function taskCard(task) {
   const moveRestriction = getTaskMoveRestriction(task)
   const canMoveTask = !moveRestriction && !task.statusUpdating
   card.setAttribute('draggable', String(canMoveTask))
-  if (isTaskLockedUntilSprintsComplete(task)) {
-    card.classList.add('is-sprint-locked')
-  }
   if (!canMoveTask && task.backendPersistent) {
     card.title = moveRestriction || 'This task is currently being updated.'
   }
@@ -317,17 +297,12 @@ export function taskCard(task) {
       String(candidate.status || '').trim().toLowerCase() === 'pending review'
     )
     : []
-  const pendingSprintNames = new Set(
-    pendingSprints.map(candidate => String(candidate.name || '').trim().toLowerCase()).filter(Boolean)
-  )
-  const standaloneTaskReviews = projectTasks.filter(candidate => {
-    const status = String(candidate.sprintSubmissionStatus || candidate.sprint_submission_status || '')
+  const pendingTaskReviews = projectTasks.filter(candidate => {
+    const status = String(candidate.taskSubmissionStatus || candidate.task_submission_status || '')
       .trim().toLowerCase()
-    const sprintName = String(candidate.sprint_name || candidate.sprint || '')
-      .trim().toLowerCase()
-    return status === 'pending review' && !pendingSprintNames.has(sprintName)
+    return status === 'pending review'
   }).length
-  const uniquePendingReviews = pendingSprints.length + standaloneTaskReviews
+  const uniquePendingReviews = pendingSprints.length + pendingTaskReviews
   const submissionBadge = isProjectOwner && uniquePendingReviews > 0
     ? make('span', 'task-sprint-review-badge', `${uniquePendingReviews} Awaiting Review`)
     : null
@@ -415,6 +390,10 @@ export function taskCard(task) {
   if (task.backendPersistent && project) {
     const sprintMembers = (project.sprints || [])
       .flatMap(sprint => getSprintMembers(project, sprint))
+    const projectOwner = project.creatorFirebaseUid
+      ? getSprintMembers(project, { memberFirebaseUids: [project.creatorFirebaseUid] })[0]
+      : null
+    if (projectOwner) sprintMembers.push(projectOwner)
     sprintMembers.forEach(member => {
       addVisiblePerson({
         ...member,
@@ -424,9 +403,13 @@ export function taskCard(task) {
       })
     })
   }
+  const otherVisiblePeople = visiblePeople.filter(person =>
+    person.uid !== currentUser.uid
+  )
 
-  visiblePeople.forEach(person => {
-    const avatar = make('span', 'task-card-avatar')
+  otherVisiblePeople.forEach(person => {
+    const avatarWrapper = make('span', 'task-card-avatar')
+    const avatar = make('span')
     renderAvatarElement(avatar, {
       name: person.name,
       initials: person.initials,
@@ -434,7 +417,8 @@ export function taskCard(task) {
       tone: person.tone || 'teal'
     })
     avatar.title = person.name || 'Project member'
-    avatarRow.append(avatar)
+    avatarWrapper.append(avatar)
+    avatarRow.append(avatarWrapper)
   })
 
   let discussionButton = null
@@ -481,12 +465,6 @@ export function taskCard(task) {
     warning.title = 'A predecessor task is blocked or its due date moved later.'
     meta.append(warning)
   }
-  if (isTaskLockedUntilSprintsComplete(task)) {
-    const sprintLock = make('span', 'task-sprint-lock-badge', 'Sprint lock')
-    sprintLock.title = 'Complete every project sprint before moving this in-progress task.'
-    meta.append(sprintLock)
-  }
-
   if (task.status === 'Done') {
     if (task.approvalStatus === 'pending_approval') {
       const reviewBadge = make('span', 'approval-tag pending')
@@ -502,16 +480,10 @@ export function taskCard(task) {
   const footer = make('div', 'card-footer')
   const footerMain = make('div', 'card-footer-main')
 
-  const projectSprints = Array.isArray(project?.sprints) ? project.sprints : []
-  const completedSprintCount = projectSprints.filter(
-    sprint => String(sprint.status || '').trim().toLowerCase() === 'completed'
-  ).length
   const taskProgress = task.status === 'Done'
     ? 100
     : task.backendPersistent
-      ? projectSprints.length
-        ? Math.round((completedSprintCount / projectSprints.length) * 100)
-        : 0
+      ? task.status === 'In progress' ? 50 : 0
       : task.progress || 0
 
   const progressWrap = make('div', 'task-progress-wrap')
@@ -528,9 +500,7 @@ export function taskCard(task) {
   progress.setAttribute('aria-valuenow', String(taskProgress))
   progress.setAttribute(
     'aria-label',
-    task.backendPersistent
-      ? `${completedSprintCount} of ${projectSprints.length} project sprints completed`
-      : 'Task progress'
+    'Task progress'
   )
   bar.style.width = `${taskProgress}%`
   progress.append(bar)
@@ -646,11 +616,6 @@ export function renderListView(filtered) {
     const tdTag = document.createElement('td')
     tdTag.innerHTML = `<span class="tag ${task.tagTone || 'blue'}">${task.project} • ${task.tag}</span>`
 
-    const tdSprint = document.createElement('td')
-    const wrap = make('div', 'list-sprint-cell')
-    wrap.append(make('small', '', task.sprint || '—'))
-    tdSprint.append(wrap)
-
     const tdDue = document.createElement('td')
     tdDue.innerHTML = `<span class="meta-due-span">${getSvg('calendar', 'meta-icon', 12, 12)} <span>${task.due}</span></span>`
 
@@ -662,7 +627,7 @@ export function renderListView(filtered) {
     const isDone = task.status === 'Done'
     tdStatus.innerHTML = `<span class="status-badge ${isDone ? 'active' : 'pending'}">${task.status}</span>`
 
-    tr.append(tdCheck, tdTitle, tdTag, tdSprint, tdDue, tdComments, tdStatus)
+    tr.append(tdCheck, tdTitle, tdTag, tdDue, tdComments, tdStatus)
     tbody.append(tr)
   })
 }
@@ -683,7 +648,7 @@ export function openTaskModal() {
   close.addEventListener('click', closeModal)
 
   const title = make('h2', '', `Create Task for ${proj.name}`)
-  const copy = make('p', 'modal-copy', `Create a deliverable in a project sprint. Sprint members collaborate on its tasks.`)
+  const copy = make('p', 'modal-copy', `Create a task for ${proj.name}. Project members collaborate on project tasks.`)
 
   const titleLabel = make('label', '', 'Task Title')
   const titleInput = make('input')
@@ -706,23 +671,6 @@ export function openTaskModal() {
   })
   projectLabel.append(projectSelect)
 
-  const sprintLabel = make('label', '', 'Project Sprint')
-  const sprintSelect = document.createElement('select')
-  const curProjSprints = Array.isArray(proj.sprints) ? proj.sprints : []
-  if (!curProjSprints.length) {
-    const emptyOption = make('option', '', 'Create a sprint before adding tasks')
-    emptyOption.value = ''
-    emptyOption.disabled = true
-    emptyOption.selected = true
-    sprintSelect.append(emptyOption)
-  }
-  curProjSprints.forEach(s => {
-    const opt = make('option', '', s.name)
-    opt.value = s.name
-    sprintSelect.append(opt)
-  })
-  sprintLabel.append(sprintSelect)
-
   const tagLabel = make('label', '', 'Category Tag')
   const tagSelect = document.createElement('select')
   ;['Design', 'Development', 'Marketing', 'Product'].forEach(val => tagSelect.append(make('option', '', val)))
@@ -738,13 +686,12 @@ export function openTaskModal() {
 
   const schedulePicker = createScheduleCalendarPicker()
 
-  const row1 = make('div', 'form-row'); row1.append(projectLabel, sprintLabel)
+  const row1 = make('div', 'form-row'); row1.append(projectLabel)
   const row2 = make('div', 'form-row'); row2.append(tagLabel)
   const row3 = make('div', 'form-row'); row3.append(statusLabel)
 
   const submit = make('button', 'primary-button full gold', 'Create Task')
   submit.type = 'submit'
-  submit.disabled = curProjSprints.length === 0
 
   form.append(close, make('p', 'eyebrow', 'NEW TASK'), title, copy, titleLabel, descLabel, row1, row2, row3, schedulePicker.element, submit)
 
@@ -767,7 +714,6 @@ export function openTaskModal() {
       date: schedule.dueDate,
       status: 'To do',
       done: false,
-      sprint: sprintSelect.value,
       approvalStatus: 'none',
       progress: 0,
       comments: 0,
@@ -779,7 +725,7 @@ export function openTaskModal() {
     closeModal()
     renderTasks()
 
-    addAuditLog('Task created', `${currentUser.name} created "${newTask.title}" in ${newTask.sprint}.`, 'task')
+    addAuditLog('Task created', `${currentUser.name} created "${newTask.title}" in ${newTask.project}.`, 'task')
     showDashboardToast(`Task "${newTask.title}" created.`, 'success')
   })
 

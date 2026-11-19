@@ -8,8 +8,6 @@ import {
   setCurrentUser,
   renderAvatarElement,
   activeView,
-  activeSprintFilter,
-  setActiveSprintFilter,
   make,
   closeModal,
   root,
@@ -51,12 +49,12 @@ export function updateCreatorControlStrip() {
 
   if (isCreator) {
     if (stripTitle) stripTitle.textContent = `Project Creator: ${proj.creatorName} (Full Control)`
-    if (stripDesc) stripDesc.textContent = `You created "${proj.name}". You have full authority to create tasks, assign members, break work into sprints, invite/remove collaborators, and approve completed work.`
+    if (stripDesc) stripDesc.textContent = `You created "${proj.name}". You can manage project tasks and sprint memberships, invite or remove collaborators, and review submitted work.`
     pillCreator?.classList.add('active')
     pillMember?.classList.remove('active')
   } else {
     if (stripTitle) stripTitle.textContent = `Invited Member View: ${currentUser.name}`
-    if (stripDesc) stripDesc.textContent = `Only ${proj.creatorName} (who created "${proj.name}") can add tasks and assign people. You can work on assigned tasks, move cards between columns, submit work, and comment.`
+    if (stripDesc) stripDesc.textContent = `Only ${proj.creatorName} (who created "${proj.name}") can create or edit tasks. You can contribute to project tasks through your sprint membership, move task cards, submit work, and comment.`
     pillCreator?.classList.remove('active')
     pillMember?.classList.add('active')
   }
@@ -76,27 +74,14 @@ export function renderSprintChips() {
   strip.style.display = 'flex'
   container.replaceChildren()
 
-  // "All Sprints" filter chip
-  const allChip = make('div', `sprint-chip ${activeSprintFilter === 'all' ? 'active' : ''}`)
+  const allChip = make('div', 'sprint-chip active')
   allChip.innerHTML = `<span>All Tasks</span> <small>${tasks.filter(t => t.project === proj.name).length}</small>`
-  allChip.addEventListener('click', () => {
-    setActiveSprintFilter('all')
-    renderSprintChips()
-    hub.renderTasks?.()
-  })
   container.append(allChip)
 
   const projectSprints = Array.isArray(proj.sprints) ? proj.sprints : []
   projectSprints.forEach(sprint => {
-    const isAct = activeSprintFilter === sprint.name
-    const chip = make('div', `sprint-chip ${isAct ? 'active' : ''}`)
-    const count = tasks.filter(t => t.project === proj.name && t.sprint === sprint.name).length
-    chip.innerHTML = `<span>${sprint.name}</span> <small>${sprint.status || 'Active'} • ${count}</small>`
-    chip.addEventListener('click', () => {
-      setActiveSprintFilter(isAct ? 'all' : sprint.name)
-      renderSprintChips()
-      hub.renderTasks?.()
-    })
+    const chip = make('div', 'sprint-chip')
+    chip.innerHTML = `<span>${sprint.name}</span> <small>${sprint.status || 'Upcoming'}</small>`
     container.append(chip)
   })
 }
@@ -305,7 +290,7 @@ export function showPermissionNotice() {
     'p',
     'modal-copy',
     hasOwnedProject && proj
-      ? `Only ${proj.creatorName} (who created "${proj.name}") can add tasks, assign collaborators, create sprints, and approve deliverables. As an invited collaborator, you can view the project, update statuses, move task cards, and comment on work.`
+      ? `Only ${proj.creatorName} (who created "${proj.name}") can create or edit project tasks and approve submissions. As an invited collaborator, you can view the project, update task statuses, move task cards, and comment on work.`
       : 'You do not own an active project yet. Create a project first, then you can invite people to collaborate with you.'
   )
   copy.style.textAlign = 'center'

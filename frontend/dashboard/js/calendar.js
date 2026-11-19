@@ -3,7 +3,6 @@ import {
   getAccessibleTasks,
   meetings,
   reminders,
-  getSprintMembers,
   make,
   closeModal,
   root,
@@ -261,11 +260,11 @@ export function renderActualCalendarGrid() {
     if (activeCalendarFilter === 'all' || activeCalendarFilter === 'task') {
       dayTasks.forEach(t => {
         const workChip = make('div', 'cal-event-pin work')
-        workChip.title = `Task: ${t.title} (${t.project}) • Sprint: ${t.sprint || 'No sprint'}`
+        workChip.title = `Task: ${t.title} (${t.project})`
         workChip.append(
           make('span', '', '📋'),
           make('span', '', t.title),
-          make('small', '', `(${t.sprint || 'No sprint'})`)
+          make('small', '', `(${t.project})`)
         )
         cell.append(workChip)
       })
@@ -388,7 +387,7 @@ export function openDayScheduleModal(dateStr) {
       taskTitle.style.fontSize = '12px'
       taskTitle.style.color = '#1E293B'
       taskTitle.style.display = 'block'
-      const taskDetails = make('small', '', `${t.project} • Sprint: ${t.sprint || 'No sprint'}`)
+      const taskDetails = make('small', '', t.project)
       taskDetails.style.color = '#64748B'
       taskDetails.style.fontSize = '11px'
       description.append(taskTitle, taskDetails)
@@ -491,19 +490,12 @@ export function renderCalendarDaysGrid() {
     } else {
       colTasks.forEach(t => {
         const chip = make('div', 'calendar-task-chip')
-        const project = projects.find(candidate =>
-          candidate.projectId === t.projectId || candidate.name === t.project
-        )
-        const sprint = (project?.sprints || []).find(candidate =>
-          candidate.name === (t.sprint_name || t.sprint)
-        )
-        const sprintMembers = getSprintMembers(project, sprint)
-        const sprintMemberNames = sprintMembers
+        const sprintMemberNames = (t.sprintMembers || [])
           .map(member => member.name || member.email)
           .filter(Boolean)
         chip.setAttribute(
           'aria-label',
-          `${t.title}, ${t.project}, sprint ${t.sprint || 'not assigned'}`
+          `${t.title}, ${t.project}`
         )
         const taskTop = make('div', 'calendar-task-top')
         taskTop.append(
@@ -513,11 +505,10 @@ export function renderCalendarDaysGrid() {
         const taskTitle = make('strong', '', t.title)
         const meta = make('div', 'calendar-chip-meta')
         meta.append(
-          make('span', 'calendar-task-sprint', t.sprint || 'No sprint'),
           make('span', 'calendar-task-category', t.tag || 'Task')
         )
         if (sprintMemberNames.length) {
-          chip.title = `Sprint members: ${sprintMemberNames.join(', ')}`
+          chip.title = `Project sprint members: ${sprintMemberNames.join(', ')}`
         }
         chip.append(taskTop, taskTitle, meta)
         colEl.append(chip)

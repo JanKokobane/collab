@@ -43,13 +43,12 @@ import {
   fetchHomeTaskDetails,
   fetchHomeTasks,
   HomeApiError,
-  submitHomeSprint,
+  submitHomeTaskForReview,
   updateHomeTaskStatus,
   type HomeProject,
-  type HomeProjectSprint,
   type HomeTask,
   type HomeTaskAttachment,
-  type HomeTaskSprintSubmissionAttachment,
+  type HomeTaskSubmissionAttachment,
 } from '@/lib/homeApi';
 
 type TaskFilter = 'All' | 'Today' | 'In progress' | 'Completed';
@@ -94,12 +93,11 @@ type Task = {
   projectId: string;
   title: string;
   project: string;
-  sprint: string | null;
-  sprintSubmissionStatus: string;
-  sprintSubmissionNote: string;
-  sprintSubmissionLinks: string[];
-  sprintSubmissionAttachments: HomeTaskSprintSubmissionAttachment[];
-  sprintSubmittedAt: string | null;
+  taskSubmissionStatus: string;
+  taskSubmissionNote: string;
+  taskSubmissionLinks: string[];
+  taskSubmissionAttachments: HomeTaskSubmissionAttachment[];
+  taskSubmittedAt: string | null;
   updatedAt: string | null;
   priority: string;
   due: string | null;
@@ -112,8 +110,6 @@ type Task = {
   createdBy: string;
   createdByFirebaseUid: string | null;
   createdByProfileImage: string | null;
-  assignedSprintCount: number;
-  assignedSprints: HomeProjectSprint[];
 };
 
 type SprintSubmissionAttachment = {
@@ -910,7 +906,6 @@ function getInitials(value: string | null | undefined) {
 function taskFromHomeTask(
   task: HomeTask,
   project: HomeProject,
-  currentUserUid: string,
 ): Task {
   const normalizedStatus = task.status.trim().toLowerCase();
   const taskCreator = project.acceptedMembers?.find(
@@ -921,23 +916,16 @@ function taskFromHomeTask(
   const createdBy = task.createdByFirebaseUid === project.creatorFirebaseUid
     ? project.creatorName || project.creatorEmail
     : taskCreator?.name;
-  const projectAssignedSprints = project.sprints?.filter(
-    (sprint) => sprint.memberFirebaseUids?.includes(currentUserUid),
-  ) || [];
-  const assignedSprints = projectAssignedSprints.length
-    ? projectAssignedSprints
-    : task.sprintName ? [{ name: task.sprintName, status: 'Upcoming' }] : [];
   return {
     id: task.id,
     projectId: task.projectId,
     title: task.title,
     project: project.name,
-    sprint: task.sprintName || null,
-    sprintSubmissionStatus: task.sprintSubmissionStatus || 'Not submitted',
-    sprintSubmissionNote: task.sprintSubmissionNote || '',
-    sprintSubmissionLinks: task.sprintSubmissionLinks || [],
-    sprintSubmissionAttachments: task.sprintSubmissionAttachments || [],
-    sprintSubmittedAt: task.sprintSubmittedAt || null,
+    taskSubmissionStatus: task.taskSubmissionStatus || 'Not submitted',
+    taskSubmissionNote: task.taskSubmissionNote || '',
+    taskSubmissionLinks: task.taskSubmissionLinks || [],
+    taskSubmissionAttachments: task.taskSubmissionAttachments || [],
+    taskSubmittedAt: task.taskSubmittedAt || null,
     updatedAt: task.updatedAt || null,
     priority: task.priority || 'No priority',
     due: task.dueDate,
@@ -954,32 +942,9 @@ function taskFromHomeTask(
     createdByProfileImage: taskCreatorIsProjectOwner
       ? project.creatorProfileImage || null
       : taskCreator?.profileImage || project.creatorProfileImage || null,
-    assignedSprints,
-    assignedSprintCount: assignedSprints.length,
   };
 }
 
-function sprintSequenceNumber(name: string): number | null {
-  const match = String(name).match(/^\s*Sprint\s+(\d+)\b/i);
-  return match ? Number(match[1]) : null;
-}
-
-function sortSprintsByNumber(sprints: HomeProjectSprint[]): HomeProjectSprint[] {
-  return sprints.map((sprint, originalIndex) => ({ sprint, originalIndex })).sort((first, second) => {
-    const firstNumber = sprintSequenceNumber(first.sprint.name);
-    const secondNumber = sprintSequenceNumber(second.sprint.name);
-    if (firstNumber !== null && secondNumber !== null && firstNumber !== secondNumber) {
-      return firstNumber - secondNumber;
-    }
-    if (firstNumber !== null && secondNumber === null) return -1;
-    if (firstNumber === null && secondNumber !== null) return 1;
-    return first.originalIndex - second.originalIndex;
-  }).map(({ sprint }) => sprint);
-}
-
-function isSprintUnlockedStatus(status: string): boolean {
-  return ['Pending Review', 'Completed'].includes(status);
-}
 
 function formatTaskCountdown(remainingMs: number) {
   const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
@@ -1124,15 +1089,6 @@ function TaskCard({
       </View>
 
       <View style={styles.cardFooter}>
-        <View
-          accessibilityLabel={`${task.assignedSprintCount} sprints assigned`}
-          style={styles.sprintCountWrap}>
-          <View style={styles.sprintCountDot} />
-          <Text numberOfLines={1} style={styles.sprintCount}>
-            {`Sprints assigned: ${task.assignedSprintCount}`}
-          </Text>
-        </View>
-
         <View
           accessibilityLabel={`Project ${task.project}`}
           style={styles.projectMetaRow}>
@@ -1300,7 +1256,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     async function loadAssignedTasks() {
       const currentUser = firebaseAuth.currentUser;
       if (!currentUser) {
-        setLoadError('Sign in to see tasks in your sprints.');
+        setLoadError('Sign in to see your tasks.');
         setLoading(false);
         return;
       }
@@ -1331,23 +1287,22 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
           .map((task) => taskFromHomeTask(
             task,
             result.value.project,
-            currentUser.uid,
           )));
         }
 
         if (failedProjects > 0 && successfulProjects === 0) {
-          throw new HomeApiError('Your sprint tasks could not be loaded. Please try again later.', 502);
+          throw new HomeApiError('Your tasks could not be loaded. Please try again later.', 502);
         }
         setTasks(loadedTasks);
         if (failedProjects > 0) {
           setWarning(`Tasks from ${failedProjects} project${failedProjects === 1 ? '' : 's'} could not be loaded.`);
         }
       } catch (error) {
-        console.error("Unable to load tasks in the signed-in user's sprints:", error);
+        console.error("Unable to load the signed-in user's tasks:", error);
         if (active) {
           setLoadError(error instanceof HomeApiError
             ? error.message
-            : 'Your sprint tasks could not be loaded. Please try again.');
+            : 'Your tasks could not be loaded. Please try again.');
         }
       } finally {
         if (active) setLoading(false);
@@ -1383,12 +1338,13 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   const completionPercent = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) || null;
   const selectedAssignedSprints = selectedTask
-    ? sortSprintsByNumber(selectedTask.assignedSprints).map((sprint) => {
-      const sprintTasks = tasks.filter((task) =>
-        task.projectId === selectedTask.projectId && task.sprint === sprint.name);
-      const sprintTask = sprintTasks[0];
-      return { sprint, task: sprintTask };
-    })
+    ? [{
+      sprint: {
+        name: 'Task submission',
+        status: selectedTask.taskSubmissionStatus,
+      },
+      task: selectedTask,
+    }]
     : [];
   const selectedTaskProjectId = selectedTask?.projectId;
   const selectedCreatorProfileImage = selectedTask
@@ -1426,12 +1382,11 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
           ? {
             ...item,
             tags: details.tags ?? item.tags,
-            sprint: details.sprintName,
-            sprintSubmissionStatus: details.sprintSubmissionStatus,
-            sprintSubmissionNote: details.sprintSubmissionNote,
-            sprintSubmissionLinks: details.sprintSubmissionLinks,
-            sprintSubmissionAttachments: details.sprintSubmissionAttachments,
-            sprintSubmittedAt: details.sprintSubmittedAt,
+            taskSubmissionStatus: details.taskSubmissionStatus,
+            taskSubmissionNote: details.taskSubmissionNote,
+            taskSubmissionLinks: details.taskSubmissionLinks,
+            taskSubmissionAttachments: details.taskSubmissionAttachments,
+            taskSubmittedAt: details.taskSubmittedAt,
           }
           : item));
       } catch (error) {
@@ -1480,7 +1435,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
         }
         totalBytes += size;
         if (totalBytes > maxSprintSubmissionBytes) {
-          throw new Error('Sprint attachments must total 100 MB or less.');
+          throw new Error('Task submission attachments must total 100 MB or less.');
         }
         const data = await file.base64();
         if (!data) throw new Error(`${file.name || 'The selected file'} could not be read.`);
@@ -1494,7 +1449,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
       setSubmissionAttachments((current) => [...current, ...added]);
       setSubmissionError('');
     } catch (error) {
-      console.error('Unable to add sprint submission attachments:', error);
+      console.error('Unable to add task submission attachments:', error);
       setSubmissionError(error instanceof Error
         ? error.message
         : 'The selected files could not be attached.');
@@ -1549,7 +1504,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
             throw new Error('The voice note is empty or could not be read.');
           }
           if (totalBytes + size > maxSprintSubmissionBytes) {
-            throw new Error('Sprint attachments must total 100 MB or less.');
+            throw new Error('Task submission attachments must total 100 MB or less.');
           }
           if (submissionAttachments.length >= maxSprintSubmissionAttachments) {
             throw new Error(`Attach no more than ${maxSprintSubmissionAttachments} files.`);
@@ -1625,8 +1580,8 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     }
   }
 
-  async function submitSelectedSprintForReview(task: Task, sprintName: string) {
-    if (!task.projectId || !sprintName || submissionBusy) return;
+  async function submitSelectedTaskForReview(task: Task) {
+    if (!task.projectId || submissionBusy) return;
     const note = submissionNote.trim();
     if (note.length > 5000) {
       setSubmissionError('Submission notes cannot exceed 5,000 characters.');
@@ -1673,52 +1628,40 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
       0,
     );
     if (totalAttachmentBytes > maxSprintSubmissionBytes) {
-      setSubmissionError('Sprint attachments must total 100 MB or less.');
+      setSubmissionError('Task submission attachments must total 100 MB or less.');
       return;
     }
     if (!note && submissionAttachments.length === 0 && submissionLinks.length === 0) {
       setSubmissionError('Add a submission note, file or voice note, or link before submitting.');
       return;
     }
-    const submissionKey = `${task.projectId}:${sprintName}`;
+    const submissionKey = `${task.projectId}:${task.id}`;
     updateSubmissionDraft(submissionKey, (current) => ({
       ...current,
       busy: true,
       error: '',
     }));
     try {
-      const updatedSprints = await submitHomeSprint(
+      await submitHomeTaskForReview(
         task.projectId,
-        sprintName,
+        task.id,
         note,
         submissionAttachments,
         submissionLinks,
       );
-      const submittedSprint = updatedSprints.find((item) => item.name === sprintName);
-      const submittedStatus = submittedSprint?.status || 'Pending Review';
-      const submittedAt = submittedSprint?.submittedAt || new Date().toISOString();
-      setTasks((current) => current.map((item) => item.projectId === task.projectId ? {
+      const submittedAt = new Date().toISOString();
+      setTasks((current) => current.map((item) => item.id === task.id ? {
         ...item,
-        assignedSprints: item.assignedSprints.map((assignedSprint) => assignedSprint.name === sprintName
-          ? {
-            ...assignedSprint,
-            status: submittedStatus,
-            submissionNote: note,
-            submittedAt,
-          }
-          : assignedSprint),
-        ...(item.sprint === sprintName ? {
-          sprintSubmissionStatus: submittedStatus,
-          sprintSubmissionNote: note,
-          sprintSubmissionLinks: submissionLinks,
-          sprintSubmissionAttachments: submissionAttachments.map((attachment) => ({
-            fileName: attachment.fileName,
-            mediaType: attachment.mediaType,
-            size: attachment.size,
-            isVoiceNote: attachment.is_voice_note === true,
-          })),
-          sprintSubmittedAt: submittedAt,
-        } : {}),
+        taskSubmissionStatus: 'Pending Review',
+        taskSubmissionNote: note,
+        taskSubmissionLinks: submissionLinks,
+        taskSubmissionAttachments: submissionAttachments.map((attachment) => ({
+          fileName: attachment.fileName,
+          mediaType: attachment.mediaType,
+          size: attachment.size,
+          isVoiceNote: attachment.is_voice_note === true,
+        })),
+        taskSubmittedAt: submittedAt,
       } : item));
       updateSubmissionDraft(submissionKey, (current) => ({
         ...current,
@@ -1730,13 +1673,13 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
         error: '',
       }));
     } catch (error) {
-      console.error('Unable to submit task sprint for review:', error);
+      console.error('Unable to submit task for review:', error);
       updateSubmissionDraft(submissionKey, (current) => ({
         ...current,
         busy: false,
         error: error instanceof HomeApiError
           ? error.message
-          : 'The sprint could not be submitted for review.',
+          : 'The task could not be submitted for review.',
       }));
     }
   }
@@ -1752,8 +1695,8 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
       : status === 'In progress' ? Math.max(task.progress, 25) : 0;
 
     if (currentStatus === 'in progress' && status === 'Done' &&
-      task.sprintSubmissionStatus !== 'Completed') {
-      setLoadError('This task can be completed after its sprint submission is accepted.');
+      task.taskSubmissionStatus !== 'Completed') {
+      setLoadError('This task can be completed after its submission is accepted.');
       return;
     }
 
@@ -1778,22 +1721,13 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     }
   }
 
-  const firstOpenSprint = selectedAssignedSprints.find(({ sprint, task: sprintTask }, sprintIndex) => {
-    const submissionStatus = sprintTask?.sprintSubmissionStatus || sprint.status;
-    const alreadySubmitted = ['Pending Review', 'Completed'].includes(submissionStatus);
-    const previousSprint = sprintIndex > 0 ? selectedAssignedSprints[sprintIndex - 1] : null;
-    const previousSubmissionStatus = previousSprint
-      ? (previousSprint.task?.sprintSubmissionStatus || previousSprint.sprint.status)
-      : 'Completed';
-    const sprintLocked = !isSprintUnlockedStatus(previousSubmissionStatus);
-    return !sprintLocked && !alreadySubmitted;
-  });
+  const canSubmitSelectedTask = Boolean(selectedTask) &&
+    !['Pending Review', 'Completed'].includes(selectedTask?.taskSubmissionStatus || '');
 
-  function openFirstActiveSprintForm() {
-    if (!selectedTask || !firstOpenSprint) return;
-    const sprintName = firstOpenSprint.sprint.name;
-    setExpandedSprintName(sprintName);
-    setExpandedSubmissionKey(`${selectedTask.projectId}:${sprintName}`);
+  function openTaskSubmissionForm() {
+    if (!selectedTask || !canSubmitSelectedTask) return;
+    setExpandedSprintName('Task submission');
+    setExpandedSubmissionKey(`${selectedTask.projectId}:${selectedTask.id}`);
   }
 
   return (
@@ -1816,7 +1750,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
           <View style={styles.sectionTitleCopy}>
             <View style={styles.sectionTitleWrap}>
               <Text style={styles.sectionTitle}>
-                {filter === 'All' || filter === 'Today' ? 'My sprint tasks' : filter}
+                {filter === 'All' || filter === 'Today' ? 'My tasks' : filter}
               </Text>
               <View style={styles.sectionTitleUnderline} />
             </View>
@@ -1923,7 +1857,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
           {loading ? (
             <View style={styles.emptyState}>
               <ActivityIndicator color="#0F172A" />
-              <Text style={styles.emptyDescription}>Loading your sprint tasks...</Text>
+              <Text style={styles.emptyDescription}>Loading your tasks...</Text>
             </View>
           ) : (
             <View style={styles.taskList}>
@@ -1941,13 +1875,13 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   <ProductiveIllustration />
                   <Text style={styles.productiveTitle}>
                     {visibleTasks.length === 0
-                      ? (tasks.length === 0 ? 'No tasks in your sprints' : 'All caught up!')
+                      ? (tasks.length === 0 ? 'No tasks available' : 'All caught up!')
                       : 'Stay productive!'}
                   </Text>
                   <Text style={styles.productiveSubtitle}>
                     {visibleTasks.length === 0
                       ? (tasks.length === 0
-                        ? 'Tasks from your sprints will appear here.'
+                        ? 'Tasks from your projects will appear here.'
                         : 'You are clear for this filter. Try switching to All.')
                       : 'You’re all caught up for now.'}
                   </Text>
@@ -2024,7 +1958,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                     </View>
                   </View>
                   <Text style={styles.detailProject}>
-                    {[selectedTask.project, selectedTask.sprint]
+                    [selectedTask.project]
                       .filter(Boolean)
                       .join(' · ')}
                   </Text>
@@ -2191,25 +2125,15 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
 
                 <View style={styles.assignedSprintSection}>
                   <View style={styles.assignedSprintHeading}>
-                    <Text style={styles.assignedSprintTitle}>Your assigned sprints</Text>
-                    <Text style={styles.assignedSprintCount}>
-                      {selectedAssignedSprints.length}
-                    </Text>
+                    <Text style={styles.assignedSprintTitle}>Task submission</Text>
                   </View>
                   {selectedAssignedSprints.length > 0 ? (
-                    selectedAssignedSprints.map(({ sprint, task: sprintTask }, sprintIndex) => {
+                    selectedAssignedSprints.map(({ sprint, task: sprintTask }) => {
                       const expanded = expandedSprintName === sprint.name;
                       const taskStatus = sprintTask?.status.trim().toLowerCase() || '';
-                      const submissionStatus = sprintTask?.sprintSubmissionStatus || sprint.status;
+                      const submissionStatus = sprintTask?.taskSubmissionStatus || sprint.status;
                       const alreadySubmitted = ['Pending Review', 'Completed']
                         .includes(submissionStatus);
-                      const previousSprint = sprintIndex > 0
-                        ? selectedAssignedSprints[sprintIndex - 1]
-                        : null;
-                      const previousSubmissionStatus = previousSprint
-                        ? (previousSprint.task?.sprintSubmissionStatus || previousSprint.sprint.status)
-                        : 'Completed';
-                      const sprintLocked = !isSprintUnlockedStatus(previousSubmissionStatus);
                       return (
                         <View key={sprint.name} style={styles.assignedSprintItem}>
                           <Pressable
@@ -2217,25 +2141,20 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                             accessibilityLabel={`View details for ${sprint.name}`}
                             accessibilityState={{ expanded }}
                             onPress={() => {
-                              if (sprintLocked) return;
                               const nextSprintName = expandedSprintName === sprint.name
                                 ? null
                                 : sprint.name;
                               setExpandedSprintName(nextSprintName);
                               setExpandedSubmissionKey(nextSprintName
-                                ? `${selectedTask.projectId}:${nextSprintName}`
+                              ? `${selectedTask.projectId}:${selectedTask.id}`
                                 : '');
                             }}
-                            disabled={sprintLocked}
-                            style={[
-                              styles.assignedSprintExpandButton,
-                              sprintLocked && styles.primaryActionDisabled,
-                            ]}>
+                            style={styles.assignedSprintExpandButton}>
                             <View style={styles.assignedSprintDescription}>
                               <Icon
                                 name="bolt"
                                 size={15}
-                                color={sprintLocked ? '#94A3B8' : '#1E293B'}
+                                color="#1E293B"
                               />
                               <Text style={styles.assignedSprintName}>{sprint.name}</Text>
                             </View>
@@ -2243,11 +2162,9 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                               <Text
                                 style={[
                                   styles.assignedSprintStatus,
-                                  sprintLocked
-                                    ? styles.assignedSprintStatusLocked
-                                    : styles.assignedSprintStatusActive,
+                                  styles.assignedSprintStatusActive,
                                 ]}>
-                                {sprintLocked ? 'Locked' : alreadySubmitted ? submissionStatus : 'Active'}
+                                {alreadySubmitted ? submissionStatus : 'Active'}
                               </Text>
                               <Icon name={expanded ? 'chevronDown' : 'chevron'} size={15} color="#64748B" />
                             </View>
@@ -2257,7 +2174,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                               {sprintTask?.description || sprint.description}
                             </Text>
                           ) : null}
-                          {sprintTask && !sprintLocked && taskStatus !== 'in progress' &&
+                          {sprintTask && taskStatus !== 'in progress' &&
                           taskStatus !== 'done' && !alreadySubmitted ? (
                             <View style={styles.assignedSprintStartRow}>
                               <Pressable
@@ -2273,7 +2190,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                                   <ActivityIndicator size="small" color="#FFFFFF" />
                                 ) : (
                                   <>
-                                    <Text style={styles.assignedSprintStartText}>Start sprint</Text>
+                                    <Text style={styles.assignedSprintStartText}>Start task</Text>
                                     <Icon name="arrow" size={16} color="#FFFFFF" />
                                   </>
                                 )}
@@ -2283,7 +2200,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                           {expanded ? (
                             <View style={styles.sprintDetails}>
                               <Text style={styles.sprintDescription}>
-                                {sprintTask?.description || sprint.description || 'No sprint details have been added.'}
+                                {sprintTask?.description || 'No task details have been added.'}
                               </Text>
                               {sprintTask ? <>
                               <View style={styles.sprintProgressHeading}>
@@ -2305,17 +2222,17 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                               </View>
                               </> : null}
 
-                              {!sprintLocked && !alreadySubmitted ? (
+                              {!alreadySubmitted && taskStatus === 'in progress' ? (
                             <View style={styles.sprintSubmissionForm}>
                               <TextInput
-                                accessibilityLabel="Sprint submission notes"
-                                placeholder="Summarize the completed sprint work..."
+                                accessibilityLabel="Task submission notes"
+                                placeholder="Summarize the completed task work..."
                                 placeholderTextColor="#94A3B8"
                                 value={submissionNote}
                                 onChangeText={setSubmissionNote}
                                 multiline
                                 maxLength={5000}
-                                style={styles.sprintSubmissionNote}
+                                style={styles.taskSubmissionNote}
                               />
                               <View style={styles.sprintMediaHeading}>
                                 <Text style={styles.sectionLabel}>Attach a file or voice note</Text>
@@ -2396,7 +2313,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                                 <View style={styles.sprintLinkInputWrap}>
                                   <Icon name="link" size={14} color="#94A3B8" />
                                   <TextInput
-                                    accessibilityLabel="Sprint submission link"
+                                    accessibilityLabel="Task submission link"
                                     placeholder="Add a link (https://...)"
                                     placeholderTextColor="#94A3B8"
                                     value={submissionLinkDraft}
@@ -2437,9 +2354,9 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                               ) : null}
                               <Pressable
                                 accessibilityRole="button"
-                                accessibilityLabel="Submit sprint for review"
+                                accessibilityLabel="Submit task for review"
                                 disabled={submissionBusy || voiceNoteActive}
-                                onPress={() => { void submitSelectedSprintForReview(selectedTask, sprint.name); }}
+                                onPress={() => { void submitSelectedTaskForReview(selectedTask); }}
                                 style={[
                                   styles.assignedSprintStartButton,
                                   styles.assignedSprintSubmitButton,
@@ -2460,24 +2377,22 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                             <View style={styles.sprintSubmittedDetails}>
                               <Text style={styles.sprintSubmittedMessage}>
                               {submissionStatus === 'Completed'
-                                ? 'Sprint accepted'
+                                ? 'Task accepted'
                                 : 'Submitted for review'}
                               </Text>
-                              {sprintTask?.sprintSubmissionNote ? (
+                              {sprintTask?.taskSubmissionNote ? (
                               <Text style={styles.sprintDescription}>
-                                {sprintTask.sprintSubmissionNote}
+                                {sprintTask.taskSubmissionNote}
                               </Text>
-                              ) : sprint.submissionNote ? (
-                              <Text style={styles.sprintDescription}>{sprint.submissionNote}</Text>
                               ) : null}
-                              {sprintTask?.sprintSubmissionAttachments.map((attachment) => (
+                              {sprintTask?.taskSubmissionAttachments.map((attachment) => (
                               <Text
                                 key={attachment.fileName}
                                 style={styles.sprintSubmittedLink}>
                                 - {attachment.fileName}
                               </Text>
                               ))}
-                              {sprintTask?.sprintSubmissionLinks.map((link) => (
+                              {sprintTask?.taskSubmissionLinks.map((link) => (
                               <Text key={link} style={styles.sprintSubmittedLink}>
                                 - {link}
                               </Text>
@@ -2496,7 +2411,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   ) : (
                     <View style={styles.assignedSprintNoSprintRow}>
                       <Text style={styles.assignedSprintName}>
-                        You are not a member of any sprints in this project.
+                        Task submission details are unavailable.
                       </Text>
                     </View>
                   )}
@@ -2524,12 +2439,12 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
 
               </ScrollView>
 
-              {!expandedSprintName && firstOpenSprint ? (
+              {!expandedSprintName && canSubmitSelectedTask ? (
                 <View style={styles.modalQuickFooter}>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="Attach file to sprint"
-                    onPress={openFirstActiveSprintForm}
+                    accessibilityLabel="Attach file to task"
+                    onPress={openTaskSubmissionForm}
                     style={styles.modalQuickPill}>
                     <Icon name="folder" size={15} color="#0F172A" />
                     <Text style={styles.modalQuickPillText}>Attach File</Text>
@@ -2537,16 +2452,16 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
 
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="Record voice note for sprint"
-                    onPress={openFirstActiveSprintForm}
+                    accessibilityLabel="Record a voice note for the task"
+                    onPress={openTaskSubmissionForm}
                     style={styles.modalQuickMic}>
                     <Icon name="mic" size={17} color="#0F172A" />
                   </Pressable>
 
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="Add link to sprint"
-                    onPress={openFirstActiveSprintForm}
+                    accessibilityLabel="Add a link to the task"
+                    onPress={openTaskSubmissionForm}
                     style={styles.modalQuickGoldPill}>
                     <Icon name="link" size={15} color="#FFFFFF" />
                     <Text style={styles.modalQuickGoldText}>Add Link</Text>
@@ -3167,10 +3082,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#DCFCE7',
     color: '#15803D',
   },
-  assignedSprintStatusLocked: {
-    backgroundColor: '#FEE2E2',
-    color: '#DC2626',
-  },
   assignedSprintViewDetails: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3201,7 +3112,7 @@ const styles = StyleSheet.create({
   sprintProgressTrack: { height: 7, overflow: 'hidden', borderRadius: 999, backgroundColor: '#E2E8F0' },
   sprintProgressFill: { height: '100%', borderRadius: 999, backgroundColor: '#1D4ED8' },
   sprintSubmissionForm: { gap: 12, paddingTop: 4 },
-  sprintSubmissionNote: {
+  taskSubmissionNote: {
     minHeight: 104,
     padding: 14,
     borderWidth: 1,

@@ -38,16 +38,12 @@ function formatSprintDate(value) {
     : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 }
 
-function getTaskSprintName(task) {
-  return String(task.sprint_name || task.sprint || '').trim()
-}
-
 async function refreshProjectTaskBoard() {
   try {
     await hub.renderAdminTasksTable?.({ silent: true })
   } catch (error) {
-    console.error('Sprint update saved, but project tasks could not be refreshed:', error)
-    showDashboardToast('Sprint update saved, but task status and analytics could not be refreshed.', 'error')
+    console.error('Project sprint update saved, but project tasks could not be refreshed:', error)
+    showDashboardToast('Project sprint update saved, but task status and analytics could not be refreshed.', 'error')
   }
   hub.renderTasks?.()
   hub.renderWorkspaceSummary?.()
@@ -57,17 +53,18 @@ function pluralize(count, singular, pluralForm = `${singular}s`) {
   return count === 1 ? singular : pluralForm
 }
 
-function getTaskSprintMembers(project, task) {
-  const sprintName = task.sprint_name || task.sprint
-  const sprint = (project.sprints || []).find(candidate => candidate.name === sprintName)
-  return getSprintMembers(project, sprint)
+function getProjectSprintMembers(project) {
+  return [...new Map((project.sprints || [])
+    .flatMap(sprint => getSprintMembers(project, sprint))
+    .map(member => [member.firebaseUid || member.email || member.name, member]))
+    .values()]
 }
 
 function getProductionAnalysis(project, projectTasks, sprints) {
   const taskStatus = task => String(task.status || '').trim().toLowerCase()
   const sprintStatus = sprint => String(sprint.status || '').trim().toLowerCase()
   const taskSubmissionStatus = task => String(
-    task.sprintSubmissionStatus || task.sprint_submission_status || ''
+    task.taskSubmissionStatus || task.task_submission_status || ''
   ).trim().toLowerCase()
   const taskPriority = task => String(task.priority || 'medium').trim().toLowerCase()
 
@@ -76,8 +73,6 @@ function getProductionAnalysis(project, projectTasks, sprints) {
   const inProgress = projectTasks.filter(task => taskStatus(task) === 'in progress').length
   const toDo = projectTasks.filter(task => taskStatus(task) === 'to do').length
   const backlog = projectTasks.filter(task => taskStatus(task) === 'backlog').length
-  const hasIncompleteSprint = !sprints.length || sprints.some(sprint => sprintStatus(sprint) !== 'completed')
-  const sprintLocked = hasIncompleteSprint ? inProgress : 0
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -166,7 +161,7 @@ function getProductionAnalysis(project, projectTasks, sprints) {
 
   const workload = new Map()
   projectTasks.forEach(task => {
-    getTaskSprintMembers(project, task).forEach(member => {
+    getProjectSprintMembers(project).forEach(member => {
       const identity = member.firebaseUid || member.email || member.name
       if (!identity) return
       const name = member.name || member.email || 'Sprint member'
@@ -188,45 +183,6 @@ function getProductionAnalysis(project, projectTasks, sprints) {
       note: `${item.open} open · ${item.done} done`
     }))
 
-  const sprintNameSet = new Set(
-    sprints.map(sprint => String(sprint.name || '').trim().toLowerCase()).filter(Boolean)
-  )
-  const sprintProgress = sprints.map((sprint, index) => {
-    const sprintName = String(sprint.name || '').trim()
-    const normalizedSprintName = sprintName.toLowerCase()
-    const sprintTasks = normalizedSprintName
-      ? projectTasks.filter(task => getTaskSprintName(task).toLowerCase() === normalizedSprintName)
-      : []
-    const done = sprintTasks.filter(task => taskStatus(task) === 'done').length
-    const completion = sprintTasks.length ? Math.round((done / sprintTasks.length) * 100) : 0
-    const statusLabel = sprint.status || 'Upcoming'
-    return {
-      label: sprintName || `Sprint ${index + 1}`,
-      number: index + 1,
-      status: statusLabel,
-      count: sprintTasks.length,
-      done,
-      completion,
-      note: `${statusLabel} · ${sprintTasks.length ? `${completion}%` : '0 tasks'}`
-    }
-  })
-  const noSprintTasks = projectTasks.filter(task => {
-    const name = getTaskSprintName(task).toLowerCase()
-    return !name || !sprintNameSet.has(name)
-  })
-  if (noSprintTasks.length) {
-    const done = noSprintTasks.filter(task => taskStatus(task) === 'done').length
-    const completion = Math.round((done / noSprintTasks.length) * 100)
-    sprintProgress.push({
-      label: 'No sprint',
-      status: 'Unassigned',
-      count: noSprintTasks.length,
-      done,
-      completion,
-      note: `Unassigned · ${completion}%`
-    })
-  }
-
   const completion = projectTasks.length
     ? Math.round((completed / projectTasks.length) * 100)
     : 0
@@ -236,7 +192,6 @@ function getProductionAnalysis(project, projectTasks, sprints) {
     inProgress,
     toDo,
     backlog,
-    sprintLocked,
     blocked,
     dependencyRisks,
     overdue,
@@ -254,7 +209,6 @@ function getProductionAnalysis(project, projectTasks, sprints) {
     sprintStatusBreakdown,
     taskSubmissionStatusBreakdown,
     scheduleBreakdown,
-    sprintProgress,
     workload: workloadItems
   }
 }
@@ -274,11 +228,9 @@ function renderDeliveryIndicators(analysis, totalTasks, totalSprints) {
       count: analysis.inProgress,
       total: totalTasks,
       tone: 'is-progress',
-      note: analysis.sprintLocked
-        ? `${analysis.sprintLocked} sprint-locked`
-        : totalTasks
-          ? `${analysis.inProgress} of ${totalTasks} ${pluralize(totalTasks, 'task')}`
-          : 'No project tasks'
+      note: totalTasks
+        ? `${analysis.inProgress} of ${totalTasks} ${pluralize(totalTasks, 'task')}`
+        : 'No project tasks'
     },
     {
       label: 'Blocked',
@@ -588,19 +540,9 @@ function downloadProjectAnalysis(project, projectTasks, analysis) {
     <tr>
       <td>${escapeHtml(task.title)}</td>
       <td><span class="status">${escapeHtml(task.status)}</span></td>
-      <td>${escapeHtml(getTaskSprintMembers(project, task).map(member => member.name || member.email).filter(Boolean).join(', ') || 'No sprint members')}</td>
-      <td>${escapeHtml(task.sprint_name || task.sprint || '—')}</td>
+      <td>${escapeHtml(getProjectSprintMembers(project).map(member => member.name || member.email).filter(Boolean).join(', ') || 'No project sprint members')}</td>
       <td>${escapeHtml(task.due_date || '—')}</td>
       <td>${task.hasDependencyWarning || task.dependencies?.some(dependency => dependency.warning_reason) ? 'Yes' : 'No'}</td>
-    </tr>
-  `).join('')
-  const sprintRows = analysis.sprintProgress.map(sprint => `
-    <tr>
-      <td>${escapeHtml(sprint.label)}</td>
-      <td><span class="status">${escapeHtml(sprint.status)}</span></td>
-      <td>${sprint.count}</td>
-      <td>${sprint.done}</td>
-      <td>${sprint.completion}%</td>
     </tr>
   `).join('')
   const html = `<!doctype html>
@@ -637,8 +579,7 @@ function downloadProjectAnalysis(project, projectTasks, analysis) {
     ${barSection('Schedule outlook', analysis.scheduleBreakdown, openTasks)}
     ${barSection('Workload by sprint member', analysis.workload, projectTasks.length, item => `${item.open} open · ${item.done} done`)}
   </div>
-  <section class="panel table-panel"><h2>Task details</h2><table><thead><tr><th>Task</th><th>Status</th><th>Sprint members</th><th>Sprint</th><th>Due date</th><th>Dependency warning</th></tr></thead><tbody>${taskRows || '<tr><td colspan="6">No tasks found.</td></tr>'}</tbody></table></section>
-  <section class="panel table-panel"><h2>Sprint delivery</h2><table><thead><tr><th>Sprint</th><th>Status</th><th>Tasks</th><th>Completed tasks</th><th>Completion</th></tr></thead><tbody>${sprintRows || '<tr><td colspan="5">No sprints found.</td></tr>'}</tbody></table></section>
+  <section class="panel table-panel"><h2>Task details</h2><table><thead><tr><th>Task</th><th>Status</th><th>Project sprint members</th><th>Due date</th><th>Dependency warning</th></tr></thead><tbody>${taskRows || '<tr><td colspan="5">No tasks found.</td></tr>'}</tbody></table></section>
 </main></body></html>`
   const reportWindow = window.open('', '_blank')
   if (!reportWindow) {
@@ -760,7 +701,7 @@ function renderSprintSubmissionAttachments(attachments) {
   return list
 }
 
-function renderTaskSprintSubmissionAttachments(project, task, attachments) {
+function renderTaskSubmissionAttachments(project, task, attachments) {
   const list = make('div', 'project-sprint-submission-files')
   attachments.forEach((attachment, attachmentPosition) => {
     const fileName = attachment?.fileName || 'Task submission attachment'
@@ -857,18 +798,18 @@ function renderTaskSprintSubmissionAttachments(project, task, attachments) {
   return list
 }
 
-function renderTaskSprintSubmission(project, task, isProjectOwner, afterReview) {
-  const submissionStatus = String(task.sprintSubmissionStatus || 'Not submitted')
+function renderTaskSubmission(project, task, isProjectOwner, afterReview) {
+  const submissionStatus = String(task.taskSubmissionStatus || 'Not submitted')
   if (submissionStatus.trim().toLowerCase() === 'not submitted') return null
 
   const section = make('section', `project-task-sprint-submission is-${submissionStatus.toLowerCase().replaceAll(' ', '-')}`)
   section.append(
-    make('strong', 'project-task-sprint-submission-title', `Sprint submission · ${submissionStatus}`)
+    make('strong', 'project-task-sprint-submission-title', `Task submission · ${submissionStatus}`)
   )
-  if (task.sprintSubmittedAt) {
-    const submittedAt = new Date(task.sprintSubmittedAt)
+  if (task.taskSubmittedAt) {
+    const submittedAt = new Date(task.taskSubmittedAt)
     if (!Number.isNaN(submittedAt.getTime())) {
-      const submittedByUid = task.sprintSubmittedByFirebaseUid || task.sprint_submitted_by_firebase_uid
+      const submittedByUid = task.taskSubmittedByFirebaseUid || task.task_submitted_by_firebase_uid
       const submittedByMember = project.acceptedMembers?.find(member =>
         member.firebaseUid === submittedByUid
       )
@@ -882,18 +823,18 @@ function renderTaskSprintSubmission(project, task, isProjectOwner, afterReview) 
       ))
     }
   }
-  if (task.sprintSubmissionNote) {
+  if (task.taskSubmissionNote) {
     const note = make('div', 'project-sprint-submission-note')
     note.append(
       make('strong', 'project-sprint-card-section-label', 'Member submission note'),
-      make('p', '', task.sprintSubmissionNote)
+      make('p', '', task.taskSubmissionNote)
     )
     section.append(note)
   }
-  if (Array.isArray(task.sprintSubmissionLinks) && task.sprintSubmissionLinks.length) {
+  if (Array.isArray(task.taskSubmissionLinks) && task.taskSubmissionLinks.length) {
     const links = make('div', 'project-task-sprint-submission-links')
     links.append(make('strong', 'project-sprint-card-section-label', 'Submitted links'))
-    task.sprintSubmissionLinks.forEach(value => {
+    task.taskSubmissionLinks.forEach(value => {
       try {
         const url = new URL(value)
         if (!['http:', 'https:'].includes(url.protocol)) return
@@ -903,24 +844,24 @@ function renderTaskSprintSubmission(project, task, isProjectOwner, afterReview) 
         link.rel = 'noopener noreferrer'
         links.append(link)
       } catch (error) {
-        console.error('Ignoring invalid task sprint submission link:', error)
+        console.error('Ignoring invalid task submission link:', error)
       }
     })
     section.append(links)
   }
-  if (Array.isArray(task.sprintSubmissionAttachments) && task.sprintSubmissionAttachments.length) {
+  if (Array.isArray(task.taskSubmissionAttachments) && task.taskSubmissionAttachments.length) {
     const media = make('div', 'project-sprint-submission-media')
     media.append(
       make('strong', 'project-sprint-submission-media-title', 'Submitted files and voice notes'),
-      renderTaskSprintSubmissionAttachments(project, task, task.sprintSubmissionAttachments)
+      renderTaskSubmissionAttachments(project, task, task.taskSubmissionAttachments)
     )
     section.append(media)
   }
-  if (task.sprintReviewComment) {
+  if (task.taskReviewComment) {
     const feedback = make('div', 'project-sprint-review-comment')
     feedback.append(
       make('strong', 'project-sprint-card-section-label', 'Review feedback'),
-      make('p', '', task.sprintReviewComment)
+      make('p', '', task.taskReviewComment)
     )
     section.append(feedback)
   }
@@ -930,7 +871,7 @@ function renderTaskSprintSubmission(project, task, isProjectOwner, afterReview) 
     const reviewInput = make('textarea', 'project-sprint-review-input')
     reviewInput.rows = 3
     reviewInput.maxLength = 5000
-    reviewInput.placeholder = 'Add feedback for the sprint members…'
+    reviewInput.placeholder = 'Add feedback for the project members…'
     reviewInput.setAttribute('aria-label', `Review submission for ${task.title}`)
     const error = make('p', 'project-task-sprint-review-error')
     error.setAttribute('role', 'alert')
@@ -964,7 +905,7 @@ function renderTaskSprintSubmission(project, task, isProjectOwner, afterReview) 
           showDashboardToast(response.notificationWarning, 'error')
         } else {
           showDashboardToast(
-            decision === 'accept' ? 'Task submission accepted.' : 'Changes requested from the sprint members.',
+            decision === 'accept' ? 'Task submission accepted.' : 'Changes requested from the project members.',
             'success'
           )
         }
@@ -985,31 +926,31 @@ function renderTaskSprintSubmission(project, task, isProjectOwner, afterReview) 
   return section
 }
 
-function applyTaskSprintSubmission(task, record) {
+function applyTaskSubmission(task, record) {
   if (record.status) task.status = record.status
-  if (record.sprint_submission_status !== undefined) {
-    task.sprintSubmissionStatus = record.sprint_submission_status
+  if (record.task_submission_status !== undefined) {
+    task.taskSubmissionStatus = record.task_submission_status
   }
-  if (record.sprint_submission_note !== undefined) {
-    task.sprintSubmissionNote = record.sprint_submission_note
+  if (record.task_submission_note !== undefined) {
+    task.taskSubmissionNote = record.task_submission_note
   }
-  if (Array.isArray(record.sprint_submission_links)) {
-    task.sprintSubmissionLinks = record.sprint_submission_links
+  if (Array.isArray(record.task_submission_links)) {
+    task.taskSubmissionLinks = record.task_submission_links
   }
-  if (Array.isArray(record.sprint_submission_attachments)) {
-    task.sprintSubmissionAttachments = record.sprint_submission_attachments
+  if (Array.isArray(record.task_submission_attachments)) {
+    task.taskSubmissionAttachments = record.task_submission_attachments
   }
-  if (record.sprint_submitted_at !== undefined) task.sprintSubmittedAt = record.sprint_submitted_at
-  if (record.sprint_submitted_by_firebase_uid !== undefined) {
-    task.sprintSubmittedByFirebaseUid = record.sprint_submitted_by_firebase_uid
+  if (record.task_submitted_at !== undefined) task.taskSubmittedAt = record.task_submitted_at
+  if (record.task_submitted_by_firebase_uid !== undefined) {
+    task.taskSubmittedByFirebaseUid = record.task_submitted_by_firebase_uid
   }
-  if (record.sprint_review_comment !== undefined) {
-    task.sprintReviewComment = record.sprint_review_comment
+  if (record.task_review_comment !== undefined) {
+    task.taskReviewComment = record.task_review_comment
   }
-  if (record.sprint_reviewed_by_firebase_uid !== undefined) {
-    task.sprintReviewedByFirebaseUid = record.sprint_reviewed_by_firebase_uid
+  if (record.task_reviewed_by_firebase_uid !== undefined) {
+    task.taskReviewedByFirebaseUid = record.task_reviewed_by_firebase_uid
   }
-  if (record.sprint_reviewed_at !== undefined) task.sprintReviewedAt = record.sprint_reviewed_at
+  if (record.task_reviewed_at !== undefined) task.taskReviewedAt = record.task_reviewed_at
 }
 
 function sprintSubmissionContent(sprint) {
@@ -1202,42 +1143,16 @@ async function removeProjectSprint(project, sprint, task, removeButton) {
   const sprintIndex = sprints.indexOf(sprint)
   if (sprintIndex < 0) return
 
-  const projectTasks = tasks.filter(candidate =>
-    candidate.backendPersistent && candidate.projectId === project.projectId
-  )
-  const linkedTasks = projectTasks.filter(candidate => candidate.sprint_name === sprint.name)
   const remainingSprints = sprints.filter((_, index) => index !== sprintIndex)
-  if (!remainingSprints.length && linkedTasks.length) {
-    showDashboardToast(
-      "Reassign or delete this sprint's tasks before removing the last sprint.",
-      'error'
-    )
-    return
-  }
-
   const updatedSprints = remainingSprints.map((item, index) => ({
     ...item,
     name: `Sprint ${index + 1}: ${String(item.name || 'Sprint')
       .replace(/^Sprint\s+\d+\s*:\s*/i, '')
       .trim() || 'Untitled'}`
   }))
-  const sprintNameMap = {}
-  sprints.forEach((item, oldIndex) => {
-    const targetIndex = oldIndex < sprintIndex
-      ? oldIndex
-      : oldIndex === sprintIndex
-        ? Math.min(sprintIndex, updatedSprints.length - 1)
-        : oldIndex - 1
-    const targetSprint = updatedSprints[targetIndex]
-    if (targetSprint) sprintNameMap[item.name] = targetSprint.name
-  })
-  const taskDestination = remainingSprints[Math.min(sprintIndex, remainingSprints.length - 1)]
-  const destinationName = updatedSprints[Math.min(sprintIndex, updatedSprints.length - 1)]?.name
   const confirmed = await showDashboardConfirmation({
     title: 'Remove project sprint?',
-    message: linkedTasks.length
-      ? `Remove "${sprint.name}"? Its ${linkedTasks.length} ${linkedTasks.length === 1 ? 'task will' : 'tasks will'} move to "${destinationName}", and sprint numbers will be updated.`
-      : `Remove "${sprint.name}" and update the numbering of the remaining sprints?`,
+    message: `Remove "${sprint.name}" and update the numbering of the remaining sprints?`,
     confirmText: 'Remove sprint',
     danger: true,
     compact: true
@@ -1246,13 +1161,9 @@ async function removeProjectSprint(project, sprint, task, removeButton) {
 
   const restoreButton = setDashboardButtonLoading(removeButton, 'Removing…')
   try {
-    await api.put(`/projects/${encodeURIComponent(project.projectId)}`, {
-      sprints: updatedSprints,
-      ...(Object.keys(sprintNameMap).length ? { sprint_name_map: sprintNameMap } : {})
-    })
+    await api.put(`/projects/${encodeURIComponent(project.projectId)}`, { sprints: updatedSprints })
     project.sprints = updatedSprints
-    await hub.renderAdminTasksTable?.()
-    showDashboardToast('Sprint removed and remaining sprints renumbered.', 'success')
+    showDashboardToast('Sprint removed.', 'success')
     closeAsideAndReopen(task)
   } catch (error) {
     restoreButton()
@@ -1373,7 +1284,7 @@ export async function openProjectProgressAside(task) {
       if (!response?.data?.task) {
         throw new Error('The server did not return the latest task details.')
       }
-      applyTaskSprintSubmission(currentTask, response.data.task)
+      applyTaskSubmission(currentTask, response.data.task)
     } catch (error) {
       console.error('Unable to refresh task submission details:', error)
       showDashboardToast(
@@ -1388,7 +1299,6 @@ export async function openProjectProgressAside(task) {
   )
   const sprints = Array.isArray(project.sprints) ? project.sprints : []
   const acceptedMembers = Array.isArray(project.acceptedMembers) ? project.acceptedMembers : []
-  const projectSprints = Array.isArray(project.sprints) ? project.sprints : []
   const projectOwner = {
     firebaseUid: project.creatorFirebaseUid,
     name: project.creatorName || project.creatorEmail || 'Project owner',
@@ -1471,20 +1381,6 @@ export async function openProjectProgressAside(task) {
       centerLabel: pluralize(sprints.length, 'sprint'),
       ariaLabel: `${sprints.length} ${pluralize(sprints.length, 'project sprint')} by delivery status`
     }),
-    renderProgressBars(
-      'Sprint task delivery',
-      `${projectTasks.length} ${pluralize(projectTasks.length, 'task')} across ${sprints.length} ${pluralize(sprints.length, 'sprint')}`,
-      analysis.sprintProgress,
-      'is-project-delivery',
-      {
-        scale: 'max',
-        emptyMessage: 'Add sprints and assign tasks to track sprint delivery.',
-        pairedSeries: [
-          { key: 'count', label: 'Total tasks', tone: 'is-planned' },
-          { key: 'done', label: 'Completed tasks', tone: 'is-done' }
-        ]
-      }
-    ),
     renderProgressBars(
       'Schedule outlook',
       scheduleSubtitle,
@@ -1890,12 +1786,6 @@ export async function openProjectProgressAside(task) {
     sprints.forEach((sprint, sprintIndex) => {
       const sprintStatus = sprint.status || 'Upcoming'
       const normalizedStatus = String(sprintStatus).toLowerCase().replaceAll(' ', '-')
-      const sprintTasks = projectTasks.filter(candidate => getTaskSprintName(candidate) === sprint.name)
-      const completedSprintTasks = sprintTasks.filter(candidate => candidate.status === 'Done').length
-      const sprintProgress = sprintTasks.length
-        ? Math.round((completedSprintTasks / sprintTasks.length) * 100)
-        : 0
-
       const sprintMembers = getSprintMembers(project, sprint)
 
       const sprintStart = sprint.startDate || sprint.start_date
@@ -2041,37 +1931,6 @@ export async function openProjectProgressAside(task) {
         scopeBlock.append(description)
         infoPane.append(scopeBlock)
       }
-
-      const tasksBlock = make('div', 'project-sprint-sheet-block')
-      tasksBlock.append(make(
-        'strong',
-        'project-sprint-card-section-label',
-        `Assigned tasks (${sprintTasks.length})`
-      ))
-      if (!sprintTasks.length) {
-        tasksBlock.append(make('p', 'project-sprint-sheet-empty-note', 'No tasks belong to this sprint yet.'))
-      } else {
-        const miniTaskList = make('div', 'project-sprint-sheet-task-list')
-        sprintTasks.forEach(sprintTask => {
-          const item = make('div', 'project-sprint-sheet-task-item')
-          item.append(
-            make('span', 'project-sprint-sheet-task-title', sprintTask.title || 'Untitled task'),
-            make(
-              'span',
-              `project-progress-aside-status is-${String(sprintTask.status || 'To do').toLowerCase().replaceAll(' ', '-')}`,
-              sprintTask.status || 'To do'
-            ),
-            make(
-              'small',
-              'project-sprint-sheet-task-due',
-              sprintTask.due_date ? displayDate(sprintTask.due_date) : 'No due date'
-            )
-          )
-          miniTaskList.append(item)
-        })
-        tasksBlock.append(miniTaskList)
-      }
-      infoPane.append(tasksBlock)
 
       const submission = sprintSubmissionContent(sprint)
       if (submission.notes.length) {
@@ -2357,11 +2216,10 @@ export async function openProjectProgressAside(task) {
   } else {
     listedMembers.forEach(member => {
       const memberTaskCount = projectTasks.filter(projectTask =>
-        getSprintMemberUids(
-          (project.sprints || []).find(candidate =>
-            candidate.name === (projectTask.sprint_name || projectTask.sprint)
-          )
-        ).includes(member.firebaseUid)
+        member.firebaseUid === project.creatorFirebaseUid ||
+        (project.sprints || []).some(sprint =>
+          getSprintMemberUids(sprint).includes(member.firebaseUid)
+        )
       ).length
       const isOwner = member.role === 'Project owner'
       const memberRow = make(
@@ -2430,12 +2288,12 @@ export async function openProjectProgressAside(task) {
       taskTop.setAttribute('aria-controls', taskDetails.id)
       const taskIdentity = make('div', 'project-progress-aside-task-identity')
       taskIdentity.append(make('strong', '', projectTask.title))
-      if (projectTask.sprintSubmissionStatus &&
-        projectTask.sprintSubmissionStatus !== 'Not submitted') {
+      if (projectTask.taskSubmissionStatus &&
+        projectTask.taskSubmissionStatus !== 'Not submitted') {
         taskIdentity.append(make(
           'span',
-          `project-progress-aside-submission-status is-${projectTask.sprintSubmissionStatus.toLowerCase().replaceAll(' ', '-')}`,
-          projectTask.sprintSubmissionStatus
+          `project-progress-aside-submission-status is-${projectTask.taskSubmissionStatus.toLowerCase().replaceAll(' ', '-')}`,
+          projectTask.taskSubmissionStatus
         ))
       }
       const taskStatus = make('span', `project-progress-aside-status is-${String(projectTask.status || 'To do').toLowerCase().replaceAll(' ', '-')}`, projectTask.status || 'To do')
@@ -2450,19 +2308,18 @@ export async function openProjectProgressAside(task) {
       })
       const taskMeta = make('div', 'project-progress-aside-task-meta')
       taskMeta.append(
-        make('span', '', `Sprint · ${projectTask.sprint_name || 'No sprint'}`),
         make('span', '', `Due · ${displayDate(projectTask.due_date)}`)
       )
       if (projectTask.description) {
         taskDetails.append(make('p', 'project-progress-aside-task-description', projectTask.description))
       }
       taskDetails.append(taskMeta)
-      const taskSubmission = renderTaskSprintSubmission(
+      const taskSubmission = renderTaskSubmission(
         project,
         projectTask,
         isProjectOwner,
         async review => {
-          applyTaskSprintSubmission(projectTask, review)
+          applyTaskSubmission(projectTask, review)
           projectTask.done = projectTask.status === 'Done'
           projectTask.progress = projectTask.done ? 100 : projectTask.status === 'In progress' ? 50 : 0
           try {
@@ -2484,17 +2341,13 @@ export async function openProjectProgressAside(task) {
       const canManageProjectTask = Boolean(
         currentUid && (
           isProjectOwner ||
-          getSprintMemberUids(
-            (project.sprints || []).find(candidate =>
-              candidate.name === (projectTask.sprint_name || projectTask.sprint)
-            )
-          ).includes(currentUid)
+          (project.sprints || []).some(sprint =>
+            getSprintMemberUids(sprint).includes(currentUid)
+          )
         )
       )
       const taskMovementLocked = (
-        !projectSprints.length ||
-        projectSprints.some(sprint => String(sprint.status || '').trim().toLowerCase() !== 'completed') ||
-        String(projectTask.sprintSubmissionStatus || projectTask.sprint_submission_status || '')
+        String(projectTask.taskSubmissionStatus || projectTask.task_submission_status || '')
           .trim().toLowerCase() !== 'completed'
       )
       if (
@@ -2504,12 +2357,12 @@ export async function openProjectProgressAside(task) {
         const completeTaskButton = make(
           'button',
           'project-progress-aside-task-complete',
-          taskMovementLocked ? 'Locked until deliverables complete' : 'Complete task'
+          taskMovementLocked ? 'Awaiting accepted submission' : 'Complete task'
         )
         completeTaskButton.type = 'button'
         completeTaskButton.disabled = taskMovementLocked
         if (taskMovementLocked) {
-          completeTaskButton.title = 'Accept this task submission and complete every project sprint before moving this task to Done.'
+          completeTaskButton.title = 'The project owner must accept this task submission before it can be completed.'
         }
         completeTaskButton.addEventListener('click', async () => {
           if (taskMovementLocked) return

@@ -7,7 +7,6 @@ import {
   auditLogs,
   activeView,
   setActiveView,
-  setActiveSprintFilter,
   make,
   hub
 } from './state.js'
@@ -26,7 +25,6 @@ import { renderProjectStickyNotes } from './projectStickyNotes.js'
 export function switchView(viewName) {
   if (viewName === 'Calendar') viewName = 'Meetings'
   setActiveView(viewName)
-  setActiveSprintFilter('all')
   document.querySelectorAll('.primary-nav .nav-item, .sidebar-bottom .nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.view === viewName)
   })
@@ -247,10 +245,10 @@ export function renderOverviewPanel() {
         const project = projects.find(candidate =>
           candidate.projectId === task.projectId || candidate.name === task.project
         )
-        const sprint = (project?.sprints || []).find(candidate =>
-          candidate.name === (task.sprint_name || task.sprint)
-        )
-        return getSprintMemberUids(sprint).includes(m.firebaseUid)
+        return project?.creatorFirebaseUid === m.firebaseUid ||
+          (project?.sprints || []).some(sprint =>
+            getSprintMemberUids(sprint).includes(m.firebaseUid)
+          )
       }).length
       const item = make('div', 'workload-item')
       const workloadLeft = make('div', 'workload-left')

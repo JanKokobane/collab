@@ -42,7 +42,7 @@ import {
   openAddSprintModal,
   openInviteCollaboratorModal,
   openManageCollaboratorsModal
-} from './js/projects.js?v=20261120-remove-task-assignee'
+} from './js/projects.js?v=20261121-task-sprint-decoupling'
 
 import { enhanceInputsWithIcons } from './js/icons.js'
 
@@ -54,7 +54,7 @@ import {
   moveTaskStatus,
   taskCard,
   setupDragAndDrop
-} from './js/tasks.js?v=20261120-all-project-sprint-members'
+} from './js/tasks.js?v=20261121-task-sprint-decoupling'
 
 import {
   renderCalendarPanel,
@@ -65,7 +65,7 @@ import {
   openAddReminderModal,
   openDayScheduleModal,
   createScheduleCalendarPicker
-} from './js/calendar.js?v=20261120-remove-task-assignee'
+} from './js/calendar.js?v=20261121-task-sprint-decoupling'
 
 import {
   renderAdminProjectsTable,
@@ -78,12 +78,12 @@ import {
   openProjectTaskModal,
   openAdminEditTaskModal,
   openInviteModal
-} from './js/admin.js?v=20261120-remove-task-assignee'
+} from './js/admin.js?v=20261121-task-sprint-decoupling'
 
 import {
   switchView,
   renderOverviewPanel
-} from './js/navigation.js?v=20261120-remove-task-assignee'
+} from './js/navigation.js?v=20261121-task-sprint-decoupling'
 
 import {
   currentTheme,
@@ -109,7 +109,7 @@ import {
   renderNotifications,
   initWorkspaceHubEvents
 } from './js/workspaceHub.js'
-import { openProjectTaskDetails } from './js/projectProgressAside.js?v=20261120-remove-task-assignee'
+import { openProjectTaskDetails } from './js/projectProgressAside.js?v=20261121-task-sprint-decoupling'
 import { initMessages, openMessageContext, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261026-collaboration-context'
 import { renderMeetingsPage } from './js/meetingsPage.js'
 import { initProjectStickyNotes } from './js/projectStickyNotes.js'

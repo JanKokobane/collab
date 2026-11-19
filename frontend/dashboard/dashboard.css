@@ -4931,14 +4931,14 @@ body.dark-mode .project-task-status-lock,
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 5px;
+    gap: 0;
     margin-top: -5px;
     margin-bottom: 10px;
 }
 
 .task-card-avatar {
     display: inline-flex;
-    margin-left: 0;
+    margin-left: -4.8px;
 }
 
 .task-card-avatar:first-child {

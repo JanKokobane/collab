@@ -166,21 +166,28 @@ Migration `005_project_tasks.sql` adds PostgreSQL-backed, project-scoped tasks;
 `024_collaboration_context_features.sql` adds chat backlinks/decision flags,
 task media attachments, cross-project dependencies, and meeting notes/action items.
 Migration `035_remove_task_assignee.sql` removes the task-level assignee column.
+Migration `036_remove_task_sprint_link.sql` removes the task-to-sprint column
+and renames task submission/review fields without discarding their data.
+Project tasks belong to the project and are independent of sprint status.
 Authenticated project owners can create, edit, and delete tasks; project owners
-and accepted project invitees can read them. A task must reference a sprint on
-its project. Sprint members collaborate on every task in that sprint, and there
-is no separate task assignee. The project owner and sprint members can update
-task status; pending invitees cannot access project tasks. Task categories are
-stored as text and accept any non-empty value up to 100 characters.
+and accepted project invitees can read them. The project owner and members of
+any project sprint can update and submit tasks; pending invitees cannot access
+project tasks. Task categories are stored as text and accept any non-empty
+value up to 100 characters. Project sprint delivery remains a separate workflow.
 
 - `GET /api/projects/:projectId/tasks`: list tasks for a project the caller
-  owns or has accepted an invitation to. `assignedToMe=true` returns tasks in
-  sprints where the caller is a member.
+  owns or has accepted an invitation to. `assignedToMe=true` returns all
+  project tasks when the caller is the project owner or belongs to any project
+  sprint.
 - `POST /api/projects/:projectId/tasks`: create a task as the project creator.
 - `PUT /api/projects/:projectId/tasks/:taskId`: update a task as its project
   creator.
 - `PATCH /api/projects/:projectId/tasks/:taskId/status`: update status as the
-  project creator or a member of the task's sprint.
+  project creator or a member of any project sprint. Task completion requires
+  the task submission to be accepted, but does not depend on sprint status.
+- `POST /api/projects/:projectId/tasks/:taskId/submit-for-review` and
+  `POST /api/projects/:projectId/tasks/:taskId/review-submission`: submit and
+  review one project task independently of project sprint submissions.
 - `DELETE /api/projects/:projectId/tasks/:taskId`: delete a task as its project
   creator.
 - `GET|POST /api/projects/:projectId/tasks/:taskId/comments`: read or add task
@@ -238,10 +245,9 @@ stored as text and accept any non-empty value up to 100 characters.
   transaction. Board members can contribute ideas and remove only their own
   ideas. Board updates notify the other members.
 - `PUT /api/projects/:projectId` with a `sprints` array: persist sprint changes
-  as the project creator. Sprint deletion may include a `sprint_name_map`
-  object mapping every existing sprint name to a remaining sprint name; the
-  update and task sprint changes are committed atomically. Newly added sprint
-  members receive a persisted in-dashboard notification.
+  as the project creator. Sprint renames and deletion do not change project
+  tasks. Newly added sprint members receive a persisted in-dashboard
+  notification.
 
 ## Implemented API foundation
 

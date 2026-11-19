@@ -1,8 +1,8 @@
 const { randomUUID } = require('node:crypto');
 const { pool, query } = require('../config/db');
 
-const MAX_TASK_SPRINT_SUBMISSION_MEDIA_BYTES = 100 * 1024 * 1024;
-const MAX_TASK_SPRINT_SUBMISSION_ATTACHMENTS = 10;
+const MAX_TASK_SUBMISSION_MEDIA_BYTES = 100 * 1024 * 1024;
+const MAX_TASK_SUBMISSION_ATTACHMENTS = 10;
 
 const sprintMemberUids = sprint => {
     const members = Array.isArray(sprint?.memberFirebaseUids)
@@ -16,16 +16,17 @@ const sprintMemberUids = sprint => {
         .filter(Boolean))];
 };
 
-const getSprintForTask = (project, sprintName) =>
+const projectSprintMemberUids = project => [...new Set(
     (Array.isArray(project?.sprints) ? project.sprints : [])
-        .find(sprint => sprint?.name === sprintName);
+        .flatMap(sprintMemberUids)
+)];
 
-const normalizeTaskSprintSubmissionAttachments = value => {
+const normalizeTaskSubmissionAttachments = value => {
     if (value === undefined) return { attachments: [], error: null };
-    if (!Array.isArray(value) || value.length > MAX_TASK_SPRINT_SUBMISSION_ATTACHMENTS) {
+    if (!Array.isArray(value) || value.length > MAX_TASK_SUBMISSION_ATTACHMENTS) {
         return {
             attachments: [],
-            error: `Attach no more than ${MAX_TASK_SPRINT_SUBMISSION_ATTACHMENTS} files.`
+            error: `Attach no more than ${MAX_TASK_SUBMISSION_ATTACHMENTS} files.`
         };
     }
 
@@ -48,8 +49,8 @@ const normalizeTaskSprintSubmissionAttachments = value => {
             return { attachments: [], error: 'One or more attachments contain invalid file data.' };
         }
         totalBytes += buffer.length;
-        if (totalBytes > MAX_TASK_SPRINT_SUBMISSION_MEDIA_BYTES) {
-            return { attachments: [], error: 'Sprint attachments must total 100 MB or less.' };
+        if (totalBytes > MAX_TASK_SUBMISSION_MEDIA_BYTES) {
+            return { attachments: [], error: 'Task submission attachments must total 100 MB or less.' };
         }
         attachments.push({
             fileName,
@@ -62,7 +63,7 @@ const normalizeTaskSprintSubmissionAttachments = value => {
     return { attachments, error: null };
 };
 
-const normalizeTaskSprintSubmissionLinks = value => {
+const normalizeTaskSubmissionLinks = value => {
     if (value === undefined) return { links: [], error: null };
     if (!Array.isArray(value) || value.length > 10) {
         return { links: [], error: 'Add no more than 10 links.' };
@@ -89,10 +90,6 @@ const normalizeTaskSprintSubmissionLinks = value => {
 
 const allowedStatuses = new Set(['Backlog', 'To do', 'In progress', 'Blocked', 'Done']);
 const allowedPriorities = new Set(['low', 'medium', 'high']);
-const areAllProjectSprintsCompleted = sprints =>
-    Array.isArray(sprints) &&
-    sprints.length > 0 &&
-    sprints.every(sprint => String(sprint?.status || '').trim().toLowerCase() === 'completed');
 const allowedTaskTags = new Set([
     'Accessibility',
     'Blocked',
@@ -281,7 +278,6 @@ const normalizeTaskInput = body => {
             ? body.category.trim()
             : '';
     const tags = body?.tags === undefined ? [] : body.tags;
-    const sprintName = typeof body?.sprintName === 'string' ? body.sprintName.trim() : '';
     const status = typeof body?.status === 'string' ? body.status.trim() : 'To do';
     const priority = typeof body?.priority === 'string'
         ? body.priority.trim().toLowerCase()
@@ -307,9 +303,6 @@ const normalizeTaskInput = body => {
         new Set(tags).size !== tags.length
     ) {
         return { error: 'Choose valid, unique task tags.' };
-    }
-    if (!sprintName || sprintName.length > 255) {
-        return { error: 'Choose a valid project sprint.' };
     }
     if (!allowedStatuses.has(status)) {
         return { error: 'Choose a valid task status.' };
@@ -341,7 +334,6 @@ const normalizeTaskInput = body => {
             category,
             tags,
             tagsProvided: body?.tags !== undefined,
-            sprintName,
             status,
             priority,
             startDate,
@@ -404,7 +396,7 @@ const markDependencyWarnings = async (taskId, reason, actorUid, taskTitle) => {
     if (!updated.rowCount) return;
     const dependentIds = [...new Set(updated.rows.map(row => row.dependent_task_id))];
     const dependents = await query(
-        `SELECT dependent.task_id, dependent.project_id, dependent.sprint_name,
+        `SELECT dependent.task_id, dependent.project_id,
                 project.creator_firebase_uid, project.sprints
          FROM project_tasks dependent
          JOIN projects project ON project.project_id = dependent.project_id
@@ -418,10 +410,9 @@ const markDependencyWarnings = async (taskId, reason, actorUid, taskTitle) => {
             : `A predecessor task for "${taskTitle}" has a later due date.`;
     const notifications = new Set();
     for (const dependent of dependents.rows) {
-        const sprint = getSprintForTask(dependent, dependent.sprint_name);
         const recipients = new Set([
             dependent.creator_firebase_uid,
-            ...sprintMemberUids(sprint)
+            ...projectSprintMemberUids(dependent)
         ]);
         for (const recipientUid of recipients) {
             if (!recipientUid || recipientUid === actorUid) continue;
@@ -470,13 +461,6 @@ const getProjectAndCheckAccess = async (projectId, firebaseUid, ownerOnly = fals
     return result.rows[0] || null;
 };
 
-const validateTaskSprint = (project, task) => {
-    if (!getSprintForTask(project, task.sprintName)) {
-        return 'Choose a sprint that belongs to this project.';
-    }
-    return null;
-};
-
 const validateTaskProjectTimeline = (project, task) => {
     const projectStartDate = toProjectDateKey(project.start_date);
     const projectDueDate = toProjectDateKey(project.due_date);
@@ -516,24 +500,23 @@ const getProjectTasks = async (req, res) => {
                     t.description,
                     t.category,
                     t.tags,
-                    t.sprint_name,
-                    t.sprint_submission_status,
-                    t.sprint_submission_note,
-                    t.sprint_submission_links,
-                    t.sprint_submitted_at,
-                    t.sprint_submitted_by_firebase_uid,
-                    t.sprint_review_comment,
-                    t.sprint_reviewed_by_firebase_uid,
-                    t.sprint_reviewed_at,
+                    t.task_submission_status,
+                    t.task_submission_note,
+                    t.task_submission_links,
+                    t.task_submitted_at,
+                    t.task_submitted_by_firebase_uid,
+                    t.task_review_comment,
+                    t.task_reviewed_by_firebase_uid,
+                    t.task_reviewed_at,
                     COALESCE((
                         SELECT jsonb_agg(
                             (attachment.value - 'data') ||
                                 jsonb_build_object('attachment_index', attachment.ordinality - 1)
                             ORDER BY attachment.ordinality
                         )
-                        FROM jsonb_array_elements(t.sprint_submission_attachments)
+                        FROM jsonb_array_elements(t.task_submission_attachments)
                             WITH ORDINALITY AS attachment(value, ordinality)
-                    ), '[]'::jsonb) AS sprint_submission_attachments,
+                    ), '[]'::jsonb) AS task_submission_attachments,
                     t.chat_message_id::text AS chat_message_id,
                     context_message.conversation_id::text AS chat_conversation_id,
                     COALESCE((
@@ -602,6 +585,7 @@ const getProjectTasks = async (req, res) => {
                 WHERE t.project_id = $1
                   AND (
                     $3::boolean = FALSE
+                    OR p.creator_firebase_uid = $2
                     OR EXISTS (
                         SELECT 1
                         FROM jsonb_array_elements(
@@ -610,8 +594,7 @@ const getProjectTasks = async (req, res) => {
                                 ELSE '[]'::jsonb
                             END
                         ) AS sprint(value)
-                        WHERE sprint.value->>'name' = t.sprint_name
-                          AND (
+                        WHERE (
                             CASE
                                 WHEN jsonb_typeof(sprint.value->'memberFirebaseUids') = 'array'
                                     THEN sprint.value->'memberFirebaseUids'
@@ -662,17 +645,17 @@ const getProjectTaskDetails = async (req, res) => {
         }
         const result = await query(
             `SELECT task.task_id, task.project_id, task.title, task.description,
-                    task.category, task.tags, task.sprint_name,
-                    task.sprint_submission_status, task.sprint_submission_note,
-                    task.sprint_submission_links, task.sprint_submitted_at,
-                    task.sprint_submitted_by_firebase_uid,
-                    task.sprint_review_comment, task.sprint_reviewed_by_firebase_uid,
-                    task.sprint_reviewed_at,
+                    task.category, task.tags,
+                    task.task_submission_status, task.task_submission_note,
+                    task.task_submission_links, task.task_submitted_at,
+                    task.task_submitted_by_firebase_uid,
+                    task.task_review_comment, task.task_reviewed_by_firebase_uid,
+                    task.task_reviewed_at,
                     COALESCE((
                         SELECT jsonb_agg(attachment.value - 'data' ORDER BY attachment.ordinality)
-                        FROM jsonb_array_elements(task.sprint_submission_attachments)
+                        FROM jsonb_array_elements(task.task_submission_attachments)
                             WITH ORDINALITY AS attachment(value, ordinality)
-                    ), '[]'::jsonb) AS sprint_submission_attachments,
+                    ), '[]'::jsonb) AS task_submission_attachments,
                     task.status, task.priority, task.start_date, task.due_date,
                     task.chat_message_id::text AS chat_message_id,
                     message.conversation_id::text AS chat_conversation_id,
@@ -783,7 +766,7 @@ const getProjectTaskAttachment = async (req, res) => {
     }
 };
 
-const getProjectTaskSprintSubmissionAttachment = async (req, res) => {
+const getProjectTaskSubmissionAttachment = async (req, res) => {
     if (!uuidPattern.test(req.params.taskId || '')) {
         return res.status(400).json({
             success: false,
@@ -810,7 +793,7 @@ const getProjectTaskSprintSubmissionAttachment = async (req, res) => {
             });
         }
         const result = await query(
-            `SELECT sprint_submission_attachments -> $3::int AS attachment
+            `SELECT task_submission_attachments -> $3::int AS attachment
              FROM project_tasks
              WHERE project_id = $1 AND task_id = $2::uuid
              LIMIT 1`,
@@ -819,8 +802,8 @@ const getProjectTaskSprintSubmissionAttachment = async (req, res) => {
         if (!result.rowCount || !result.rows[0].attachment) {
             return res.status(404).json({
                 success: false,
-                code: 'TASK_SPRINT_SUBMISSION_ATTACHMENT_NOT_FOUND',
-                message: 'Task sprint submission attachment not found.'
+                code: 'TASK_SUBMISSION_ATTACHMENT_NOT_FOUND',
+                message: 'Task submission attachment not found.'
             });
         }
         return res.status(200).json({
@@ -828,11 +811,11 @@ const getProjectTaskSprintSubmissionAttachment = async (req, res) => {
             data: { attachment: result.rows[0].attachment }
         });
     } catch (error) {
-        console.error('Get task sprint submission attachment error:', error);
+        console.error('Get task submission attachment error:', error);
         return res.status(500).json({
             success: false,
-            code: 'TASK_SPRINT_SUBMISSION_ATTACHMENT_FETCH_FAILED',
-            message: 'The task sprint submission attachment could not be retrieved.'
+            code: 'TASK_SUBMISSION_ATTACHMENT_FETCH_FAILED',
+            message: 'The task submission attachment could not be retrieved.'
         });
     }
 };
@@ -861,13 +844,13 @@ const submitProjectTaskForReview = async (req, res) => {
             ? req.body.submissionNote.trim()
             : '';
         const { attachments, error: attachmentError } =
-            normalizeTaskSprintSubmissionAttachments(req.body?.submissionAttachments);
+            normalizeTaskSubmissionAttachments(req.body?.submissionAttachments);
         const { links, error: linksError } =
-            normalizeTaskSprintSubmissionLinks(req.body?.submissionLinks);
+            normalizeTaskSubmissionLinks(req.body?.submissionLinks);
         if (attachmentError || linksError) {
             return res.status(400).json({
                 success: false,
-                code: 'TASK_SPRINT_SUBMISSION_INVALID',
+                code: 'TASK_SUBMISSION_INVALID',
                 message: attachmentError || linksError
             });
         }
@@ -875,7 +858,7 @@ const submitProjectTaskForReview = async (req, res) => {
             (!submissionNote && !attachments.length && !links.length)) {
             return res.status(400).json({
                 success: false,
-                code: 'TASK_SPRINT_SUBMISSION_CONTENT_REQUIRED',
+                code: 'TASK_SUBMISSION_CONTENT_REQUIRED',
                 message: submissionNote.length > 5000
                     ? 'Submission notes cannot exceed 5,000 characters.'
                     : 'Add submission notes, attach a file or voice note, or include a link.'
@@ -885,9 +868,10 @@ const submitProjectTaskForReview = async (req, res) => {
         client = await pool.connect();
         await client.query('BEGIN');
         const taskResult = await client.query(
-            `SELECT task.task_id, task.title, task.sprint_name, task.status,
-                    task.sprint_submission_status,
-                    project.name AS project_name, project.creator_firebase_uid,
+            `SELECT task.task_id, task.title, task.status,
+                    task.task_submission_status,
+                    project.name AS project_name,
+                    project.creator_firebase_uid AS project_creator_firebase_uid,
                     project.creator_initials
              FROM project_tasks task
              JOIN projects project ON project.project_id = task.project_id
@@ -905,21 +889,15 @@ const submitProjectTaskForReview = async (req, res) => {
         }
 
         const task = taskResult.rows[0];
-        if (!task.sprint_name) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({
-                success: false,
-                code: 'TASK_SPRINT_REQUIRED',
-                message: 'This task has no sprint assigned.'
-            });
-        }
-        const sprint = getSprintForTask(project, task.sprint_name);
-        if (!sprint || !sprintMemberUids(sprint).includes(req.firebaseUid)) {
+        if (
+            project.creator_firebase_uid !== req.firebaseUid &&
+            !projectSprintMemberUids(project).includes(req.firebaseUid)
+        ) {
             await client.query('ROLLBACK');
             return res.status(403).json({
                 success: false,
-                code: 'TASK_SPRINT_SUBMISSION_FORBIDDEN',
-                message: 'Only a member of this sprint can submit it for review.'
+                code: 'TASK_SUBMISSION_FORBIDDEN',
+                message: 'Only the project owner or a project sprint member can submit this task for review.'
             });
         }
         if (task.status !== 'In progress') {
@@ -927,34 +905,34 @@ const submitProjectTaskForReview = async (req, res) => {
             return res.status(409).json({
                 success: false,
                 code: 'TASK_NOT_STARTED',
-                message: 'Start the task before submitting its sprint for review.'
+                message: 'Start the task before submitting it for review.'
             });
         }
-        if (['Pending Review', 'Completed'].includes(task.sprint_submission_status)) {
+        if (['Pending Review', 'Completed'].includes(task.task_submission_status)) {
             await client.query('ROLLBACK');
             return res.status(409).json({
                 success: false,
-                code: 'TASK_SPRINT_NOT_SUBMITTABLE',
-                message: task.sprint_submission_status === 'Completed'
-                    ? 'This task sprint has already been accepted.'
-                    : 'This task sprint is already awaiting review.'
+                code: 'TASK_NOT_SUBMITTABLE',
+                message: task.task_submission_status === 'Completed'
+                    ? 'This task submission has already been accepted.'
+                    : 'This task is already awaiting review.'
             });
         }
 
         const submittedAt = new Date().toISOString();
         const saved = await client.query(
             `UPDATE project_tasks
-             SET sprint_submission_status = 'Pending Review',
-                 sprint_submission_note = $1,
-                 sprint_submission_attachments = $2::jsonb,
-                 sprint_submission_links = $3::jsonb,
-                 sprint_submitted_by_firebase_uid = $4,
-                 sprint_submitted_at = $5::timestamptz,
+             SET task_submission_status = 'Pending Review',
+                 task_submission_note = $1,
+                 task_submission_attachments = $2::jsonb,
+                 task_submission_links = $3::jsonb,
+                 task_submitted_by_firebase_uid = $4,
+                 task_submitted_at = $5::timestamptz,
                  updated_at = NOW()
              WHERE project_id = $6 AND task_id = $7::uuid
-             RETURNING task_id, sprint_name, sprint_submission_status,
-                       sprint_submission_note, sprint_submission_links,
-                       sprint_submitted_at`,
+             RETURNING task_id, task_submission_status,
+                       task_submission_note, task_submission_links,
+                       task_submitted_at`,
             [
                 submissionNote,
                 JSON.stringify(attachments),
@@ -965,55 +943,55 @@ const submitProjectTaskForReview = async (req, res) => {
                 taskId
             ]
         );
-        if (!saved.rowCount) throw new Error('Task sprint submission did not persist.');
+        if (!saved.rowCount) throw new Error('Task submission did not persist.');
         await client.query('COMMIT');
 
         let notificationWarning = null;
-        if (task.creator_firebase_uid !== req.firebaseUid) {
+        if (task.project_creator_firebase_uid !== req.firebaseUid) {
             try {
                 await query(
                     `INSERT INTO notifications (
                         recipient_firebase_uid, project_id, related_task_id,
                         type, title, detail, avatar, tone_class
                      )
-                     VALUES ($1, $2, $3, 'task_sprint_submitted_for_review', $4, $5, $6, 'orange-bg')`,
+                     VALUES ($1, $2, $3, 'task_submitted_for_review', $4, $5, $6, 'orange-bg')`,
                     [
-                        task.creator_firebase_uid,
+                        task.project_creator_firebase_uid,
                         project.project_id,
                         taskId,
-                        'Task sprint ready for review',
-                        `${req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'A sprint member'} submitted "${task.sprint_name}" for "${task.title}" in "${task.project_name}" for review.`,
+                        'Project task ready for review',
+                        `${req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'A project member'} submitted "${task.title}" in "${task.project_name}" for review.`,
                         task.creator_initials || '•'
                     ]
                 );
             } catch (notificationError) {
-                console.error('Task sprint submission saved, but its notification could not be created:', notificationError);
+                console.error('Task submission saved, but its notification could not be created:', notificationError);
                 notificationWarning = 'The submission was saved, but the project owner could not be notified.';
             }
         }
 
         return res.status(200).json({
             success: true,
-            message: 'Task sprint submitted for review.',
+            message: 'Task submitted for review.',
             ...(notificationWarning ? { notificationWarning } : {}),
             data: { task: saved.rows[0] }
         });
     } catch (error) {
         await client?.query('ROLLBACK').catch(rollbackError => {
-            console.error('Task sprint submission rollback error:', rollbackError);
+            console.error('Task submission rollback error:', rollbackError);
         });
-        console.error('Submit project task sprint for review error:', error);
+        console.error('Submit project task for review error:', error);
         return res.status(500).json({
             success: false,
-            code: 'TASK_SPRINT_SUBMISSION_FAILED',
-            message: 'The task sprint could not be submitted for review.'
+            code: 'TASK_SUBMISSION_FAILED',
+            message: 'The task could not be submitted for review.'
         });
     } finally {
         client?.release();
     }
 };
 
-const reviewProjectTaskSprintSubmission = async (req, res) => {
+const reviewProjectTaskSubmission = async (req, res) => {
     let client;
     try {
         const { projectId, taskId } = req.params;
@@ -1035,7 +1013,7 @@ const reviewProjectTaskSprintSubmission = async (req, res) => {
         if (project.creator_firebase_uid !== req.firebaseUid) {
             return res.status(403).json({
                 success: false,
-                code: 'TASK_SPRINT_REVIEW_FORBIDDEN',
+                code: 'TASK_REVIEW_FORBIDDEN',
                 message: 'Only the project owner can review this task submission.'
             });
         }
@@ -1047,7 +1025,7 @@ const reviewProjectTaskSprintSubmission = async (req, res) => {
             (decision === 'request_changes' && !comment)) {
             return res.status(400).json({
                 success: false,
-                code: 'TASK_SPRINT_REVIEW_INVALID',
+                code: 'TASK_REVIEW_INVALID',
                 message: comment.length > 5000
                     ? 'Review comments cannot exceed 5,000 characters.'
                     : decision === 'request_changes' && !comment
@@ -1058,26 +1036,9 @@ const reviewProjectTaskSprintSubmission = async (req, res) => {
 
         client = await pool.connect();
         await client.query('BEGIN');
-        const lockedProject = await client.query(
-            `SELECT sprints
-             FROM projects
-             WHERE project_id = $1
-             FOR UPDATE`,
-            [project.project_id]
-        );
-        if (!lockedProject.rowCount) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({
-                success: false,
-                code: 'PROJECT_NOT_FOUND',
-                message: 'Project not found.'
-            });
-        }
-        const allProjectSprintsCompleted =
-            areAllProjectSprintsCompleted(lockedProject.rows[0].sprints);
         const taskResult = await client.query(
-            `SELECT task.task_id, task.title, task.sprint_name, task.status,
-                    task.sprint_submission_status,
+            `SELECT task.task_id, task.title, task.status,
+                    task.task_submission_status,
                     project.name AS project_name
              FROM project_tasks task
              JOIN projects project ON project.project_id = task.project_id
@@ -1094,11 +1055,11 @@ const reviewProjectTaskSprintSubmission = async (req, res) => {
             });
         }
         const task = taskResult.rows[0];
-        if (task.sprint_submission_status !== 'Pending Review') {
+        if (task.task_submission_status !== 'Pending Review') {
             await client.query('ROLLBACK');
             return res.status(409).json({
                 success: false,
-                code: 'TASK_SPRINT_NOT_AWAITING_REVIEW',
+                code: 'TASK_NOT_AWAITING_REVIEW',
                 message: 'This task submission is not awaiting review.'
             });
         }
@@ -1106,23 +1067,22 @@ const reviewProjectTaskSprintSubmission = async (req, res) => {
         const reviewedAt = new Date().toISOString();
         const updated = await client.query(
             `UPDATE project_tasks
-             SET sprint_submission_status = $1,
-                 sprint_review_comment = $2,
-                 sprint_reviewed_by_firebase_uid = $3,
-                 sprint_reviewed_at = $4::timestamptz,
-                 status = CASE WHEN $5::boolean AND $6::boolean THEN 'Done' ELSE status END,
+             SET task_submission_status = $1,
+                 task_review_comment = $2,
+                 task_reviewed_by_firebase_uid = $3,
+                 task_reviewed_at = $4::timestamptz,
+                 status = CASE WHEN $5::boolean THEN 'Done' ELSE status END,
                  updated_at = NOW()
-             WHERE project_id = $7 AND task_id = $8::uuid
-             RETURNING task_id, status, sprint_submission_status,
-                       sprint_review_comment, sprint_reviewed_by_firebase_uid,
-                       sprint_reviewed_at`,
+             WHERE project_id = $6 AND task_id = $7::uuid
+             RETURNING task_id, status, task_submission_status,
+                       task_review_comment, task_reviewed_by_firebase_uid,
+                       task_reviewed_at`,
             [
                 decision === 'accept' ? 'Completed' : 'Changes Requested',
                 comment,
                 req.firebaseUid,
                 reviewedAt,
                 decision === 'accept',
-                allProjectSprintsCompleted,
                 project.project_id,
                 taskId
             ]
@@ -1130,11 +1090,7 @@ const reviewProjectTaskSprintSubmission = async (req, res) => {
         await client.query('COMMIT');
 
         let notificationWarning = null;
-        const reviewedSprint = getSprintForTask(
-            { sprints: lockedProject.rows[0].sprints },
-            task.sprint_name
-        );
-        const reviewRecipients = sprintMemberUids(reviewedSprint)
+        const reviewRecipients = projectSprintMemberUids(project)
             .filter(memberUid => memberUid !== req.firebaseUid);
         for (const recipientUid of reviewRecipients) {
             try {
@@ -1148,21 +1104,21 @@ const reviewProjectTaskSprintSubmission = async (req, res) => {
                         recipientUid,
                         project.project_id,
                         taskId,
-                        decision === 'accept' ? 'task_sprint_submission_accepted' : 'task_sprint_changes_requested',
+                        decision === 'accept' ? 'task_submission_accepted' : 'task_changes_requested',
                         decision === 'accept' ? 'Task submission accepted' : 'Task changes requested',
                         decision === 'accept'
-                            ? `Your submission for "${task.sprint_name}" in "${task.title}" was accepted.`
-                            : `Changes were requested for your submission for "${task.sprint_name}" in "${task.title}".`,
+                            ? `Your submission for "${task.title}" was accepted.`
+                            : `Changes were requested for your submission for "${task.title}".`,
                         project.creator_initials || '•',
                         decision === 'accept' ? 'green-bg' : 'orange-bg'
                     ]
                 );
             } catch (notificationError) {
                 console.error(
-                    `Task sprint review saved, but member ${recipientUid} could not be notified:`,
+                    `Task review saved, but member ${recipientUid} could not be notified:`,
                     notificationError
                 );
-                notificationWarning = 'The review was saved, but one or more sprint members could not be notified.';
+                notificationWarning = 'The review was saved, but one or more project members could not be notified.';
             }
         }
         return res.status(200).json({
@@ -1175,12 +1131,12 @@ const reviewProjectTaskSprintSubmission = async (req, res) => {
         });
     } catch (error) {
         await client?.query('ROLLBACK').catch(rollbackError => {
-            console.error('Task sprint review rollback error:', rollbackError);
+            console.error('Task review rollback error:', rollbackError);
         });
-        console.error('Review project task sprint submission error:', error);
+        console.error('Review project task submission error:', error);
         return res.status(500).json({
             success: false,
-            code: 'TASK_SPRINT_REVIEW_FAILED',
+            code: 'TASK_REVIEW_FAILED',
             message: 'The task submission could not be reviewed.'
         });
     } finally {
@@ -1392,25 +1348,16 @@ const createProjectTask = async (req, res) => {
                 message: messageLinkError
             });
         }
-        const sprintError = validateTaskSprint(project, normalized.value);
-        if (sprintError) {
-            return res.status(400).json({
-                success: false,
-                code: 'INVALID_TASK_SPRINT',
-                message: sprintError
-            });
-        }
-
         const taskId = randomUUID();
         const result = await query(
             `
                 INSERT INTO project_tasks (
-                    task_id, project_id, title, description, category, sprint_name,
+                    task_id, project_id, title, description, category,
                     status, start_date, due_date,
                     created_by_firebase_uid, chat_message_id, description_attachments,
                     priority, tags
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::uuid, $12::jsonb, $13, $14::jsonb)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::uuid, $11::jsonb, $12, $13::jsonb)
                 RETURNING task_id
             `,
             [
@@ -1419,7 +1366,6 @@ const createProjectTask = async (req, res) => {
                 normalized.value.title,
                 normalized.value.description,
                 normalized.value.category,
-                normalized.value.sprintName,
                 normalized.value.status,
                 normalized.value.startDate,
                 normalized.value.dueDate,
@@ -1479,15 +1425,6 @@ const updateProjectTask = async (req, res) => {
                 message: timelineError
             });
         }
-        const sprintError = validateTaskSprint(project, normalized.value);
-        if (sprintError) {
-            return res.status(400).json({
-                success: false,
-                code: 'INVALID_TASK_SPRINT',
-                message: sprintError
-            });
-        }
-
         const messageLinkError = await validateChatMessageLink(
             project.project_id,
             normalized.value.chatMessageId,
@@ -1502,7 +1439,7 @@ const updateProjectTask = async (req, res) => {
         }
 
         const previousTask = await query(
-            `SELECT due_date, status, title, sprint_submission_status FROM project_tasks
+            `SELECT due_date, status, title, task_submission_status FROM project_tasks
              WHERE project_id = $1 AND task_id = $2::uuid LIMIT 1`,
             [project.project_id, req.params.taskId]
         );
@@ -1515,26 +1452,13 @@ const updateProjectTask = async (req, res) => {
         }
         if (
             normalized.value.status === 'Done' &&
-            (previousTask.rows[0].sprint_submission_status !== 'Completed' ||
-                !areAllProjectSprintsCompleted(project.sprints))
+            previousTask.rows[0].task_submission_status !== 'Completed'
         ) {
             return res.status(409).json({
                 success: false,
-                code: 'PROJECT_DELIVERABLES_INCOMPLETE',
-                message: 'A task can move to Done after its submission is accepted and every project sprint is completed.'
+                code: 'TASK_SUBMISSION_NOT_ACCEPTED',
+                message: 'A task can move to Done after its submission is accepted.'
             });
-        }
-        if (
-            previousTask.rows[0].status === 'In progress' &&
-            normalized.value.status !== previousTask.rows[0].status
-        ) {
-            if (!areAllProjectSprintsCompleted(project.sprints)) {
-                return res.status(409).json({
-                    success: false,
-                    code: 'PROJECT_SPRINTS_INCOMPLETE',
-                    message: 'This in-progress task cannot be moved until every project sprint is complete.'
-                });
-            }
         }
 
         const result = await query(
@@ -1543,51 +1467,27 @@ const updateProjectTask = async (req, res) => {
                 SET title = $1,
                     description = $2,
                     category = $3,
-                    sprint_name = $4,
-                    status = $5,
-                    priority = $6,
-                    start_date = $7,
-                    due_date = $8,
+                    status = $4,
+                    priority = $5,
+                    start_date = $6,
+                    due_date = $7,
                     deadline_warning_sent_at = CASE
-                        WHEN due_date IS DISTINCT FROM $8::date THEN NULL
+                        WHEN due_date IS DISTINCT FROM $7::date THEN NULL
                         ELSE deadline_warning_sent_at
                     END,
                     deadline_blocked_at = CASE
-                        WHEN due_date IS DISTINCT FROM $8::date THEN NULL
+                        WHEN due_date IS DISTINCT FROM $7::date THEN NULL
                         ELSE deadline_blocked_at
                     END,
-                    chat_message_id = $9::uuid,
-                    description_attachments = $10::jsonb,
-                    tags = CASE WHEN $11::boolean THEN $12::jsonb ELSE tags END,
+                    chat_message_id = $8::uuid,
+                    description_attachments = $9::jsonb,
+                    tags = CASE WHEN $10::boolean THEN $11::jsonb ELSE tags END,
                     updated_at = NOW()
-                WHERE project_id = $13
-                  AND task_id = $14::uuid
+                WHERE project_id = $12
+                  AND task_id = $13::uuid
                   AND (
-                    $5 <> 'Done'
-                    OR (
-                        project_tasks.sprint_submission_status = 'Completed'
-                        AND EXISTS (
-                            SELECT 1
-                            FROM projects project
-                            WHERE project.project_id = $13
-                              AND jsonb_array_length(
-                                  CASE
-                                      WHEN jsonb_typeof(project.sprints) = 'array' THEN project.sprints
-                                      ELSE '[]'::jsonb
-                                  END
-                              ) > 0
-                              AND NOT EXISTS (
-                                  SELECT 1
-                                  FROM jsonb_array_elements(
-                                      CASE
-                                          WHEN jsonb_typeof(project.sprints) = 'array' THEN project.sprints
-                                          ELSE '[]'::jsonb
-                                      END
-                                  ) AS sprint(value)
-                                  WHERE lower(trim(coalesce(sprint.value->>'status', ''))) <> 'completed'
-                              )
-                        )
-                    )
+                    $4 <> 'Done'
+                    OR project_tasks.task_submission_status = 'Completed'
                   )
                 RETURNING task_id
             `,
@@ -1595,7 +1495,6 @@ const updateProjectTask = async (req, res) => {
                 normalized.value.title,
                 normalized.value.description,
                 normalized.value.category,
-                normalized.value.sprintName,
                 normalized.value.status,
                 normalized.value.priority,
                 normalized.value.startDate,
@@ -1612,8 +1511,8 @@ const updateProjectTask = async (req, res) => {
             if (normalized.value.status === 'Done') {
                 return res.status(409).json({
                     success: false,
-                    code: 'PROJECT_DELIVERABLES_INCOMPLETE',
-                    message: 'A task can move to Done after its submission is accepted and every project sprint is completed.'
+                    code: 'TASK_SUBMISSION_NOT_ACCEPTED',
+                    message: 'A task can move to Done after its submission is accepted.'
                 });
             }
             return res.status(404).json({
@@ -1707,8 +1606,7 @@ const updateProjectTaskStatus = async (req, res) => {
 
         const existingTask = await query(
             `
-                SELECT task_id, status, title,
-                       sprint_name, sprint_submission_status
+                SELECT task_id, status, title, task_submission_status
                 FROM project_tasks
                 WHERE project_id = $1
                   AND task_id = $2::uuid
@@ -1724,23 +1622,21 @@ const updateProjectTaskStatus = async (req, res) => {
             });
         }
         const isProjectOwner = project.creator_firebase_uid === req.firebaseUid;
-        const isSprintMember = sprintMemberUids(
-            getSprintForTask(project, existingTask.rows[0].sprint_name)
-        ).includes(req.firebaseUid);
-        if (!isProjectOwner && !isSprintMember) {
+        const isProjectSprintMember = projectSprintMemberUids(project).includes(req.firebaseUid);
+        if (!isProjectOwner && !isProjectSprintMember) {
             return res.status(403).json({
                 success: false,
                 code: 'TASK_STATUS_UPDATE_FORBIDDEN',
-                message: 'Only the project owner or a member of this task sprint can move it.'
+                message: 'Only the project owner or a project sprint member can move it.'
             });
         }
 
         const task = existingTask.rows[0];
-        if (status === 'Done' && task.sprint_submission_status !== 'Completed') {
+        if (status === 'Done' && task.task_submission_status !== 'Completed') {
             return res.status(409).json({
                 success: false,
-                code: 'TASK_SPRINT_NOT_ACCEPTED',
-                message: 'This task can be completed after its sprint submission is accepted.'
+                code: 'TASK_SUBMISSION_NOT_ACCEPTED',
+                message: 'This task can be completed after its submission is accepted.'
             });
         }
 
@@ -1752,30 +1648,7 @@ const updateProjectTaskStatus = async (req, res) => {
                   AND task_id = $3::uuid
                   AND (
                     $1 <> 'Done'
-                    OR (
-                        project_tasks.sprint_submission_status = 'Completed'
-                        AND EXISTS (
-                            SELECT 1
-                            FROM projects project
-                            WHERE project.project_id = $2
-                              AND jsonb_array_length(
-                                  CASE
-                                      WHEN jsonb_typeof(project.sprints) = 'array' THEN project.sprints
-                                      ELSE '[]'::jsonb
-                                  END
-                              ) > 0
-                              AND NOT EXISTS (
-                                  SELECT 1
-                                  FROM jsonb_array_elements(
-                                      CASE
-                                          WHEN jsonb_typeof(project.sprints) = 'array' THEN project.sprints
-                                          ELSE '[]'::jsonb
-                                      END
-                                  ) AS sprint(value)
-                                  WHERE lower(trim(coalesce(sprint.value->>'status', ''))) <> 'completed'
-                              )
-                        )
-                    )
+                    OR project_tasks.task_submission_status = 'Completed'
                   )
                 RETURNING task_id
             `,
@@ -1785,8 +1658,8 @@ const updateProjectTaskStatus = async (req, res) => {
             if (status === 'Done') {
                 return res.status(409).json({
                     success: false,
-                    code: 'PROJECT_DELIVERABLES_INCOMPLETE',
-                    message: 'A task can move to Done after its submission is accepted and every project sprint is completed.'
+                    code: 'TASK_SUBMISSION_NOT_ACCEPTED',
+                    message: 'A task can move to Done after its submission is accepted.'
                 });
             }
             return res.status(404).json({
@@ -2050,9 +1923,9 @@ module.exports = {
     getProjectTaskComments,
     getProjectTaskDetails,
     getProjectTaskAttachment,
-    getProjectTaskSprintSubmissionAttachment,
+    getProjectTaskSubmissionAttachment,
     getProjectTasks,
-    reviewProjectTaskSprintSubmission,
+    reviewProjectTaskSubmission,
     submitProjectTaskForReview,
     updateProjectTaskDependencies,
     updateProjectTask,

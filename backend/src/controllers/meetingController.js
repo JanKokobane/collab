@@ -453,10 +453,10 @@ const dispatchProjectMeetingActionItem = async (req, res) => {
         const title = actionItem.content.slice(0, 255);
         await client.query(
             `INSERT INTO project_tasks (
-                 task_id, project_id, title, description, category, sprint_name,
+                 task_id, project_id, title, description, category,
                  status, due_date, created_by_firebase_uid
-             ) VALUES ($1::uuid, $2, $3, $4, 'Product', $5, 'To do', $6::date, $7)`,
-            [taskId, meeting.project_id, title, actionItem.content, sprintName, dueDate, req.firebaseUid]
+             ) VALUES ($1::uuid, $2, $3, $4, 'Product', 'To do', $5::date, $6)`,
+            [taskId, meeting.project_id, title, actionItem.content, dueDate, req.firebaseUid]
         );
         await client.query(
             `UPDATE project_meeting_action_items

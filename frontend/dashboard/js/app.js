@@ -4,14 +4,14 @@
 
 import { updateNotifCount } from './state.js'
 import { updateUserUI } from './auth.js?v=20261117-no-auto-sprints'
-import { renderProjectNav } from './projects.js?v=20261117-project-calendar-same-month'
-import { renderTasks } from './tasks.js?v=20261118-review-badge-layout'
+import { renderProjectNav } from './projects.js?v=20261121-task-sprint-decoupling'
+import { renderTasks } from './tasks.js?v=20261121-task-sprint-decoupling'
 import {
   renderMembersTable,
   renderAdminTasksTable,
   renderAdminMeetingsTable,
   renderAuditLogs
-} from './admin.js?v=20261118-task-form-close-on-save'
+} from './admin.js?v=20261121-task-sprint-decoupling'
 import {
   currentTheme,
   currentAccent,
