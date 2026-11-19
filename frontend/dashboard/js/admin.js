@@ -917,10 +917,6 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     if (status === (task?.status || 'To do')) option.selected = true
     statusSelect.append(option)
   })
-  const taskStatusLocked = task?.status === 'In progress' && (
-    !sprints.length || sprints.some(sprint => sprint.status !== 'Completed')
-  )
-  if (taskStatusLocked) statusSelect.disabled = true
   statusLabel.append(statusSelect)
 
   const priorityLabel = make('label', 'no-input-icon', 'Priority')
@@ -945,8 +941,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
   const projectDueDate = normalizeDateKey(project.dueDate)
   const schedulePicker = createScheduleCalendarPicker(initialStartDate, initialDueDate, {
     minDate: projectStartDate,
-    maxDate: projectDueDate,
-    onDateChange: ({ startDate, dueDate }) => updateSprintDueDateRange(startDate, dueDate)
+    maxDate: projectDueDate
   })
   const assignmentRow = make('div', 'form-row project-task-assignment-row')
   assignmentRow.append(categoryLabel, statusLabel)
