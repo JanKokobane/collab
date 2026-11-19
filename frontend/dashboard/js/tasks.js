@@ -73,7 +73,7 @@ export function isCurrentUserSprintTask(task) {
   return getSprintMemberUids(sprint).includes(currentUser.uid)
 }
 
-function updateTaskCounts(filtered) {
+export function updateTaskCounts(filtered) {
   const backlogCount = filtered.filter(t => t.status === 'Backlog').length
   const todoCount = filtered.filter(t => t.status === 'To do').length
   const progressCount = filtered.filter(t => t.status === 'In progress').length
@@ -399,19 +399,12 @@ export function taskCard(task) {
   const avatarRow = make('div', 'task-card-avatar-row')
   const visiblePeople = []
   const seenPeople = new Set()
-  const currentUid = String(currentUser?.uid || '')
-  const currentInitials = String(currentUser?.initials || '').trim().toUpperCase()
 
   const addVisiblePerson = person => {
     if (!person) return
     const uid = String(person.uid || person.firebaseUid || '').trim()
     const initials = String(person.initials || '').trim().toUpperCase()
     const name = String(person.name || '').trim()
-
-    if (
-      (currentUid && uid && uid === currentUid) ||
-      ((!currentUid || !uid) && currentInitials && initials === currentInitials)
-    ) return
 
     const key = uid || name.toLowerCase() || initials
     if (!key || seenPeople.has(key)) return
@@ -420,13 +413,8 @@ export function taskCard(task) {
   }
 
   if (task.backendPersistent && project) {
-    const sprintName = String(task.sprint_name || task.sprint || '').trim()
-    const sprint = (project.sprints || []).find(candidate =>
-      String(candidate.name || '').trim() === sprintName
-    )
-    const sprintMembers = Array.isArray(task.sprintMembers)
-      ? task.sprintMembers
-      : getSprintMembers(project, sprint)
+    const sprintMembers = (project.sprints || [])
+      .flatMap(sprint => getSprintMembers(project, sprint))
     sprintMembers.forEach(member => {
       addVisiblePerson({
         ...member,

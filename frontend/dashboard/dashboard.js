@@ -22,7 +22,7 @@ import {
   loadProjectsFromAPI,
   loadNotificationsFromAPI,
   clearNotificationsForSignedOutUser
-} from './js/state.js?v=20261120-remove-task-assignee'
+} from './js/state.js'
 
 import {
   updateUserUI,
@@ -54,7 +54,7 @@ import {
   moveTaskStatus,
   taskCard,
   setupDragAndDrop
-} from './js/tasks.js?v=20261120-remove-task-assignee'
+} from './js/tasks.js?v=20261120-all-project-sprint-members'
 
 import {
   renderCalendarPanel,
