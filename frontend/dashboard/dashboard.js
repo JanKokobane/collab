@@ -22,7 +22,7 @@ import {
   loadProjectsFromAPI,
   loadNotificationsFromAPI,
   clearNotificationsForSignedOutUser
-} from './js/state.js'
+} from './js/state.js?v=20261120-remove-task-assignee'
 
 import {
   updateUserUI,
@@ -42,7 +42,7 @@ import {
   openAddSprintModal,
   openInviteCollaboratorModal,
   openManageCollaboratorsModal
-} from './js/projects.js?v=20261117-project-calendar-same-month'
+} from './js/projects.js?v=20261120-remove-task-assignee'
 
 import { enhanceInputsWithIcons } from './js/icons.js'
 
@@ -54,7 +54,7 @@ import {
   moveTaskStatus,
   taskCard,
   setupDragAndDrop
-} from './js/tasks.js?v=20261117-no-auto-sprints'
+} from './js/tasks.js?v=20261120-remove-task-assignee'
 
 import {
   renderCalendarPanel,
@@ -65,7 +65,7 @@ import {
   openAddReminderModal,
   openDayScheduleModal,
   createScheduleCalendarPicker
-} from './js/calendar.js?v=20261118-tags-priority-row'
+} from './js/calendar.js?v=20261120-remove-task-assignee'
 
 import {
   renderAdminProjectsTable,
@@ -78,12 +78,12 @@ import {
   openProjectTaskModal,
   openAdminEditTaskModal,
   openInviteModal
-} from './js/admin.js?v=20261118-task-form-close-on-save'
+} from './js/admin.js?v=20261120-remove-task-assignee'
 
 import {
   switchView,
   renderOverviewPanel
-} from './js/navigation.js'
+} from './js/navigation.js?v=20261120-remove-task-assignee'
 
 import {
   currentTheme,
@@ -109,7 +109,7 @@ import {
   renderNotifications,
   initWorkspaceHubEvents
 } from './js/workspaceHub.js'
-import { openProjectTaskDetails } from './js/projectProgressAside.js?v=20261118-aside-media-expand'
+import { openProjectTaskDetails } from './js/projectProgressAside.js?v=20261120-remove-task-assignee'
 import { initMessages, openMessageContext, refreshMessagesForCurrentUser, renderMessages } from './js/messages.js?v=20261026-collaboration-context'
 import { renderMeetingsPage } from './js/meetingsPage.js'
 import { initProjectStickyNotes } from './js/projectStickyNotes.js'

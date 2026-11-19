@@ -9096,13 +9096,13 @@ body.dark-mode .input-with-icon:focus-within .input-icon-svg,
     color: #FFFFFF;
 }
 
-.list-assignee-cell {
+.list-sprint-cell {
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-.list-assignee-cell small {
+.list-sprint-cell small {
     font-size: 12px;
     color: #52525B;
     font-weight: 500;
@@ -9585,8 +9585,7 @@ body.dark-mode .input-with-icon:focus-within .input-icon-svg,
 }
 
 .calendar-task-top,
-.calendar-chip-meta,
-.calendar-task-assignee {
+.calendar-chip-meta {
     display: flex;
     align-items: center;
 }
@@ -9632,26 +9631,6 @@ body.dark-mode .input-with-icon:focus-within .input-icon-svg,
 .calendar-chip-meta {
     padding-top: 8px;
     border-top: 1px solid #F0F1F2;
-}
-
-.calendar-task-assignee {
-    min-width: 0;
-    gap: 6px;
-    color: #667085;
-    font-size: 10px;
-}
-
-.calendar-task-assignee>span:last-child {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.calendar-task-avatar {
-    width: 22px;
-    height: 22px;
-    flex: 0 0 22px;
-    font-size: 8px;
 }
 
 .calendar-day-empty {
@@ -12280,10 +12259,6 @@ body.dark-mode .calendar-task-category {
 
 body.dark-mode .calendar-chip-meta {
     border-color: #34343F;
-}
-
-body.dark-mode .calendar-task-assignee {
-    color: #A1A1AA;
 }
 
 body.dark-mode .calendar-day-empty {

@@ -165,23 +165,22 @@ Migration `005_project_tasks.sql` adds PostgreSQL-backed, project-scoped tasks;
 `006_project_task_comments.sql` adds persistent comments for those tasks;
 `024_collaboration_context_features.sql` adds chat backlinks/decision flags,
 task media attachments, cross-project dependencies, and meeting notes/action items.
+Migration `035_remove_task_assignee.sql` removes the task-level assignee column.
 Authenticated project owners can create, edit, and delete tasks; project owners
 and accepted project invitees can read them. A task must reference a sprint on
-its project and an invitee whose invitation has been accepted. Pending invitees
-and the project creator are not valid task assignees.
-New tasks must be assigned to the accepted invitee recorded as the sprint lead;
-task creation and assignment are validated by the API. Task categories are
-stored as text and accept any non-empty value up to 100 characters. Existing
-tasks on older sprints without a recorded lead can retain their current
-accepted invitee when edited.
+its project. Sprint members collaborate on every task in that sprint, and there
+is no separate task assignee. The project owner and sprint members can update
+task status; pending invitees cannot access project tasks. Task categories are
+stored as text and accept any non-empty value up to 100 characters.
 
 - `GET /api/projects/:projectId/tasks`: list tasks for a project the caller
-  owns or has accepted an invitation to.
+  owns or has accepted an invitation to. `assignedToMe=true` returns tasks in
+  sprints where the caller is a member.
 - `POST /api/projects/:projectId/tasks`: create a task as the project creator.
 - `PUT /api/projects/:projectId/tasks/:taskId`: update a task as its project
   creator.
 - `PATCH /api/projects/:projectId/tasks/:taskId/status`: update status as the
-  project creator or the invitee assigned to that task.
+  project creator or a member of the task's sprint.
 - `DELETE /api/projects/:projectId/tasks/:taskId`: delete a task as its project
   creator.
 - `GET|POST /api/projects/:projectId/tasks/:taskId/comments`: read or add task
@@ -213,7 +212,7 @@ accepted invitee when edited.
 - `GET|POST /api/projects/:projectId/meetings/:meetingId/action-items` manages
   action bullets. `POST /api/projects/:projectId/meetings/:meetingId/action-items/:actionItemId/dispatch`
   creates a task for a meeting attendee and links the task back to its action
-  item; assignees must still satisfy the project sprint-lead rule.
+  item; the selected attendee must be a member of the selected project sprint.
 - `GET|POST /api/projects/:projectId/reminders`: list and create reminders for
   a project the caller owns or has joined. Reminder dates must be today or
   later, and priorities are limited to Normal, High, and Urgent.
@@ -241,9 +240,8 @@ accepted invitee when edited.
 - `PUT /api/projects/:projectId` with a `sprints` array: persist sprint changes
   as the project creator. Sprint deletion may include a `sprint_name_map`
   object mapping every existing sprint name to a remaining sprint name; the
-  update, task sprint changes, and task reassignment to the destination sprint
-  lead (when present) are committed atomically. Newly assigned accepted
-  invitee sprint leads receive a persisted in-dashboard notification.
+  update and task sprint changes are committed atomically. Newly added sprint
+  members receive a persisted in-dashboard notification.
 
 ## Implemented API foundation
 

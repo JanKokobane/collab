@@ -3,6 +3,7 @@ import {
   projects,
   tasks,
   members,
+  getSprintMemberUids,
   auditLogs,
   activeView,
   setActiveView,
@@ -241,7 +242,16 @@ export function renderOverviewPanel() {
   if (workloadContainer) {
     workloadContainer.replaceChildren()
     members.forEach(m => {
-      const count = tasks.filter(t => t.assignee === m.initials && t.status !== 'Done').length
+      const count = tasks.filter(task => {
+        if (task.status === 'Done') return false
+        const project = projects.find(candidate =>
+          candidate.projectId === task.projectId || candidate.name === task.project
+        )
+        const sprint = (project?.sprints || []).find(candidate =>
+          candidate.name === (task.sprint_name || task.sprint)
+        )
+        return getSprintMemberUids(sprint).includes(m.firebaseUid)
+      }).length
       const item = make('div', 'workload-item')
       const workloadLeft = make('div', 'workload-left')
       const avatarTone = /^[a-zA-Z][\w-]*$/.test(m.tone || '') ? m.tone : 'coral'

@@ -109,9 +109,6 @@ type Task = {
   tags: string[];
   description: string | null;
   attachments: HomeTaskAttachment[];
-  assignee: string;
-  assigneeFirebaseUid: string | null;
-  assigneeProfileImage: string | null;
   createdBy: string;
   createdByFirebaseUid: string | null;
   createdByProfileImage: string | null;
@@ -913,7 +910,7 @@ function getInitials(value: string | null | undefined) {
 function taskFromHomeTask(
   task: HomeTask,
   project: HomeProject,
-  currentUserName: string,
+  currentUserUid: string,
 ): Task {
   const normalizedStatus = task.status.trim().toLowerCase();
   const taskCreator = project.acceptedMembers?.find(
@@ -925,7 +922,7 @@ function taskFromHomeTask(
     ? project.creatorName || project.creatorEmail
     : taskCreator?.name;
   const projectAssignedSprints = project.sprints?.filter(
-    (sprint) => sprint.assigneeFirebaseUid === task.assigneeFirebaseUid,
+    (sprint) => sprint.memberFirebaseUids?.includes(currentUserUid),
   ) || [];
   const assignedSprints = projectAssignedSprints.length
     ? projectAssignedSprints
@@ -952,9 +949,6 @@ function taskFromHomeTask(
     tags: task.tags || [],
     description: task.description || null,
     attachments: task.descriptionAttachments || [],
-    assignee: task.assigneeName || task.assigneeEmail || currentUserName,
-    assigneeFirebaseUid: task.assigneeFirebaseUid || null,
-    assigneeProfileImage: task.assigneeProfileImage || null,
     createdBy: createdBy || project.creatorName || project.creatorEmail || 'Project owner',
     createdByFirebaseUid: task.createdByFirebaseUid || null,
     createdByProfileImage: taskCreatorIsProjectOwner
@@ -1141,8 +1135,8 @@ function TaskCard({
 
         <View
           accessibilityLabel={`Project ${task.project}`}
-          style={styles.assigneeRow}>
-          <Text numberOfLines={1} style={styles.assigneeName}>{task.project}</Text>
+          style={styles.projectMetaRow}>
+          <Text numberOfLines={1} style={styles.projectMetaName}>{task.project}</Text>
         </View>
 
         <Pressable
@@ -1306,7 +1300,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     async function loadAssignedTasks() {
       const currentUser = firebaseAuth.currentUser;
       if (!currentUser) {
-        setLoadError('Sign in to see tasks assigned to you.');
+        setLoadError('Sign in to see tasks in your sprints.');
         setLoading(false);
         return;
       }
@@ -1334,27 +1328,26 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
           }
           successfulProjects += 1;
           loadedTasks.push(...result.value.tasks
-            .filter((task) => task.assigneeFirebaseUid === currentUser.uid)
-            .map((task) => taskFromHomeTask(
-              task,
-              result.value.project,
-              currentUser.displayName?.trim() || currentUser.email || 'You',
-            )));
+          .map((task) => taskFromHomeTask(
+            task,
+            result.value.project,
+            currentUser.uid,
+          )));
         }
 
         if (failedProjects > 0 && successfulProjects === 0) {
-          throw new HomeApiError('Your assigned tasks could not be loaded. Please try again later.', 502);
+          throw new HomeApiError('Your sprint tasks could not be loaded. Please try again later.', 502);
         }
         setTasks(loadedTasks);
         if (failedProjects > 0) {
           setWarning(`Tasks from ${failedProjects} project${failedProjects === 1 ? '' : 's'} could not be loaded.`);
         }
       } catch (error) {
-        console.error('Unable to load tasks assigned to the signed-in user:', error);
+        console.error("Unable to load tasks in the signed-in user's sprints:", error);
         if (active) {
           setLoadError(error instanceof HomeApiError
             ? error.message
-            : 'Your assigned tasks could not be loaded. Please try again.');
+            : 'Your sprint tasks could not be loaded. Please try again.');
         }
       } finally {
         if (active) setLoading(false);
@@ -1403,12 +1396,6 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
       ? profileImagesByUid[selectedTask.createdByFirebaseUid]
       : undefined) ?? selectedTask.createdByProfileImage
     : null;
-  const selectedAssigneeProfileImage = selectedTask
-    ? (selectedTask.assigneeFirebaseUid
-      ? profileImagesByUid[selectedTask.assigneeFirebaseUid]
-      : undefined) ?? selectedTask.assigneeProfileImage
-    : null;
-
   useEffect(() => {
     if (!selectedTaskId || !selectedTaskProjectId) return undefined;
     const taskId = selectedTaskId;
@@ -1829,7 +1816,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
           <View style={styles.sectionTitleCopy}>
             <View style={styles.sectionTitleWrap}>
               <Text style={styles.sectionTitle}>
-                {filter === 'All' || filter === 'Today' ? 'Assigned to me' : filter}
+                {filter === 'All' || filter === 'Today' ? 'My sprint tasks' : filter}
               </Text>
               <View style={styles.sectionTitleUnderline} />
             </View>
@@ -1936,7 +1923,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
           {loading ? (
             <View style={styles.emptyState}>
               <ActivityIndicator color="#0F172A" />
-              <Text style={styles.emptyDescription}>Loading your assigned tasks...</Text>
+              <Text style={styles.emptyDescription}>Loading your sprint tasks...</Text>
             </View>
           ) : (
             <View style={styles.taskList}>
@@ -1954,13 +1941,13 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   <ProductiveIllustration />
                   <Text style={styles.productiveTitle}>
                     {visibleTasks.length === 0
-                      ? (tasks.length === 0 ? 'No tasks assigned to you' : 'All caught up!')
+                      ? (tasks.length === 0 ? 'No tasks in your sprints' : 'All caught up!')
                       : 'Stay productive!'}
                   </Text>
                   <Text style={styles.productiveSubtitle}>
                     {visibleTasks.length === 0
                       ? (tasks.length === 0
-                        ? 'Tasks assigned to your account will appear here.'
+                        ? 'Tasks from your sprints will appear here.'
                         : 'You are clear for this filter. Try switching to All.')
                       : 'You’re all caught up for now.'}
                   </Text>
@@ -2062,28 +2049,6 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                       </View>
                       <Text style={styles.metadataValue}>
                         {selectedTask.createdBy || 'Project owner'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.metadataRow}>
-                    <Text style={styles.metadataLabel}>Assigned to</Text>
-                    <View style={styles.metadataValueContainer}>
-                      <View style={styles.creatorAvatar}>
-                        {selectedAssigneeProfileImage ? (
-                          <Image
-                            source={{ uri: selectedAssigneeProfileImage }}
-                            style={styles.creatorAvatarImage}
-                            accessibilityLabel={`${selectedTask.assignee} profile picture`}
-                          />
-                        ) : (
-                          <Text style={styles.creatorAvatarText}>
-                            {getInitials(selectedTask.assignee) || '?'}
-                          </Text>
-                        )}
-                      </View>
-                      <Text style={styles.metadataValue}>
-                        {selectedTask.assignee || 'You'}
                       </Text>
                     </View>
                   </View>
@@ -2531,7 +2496,7 @@ export default function TodoScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
                   ) : (
                     <View style={styles.assignedSprintNoSprintRow}>
                       <Text style={styles.assignedSprintName}>
-                        No sprints are assigned to you in this project.
+                        You are not a member of any sprints in this project.
                       </Text>
                     </View>
                   )}
@@ -2911,7 +2876,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
   },
-  assigneeRow: {
+  projectMetaRow: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2923,7 +2888,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#EFF2F7',
   },
-  assigneeName: { maxWidth: '88%', flexShrink: 1, color: '#475569', fontSize: 11, fontWeight: '600' },
+  projectMetaName: { maxWidth: '88%', flexShrink: 1, color: '#475569', fontSize: 11, fontWeight: '600' },
   avatarRing: {
     width: 34,
     height: 34,

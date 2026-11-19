@@ -2,6 +2,7 @@ import {
   projects,
   members,
   tasks,
+  getSprintMemberUids,
   currentUser,
   activeView,
   setActiveView,
@@ -1592,11 +1593,13 @@ function openLegacyManageCollaboratorsModal() {
 
     const taskCount =
       tasks.filter(
-        task =>
-          task.project ===
-            proj.name &&
-          task.assignee ===
-            member.initials
+        task => {
+          if (task.project !== proj.name) return false
+          const sprint = (proj.sprints || []).find(candidate =>
+            candidate.name === (task.sprint_name || task.sprint)
+          )
+          return getSprintMemberUids(sprint).includes(member.firebaseUid)
+        }
       ).length
 
     tdTasks.textContent =

@@ -40,10 +40,7 @@ export interface HomeProjectSprint {
   name: string;
   status: string;
   description?: string;
-  assigneeFirebaseUid?: string;
-  assigneeName?: string;
-  assigneeEmail?: string;
-  assigneeProfileImage?: string | null;
+  memberFirebaseUids?: string[];
   submissionNote?: string;
   reviewComment?: string;
   submittedAt?: string;
@@ -65,10 +62,6 @@ export interface HomeTask {
   sprintSubmissionAttachments?: HomeTaskSprintSubmissionAttachment[];
   sprintSubmittedAt?: string;
   createdByFirebaseUid?: string;
-  assigneeFirebaseUid?: string;
-  assigneeName?: string;
-  assigneeEmail?: string;
-  assigneeProfileImage?: string | null;
   descriptionAttachments?: HomeTaskAttachment[];
   tags?: string[];
   priority?: string;
@@ -267,9 +260,12 @@ function parseHomeProject(value: unknown): HomeProject | null {
         name,
         status: asText(sprint.status, 'Upcoming'),
         description: asText(sprint.description, asText(sprint.sprint_description)) || undefined,
-        assigneeFirebaseUid: asText(sprint.assigneeFirebaseUid, asText(sprint.assignee_firebase_uid)) || undefined,
-        assigneeName: asText(sprint.assigneeName, asText(sprint.assignee_name)) || undefined,
-        assigneeEmail: asText(sprint.assigneeEmail, asText(sprint.assignee_email)) || undefined,
+        memberFirebaseUids: Array.isArray(sprint.memberFirebaseUids)
+          ? sprint.memberFirebaseUids.filter((uid): uid is string => typeof uid === 'string')
+          : Array.isArray(sprint.member_firebase_uids)
+            ? sprint.member_firebase_uids.filter((uid): uid is string => typeof uid === 'string')
+            : [asText(sprint.assigneeFirebaseUid, asText(sprint.assignee_firebase_uid))]
+              .filter(Boolean),
         submissionNote: asText(sprint.submissionNote, asText(sprint.submission_note)) || undefined,
         reviewComment: asText(sprint.reviewComment, asText(sprint.review_comment)) || undefined,
         submittedAt: asText(sprint.submittedAt, asText(sprint.submitted_at)) || undefined,
@@ -368,12 +364,6 @@ export async function fetchHomeTasks(
         : [],
       sprintSubmittedAt: asText(row.sprint_submitted_at) || undefined,
       createdByFirebaseUid: asText(row.created_by_firebase_uid) || undefined,
-      assigneeFirebaseUid: asText(row.assignee_firebase_uid) || undefined,
-      assigneeName: asText(row.assignee_name) || undefined,
-      assigneeEmail: asText(row.assignee_email) || undefined,
-      assigneeProfileImage: typeof row.assignee_profile_image === 'string'
-        ? row.assignee_profile_image
-        : null,
       descriptionAttachments,
       priority: asText(row.priority),
     }];
@@ -563,7 +553,6 @@ export async function createHomeTask(input: {
   description: string;
   category: string;
   sprintName: string;
-  assigneeFirebaseUid: string;
   priority: string;
   dueDate: string | null;
 }): Promise<void> {
@@ -576,7 +565,6 @@ export async function createHomeTask(input: {
         description: input.description.trim(),
         category: input.category,
         sprintName: input.sprintName,
-        assigneeFirebaseUid: input.assigneeFirebaseUid,
         status: 'To do',
         priority: input.priority,
         startDate: null,

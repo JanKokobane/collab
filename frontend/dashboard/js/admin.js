@@ -428,7 +428,7 @@ function renderProjectTaskDetails(project, taskRecords, loadError, refreshDetail
   const taskTableWrap = make('div', 'project-task-table-wrap')
   const head = document.createElement('thead')
   const headRow = document.createElement('tr')
-  ;['Task', 'Assigned to', 'Due date', 'Status', ...(isOwner ? ['Actions'] : [])]
+  ;['Task', 'Sprint', 'Due date', 'Status', ...(isOwner ? ['Actions'] : [])]
     .forEach(label => headRow.append(make('th', '', label)))
   head.append(headRow)
   taskTable.append(head)
@@ -447,14 +447,7 @@ function renderProjectTaskDetails(project, taskRecords, loadError, refreshDetail
       taskCell.append(make('strong', '', task.title))
       if (task.description) taskCell.append(make('small', '', task.description))
       row.append(taskCell)
-      const assignmentCell = document.createElement('td')
-      const assignmentList = make('div', 'project-task-assignment-list')
-      assignmentList.append(
-        make('small', '', task.assignee_name || task.assignee_email || 'Unassigned'),
-        make('small', '', task.sprint_name || 'No sprint')
-      )
-      assignmentCell.append(assignmentList)
-      row.append(assignmentCell)
+      row.append(taskTableCell(task.sprint_name || 'No sprint'))
       row.append(taskTableCell(taskDateLabel(task.due_date)))
       const statusCell = document.createElement('td')
       statusCell.append(make('span', `status-badge ${String(task.status || 'To do').toLowerCase().replaceAll(' ', '-')}`, task.status || 'To do'))
@@ -536,10 +529,6 @@ export async function renderAdminTasksTable({ silent = false, canApply = () => t
         description: task.description,
         category: task.category,
         sprint_name: task.sprint_name,
-        assignee_name: task.assignee_name,
-        assignee_email: task.assignee_email,
-        assignee_firebase_uid: task.assignee_firebase_uid,
-        assignee_profile_image: task.assigneeProfileImage,
         status: task.status,
         start_date: task.start_date,
         due_date: task.due_date
@@ -695,7 +684,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     closeModal()
   })
   const heading = make('h2', '', task ? 'Edit Project Task' : 'Create Project Task')
-  const copy = make('p', 'modal-copy', `Task assignments are available to the project owner and accepted invitees of ${project.name}.`)
+  const copy = make('p', 'modal-copy', `Create a task for a project sprint in ${project.name}. Sprint members collaborate on its tasks.`)
 
   const titleLabel = make('label', '', 'Task title')
   const titleInput = make('input')
@@ -739,16 +728,12 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     : sprints.at(-1)
   let selectedSprintIsInProject = Boolean(initialSprint)
   let selectedSprintName = task?.sprint_name || initialSprint?.name || ''
-  let selectedAssigneeFirebaseUid = task?.assignee_firebase_uid ||
-    (!task && isOwner ? projectOwner?.firebaseUid : '') ||
-    ''
   if (!isOwner && !initialSprint) {
     copy.textContent = `A project owner needs to create a sprint before you can add a task to ${project.name}.`
   }
   const originalSprintSelection = {
     isInProject: selectedSprintIsInProject,
-    name: selectedSprintName,
-    assigneeFirebaseUid: selectedAssigneeFirebaseUid,
+    name: selectedSprintName
   }
   const draftSprints = []
   let editingDraftSprintId = null
@@ -985,10 +970,8 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
         updateSprintDrafts()
         const selectedSprint = draftSprints.find(draft => draft.id === selectedDraftSprintId)
         selectedSprintName = selectedSprint?.name || originalSprintSelection.name
-        selectedAssigneeFirebaseUid = task?.assignee_firebase_uid ||
-          originalSprintSelection.assigneeFirebaseUid
         selectedSprintIsInProject = Boolean(selectedSprint) || originalSprintSelection.isInProject
-        submit.disabled = !selectedSprintIsInProject || !selectedSprintName || !selectedAssigneeFirebaseUid
+        submit.disabled = !selectedSprintIsInProject || !selectedSprintName
       })
       actions.append(editButton, removeButton)
       item.append(details, actions)
@@ -1083,7 +1066,7 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
       selectedSprintName = draftSprint.name
       selectedSprintIsInProject = true
     }
-    submit.disabled = !selectedSprintName || !selectedAssigneeFirebaseUid
+    submit.disabled = !selectedSprintName
     editingDraftSprintId = null
     editingExistingSprint = null
     newSprintNameInput.value = ''
@@ -1097,21 +1080,6 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
 
   const sprintSection = make('div', 'project-task-sprint-field')
   if (isOwner) sprintSection.append(createSprintToggle)
-
-  const assigneeLabel = make('label', 'no-input-icon', 'Assigned member')
-  const assigneeSelect = document.createElement('select')
-  assignmentMembers.forEach(member => {
-    const option = make('option', '', `${member.name || member.email || 'Project member'}${member.role ? ` (${member.role})` : ''}`)
-    option.value = member.firebaseUid
-    option.selected = member.firebaseUid === selectedAssigneeFirebaseUid
-    assigneeSelect.append(option)
-  })
-  assigneeSelect.disabled = assignmentMembers.length === 0
-  assigneeSelect.addEventListener('change', () => {
-    selectedAssigneeFirebaseUid = assigneeSelect.value
-    submit.disabled = !selectedSprintIsInProject || !selectedSprintName || !selectedAssigneeFirebaseUid
-  })
-  assigneeLabel.append(assigneeSelect)
 
   const categoryLabel = make('label', 'no-input-icon', 'Category')
   const categorySelect = document.createElement('select')
@@ -1407,10 +1375,10 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
     onDateChange: ({ startDate, dueDate }) => updateSprintDueDateRange(startDate, dueDate)
   })
   const assignmentRow = make('div', 'form-row project-task-assignment-row')
-  assignmentRow.append(sprintSection, assigneeLabel, categoryLabel, statusLabel)
+  assignmentRow.append(sprintSection, categoryLabel, statusLabel)
   const submit = make('button', 'primary-button full gold', task ? 'Save Task' : 'Create Task')
   submit.type = 'submit'
-  submit.disabled = !selectedSprintIsInProject || !selectedSprintName || !selectedAssigneeFirebaseUid
+  submit.disabled = !selectedSprintIsInProject || !selectedSprintName
   form.append(
     close,
     heading,
@@ -1468,7 +1436,6 @@ export async function openProjectTaskModal(project, task = null, defaults = {}) 
       category: categorySelect.value,
       tags: [...selectedTags],
       sprintName: selectedSprintName,
-      assigneeFirebaseUid: selectedAssigneeFirebaseUid,
       status: task ? statusSelect.value : 'To do',
       priority: prioritySelect.value,
       startDate: schedule.startDate || null,
@@ -1684,7 +1651,7 @@ export function openLegacyAdminTaskModal(prefilledStatus = 'To do', prefilledPro
   close.addEventListener('click', closeModal)
 
   const title = make('h2', '', 'Admin Console: Create Task Deliverable')
-  const copy = make('p', 'modal-copy', 'Central Workspace Administration: Define deliverable, set due date, and assign a team member.')
+  const copy = make('p', 'modal-copy', 'Create a deliverable in a project sprint. Sprint members collaborate on its tasks.')
 
   const projectLabel = make('label', '', 'Target Collaboration Project')
   const projectSelect = document.createElement('select')
@@ -1736,18 +1703,6 @@ export function openLegacyAdminTaskModal(prefilledStatus = 'To do', prefilledPro
   ;['Design', 'Development', 'Marketing', 'Product'].forEach(val => tagSelect.append(make('option', '', val)))
   tagLabel.append(tagSelect)
 
-  const assigneeLabel = make('label', '', 'Assign Deliverable To')
-  const assigneeSelect = document.createElement('select')
-  members.forEach(m => {
-    const opt = make('option', '', `${m.name} (${m.role}) - ${m.initials}`)
-    opt.value = m.initials
-    if (m.initials === 'JL' || (!members.some(mem => mem.initials === 'JL') && m.initials === currentUser.initials)) {
-      opt.selected = true
-    }
-    assigneeSelect.append(opt)
-  })
-  assigneeLabel.append(assigneeSelect)
-
   const statusLabel = make('label', '', 'Initial Status')
   const statusSelect = document.createElement('select')
   ;['Backlog', 'To do', 'In progress', 'Blocked', 'Done'].forEach(val => {
@@ -1764,8 +1719,8 @@ export function openLegacyAdminTaskModal(prefilledStatus = 'To do', prefilledPro
   const rowProjectSprint = make('div', 'form-row')
   rowProjectSprint.append(projectLabel, sprintLabel)
 
-  const rowTagAssignee = make('div', 'form-row')
-  rowTagAssignee.append(tagLabel, assigneeLabel)
+  const rowTag = make('div', 'form-row')
+  rowTag.append(tagLabel)
 
   const rowStatus = make('div', 'form-row')
   rowStatus.append(statusLabel)
@@ -1785,7 +1740,7 @@ export function openLegacyAdminTaskModal(prefilledStatus = 'To do', prefilledPro
     rowProjectSprint,
     titleLabel,
     descLabel,
-    rowTagAssignee,
+    rowTag,
     rowStatus,
     schedulePicker.element,
     submit
@@ -1797,7 +1752,6 @@ export function openLegacyAdminTaskModal(prefilledStatus = 'To do', prefilledPro
   form.addEventListener('submit', (e) => {
     e.preventDefault()
     const targetProjectName = projectSelect.value
-    const assignedMember = members.find(m => m.initials === assigneeSelect.value) || members[0]
 
     let tagColor = 'blue'
     if (tagSelect.value === 'Design') tagColor = 'purple'
@@ -1816,9 +1770,6 @@ export function openLegacyAdminTaskModal(prefilledStatus = 'To do', prefilledPro
       due: schedule.dueLabel,
       startDate: schedule.startDate,
       date: schedule.dueDate,
-      assignee: assignedMember.initials,
-      assigneeName: assignedMember.name,
-      assigneeTone: assignedMember.tone || 'teal',
       status: statusSelect.value,
       progress: statusSelect.value === 'Done' ? 100 : (statusSelect.value === 'In progress' ? 50 : 0),
       sprint: sprintSelect.value,
@@ -1835,8 +1786,7 @@ export function openLegacyAdminTaskModal(prefilledStatus = 'To do', prefilledPro
     renderAdminTasksTable()
     hub.renderCalendarPanel?.()
 
-    addAuditLog('Admin task created', `Admin created deliverable "${newTask.title}" in ${newTask.project} assigned to ${assignedMember.name}.`, 'task')
-    pushNotification('New Deliverable Assigned', `"${newTask.title}" in ${newTask.project}`, assignedMember.initials, `${assignedMember.tone}-bg`)
+    addAuditLog('Admin task created', `Admin created deliverable "${newTask.title}" in ${newTask.project}.`, 'task')
     showDashboardToast(`Task "${newTask.title}" created.`, 'success')
   })
 }
@@ -1916,7 +1866,7 @@ export function openLegacyAdminEditTaskModal(task) {
   close.addEventListener('click', closeModal)
 
   const title = make('h2', '', 'Admin: Edit Deliverable')
-  const copy = make('p', 'modal-copy', `Update task specifications, assignee, schedule, or sprint status.`)
+  const copy = make('p', 'modal-copy', `Update task specifications, schedule, or sprint status.`)
 
   const titleLabel = make('label', '', 'Task Title')
   const titleInput = make('input')
@@ -1930,16 +1880,6 @@ export function openLegacyAdminEditTaskModal(task) {
   descInput.value = task.description || ''
   descLabel.append(descInput)
 
-  const assigneeLabel = make('label', '', 'Assignee')
-  const assigneeSelect = document.createElement('select')
-  members.forEach(m => {
-    const opt = make('option', '', `${m.name} (${m.role})`)
-    opt.value = m.initials
-    if (m.initials === task.assignee) opt.selected = true
-    assigneeSelect.append(opt)
-  })
-  assigneeLabel.append(assigneeSelect)
-
   const statusLabel = make('label', '', 'Status')
   const statusSelect = document.createElement('select')
   ;['Backlog', 'To do', 'In progress', 'Blocked', 'Done'].forEach(s => {
@@ -1950,8 +1890,8 @@ export function openLegacyAdminEditTaskModal(task) {
   })
   statusLabel.append(statusSelect)
 
-  const rowAssigneeStatus = make('div', 'form-row')
-  rowAssigneeStatus.append(assigneeLabel, statusLabel)
+  const rowStatus = make('div', 'form-row')
+  rowStatus.append(statusLabel)
 
   const today = toLocalDateKey()
   const taskStartDate = task.startDate || today
@@ -1965,7 +1905,7 @@ export function openLegacyAdminEditTaskModal(task) {
   const submit = make('button', 'primary-button full gold', 'Save Changes')
   submit.type = 'submit'
 
-  form.append(close, title, copy, titleLabel, descLabel, rowAssigneeStatus, schedulePicker.element, submit)
+  form.append(close, title, copy, titleLabel, descLabel, rowStatus, schedulePicker.element, submit)
   backdrop.append(form)
   root.replaceChildren(backdrop)
 
@@ -1983,13 +1923,6 @@ export function openLegacyAdminEditTaskModal(task) {
 
     task.status = statusSelect.value
     task.done = task.status === 'Done'
-
-    const assigned = members.find(m => m.initials === assigneeSelect.value)
-    if (assigned) {
-      task.assignee = assigned.initials
-      task.assigneeName = assigned.name
-      task.assigneeTone = assigned.tone || 'teal'
-    }
 
     saveTasks()
     closeModal()

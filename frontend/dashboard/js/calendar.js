@@ -3,7 +3,7 @@ import {
   getAccessibleTasks,
   meetings,
   reminders,
-  getAccessibleMembers,
+  getSprintMembers,
   make,
   closeModal,
   root,
@@ -261,11 +261,11 @@ export function renderActualCalendarGrid() {
     if (activeCalendarFilter === 'all' || activeCalendarFilter === 'task') {
       dayTasks.forEach(t => {
         const workChip = make('div', 'cal-event-pin work')
-        workChip.title = `Deliverable: ${t.title} (${t.project}) • Assignee: ${t.assignee}`
+        workChip.title = `Task: ${t.title} (${t.project}) • Sprint: ${t.sprint || 'No sprint'}`
         workChip.append(
           make('span', '', '📋'),
           make('span', '', t.title),
-          make('small', '', `(${t.assignee})`)
+          make('small', '', `(${t.sprint || 'No sprint'})`)
         )
         cell.append(workChip)
       })
@@ -388,7 +388,7 @@ export function openDayScheduleModal(dateStr) {
       taskTitle.style.fontSize = '12px'
       taskTitle.style.color = '#1E293B'
       taskTitle.style.display = 'block'
-      const taskDetails = make('small', '', `${t.project} • Assignee: ${t.assigneeName || t.assignee}`)
+      const taskDetails = make('small', '', `${t.project} • Sprint: ${t.sprint || 'No sprint'}`)
       taskDetails.style.color = '#64748B'
       taskDetails.style.fontSize = '11px'
       description.append(taskTitle, taskDetails)
@@ -491,10 +491,20 @@ export function renderCalendarDaysGrid() {
     } else {
       colTasks.forEach(t => {
         const chip = make('div', 'calendar-task-chip')
-        const assignee = getAccessibleMembers().find(member => member.initials === t.assignee)
-        const assigneeName = t.assigneeName || assignee?.name || t.assignee || 'Unassigned'
-        const assigneeTone = t.assigneeTone || assignee?.tone || 'teal'
-        chip.setAttribute('aria-label', `${t.title}, ${t.project}, assigned to ${assigneeName}`)
+        const project = projects.find(candidate =>
+          candidate.projectId === t.projectId || candidate.name === t.project
+        )
+        const sprint = (project?.sprints || []).find(candidate =>
+          candidate.name === (t.sprint_name || t.sprint)
+        )
+        const sprintMembers = getSprintMembers(project, sprint)
+        const sprintMemberNames = sprintMembers
+          .map(member => member.name || member.email)
+          .filter(Boolean)
+        chip.setAttribute(
+          'aria-label',
+          `${t.title}, ${t.project}, sprint ${t.sprint || 'not assigned'}`
+        )
         const taskTop = make('div', 'calendar-task-top')
         taskTop.append(
           make('span', 'calendar-task-project', t.project),
@@ -502,11 +512,13 @@ export function renderCalendarDaysGrid() {
         )
         const taskTitle = make('strong', '', t.title)
         const meta = make('div', 'calendar-chip-meta')
-        const assigneeWrap = make('span', 'calendar-task-assignee')
-        const avatar = make('span', `avatar calendar-task-avatar ${assigneeTone}-bg`, t.assignee || '?')
-        const assigneeLabel = make('span', '', assigneeName)
-        assigneeWrap.append(avatar, assigneeLabel)
-        meta.append(assigneeWrap, make('span', 'calendar-task-category', t.tag || 'Task'))
+        meta.append(
+          make('span', 'calendar-task-sprint', t.sprint || 'No sprint'),
+          make('span', 'calendar-task-category', t.tag || 'Task')
+        )
+        if (sprintMemberNames.length) {
+          chip.title = `Sprint members: ${sprintMemberNames.join(', ')}`
+        }
         chip.append(taskTop, taskTitle, meta)
         colEl.append(chip)
       })

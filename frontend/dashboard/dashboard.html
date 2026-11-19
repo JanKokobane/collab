@@ -11,7 +11,7 @@
     <meta property="og:description"
         content="Collab brings your projects, tasks, and team conversations into one calm, focused workspace." />
     <link rel="icon" type="image/png" href="../images/favicon.png" />
-    <link rel="stylesheet" href="./dashboard.css?v=20261118-tags-priority-row" />
+    <link rel="stylesheet" href="./dashboard.css?v=20261120-remove-task-assignee" />
     <link rel="stylesheet" href="./workspaceHub.css?v=20261026-collaboration-context" />
     <link rel="stylesheet" href="./meetingsPage.css?v=20261022-meetings-page" />
     <link rel="stylesheet" href="./zoomMeetingModal.css?v=20261026-collaboration-context" />
@@ -656,7 +656,7 @@
                                 <div class="filter-menu" id="filter-menu" style="display: none;">
                                     <button type="button" class="filter-item active" data-filter="all">All
                                         tasks</button>
-                                    <button type="button" class="filter-item" data-filter="mine">Assigned to me</button>
+                                    <button type="button" class="filter-item" data-filter="mine">My sprint tasks</button>
                                     <button type="button" class="filter-item" data-filter="backlog">Backlog</button>
                                     <button type="button" class="filter-item" data-filter="todo">To do</button>
                                     <button type="button" class="filter-item" data-filter="progress">In
@@ -731,7 +731,7 @@
                                             <th style="width: 38px;">Done</th>
                                             <th>Task Title</th>
                                             <th>Project / Tag</th>
-                                            <th>Assignee</th>
+                                            <th>Sprint</th>
                                             <th>Due Date</th>
                                             <th>Comments</th>
                                             <th>Status</th>
@@ -1640,7 +1640,7 @@
 
     <div id="messages-call-root" class="collab-call-portal" hidden aria-live="polite"></div>
 
-    <script type="module" src="./dashboard.js?v=20261118-tags-priority-row"></script>
+    <script type="module" src="./dashboard.js?v=20261120-remove-task-assignee"></script>
 </body>
 
 </html>

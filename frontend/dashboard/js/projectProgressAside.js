@@ -1,6 +1,7 @@
 import {
   currentUser,
   getSprintMembers,
+  getSprintMemberUids,
   make,
   projects,
   tasks,
@@ -56,7 +57,13 @@ function pluralize(count, singular, pluralForm = `${singular}s`) {
   return count === 1 ? singular : pluralForm
 }
 
-function getProductionAnalysis(projectTasks, sprints) {
+function getTaskSprintMembers(project, task) {
+  const sprintName = task.sprint_name || task.sprint
+  const sprint = (project.sprints || []).find(candidate => candidate.name === sprintName)
+  return getSprintMembers(project, sprint)
+}
+
+function getProductionAnalysis(project, projectTasks, sprints) {
   const taskStatus = task => String(task.status || '').trim().toLowerCase()
   const sprintStatus = sprint => String(sprint.status || '').trim().toLowerCase()
   const taskSubmissionStatus = task => String(
@@ -159,18 +166,19 @@ function getProductionAnalysis(projectTasks, sprints) {
 
   const workload = new Map()
   projectTasks.forEach(task => {
-    const identity = task.assigneeFirebaseUid || task.assignee_email || task.assigneeName || 'unassigned'
-    const name = identity === 'unassigned'
-      ? 'Unassigned'
-      : task.assigneeName || task.assignee_email || 'Assigned teammate'
-    const entry = workload.get(identity) || { label: name, open: 0, done: 0, count: 0 }
-    if (taskStatus(task) === 'done') {
-      entry.done += 1
-    } else {
-      entry.open += 1
-    }
-    entry.count = entry.open + entry.done
-    workload.set(identity, entry)
+    getTaskSprintMembers(project, task).forEach(member => {
+      const identity = member.firebaseUid || member.email || member.name
+      if (!identity) return
+      const name = member.name || member.email || 'Sprint member'
+      const entry = workload.get(identity) || { label: name, open: 0, done: 0, count: 0 }
+      if (taskStatus(task) === 'done') {
+        entry.done += 1
+      } else {
+        entry.open += 1
+      }
+      entry.count = entry.open + entry.done
+      workload.set(identity, entry)
+    })
   })
   const workloadItems = [...workload.values()]
     .sort((a, b) => b.open - a.open || b.count - a.count || a.label.localeCompare(b.label))
@@ -580,7 +588,7 @@ function downloadProjectAnalysis(project, projectTasks, analysis) {
     <tr>
       <td>${escapeHtml(task.title)}</td>
       <td><span class="status">${escapeHtml(task.status)}</span></td>
-      <td>${escapeHtml(task.assigneeName || task.assignee_email || 'Unassigned')}</td>
+      <td>${escapeHtml(getTaskSprintMembers(project, task).map(member => member.name || member.email).filter(Boolean).join(', ') || 'No sprint members')}</td>
       <td>${escapeHtml(task.sprint_name || task.sprint || '—')}</td>
       <td>${escapeHtml(task.due_date || '—')}</td>
       <td>${task.hasDependencyWarning || task.dependencies?.some(dependency => dependency.warning_reason) ? 'Yes' : 'No'}</td>
@@ -627,9 +635,9 @@ function downloadProjectAnalysis(project, projectTasks, analysis) {
     ${barSection('Task status', analysis.taskStatusBreakdown, projectTasks.length)}
     ${barSection('Sprint status', analysis.sprintStatusBreakdown, analysis.sprintCount)}
     ${barSection('Schedule outlook', analysis.scheduleBreakdown, openTasks)}
-    ${barSection('Workload by assignee', analysis.workload, projectTasks.length, item => `${item.open} open · ${item.done} done`)}
+    ${barSection('Workload by sprint member', analysis.workload, projectTasks.length, item => `${item.open} open · ${item.done} done`)}
   </div>
-  <section class="panel table-panel"><h2>Task details</h2><table><thead><tr><th>Task</th><th>Status</th><th>Assignee</th><th>Sprint</th><th>Due date</th><th>Dependency warning</th></tr></thead><tbody>${taskRows || '<tr><td colspan="6">No tasks found.</td></tr>'}</tbody></table></section>
+  <section class="panel table-panel"><h2>Task details</h2><table><thead><tr><th>Task</th><th>Status</th><th>Sprint members</th><th>Sprint</th><th>Due date</th><th>Dependency warning</th></tr></thead><tbody>${taskRows || '<tr><td colspan="6">No tasks found.</td></tr>'}</tbody></table></section>
   <section class="panel table-panel"><h2>Sprint delivery</h2><table><thead><tr><th>Sprint</th><th>Status</th><th>Tasks</th><th>Completed tasks</th><th>Completion</th></tr></thead><tbody>${sprintRows || '<tr><td colspan="5">No sprints found.</td></tr>'}</tbody></table></section>
 </main></body></html>`
   const reportWindow = window.open('', '_blank')
@@ -866,8 +874,7 @@ function renderTaskSprintSubmission(project, task, isProjectOwner, afterReview) 
       )
       const submittedBy = submittedByUid === project.creatorFirebaseUid
         ? project.creatorName || project.creatorEmail
-        : submittedByMember?.name || submittedByMember?.email ||
-          task.assigneeName || task.assignee_name || task.assignee_email
+        : submittedByMember?.name || submittedByMember?.email
       section.append(make(
         'small',
         'project-sprint-submission-metadata',
@@ -878,7 +885,7 @@ function renderTaskSprintSubmission(project, task, isProjectOwner, afterReview) 
   if (task.sprintSubmissionNote) {
     const note = make('div', 'project-sprint-submission-note')
     note.append(
-      make('strong', 'project-sprint-card-section-label', 'Assignee note'),
+      make('strong', 'project-sprint-card-section-label', 'Member submission note'),
       make('p', '', task.sprintSubmissionNote)
     )
     section.append(note)
@@ -923,7 +930,7 @@ function renderTaskSprintSubmission(project, task, isProjectOwner, afterReview) 
     const reviewInput = make('textarea', 'project-sprint-review-input')
     reviewInput.rows = 3
     reviewInput.maxLength = 5000
-    reviewInput.placeholder = 'Add feedback for the assignee…'
+    reviewInput.placeholder = 'Add feedback for the sprint members…'
     reviewInput.setAttribute('aria-label', `Review submission for ${task.title}`)
     const error = make('p', 'project-task-sprint-review-error')
     error.setAttribute('role', 'alert')
@@ -957,7 +964,7 @@ function renderTaskSprintSubmission(project, task, isProjectOwner, afterReview) 
           showDashboardToast(response.notificationWarning, 'error')
         } else {
           showDashboardToast(
-            decision === 'accept' ? 'Task submission accepted.' : 'Changes requested from the assignee.',
+            decision === 'accept' ? 'Task submission accepted.' : 'Changes requested from the sprint members.',
             'success'
           )
         }
@@ -1430,7 +1437,7 @@ export async function openProjectProgressAside(task) {
   const content = make('div', 'project-progress-aside-content')
   content.append(summary)
 
-  const analysis = getProductionAnalysis(projectTasks, sprints)
+  const analysis = getProductionAnalysis(project, projectTasks, sprints)
   const analysisSection = make('section', 'project-progress-aside-section project-progress-aside-analysis')
   const analysisHeading = make('div', 'project-progress-aside-section-heading')
   const analysisHeadingCopy = make('div', 'project-progress-analysis-heading-copy')
@@ -1491,13 +1498,13 @@ export async function openProjectProgressAside(task) {
       }
     ),
     renderProgressBars(
-      'Workload by assignee',
-      `${projectTasks.length} ${pluralize(projectTasks.length, 'task')} across ${analysis.workload.length} ${pluralize(analysis.workload.length, 'assignee')}`,
+      'Workload by sprint member',
+      `${projectTasks.length} ${pluralize(projectTasks.length, 'task')} across ${analysis.workload.length} ${pluralize(analysis.workload.length, 'sprint member')}`,
       analysis.workload,
       'is-workload',
       {
         scale: 'max',
-        emptyMessage: 'Assign tasks to teammates to compare workload.',
+        emptyMessage: 'Add members to project sprints to compare workload.',
         pairedSeries: [
           { key: 'open', label: 'Open tasks', tone: 'is-progress' },
           { key: 'done', label: 'Completed tasks', tone: 'is-done' }
@@ -2042,7 +2049,7 @@ export async function openProjectProgressAside(task) {
         `Assigned tasks (${sprintTasks.length})`
       ))
       if (!sprintTasks.length) {
-        tasksBlock.append(make('p', 'project-sprint-sheet-empty-note', 'No tasks have been assigned to this sprint yet.'))
+        tasksBlock.append(make('p', 'project-sprint-sheet-empty-note', 'No tasks belong to this sprint yet.'))
       } else {
         const miniTaskList = make('div', 'project-sprint-sheet-task-list')
         sprintTasks.forEach(sprintTask => {
@@ -2350,8 +2357,11 @@ export async function openProjectProgressAside(task) {
   } else {
     listedMembers.forEach(member => {
       const memberTaskCount = projectTasks.filter(projectTask =>
-        (member.firebaseUid && projectTask.assigneeFirebaseUid === member.firebaseUid) ||
-        (!member.firebaseUid && member.email && projectTask.assignee_email === member.email)
+        getSprintMemberUids(
+          (project.sprints || []).find(candidate =>
+            candidate.name === (projectTask.sprint_name || projectTask.sprint)
+          )
+        ).includes(member.firebaseUid)
       ).length
       const isOwner = member.role === 'Project owner'
       const memberRow = make(
@@ -2441,7 +2451,6 @@ export async function openProjectProgressAside(task) {
       const taskMeta = make('div', 'project-progress-aside-task-meta')
       taskMeta.append(
         make('span', '', `Sprint · ${projectTask.sprint_name || 'No sprint'}`),
-        make('span', '', `Assigned · ${projectTask.assigneeName || projectTask.assignee_email || 'Unassigned'}`),
         make('span', '', `Due · ${displayDate(projectTask.due_date)}`)
       )
       if (projectTask.description) {
@@ -2475,7 +2484,11 @@ export async function openProjectProgressAside(task) {
       const canManageProjectTask = Boolean(
         currentUid && (
           isProjectOwner ||
-          projectTask.assigneeFirebaseUid === currentUid
+          getSprintMemberUids(
+            (project.sprints || []).find(candidate =>
+              candidate.name === (projectTask.sprint_name || projectTask.sprint)
+            )
+          ).includes(currentUid)
         )
       )
       const taskMovementLocked = (

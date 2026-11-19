@@ -4,6 +4,22 @@ const { pool, query } = require('../config/db');
 const MAX_TASK_SPRINT_SUBMISSION_MEDIA_BYTES = 100 * 1024 * 1024;
 const MAX_TASK_SPRINT_SUBMISSION_ATTACHMENTS = 10;
 
+const sprintMemberUids = sprint => {
+    const members = Array.isArray(sprint?.memberFirebaseUids)
+        ? sprint.memberFirebaseUids
+        : Array.isArray(sprint?.member_firebase_uids)
+            ? sprint.member_firebase_uids
+            : [sprint?.assigneeFirebaseUid || sprint?.assignee_firebase_uid];
+    return [...new Set(members
+        .filter(uid => typeof uid === 'string')
+        .map(uid => uid.trim())
+        .filter(Boolean))];
+};
+
+const getSprintForTask = (project, sprintName) =>
+    (Array.isArray(project?.sprints) ? project.sprints : [])
+        .find(sprint => sprint?.name === sprintName);
+
 const normalizeTaskSprintSubmissionAttachments = value => {
     if (value === undefined) return { attachments: [], error: null };
     if (!Array.isArray(value) || value.length > MAX_TASK_SPRINT_SUBMISSION_ATTACHMENTS) {
@@ -266,9 +282,6 @@ const normalizeTaskInput = body => {
             : '';
     const tags = body?.tags === undefined ? [] : body.tags;
     const sprintName = typeof body?.sprintName === 'string' ? body.sprintName.trim() : '';
-    const assigneeFirebaseUid = typeof body?.assigneeFirebaseUid === 'string'
-        ? body.assigneeFirebaseUid.trim()
-        : '';
     const status = typeof body?.status === 'string' ? body.status.trim() : 'To do';
     const priority = typeof body?.priority === 'string'
         ? body.priority.trim().toLowerCase()
@@ -297,9 +310,6 @@ const normalizeTaskInput = body => {
     }
     if (!sprintName || sprintName.length > 255) {
         return { error: 'Choose a valid project sprint.' };
-    }
-    if (!assigneeFirebaseUid) {
-        return { error: 'Choose the project owner or an accepted project invitee to assign this task to.' };
     }
     if (!allowedStatuses.has(status)) {
         return { error: 'Choose a valid task status.' };
@@ -332,7 +342,6 @@ const normalizeTaskInput = body => {
             tags,
             tagsProvided: body?.tags !== undefined,
             sprintName,
-            assigneeFirebaseUid,
             status,
             priority,
             startDate,
@@ -394,32 +403,42 @@ const markDependencyWarnings = async (taskId, reason, actorUid, taskTitle) => {
     );
     if (!updated.rowCount) return;
     const dependentIds = [...new Set(updated.rows.map(row => row.dependent_task_id))];
-    await query(
-        `INSERT INTO notifications (
-             recipient_firebase_uid, project_id, related_task_id,
-             type, title, detail, avatar, tone_class
-         )
-         SELECT DISTINCT dependent.assignee_firebase_uid,
-                dependent.project_id,
-                dependent.task_id,
-                'task_dependency_warning',
-                'Task dependency needs attention',
-                $2,
-                '!',
-                'orange-bg'
+    const dependents = await query(
+        `SELECT dependent.task_id, dependent.project_id, dependent.sprint_name,
+                project.creator_firebase_uid, project.sprints
          FROM project_tasks dependent
-         WHERE dependent.task_id = ANY($1::uuid[])
-           AND dependent.assignee_firebase_uid <> $3`,
-        [
-            dependentIds,
-            reason === 'blocked'
-                ? `A predecessor task for "${taskTitle}" is now blocked.`
-                : reason === 'blocked_and_due_date_postponed'
-                    ? `A predecessor task for "${taskTitle}" is blocked and has a later due date.`
-                    : `A predecessor task for "${taskTitle}" has a later due date.`,
-            actorUid
-        ]
+         JOIN projects project ON project.project_id = dependent.project_id
+         WHERE dependent.task_id = ANY($1::uuid[])`,
+        [dependentIds]
     );
+    const detail = reason === 'blocked'
+        ? `A predecessor task for "${taskTitle}" is now blocked.`
+        : reason === 'blocked_and_due_date_postponed'
+            ? `A predecessor task for "${taskTitle}" is blocked and has a later due date.`
+            : `A predecessor task for "${taskTitle}" has a later due date.`;
+    const notifications = new Set();
+    for (const dependent of dependents.rows) {
+        const sprint = getSprintForTask(dependent, dependent.sprint_name);
+        const recipients = new Set([
+            dependent.creator_firebase_uid,
+            ...sprintMemberUids(sprint)
+        ]);
+        for (const recipientUid of recipients) {
+            if (!recipientUid || recipientUid === actorUid) continue;
+            const key = `${recipientUid}:${dependent.task_id}`;
+            if (notifications.has(key)) continue;
+            notifications.add(key);
+            await query(
+                `INSERT INTO notifications (
+                     recipient_firebase_uid, project_id, related_task_id,
+                     type, title, detail, avatar, tone_class
+                 )
+                 VALUES ($1, $2, $3, 'task_dependency_warning',
+                         'Task dependency needs attention', $4, '!', 'orange-bg')`,
+                [recipientUid, dependent.project_id, dependent.task_id, detail]
+            );
+        }
+    }
 };
 
 const getProjectAndCheckAccess = async (projectId, firebaseUid, ownerOnly = false) => {
@@ -451,30 +470,9 @@ const getProjectAndCheckAccess = async (projectId, firebaseUid, ownerOnly = fals
     return result.rows[0] || null;
 };
 
-const validateAssignmentAndSprint = async (project, task, { allowLegacyTaskAssignee = false } = {}) => {
-    const sprints = Array.isArray(project.sprints) ? project.sprints : [];
-    const sprint = sprints.find(item => item?.name === task.sprintName);
-    if (!sprint) {
+const validateTaskSprint = (project, task) => {
+    if (!getSprintForTask(project, task.sprintName)) {
         return 'Choose a sprint that belongs to this project.';
-    }
-
-    if (task.assigneeFirebaseUid === project.creator_firebase_uid) {
-        return null;
-    }
-
-    const assignee = await query(
-        `
-            SELECT 1
-            FROM project_invitations
-            WHERE project_id = $1
-              AND invited_firebase_uid = $2
-              AND status = 'accepted'
-            LIMIT 1
-        `,
-        [project.project_id, task.assigneeFirebaseUid]
-    );
-    if (!assignee.rowCount) {
-        return 'Tasks can only be assigned to the project owner or users who accepted an invitation to this project.';
     }
     return null;
 };
@@ -547,21 +545,6 @@ const getProjectTasks = async (req, res) => {
                         FROM jsonb_array_elements(t.description_attachments)
                             WITH ORDINALITY AS attachment(value, ordinality)
                     ), '[]'::jsonb) AS description_attachments,
-                    t.assignee_firebase_uid,
-                    COALESCE(
-                        i.invited_name,
-                        CASE WHEN t.assignee_firebase_uid = p.creator_firebase_uid
-                            THEN p.creator_name END,
-                        i.invited_email,
-                        CASE WHEN t.assignee_firebase_uid = p.creator_firebase_uid
-                            THEN p.creator_email END
-                    ) AS assignee_name,
-                    COALESCE(
-                        i.invited_email,
-                        CASE WHEN t.assignee_firebase_uid = p.creator_firebase_uid
-                            THEN p.creator_email END
-                    ) AS assignee_email,
-                    up.profile_image AS assignee_profile_image,
                     t.status,
                     t.priority,
                     COALESCE(dependencies.items, '[]'::jsonb) AS dependencies,
@@ -573,16 +556,6 @@ const getProjectTasks = async (req, res) => {
                     t.updated_at
                 FROM project_tasks t
                 JOIN projects p ON p.project_id = t.project_id
-                LEFT JOIN LATERAL (
-                    SELECT invited_name, invited_email
-                    FROM project_invitations
-                    WHERE project_id = t.project_id
-                      AND invited_firebase_uid = t.assignee_firebase_uid
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                ) i ON TRUE
-                LEFT JOIN user_profiles up
-                  ON up.firebase_uid = t.assignee_firebase_uid
                 LEFT JOIN messages context_message
                   ON context_message.message_id = t.chat_message_id
                  AND EXISTS (
@@ -627,7 +600,31 @@ const getProjectTasks = async (req, res) => {
                       )
                 ) dependencies ON TRUE
                 WHERE t.project_id = $1
-                  AND ($3::boolean = FALSE OR t.assignee_firebase_uid = $2)
+                  AND (
+                    $3::boolean = FALSE
+                    OR EXISTS (
+                        SELECT 1
+                        FROM jsonb_array_elements(
+                            CASE
+                                WHEN jsonb_typeof(p.sprints) = 'array' THEN p.sprints
+                                ELSE '[]'::jsonb
+                            END
+                        ) AS sprint(value)
+                        WHERE sprint.value->>'name' = t.sprint_name
+                          AND (
+                            CASE
+                                WHEN jsonb_typeof(sprint.value->'memberFirebaseUids') = 'array'
+                                    THEN sprint.value->'memberFirebaseUids'
+                                WHEN jsonb_typeof(sprint.value->'member_firebase_uids') = 'array'
+                                    THEN sprint.value->'member_firebase_uids'
+                                ELSE jsonb_build_array(COALESCE(
+                                    NULLIF(sprint.value->>'assigneeFirebaseUid', ''),
+                                    NULLIF(sprint.value->>'assignee_firebase_uid', '')
+                                ))
+                            END
+                          ) ? $2
+                    )
+                  )
                 ORDER BY t.created_at, t.title
             `,
             [project.project_id, req.firebaseUid, req.query.assignedToMe === 'true']
@@ -665,7 +662,7 @@ const getProjectTaskDetails = async (req, res) => {
         }
         const result = await query(
             `SELECT task.task_id, task.project_id, task.title, task.description,
-                    task.category, task.tags, task.sprint_name, task.assignee_firebase_uid,
+                    task.category, task.tags, task.sprint_name,
                     task.sprint_submission_status, task.sprint_submission_note,
                     task.sprint_submission_links, task.sprint_submitted_at,
                     task.sprint_submitted_by_firebase_uid,
@@ -688,33 +685,9 @@ const getProjectTaskDetails = async (req, res) => {
                         FROM jsonb_array_elements(task.description_attachments)
                             WITH ORDINALITY AS attachment(value, ordinality)
                     ), '[]'::jsonb) ELSE task.description_attachments END AS description_attachments,
-                    COALESCE(
-                        assignee_invite.invited_name,
-                        CASE WHEN task.assignee_firebase_uid = project.creator_firebase_uid
-                            THEN project.creator_name END,
-                        assignee_invite.invited_email,
-                        CASE WHEN task.assignee_firebase_uid = project.creator_firebase_uid
-                            THEN project.creator_email END
-                    ) AS assignee_name,
-                    COALESCE(
-                        assignee_invite.invited_email,
-                        CASE WHEN task.assignee_firebase_uid = project.creator_firebase_uid
-                            THEN project.creator_email END
-                    ) AS assignee_email,
-                    assignee_profile.profile_image AS assignee_profile_image,
                     task.created_at, task.updated_at
              FROM project_tasks task
                          JOIN projects project ON project.project_id = task.project_id
-                         LEFT JOIN LATERAL (
-                            SELECT invited_name, invited_email
-                            FROM project_invitations
-                            WHERE project_id = task.project_id
-                              AND invited_firebase_uid = task.assignee_firebase_uid
-                            ORDER BY created_at DESC
-                            LIMIT 1
-                         ) assignee_invite ON TRUE
-                         LEFT JOIN user_profiles assignee_profile
-                           ON assignee_profile.firebase_uid = task.assignee_firebase_uid
                          LEFT JOIN messages message
                              ON message.message_id = task.chat_message_id
                             AND EXISTS (
@@ -913,7 +886,7 @@ const submitProjectTaskForReview = async (req, res) => {
         await client.query('BEGIN');
         const taskResult = await client.query(
             `SELECT task.task_id, task.title, task.sprint_name, task.status,
-                    task.assignee_firebase_uid, task.sprint_submission_status,
+                    task.sprint_submission_status,
                     project.name AS project_name, project.creator_firebase_uid,
                     project.creator_initials
              FROM project_tasks task
@@ -932,20 +905,21 @@ const submitProjectTaskForReview = async (req, res) => {
         }
 
         const task = taskResult.rows[0];
-        if (task.assignee_firebase_uid !== req.firebaseUid) {
-            await client.query('ROLLBACK');
-            return res.status(403).json({
-                success: false,
-                code: 'TASK_SPRINT_SUBMISSION_FORBIDDEN',
-                message: 'Only the task assignee can submit this sprint for review.'
-            });
-        }
         if (!task.sprint_name) {
             await client.query('ROLLBACK');
             return res.status(409).json({
                 success: false,
                 code: 'TASK_SPRINT_REQUIRED',
                 message: 'This task has no sprint assigned.'
+            });
+        }
+        const sprint = getSprintForTask(project, task.sprint_name);
+        if (!sprint || !sprintMemberUids(sprint).includes(req.firebaseUid)) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({
+                success: false,
+                code: 'TASK_SPRINT_SUBMISSION_FORBIDDEN',
+                message: 'Only a member of this sprint can submit it for review.'
             });
         }
         if (task.status !== 'In progress') {
@@ -1008,7 +982,7 @@ const submitProjectTaskForReview = async (req, res) => {
                         project.project_id,
                         taskId,
                         'Task sprint ready for review',
-                        `${req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'A task assignee'} submitted "${task.sprint_name}" for "${task.title}" in "${task.project_name}" for review.`,
+                        `${req.firebaseUser?.name || req.firebaseUser?.displayName || req.firebaseEmail || 'A sprint member'} submitted "${task.sprint_name}" for "${task.title}" in "${task.project_name}" for review.`,
                         task.creator_initials || '•'
                     ]
                 );
@@ -1103,7 +1077,7 @@ const reviewProjectTaskSprintSubmission = async (req, res) => {
             areAllProjectSprintsCompleted(lockedProject.rows[0].sprints);
         const taskResult = await client.query(
             `SELECT task.task_id, task.title, task.sprint_name, task.status,
-                    task.assignee_firebase_uid, task.sprint_submission_status,
+                    task.sprint_submission_status,
                     project.name AS project_name
              FROM project_tasks task
              JOIN projects project ON project.project_id = task.project_id
@@ -1156,7 +1130,13 @@ const reviewProjectTaskSprintSubmission = async (req, res) => {
         await client.query('COMMIT');
 
         let notificationWarning = null;
-        if (task.assignee_firebase_uid && task.assignee_firebase_uid !== req.firebaseUid) {
+        const reviewedSprint = getSprintForTask(
+            { sprints: lockedProject.rows[0].sprints },
+            task.sprint_name
+        );
+        const reviewRecipients = sprintMemberUids(reviewedSprint)
+            .filter(memberUid => memberUid !== req.firebaseUid);
+        for (const recipientUid of reviewRecipients) {
             try {
                 await query(
                     `INSERT INTO notifications (
@@ -1165,7 +1145,7 @@ const reviewProjectTaskSprintSubmission = async (req, res) => {
                      )
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
                     [
-                        task.assignee_firebase_uid,
+                        recipientUid,
                         project.project_id,
                         taskId,
                         decision === 'accept' ? 'task_sprint_submission_accepted' : 'task_sprint_changes_requested',
@@ -1178,8 +1158,11 @@ const reviewProjectTaskSprintSubmission = async (req, res) => {
                     ]
                 );
             } catch (notificationError) {
-                console.error('Task sprint review saved, but its notification could not be created:', notificationError);
-                notificationWarning = 'The review was saved, but the assignee could not be notified.';
+                console.error(
+                    `Task sprint review saved, but member ${recipientUid} could not be notified:`,
+                    notificationError
+                );
+                notificationWarning = 'The review was saved, but one or more sprint members could not be notified.';
             }
         }
         return res.status(200).json({
@@ -1409,12 +1392,12 @@ const createProjectTask = async (req, res) => {
                 message: messageLinkError
             });
         }
-        const assignmentError = await validateAssignmentAndSprint(project, normalized.value);
-        if (assignmentError) {
+        const sprintError = validateTaskSprint(project, normalized.value);
+        if (sprintError) {
             return res.status(400).json({
                 success: false,
-                code: 'INVALID_TASK_ASSIGNMENT',
-                message: assignmentError
+                code: 'INVALID_TASK_SPRINT',
+                message: sprintError
             });
         }
 
@@ -1423,11 +1406,11 @@ const createProjectTask = async (req, res) => {
             `
                 INSERT INTO project_tasks (
                     task_id, project_id, title, description, category, sprint_name,
-                    assignee_firebase_uid, status, start_date, due_date,
+                    status, start_date, due_date,
                     created_by_firebase_uid, chat_message_id, description_attachments,
                     priority, tags
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::uuid, $13::jsonb, $14, $15::jsonb)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::uuid, $12::jsonb, $13, $14::jsonb)
                 RETURNING task_id
             `,
             [
@@ -1437,7 +1420,6 @@ const createProjectTask = async (req, res) => {
                 normalized.value.description,
                 normalized.value.category,
                 normalized.value.sprintName,
-                normalized.value.assigneeFirebaseUid,
                 normalized.value.status,
                 normalized.value.startDate,
                 normalized.value.dueDate,
@@ -1497,14 +1479,12 @@ const updateProjectTask = async (req, res) => {
                 message: timelineError
             });
         }
-        const assignmentError = await validateAssignmentAndSprint(project, normalized.value, {
-            allowLegacyTaskAssignee: true
-        });
-        if (assignmentError) {
+        const sprintError = validateTaskSprint(project, normalized.value);
+        if (sprintError) {
             return res.status(400).json({
                 success: false,
-                code: 'INVALID_TASK_ASSIGNMENT',
-                message: assignmentError
+                code: 'INVALID_TASK_SPRINT',
+                message: sprintError
             });
         }
 
@@ -1564,33 +1544,32 @@ const updateProjectTask = async (req, res) => {
                     description = $2,
                     category = $3,
                     sprint_name = $4,
-                    assignee_firebase_uid = $5,
-                    status = $6,
-                    priority = $7,
-                    start_date = $8,
-                    due_date = $9,
+                    status = $5,
+                    priority = $6,
+                    start_date = $7,
+                    due_date = $8,
                     deadline_warning_sent_at = CASE
-                        WHEN due_date IS DISTINCT FROM $9::date THEN NULL
+                        WHEN due_date IS DISTINCT FROM $8::date THEN NULL
                         ELSE deadline_warning_sent_at
                     END,
                     deadline_blocked_at = CASE
-                        WHEN due_date IS DISTINCT FROM $9::date THEN NULL
+                        WHEN due_date IS DISTINCT FROM $8::date THEN NULL
                         ELSE deadline_blocked_at
                     END,
-                    chat_message_id = $10::uuid,
-                    description_attachments = $11::jsonb,
-                    tags = CASE WHEN $12::boolean THEN $13::jsonb ELSE tags END,
+                    chat_message_id = $9::uuid,
+                    description_attachments = $10::jsonb,
+                    tags = CASE WHEN $11::boolean THEN $12::jsonb ELSE tags END,
                     updated_at = NOW()
-                WHERE project_id = $14
-                  AND task_id = $15::uuid
+                WHERE project_id = $13
+                  AND task_id = $14::uuid
                   AND (
-                    $6 <> 'Done'
+                    $5 <> 'Done'
                     OR (
                         project_tasks.sprint_submission_status = 'Completed'
                         AND EXISTS (
                             SELECT 1
                             FROM projects project
-                            WHERE project.project_id = $14
+                            WHERE project.project_id = $13
                               AND jsonb_array_length(
                                   CASE
                                       WHEN jsonb_typeof(project.sprints) = 'array' THEN project.sprints
@@ -1617,7 +1596,6 @@ const updateProjectTask = async (req, res) => {
                 normalized.value.description,
                 normalized.value.category,
                 normalized.value.sprintName,
-                normalized.value.assigneeFirebaseUid,
                 normalized.value.status,
                 normalized.value.priority,
                 normalized.value.startDate,
@@ -1729,7 +1707,7 @@ const updateProjectTaskStatus = async (req, res) => {
 
         const existingTask = await query(
             `
-                SELECT task_id, assignee_firebase_uid, status, title,
+                SELECT task_id, status, title,
                        sprint_name, sprint_submission_status
                 FROM project_tasks
                 WHERE project_id = $1
@@ -1746,12 +1724,14 @@ const updateProjectTaskStatus = async (req, res) => {
             });
         }
         const isProjectOwner = project.creator_firebase_uid === req.firebaseUid;
-        const isAssignee = existingTask.rows[0].assignee_firebase_uid === req.firebaseUid;
-        if (!isProjectOwner && !isAssignee) {
+        const isSprintMember = sprintMemberUids(
+            getSprintForTask(project, existingTask.rows[0].sprint_name)
+        ).includes(req.firebaseUid);
+        if (!isProjectOwner && !isSprintMember) {
             return res.status(403).json({
                 success: false,
                 code: 'TASK_STATUS_UPDATE_FORBIDDEN',
-                message: 'Only the project owner or assigned user can move this task.'
+                message: 'Only the project owner or a member of this task sprint can move it.'
             });
         }
 

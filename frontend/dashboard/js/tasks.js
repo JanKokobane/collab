@@ -3,13 +3,13 @@ import {
   tasks,
   projects,
   getAccessibleTasks,
-  members,
   currentUser,
   activeView,
   activeFilter,
   activeSprintFilter,
   loadNotificationsFromAPI,
   getSprintMembers,
+  getSprintMemberUids,
   renderAvatarElement,
   make,
   closeModal,
@@ -37,9 +37,7 @@ export function getFilteredTasks() {
   if (activeView === 'Workspace') {
     // Show all tasks across active projects
   } else if (activeView === 'My Tasks') {
-    list = list.filter(t => t.backendPersistent
-      ? t.assigneeFirebaseUid === currentUser.uid
-      : t.assignee === currentUser.initials)
+    list = list.filter(isCurrentUserSprintTask)
   } else if (activeView !== 'Admin Console' && activeView !== 'Calendar' && activeView !== 'Overview') {
     list = list.filter(t => t.project === activeView)
   }
@@ -49,9 +47,7 @@ export function getFilteredTasks() {
   }
 
   if (activeFilter === 'mine') {
-    list = list.filter(t => t.backendPersistent
-      ? t.assigneeFirebaseUid === currentUser.uid
-      : t.assignee === currentUser.initials)
+    list = list.filter(isCurrentUserSprintTask)
   } else if (activeFilter === 'backlog') {
     list = list.filter(t => t.status === 'Backlog')
   } else if (activeFilter === 'todo') {
@@ -67,7 +63,17 @@ export function getFilteredTasks() {
   return list
 }
 
-export function updateTaskCounts(filtered) {
+export function isCurrentUserSprintTask(task) {
+  if (!task.backendPersistent || !currentUser.uid) return false
+  const project = projects.find(candidate => candidate.projectId === task.projectId)
+  const sprintName = String(task.sprint_name || task.sprint || '').trim()
+  const sprint = project?.sprints?.find(candidate =>
+    String(candidate.name || '').trim() === sprintName
+  )
+  return getSprintMemberUids(sprint).includes(currentUser.uid)
+}
+
+function updateTaskCounts(filtered) {
   const backlogCount = filtered.filter(t => t.status === 'Backlog').length
   const todoCount = filtered.filter(t => t.status === 'To do').length
   const progressCount = filtered.filter(t => t.status === 'In progress').length
@@ -108,11 +114,11 @@ function getTaskMoveRestriction(task) {
   const isProjectOwner = Boolean(
     currentUser.uid && project?.creatorFirebaseUid === currentUser.uid
   )
-  const isAssignee = Boolean(
-    currentUser.uid && task.assigneeFirebaseUid === currentUser.uid
+  const isSprintMember = Boolean(
+    currentUser.uid && isCurrentUserSprintTask(task)
   )
-  if (!isProjectOwner && !isAssignee) {
-    return 'Only the project owner or assigned user can move this project task.'
+  if (!isProjectOwner && !isSprintMember) {
+    return 'Only the project owner or a member of this sprint can move this task.'
   }
 
   if (isTaskLockedUntilSprintsComplete(task)) {
@@ -418,7 +424,10 @@ export function taskCard(task) {
     const sprint = (project.sprints || []).find(candidate =>
       String(candidate.name || '').trim() === sprintName
     )
-    getSprintMembers(project, sprint).forEach(member => {
+    const sprintMembers = Array.isArray(task.sprintMembers)
+      ? task.sprintMembers
+      : getSprintMembers(project, sprint)
+    sprintMembers.forEach(member => {
       addVisiblePerson({
         ...member,
         uid: member.firebaseUid || member.firebase_uid || member.uid,
@@ -649,10 +658,10 @@ export function renderListView(filtered) {
     const tdTag = document.createElement('td')
     tdTag.innerHTML = `<span class="tag ${task.tagTone || 'blue'}">${task.project} • ${task.tag}</span>`
 
-    const tdAssignee = document.createElement('td')
-    const wrap = make('div', 'list-assignee-cell')
-    wrap.append(make('div', `avatar ${task.assigneeTone || 'teal'}-bg`, task.assignee), make('small', '', task.assigneeName || task.assignee))
-    tdAssignee.append(wrap)
+    const tdSprint = document.createElement('td')
+    const wrap = make('div', 'list-sprint-cell')
+    wrap.append(make('small', '', task.sprint || '—'))
+    tdSprint.append(wrap)
 
     const tdDue = document.createElement('td')
     tdDue.innerHTML = `<span class="meta-due-span">${getSvg('calendar', 'meta-icon', 12, 12)} <span>${task.due}</span></span>`
@@ -665,7 +674,7 @@ export function renderListView(filtered) {
     const isDone = task.status === 'Done'
     tdStatus.innerHTML = `<span class="status-badge ${isDone ? 'active' : 'pending'}">${task.status}</span>`
 
-    tr.append(tdCheck, tdTitle, tdTag, tdAssignee, tdDue, tdComments, tdStatus)
+    tr.append(tdCheck, tdTitle, tdTag, tdSprint, tdDue, tdComments, tdStatus)
     tbody.append(tr)
   })
 }
@@ -686,7 +695,7 @@ export function openTaskModal() {
   close.addEventListener('click', closeModal)
 
   const title = make('h2', '', `Create Task for ${proj.name}`)
-  const copy = make('p', 'modal-copy', `Project Creator (${proj.creatorName}): Define deliverable and assign a team member.`)
+  const copy = make('p', 'modal-copy', `Create a deliverable in a project sprint. Sprint members collaborate on its tasks.`)
 
   const titleLabel = make('label', '', 'Task Title')
   const titleInput = make('input')
@@ -731,36 +740,6 @@ export function openTaskModal() {
   ;['Design', 'Development', 'Marketing', 'Product'].forEach(val => tagSelect.append(make('option', '', val)))
   tagLabel.append(tagSelect)
 
-  const assigneeLabel = make('label', '', 'Assign Task To')
-  const assigneeSelect = document.createElement('select')
-  const ownerAsAssignee = proj.creatorFirebaseUid ? {
-    firebaseUid: proj.creatorFirebaseUid,
-    uid: proj.creatorFirebaseUid,
-    name: proj.creatorName || proj.creatorEmail || 'Project owner',
-    email: proj.creatorEmail || '',
-    initials: proj.creatorInitials || currentUser.initials,
-    profileImage: proj.creatorProfileImage || '',
-    role: 'Project owner'
-  } : null
-  const eligibleAssignees = [
-    ...(ownerAsAssignee ? [ownerAsAssignee] : []),
-    ...(proj.acceptedMembers || proj.invitedMembers || members).filter(member =>
-      !ownerAsAssignee || member.firebaseUid !== ownerAsAssignee.firebaseUid
-    )
-  ].filter((member, index, list) =>
-    list.findIndex(candidate =>
-      (candidate.firebaseUid && candidate.firebaseUid === member.firebaseUid) ||
-      (!candidate.firebaseUid && candidate.initials === member.initials)
-    ) === index
-  )
-  eligibleAssignees.forEach(m => {
-    const opt = make('option', '', `${m.name} (${m.role})`)
-    opt.value = m.initials
-    if (m.initials === currentUser.initials) opt.selected = true
-    assigneeSelect.append(opt)
-  })
-  assigneeLabel.append(assigneeSelect)
-
   const statusLabel = make('label', '', 'Initial Status')
   const statusSelect = document.createElement('select')
   const todoOption = make('option', '', 'To do')
@@ -772,20 +751,19 @@ export function openTaskModal() {
   const schedulePicker = createScheduleCalendarPicker()
 
   const row1 = make('div', 'form-row'); row1.append(projectLabel, sprintLabel)
-  const row2 = make('div', 'form-row'); row2.append(tagLabel, assigneeLabel)
+  const row2 = make('div', 'form-row'); row2.append(tagLabel)
   const row3 = make('div', 'form-row'); row3.append(statusLabel)
 
-  const submit = make('button', 'primary-button full gold', 'Assign & Create Task')
+  const submit = make('button', 'primary-button full gold', 'Create Task')
   submit.type = 'submit'
   submit.disabled = curProjSprints.length === 0
 
-  form.append(close, make('p', 'eyebrow', 'NEW TASK ASSIGNMENT'), title, copy, titleLabel, descLabel, row1, row2, row3, schedulePicker.element, submit)
+  form.append(close, make('p', 'eyebrow', 'NEW TASK'), title, copy, titleLabel, descLabel, row1, row2, row3, schedulePicker.element, submit)
 
   form.addEventListener('submit', async event => {
     event.preventDefault()
     setDashboardButtonLoading(submit, 'Creating task…')
     await new Promise(resolve => window.requestAnimationFrame(resolve))
-    const assignedMember = eligibleAssignees.find(m => m.initials === assigneeSelect.value) || eligibleAssignees[0]
     const tagTone = { Design: 'purple', Development: 'blue', Marketing: 'green', Product: 'yellow' }[tagSelect.value] || 'blue'
     const schedule = schedulePicker.getValues()
 
@@ -799,9 +777,6 @@ export function openTaskModal() {
       due: schedule.dueLabel,
       startDate: schedule.startDate,
       date: schedule.dueDate,
-      assignee: assignedMember.initials,
-      assigneeName: assignedMember.name,
-      assigneeTone: assignedMember.tone || 'teal',
       status: 'To do',
       done: false,
       sprint: sprintSelect.value,
@@ -816,8 +791,7 @@ export function openTaskModal() {
     closeModal()
     renderTasks()
 
-    addAuditLog('Task created', `${currentUser.name} assigned "${newTask.title}" to ${assignedMember.name}.`, 'task')
-    pushNotification('Task Assigned', `"${newTask.title}" assigned to ${assignedMember.name}`, assignedMember.initials, `${assignedMember.tone}-bg`)
+    addAuditLog('Task created', `${currentUser.name} created "${newTask.title}" in ${newTask.sprint}.`, 'task')
     showDashboardToast(`Task "${newTask.title}" created.`, 'success')
   })
 

@@ -328,9 +328,6 @@ export const seedTasks = [
     tagTone: 'purple',
     due: formatRelativeDate(seedDate(0)),
     date: seedDate(0),
-    assignee: 'AM',
-    assigneeName: 'Alex Morgan',
-    assigneeTone: 'teal',
     status: 'To do',
     progress: 72,
     sprint: 'Sprint 1: Wireframes',
@@ -367,9 +364,6 @@ export const seedTasks = [
     tagTone: 'blue',
     due: formatRelativeDate(seedDate(1)),
     date: seedDate(1),
-    assignee: 'JL',
-    assigneeName: 'Jordan Lee',
-    assigneeTone: 'orange',
     status: 'To do',
     progress: 35,
     sprint: 'Sprint 2: Analytics & MVP',
@@ -397,9 +391,6 @@ export const seedTasks = [
     tagTone: 'green',
     due: formatRelativeDate(seedDate(4)),
     date: seedDate(4),
-    assignee: 'SK',
-    assigneeName: 'Sam Kim',
-    assigneeTone: 'pink',
     status: 'In progress',
     progress: 45,
     sprint: 'Sprint 2: Analytics & MVP',
@@ -418,9 +409,6 @@ export const seedTasks = [
     tagTone: 'yellow',
     due: formatRelativeDate(seedDate(6)),
     date: seedDate(6),
-    assignee: 'AM',
-    assigneeName: 'Alex Morgan',
-    assigneeTone: 'teal',
     status: 'In progress',
     progress: 58,
     sprint: 'Sprint 2: Analytics & MVP',
@@ -448,9 +436,6 @@ export const seedTasks = [
     tagTone: 'purple',
     due: formatRelativeDate(seedDate(8)),
     date: seedDate(8),
-    assignee: 'SK',
-    assigneeName: 'Sam Kim',
-    assigneeTone: 'pink',
     status: 'Done',
     progress: 100,
     sprint: 'Sprint 1: Wireframes',
@@ -479,9 +464,6 @@ export const seedTasks = [
     tagTone: 'blue',
     due: formatRelativeDate(seedDate(10)),
     date: seedDate(10),
-    assignee: 'JL',
-    assigneeName: 'Jordan Lee',
-    assigneeTone: 'orange',
     status: 'Done',
     progress: 100,
     sprint: 'Sprint 3: Release & Launch',
@@ -501,9 +483,6 @@ export const seedTasks = [
     tagTone: 'blue',
     due: formatRelativeDate(seedDate(0)),
     date: seedDate(0),
-    assignee: 'ER',
-    assigneeName: 'Elena Rostova',
-    assigneeTone: 'purple',
     status: 'In progress',
     progress: 60,
     sprint: 'Sprint 1: Typography & Layout',
@@ -522,9 +501,6 @@ export const seedTasks = [
     tagTone: 'green',
     due: formatRelativeDate(seedDate(1)),
     date: seedDate(1),
-    assignee: 'DP',
-    assigneeName: 'Devon Patel',
-    assigneeTone: 'blue',
     status: 'To do',
     progress: 20,
     sprint: 'Sprint 1: Content & Dispatch',
@@ -652,25 +628,16 @@ export function replaceProjectTasksFromBackend(projectTaskGroups = []) {
     const project = projectById.get(projectId)
     if (!project || !Array.isArray(projectTasks)) return []
     return projectTasks.map(task => {
-      const assigneeMember = task.assignee_firebase_uid === project.creatorFirebaseUid
-        ? {
-          name: project.creatorName || project.creatorEmail || 'Project owner',
-          initials: project.creatorInitials || '',
-          profileImage: project.creatorProfileImage || '',
-          tone: project.creatorTone || 'teal'
-        }
-        : (project.acceptedMembers || []).find(member =>
-          member.firebaseUid === task.assignee_firebase_uid
-        )
-      const assigneeName = task.assignee_name || assigneeMember?.name || task.assignee_email || 'Project member'
-      const assignee = assigneeMember?.initials || assigneeName
-        .trim()
-        .split(/\s+/)
-        .map(part => part[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase()
-      const dueDate = task.due_date ? String(task.due_date).slice(0, 10) : null
+      const taskSprintName = String(task.sprint_name || '').trim()
+      const sprint = (project.sprints || []).find(item =>
+        String(item?.name || '').trim() === taskSprintName
+      )
+      const sprintMembers = getSprintMembers(project, sprint).map(member => ({
+        ...member,
+        uid: member.firebaseUid || member.firebase_uid || member.uid || '',
+        profileImage: member.profileImage || member.profile_image || ''
+      }))
+        const dueDate = task.due_date ? String(task.due_date).slice(0, 10) : null
       const tagTone = {
         Design: 'purple',
         Development: 'blue',
@@ -696,20 +663,13 @@ export function replaceProjectTasksFromBackend(projectTaskGroups = []) {
         due_date: dueDate,
         startDate: task.start_date ? String(task.start_date).slice(0, 10) : null,
         start_date: task.start_date ? String(task.start_date).slice(0, 10) : null,
-        assignee,
-        assigneeName,
-        assignee_name: task.assignee_name,
-        assignee_email: task.assignee_email,
-        assigneeFirebaseUid: task.assignee_firebase_uid,
-        assignee_firebase_uid: task.assignee_firebase_uid,
-        assigneeProfileImage: task.assignee_profile_image || assigneeMember?.profileImage || assigneeMember?.profile_image || '',
-        assigneeTone: assigneeMember?.tone || 'teal',
         status: task.status || 'To do',
         priority: task.priority || 'medium',
         done: task.status === 'Done',
         progress: task.status === 'Done' ? 100 : task.status === 'In progress' ? 50 : 0,
         sprint: task.sprint_name,
         sprint_name: task.sprint_name,
+        sprintMembers,
         sprintSubmissionStatus: task.sprint_submission_status || 'Not submitted',
         sprintSubmissionNote: task.sprint_submission_note || '',
         sprintSubmissionLinks: Array.isArray(task.sprint_submission_links)
