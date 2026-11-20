@@ -1,0 +1,391 @@
+.project-sticky-note-layer {
+
+    position: fixed;
+    z-index: 1500;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+
+}
+
+.project-sticky-note-layer[hidden] {
+
+    display: none;
+
+}
+
+.project-sticky-note-modal {
+
+    gap: 14px;
+    overflow-y: auto;
+
+}
+
+.project-sticky-note-modal .project-sticky-note-project {
+
+    margin: -6px 0 -8px;
+    color: #71717A;
+    font-size: 11px;
+    font-weight: 650;
+
+}
+
+.project-sticky-sharing {
+
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+}
+
+.project-sticky-note {
+
+    position: absolute;
+    width: min(260px, calc(100% - 24px));
+    min-height: 145px;
+    padding: 0 14px 14px;
+    border: 1px solid rgba(120, 91, 31, .16);
+    border-radius: 3px 3px 10px 3px;
+    box-shadow: 0 8px 24px rgba(24, 34, 48, .2);
+    color: #3F3426;
+    pointer-events: auto;
+    transform: rotate(-1deg);
+    transition: box-shadow .15s ease, transform .15s ease;
+
+}
+
+.project-sticky-note:global(.yellow) {
+ background: #FFE7C9; 
+}
+
+.project-sticky-note.pink {
+ background: #FFDDE2; 
+}
+
+.project-sticky-note:global(.blue) {
+ background: #DCEBFF; 
+}
+
+.project-sticky-note:global(.green) {
+ background: #D9F4DF; 
+}
+
+.project-sticky-note:global(.is-dragging) {
+
+    z-index: 2;
+    box-shadow: 0 14px 32px rgba(24, 34, 48, .3);
+    transform: rotate(0);
+
+}
+
+.project-sticky-note-handle {
+
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 35px;
+    margin: 0 -14px 9px;
+    padding: 0 10px;
+    border-bottom: 1px solid rgba(120, 91, 31, .14);
+    color: rgba(63, 52, 38, .7);
+    font: 600 10px 'Manrope', sans-serif;
+    cursor: grab;
+    touch-action: none;
+
+}
+
+.project-sticky-note-handle:active {
+ cursor: grabbing; 
+}
+
+.project-sticky-note-author-avatar {
+
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    overflow: hidden;
+    border-radius: 50%;
+    font-size: 8px;
+
+}
+
+.project-sticky-note-grip {
+
+    display: inline-flex;
+    opacity: .58;
+
+}
+
+.project-sticky-note-delete {
+
+    min-height: 24px;
+    margin-left: auto;
+    padding: 3px 5px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: inherit;
+    font: 600 14px 'Manrope', sans-serif;
+    cursor: pointer;
+
+}
+
+.project-sticky-note-edit {
+
+    margin-left: auto;
+    padding: 4px 7px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: inherit;
+    font: 600 10px 'Manrope', sans-serif;
+    cursor: pointer;
+
+}
+
+.project-sticky-note-edit + .project-sticky-note-delete {
+
+    margin-left: 0;
+
+}
+
+.project-sticky-note-edit:hover, .project-sticky-note-delete:hover {
+ background: rgba(63, 52, 38, .1); 
+}
+
+.project-sticky-note-content {
+
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: 500 14px/1.5 'DM Mono', monospace;
+
+}
+
+.project-sticky-color-picker {
+
+    display: flex;
+    gap: 8px;
+    margin-top: 7px;
+
+}
+
+.project-sticky-color-option {
+
+    width: 26px;
+    height: 26px;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    cursor: pointer;
+
+}
+
+.project-sticky-color-option:global(.yellow) {
+ background: #FFE7C9; 
+}
+
+.project-sticky-color-option.pink {
+ background: #FFDDE2; 
+}
+
+.project-sticky-color-option:global(.blue) {
+ background: #DCEBFF; 
+}
+
+.project-sticky-color-option:global(.green) {
+ background: #D9F4DF; 
+}
+
+.project-sticky-color-option:global(.selected) {
+ border-color: #27272A; 
+}
+
+.project-sticky-recipient-list {
+
+    max-height: 190px;
+    padding: 1px 3px 1px 1px;
+
+}
+
+.project-sticky-share-help {
+
+    margin: 5px 0 0;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.45;
+
+}
+
+:global(body.dark-mode) .project-sticky-note {
+
+    border-color: rgba(255, 255, 255, .12);
+    color: #27272A;
+
+}
+
+:global(body.dark-mode) .project-sticky-note-modal .project-sticky-note-project {
+
+    color: #A1A1AA;
+
+}
+
+:global(body.dark-mode) .project-sticky-note-modal .project-sticky-color-option:global(.selected) {
+
+    border-color: #F4F4F6;
+
+}
+
+.project-sticky-note-modal :global(.messages-create-submit) {
+
+    flex: 0 0 auto;
+
+}
+
+
+.project-sticky-note-modal :global(.messages-create-header) {
+
+    position: relative;
+    margin: -24px -24px 0;
+    padding: 20px 60px 18px 24px;
+    border-radius: 16px 16px 0 0;
+    background: #000000;
+
+}
+
+
+.project-sticky-note-modal :global(.messages-create-header) h2 {
+
+    color: #FFFFFF;
+
+}
+
+
+.project-sticky-note-modal :global(.messages-create-header) :global(.messages-create-eyebrow) {
+
+    color: #A7F3D0;
+
+}
+
+
+.project-sticky-note-modal :global(.messages-create-header) :global(.modal-copy) {
+
+    color: #D4D4D8;
+
+}
+
+
+.project-sticky-note-modal :global(.messages-create-header) :global(.close-modal) {
+
+    top: 18px;
+    right: 18px;
+    background: #27272A;
+    color: #FFFFFF;
+
+}
+
+
+.project-sticky-note-modal :global(.messages-create-header) :global(.close-modal):hover {
+
+    background: #3F3F46;
+    color: #FFFFFF;
+
+}
+
+
+.project-sticky-note-modal :global(.messages-create-label) textarea, .project-sticky-note-modal :global(.messages-create-label) select {
+
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid #DCE5E2;
+    border-radius: 9px;
+    background: #FFFFFF;
+    color: #202A29;
+    font: 13px/1.5 'DM Sans', sans-serif;
+    transition: border-color .15s, box-shadow .15s;
+
+}
+
+
+.project-sticky-note-modal :global(.messages-create-label) textarea {
+
+    min-height: 112px;
+    resize: vertical;
+
+}
+
+
+.project-sticky-note-modal :global(.messages-create-label) :global(.input-with-icon) {
+
+    display: contents;
+
+}
+
+
+.project-sticky-note-modal :global(.messages-create-label) :global(.input-icon-svg) {
+
+    display: none;
+
+}
+
+
+.project-sticky-note-modal :global(.messages-create-label) textarea:focus, .project-sticky-note-modal :global(.messages-create-label) select:focus {
+
+    border-color: #287B6E;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(40, 123, 110, .12);
+
+}
+
+
+.project-sticky-sharing > :global(.messages-create-label) {
+
+    margin: 0;
+
+}
+
+
+:global(body.dark-mode) .project-sticky-note-modal :global(.messages-create-header) {
+
+    background: #000000;
+
+}
+
+
+:global(body.dark-mode) .project-sticky-note-modal :global(.messages-create-header) h2 {
+
+    color: #FFFFFF;
+
+}
+
+
+:global(body.dark-mode) .project-sticky-note-modal :global(.messages-create-header) :global(.modal-copy) {
+
+    color: #D4D4D8;
+
+}
+
+
+:global(body.dark-mode) .project-sticky-note-modal :global(.messages-create-label) textarea, :global(body.dark-mode) .project-sticky-note-modal :global(.messages-create-label) select {
+
+    border-color: #383844;
+    background: #202028;
+    color: #F4F4F6;
+
+}
+
+
+:global(body.dark-mode) .project-sticky-note-modal :global(.messages-member-option) {
+
+    background: #202028;
+    border-color: #383844;
+
+}
+
+
+:global(body.dark-mode) .project-sticky-note-modal :global(.messages-member-option):hover, :global(body.dark-mode) .project-sticky-note-modal :global(.messages-member-option):global(.selected) {
+
+    background: #12352F;
+    border-color: #287B6E;
+
+}
