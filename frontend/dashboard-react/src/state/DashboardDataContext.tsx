@@ -8,6 +8,7 @@ import type {
   Project,
   ProjectMeeting,
   ProjectMember,
+  ProjectReminder,
   ProjectTask,
 } from '../types/dashboard.js'
 
@@ -25,6 +26,7 @@ export interface DashboardData {
   conversations: DashboardResource<MessageConversation[]>
   tasks: DashboardResource<Record<string, ProjectTask[]>>
   meetings: DashboardResource<Record<string, ProjectMeeting[]>>
+  reminders: DashboardResource<Record<string, ProjectReminder[]>>
   members: DashboardResource<ProjectMember[]>
   refresh: () => Promise<void>
   refreshProfile: () => Promise<void>
@@ -32,13 +34,15 @@ export interface DashboardData {
   refreshProjects: () => Promise<void>
   refreshNotifications: () => Promise<void>
   refreshConversations: () => Promise<void>
+  replaceConversations: (conversations: MessageConversation[]) => void
   refreshTasks: () => Promise<void>
   refreshMeetings: () => Promise<void>
+  refreshReminders: () => Promise<void>
   refreshMembers: () => Promise<void>
 }
 
-type ResourceKey = 'profile' | 'profileImage' | 'projects' | 'notifications' | 'conversations' | 'tasks' | 'meetings' | 'members'
-type Snapshot = Pick<DashboardData, 'profile' | 'profileImage' | 'projects' | 'notifications' | 'conversations' | 'tasks' | 'meetings' | 'members'>
+type ResourceKey = 'profile' | 'profileImage' | 'projects' | 'notifications' | 'conversations' | 'tasks' | 'meetings' | 'reminders' | 'members'
+type Snapshot = Pick<DashboardData, 'profile' | 'profileImage' | 'projects' | 'notifications' | 'conversations' | 'tasks' | 'meetings' | 'reminders' | 'members'>
 
 const emptyResource = <T,>(data: T): DashboardResource<T> => ({ data, loading: false, error: null })
 const initialSnapshot = (): Snapshot => ({
@@ -49,6 +53,7 @@ const initialSnapshot = (): Snapshot => ({
   conversations: emptyResource([]),
   tasks: emptyResource({}),
   meetings: emptyResource({}),
+  reminders: emptyResource({}),
   members: emptyResource([]),
 })
 
@@ -74,6 +79,7 @@ export function DashboardDataProvider({ user, children }: DashboardDataProviderP
         else if (key === 'conversations') next = { ...next, conversations: { ...next.conversations, loading, error: loading ? null : next.conversations.error } }
         else if (key === 'tasks') next = { ...next, tasks: { ...next.tasks, loading, error: loading ? null : next.tasks.error } }
         else if (key === 'meetings') next = { ...next, meetings: { ...next.meetings, loading, error: loading ? null : next.meetings.error } }
+        else if (key === 'reminders') next = { ...next, reminders: { ...next.reminders, loading, error: loading ? null : next.reminders.error } }
         else if (key === 'members') next = { ...next, members: { ...next.members, loading, error: loading ? null : next.members.error } }
       }
       return next
@@ -90,6 +96,7 @@ export function DashboardDataProvider({ user, children }: DashboardDataProviderP
       if (key === 'conversations') return { ...current, conversations: { ...current.conversations, loading: false, error: message } }
       if (key === 'tasks') return { ...current, tasks: { ...current.tasks, loading: false, error: message } }
       if (key === 'meetings') return { ...current, meetings: { ...current.meetings, loading: false, error: message } }
+      if (key === 'reminders') return { ...current, reminders: { ...current.reminders, loading: false, error: message } }
       return { ...current, members: { ...current.members, loading: false, error: message } }
     })
   }, [])
@@ -115,7 +122,7 @@ export function DashboardDataProvider({ user, children }: DashboardDataProviderP
   }, [markLoading, setError, user])
 
   const loadProjects = useCallback(async (signal: AbortSignal) => {
-    markLoading(['projects', 'tasks', 'meetings'], true)
+    markLoading(['projects', 'tasks', 'meetings', 'reminders'], true)
     try {
       const response = await dashboardApi.fetchProjects(user, signal)
       const projects = response.data.projects
@@ -123,11 +130,12 @@ export function DashboardDataProvider({ user, children }: DashboardDataProviderP
       await Promise.all([
         loadProjectTasks(user, projects, signal, setSnapshot, setError),
         loadProjectMeetings(user, projects, signal, setSnapshot, setError),
+        loadProjectReminders(user, projects, signal, setSnapshot, setError),
       ])
     } catch (error) {
       if (!signal.aborted) {
         setError('projects', error)
-        markLoading(['tasks', 'meetings'], false)
+        markLoading(['tasks', 'meetings', 'reminders'], false)
       }
     }
   }, [markLoading, setError, user])
@@ -185,11 +193,20 @@ export function DashboardDataProvider({ user, children }: DashboardDataProviderP
   const refreshProjects = useCallback(() => withController(loadProjects), [loadProjects, withController])
   const refreshNotifications = useCallback(() => withController(loadNotifications), [loadNotifications, withController])
   const refreshConversations = useCallback(() => withController(loadConversations), [loadConversations, withController])
+  const replaceConversations = useCallback((conversations: MessageConversation[]) => {
+    setSnapshot((current) => ({
+      ...current,
+      conversations: { data: conversations, loading: false, error: null },
+    }))
+  }, [])
   const refreshTasks = useCallback(() => withController(async (signal) => {
     await loadProjectTasks(user, snapshot.projects.data, signal, setSnapshot, setError)
   }), [setError, snapshot.projects.data, user])
   const refreshMeetings = useCallback(() => withController(async (signal) => {
     await loadProjectMeetings(user, snapshot.projects.data, signal, setSnapshot, setError)
+  }), [setError, snapshot.projects.data, user])
+  const refreshReminders = useCallback(() => withController(async (signal) => {
+    await loadProjectReminders(user, snapshot.projects.data, signal, setSnapshot, setError)
   }), [setError, snapshot.projects.data, user])
   const refreshMembers = useCallback(() => withController(loadMembers), [loadMembers, withController])
 
@@ -206,10 +223,12 @@ export function DashboardDataProvider({ user, children }: DashboardDataProviderP
     refreshProjects,
     refreshNotifications,
     refreshConversations,
+    replaceConversations,
     refreshTasks,
     refreshMeetings,
+    refreshReminders,
     refreshMembers,
-  }), [refresh, refreshConversations, refreshMeetings, refreshMembers, refreshNotifications, refreshProfile, refreshProfileImage, refreshProjects, refreshTasks, snapshot])
+  }), [refresh, refreshConversations, refreshMeetings, refreshMembers, refreshNotifications, refreshProfile, refreshProfileImage, refreshProjects, refreshReminders, refreshTasks, replaceConversations, snapshot])
 
   return <DashboardDataContext.Provider value={value}>{children}</DashboardDataContext.Provider>
 }
@@ -258,6 +277,29 @@ async function loadProjectMeetings(
     meetings: { data: meetings, loading: false, error: failure ? errorMessage(failure.reason) : null },
   }))
   if (failure) setError('meetings', failure.reason)
+}
+
+async function loadProjectReminders(
+  user: AuthUser,
+  projects: Project[],
+  signal: AbortSignal,
+  setSnapshot: React.Dispatch<React.SetStateAction<Snapshot>>,
+  setError: (key: ResourceKey, error: unknown) => void,
+) {
+  setSnapshot((current) => ({ ...current, reminders: { ...current.reminders, loading: true, error: null } }))
+  const results = await Promise.allSettled(projects.map(async (project) => {
+    const response = await dashboardApi.fetchProjectReminders(user, project.project_id, signal)
+    return [project.project_id, response.data.reminders] as const
+  }))
+  if (signal.aborted) return
+  const reminders: Record<string, ProjectReminder[]> = {}
+  const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+  for (const result of results) if (result.status === 'fulfilled') reminders[result.value[0]] = result.value[1]
+  setSnapshot((current) => ({
+    ...current,
+    reminders: { data: reminders, loading: false, error: failure ? errorMessage(failure.reason) : null },
+  }))
+  if (failure) setError('reminders', failure.reason)
 }
 
 function errorMessage(error: unknown) {

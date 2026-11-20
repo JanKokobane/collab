@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   signOutCurrentUser,
   subscribeToAuth,
@@ -8,7 +8,20 @@ import { DashboardDataProvider, useDashboardData } from './state/DashboardDataCo
 import DashboardHeader from './components/Header/Header'
 import Sidebar from './components/Sidebar/Sidebar'
 import Home from './components/Home/Home'
+import Meetings from './components/Meetings/Meetings'
+import Messages, { type MessageContextReference } from './components/Messages/Messages'
+import { dashboardApi } from './services/dashboardApi.js'
 import styles from './App.module.css'
+
+const builtInViews = new Set([
+  'Workspace',
+  'Meetings',
+  'Messages',
+  'Brainstorm',
+  'Admin Console',
+  'Settings',
+  'Notifications',
+])
 
 function App() {
   const [user, setUser] = useState<AuthUser | null>(null)
@@ -71,7 +84,40 @@ function DashboardContent({ user }: { user: AuthUser }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [authError, setAuthError] = useState('')
+  const [messageContext, setMessageContext] = useState<MessageContextReference | null>(null)
   const dashboard = useDashboardData()
+  const openMessageContext = useCallback((reference: MessageContextReference) => {
+    setMessageContext(reference)
+    setActiveView('Messages')
+  }, [])
+  const clearMessageContext = useCallback(() => setMessageContext(null), [])
+
+  useEffect(() => {
+    let active = true
+    const updatePresence = (isOnline: boolean) => {
+      if (!active) return
+      void dashboardApi.updateMessagePresence(user, isOnline).catch((error: unknown) => {
+        console.error('Unable to update messaging presence:', error)
+      })
+    }
+    const handleVisibilityChange = () => {
+      if (!document.hidden) updatePresence(true)
+    }
+    const handlePageShow = () => updatePresence(true)
+    const handlePageHide = () => updatePresence(false)
+    updatePresence(true)
+    const intervalId = window.setInterval(() => updatePresence(true), 25000)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('pageshow', handlePageShow)
+    window.addEventListener('pagehide', handlePageHide)
+    return () => {
+      active = false
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('pageshow', handlePageShow)
+      window.removeEventListener('pagehide', handlePageHide)
+    }
+  }, [user])
 
   const profileName = dashboard.profile.data?.name || user.displayName || user.email || 'Collab member'
   const profileRole = dashboard.profile.data?.role || 'Active Member'
@@ -83,7 +129,7 @@ function DashboardContent({ user }: { user: AuthUser }) {
 
   useEffect(() => {
     setActiveView((currentView) =>
-      dashboard.projects.data.some((project) => project.name === currentView)
+      builtInViews.has(currentView) || dashboard.projects.data.some((project) => project.name === currentView)
         ? currentView
         : dashboard.projects.data[0]?.name || 'Workspace',
     )
@@ -126,10 +172,20 @@ function DashboardContent({ user }: { user: AuthUser }) {
           userName={profileName}
           userRole={profileRole}
         />
-        <main className={`${styles.content}${activeView === 'Workspace' ? ` ${styles.workspace}` : ''}`}>
+        <main className={`${styles.content}${activeView === 'Workspace' || activeView === 'Meetings' || activeView === 'Messages' ? ` ${styles.workspace}` : ''}`}>
           {authError && <p role="alert">{authError}</p>}
           {activeView === 'Workspace' ? (
             <Home user={user} onNavigate={setActiveView} />
+          ) : activeView === 'Meetings' ? (
+            <Meetings user={user} activeProjectName={activeView} />
+          ) : activeView === 'Messages' ? (
+            <Messages
+              messageContext={messageContext}
+              onMessageContextHandled={clearMessageContext}
+              onOpenMessageContext={openMessageContext}
+              searchValue={searchValue}
+              user={user}
+            />
           ) : (
             <>
               <p className={styles.eyebrow}>Workspace overview</p>

@@ -109,6 +109,62 @@ export interface MessageConversation {
   member_uids: string[]
 }
 
+export interface MessageAttachment {
+  fileName: string
+  mediaType: string
+  size: number
+  data: string
+  is_voice_note?: boolean
+  duration_seconds?: number
+  waveform_peaks?: number[]
+}
+
+export interface MessageReaction {
+  emoji: string
+  users: string[]
+}
+
+export interface MessageCallHistoryRecord {
+  call_id: string
+  conversation_id: string
+  caller_uid: string
+  caller_name: string
+  callee_uid: string
+  callee_name: string
+  call_type: 'audio' | 'video'
+  status: string
+  created_at: string
+  accepted_at: string | null
+  ended_at: string | null
+  ended_by_uid: string | null
+  ring_expires_at: string
+}
+
+export interface ConversationMessage {
+  message_id: string
+  conversation_id: string
+  client_message_id?: string | null
+  sender_firebase_uid: string
+  sender_email: string
+  sender_name: string
+  body: string
+  reply_to_message_id: string | null
+  reply_to_body: string | null
+  reply_to_sender_name: string | null
+  forwarded_from: { senderName: string } | null
+  is_pinned: boolean
+  is_decision: boolean
+  linked_task_id: string | null
+  linked_task_title: string | null
+  linked_task_project_id: string | null
+  is_deleted: boolean
+  edited_at: string | null
+  created_at: string
+  read_at: string | null
+  attachments: MessageAttachment[]
+  reactions: MessageReaction[]
+}
+
 export interface TaskDependency {
   task_id: string
   project_id: string
@@ -172,6 +228,20 @@ export interface ProjectMeeting {
   host_name: string
   attendee_firebase_uids: string[]
   ended_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectReminder {
+  reminder_id: string
+  project_id: string
+  project_name: string
+  title: string
+  reminder_date: string
+  reminder_time: string
+  priority: 'Normal' | 'High' | 'Urgent'
+  created_by_firebase_uid: string
+  created_by_name: string
   created_at: string
   updated_at: string
 }
