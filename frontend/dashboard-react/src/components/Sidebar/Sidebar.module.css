@@ -1,0 +1,350 @@
+.sidebar {
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  display: flex;
+  flex: 0 0 250px;
+  flex-direction: column;
+  width: 250px;
+  height: 100vh;
+  padding: 24px 16px 20px;
+  overflow-y: auto;
+  background: #fff;
+  border-right: 1px solid #e4e4e7;
+  color: #1c1c1f;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.brandLink {
+  display: flex;
+  align-items: center;
+  padding: 0 8px 32px;
+  text-decoration: none;
+}
+
+.brandLogo {
+  width: auto;
+  height: 38px;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+}
+
+.primaryNav,
+.projectNav {
+  display: grid;
+  gap: 4px;
+}
+
+.primaryNav {
+  margin-bottom: 20px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #52525b;
+  cursor: pointer;
+  font: 500 13px 'DM Sans', sans-serif;
+  text-align: left;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.navItem:hover {
+  background: #f5f5f4;
+  color: #1c1c1f;
+}
+
+.navItem.active {
+  background: #f5f5f4;
+  color: #1c1c1f;
+  font-weight: 600;
+}
+
+.navIcon {
+  flex: 0 0 1.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  color: currentColor;
+  stroke: currentColor;
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.navItem:hover .navIcon {
+  color: #1c1c1f;
+  transform: scale(1.06);
+}
+
+.navItem.active .navIcon {
+  color: #b45309;
+}
+
+.messagesBadge {
+  display: inline-flex;
+  min-width: 19px;
+  height: 19px;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0 5px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.messagesBadge[hidden] {
+  display: none;
+}
+
+.navLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 10px;
+  color: #a1a1aa;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+}
+
+.tinyPlus {
+  border: 0;
+  background: none;
+  color: #71717a;
+  cursor: pointer;
+  font: 400 16px 'DM Sans', sans-serif;
+}
+
+.project {
+  font-size: 12px;
+}
+
+.dot {
+  display: inline-block;
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.coral {
+  background: #e07a5f;
+}
+
+.blue {
+  background: #3b82f6;
+}
+
+.green {
+  background: #10b981;
+}
+
+.sidebarBottom {
+  display: grid;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid #e4e4e7;
+}
+
+.notificationButton {
+  position: relative;
+  background: transparent;
+}
+
+.notificationButton:hover,
+.notificationButton.active {
+  background: #f5f5f4;
+}
+
+.notificationBadge {
+  min-width: 18px;
+  margin-left: auto;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 3px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+}
+
+@media (min-width: 1025px) {
+  .sidebar {
+    width: clamp(210px, 16.3vw, 250px);
+    flex-basis: clamp(210px, 16.3vw, 250px);
+  }
+}
+
+.profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: background 0.2s;
+}
+
+.profile:hover {
+  background: #f4f4f5;
+}
+
+.avatar {
+  display: grid;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  overflow: hidden;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.coralBg {
+  background: #f5b800;
+  color: #1c1c1f;
+}
+
+.profileCopy {
+  min-width: 0;
+}
+
+.profileCopy strong,
+.profileCopy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profileCopy strong {
+  color: #1c1c1f;
+  font-size: 12px;
+}
+
+.profileCopy small {
+  color: #71717a;
+  font-size: 11px;
+}
+
+.backdrop {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  :global(body.sidebar-open) {
+    overflow: hidden;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 120;
+    width: min(280px, calc(100vw - 56px));
+    height: 100vh;
+    height: 100dvh;
+    flex-basis: auto;
+    transform: translateX(-105%);
+    transition: transform 0.22s ease;
+    box-shadow: 12px 0 32px rgba(18, 25, 38, 0.14);
+  }
+
+  .sidebar.isOpen {
+    transform: translateX(0);
+  }
+
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 110;
+    display: none;
+    border: 0;
+    background: rgba(18, 25, 38, 0.42);
+    cursor: pointer;
+  }
+
+  .backdropVisible {
+    display: block;
+  }
+}
+
+:global(body.dark-mode) .sidebar {
+  border-color: #26262d;
+  background: #161619;
+}
+
+:global(body.dark-mode) .brandLogo {
+  filter: brightness(1.25);
+}
+
+:global(body.dark-mode) .navItem {
+  color: #a1a1aa;
+}
+
+:global(body.dark-mode) .navItem:hover {
+  background: #23232a;
+  color: #fff;
+}
+
+:global(body.dark-mode) .navItem.active {
+  background: #282833;
+  color: #fff;
+}
+
+:global(body.dark-mode) .navLabel {
+  color: #71717a;
+}
+
+:global(body.dark-mode) .tinyPlus {
+  color: #a1a1aa;
+}
+
+:global(body.dark-mode) .sidebarBottom {
+  border-color: #26262d;
+}
+
+:global(body.dark-mode) .profile {
+  background: #1e1e24;
+}
+
+:global(body.dark-mode) .profile:hover {
+  background: #26262e;
+}
+
+:global(body.dark-mode) .profileCopy strong {
+  color: #fff;
+}
+
+:global(body.dark-mode) .profileCopy small {
+  color: #a1a1aa;
+}
+
+:global(body.dark-mode) .notificationBadge {
+  border-color: #161619;
+}
