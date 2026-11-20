@@ -3,7 +3,9 @@ export type AuthUser = {
   displayName: string | null
   email: string | null
   photoURL: string | null
+  getIdToken: (forceRefresh?: boolean) => Promise<string>
 }
+
 
 export function subscribeToAuth(
   callback: (user: AuthUser | null) => void,

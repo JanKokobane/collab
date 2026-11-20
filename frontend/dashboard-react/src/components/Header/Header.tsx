@@ -11,6 +11,7 @@ export type DashboardHeaderProps = {
   userAvatarUrl?: string
   isSidebarOpen?: boolean
   profileMenuOpen?: boolean
+  searchValue?: string
   onMenuToggle?: (isOpen: boolean) => void
   onProfileMenuToggle?: (isOpen: boolean) => void
   onSearchChange?: (value: string) => void
@@ -20,15 +21,16 @@ export type DashboardHeaderProps = {
 }
 
 function DashboardHeader({
-  currentView = 'Product Launch',
+  currentView = 'Workspace',
   notificationCount = 0,
-  userName = 'Alex Morgan',
+  userName = '',
   userRole = 'Active Member',
-  userEmail = 'alex@collab.io',
+  userEmail = '',
   userInitials,
   userAvatarUrl,
   isSidebarOpen,
   profileMenuOpen: controlledProfileMenuOpen,
+  searchValue,
   onMenuToggle,
   onProfileMenuToggle,
   onSearchChange,
@@ -149,6 +151,7 @@ function DashboardHeader({
             <input
               id="search"
               onChange={handleSearchChange}
+              value={searchValue || ''}
               placeholder="Search tasks, projects, or team members..."
             />
           </label>
@@ -237,7 +240,7 @@ function DashboardHeader({
                   className="dropdown-item"
                   id="dropdown-settings-btn"
                   onClick={() => {
-                    setProfileDropdownOpen(false)
+                    updateProfileMenu(false)
                     onSettingsClick?.()
                   }}
                   type="button"
@@ -266,7 +269,7 @@ function DashboardHeader({
                   className="dropdown-item logout"
                   id="dropdown-logout-btn"
                   onClick={() => {
-                    setProfileDropdownOpen(false)
+                    updateProfileMenu(false)
                     onSignOut?.()
                   }}
                   type="button"

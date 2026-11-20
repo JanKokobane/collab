@@ -39,6 +39,15 @@
   padding: 38px 0;
 }
 
+.workspace {
+  width: 100%;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: clamp(16px, 2.1vw, 32px);
+}
+
 .eyebrow {
   margin: 0 0 7px;
   color: #71717a;

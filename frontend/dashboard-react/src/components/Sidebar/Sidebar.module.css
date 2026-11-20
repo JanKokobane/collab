@@ -51,7 +51,7 @@
   background: transparent;
   color: #52525b;
   cursor: pointer;
-  font: 500 13px 'DM Sans', sans-serif;
+  font: 500 14px 'DM Sans', sans-serif;
   text-align: left;
   text-decoration: none;
   transition: all 0.2s;
@@ -113,7 +113,7 @@
   justify-content: space-between;
   padding: 0 12px 10px;
   color: #a1a1aa;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 1.2px;
 }
@@ -127,7 +127,7 @@
 }
 
 .project {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dot {
@@ -148,6 +148,34 @@
 
 .green {
   background: #10b981;
+}
+
+.yellow {
+  background: #eab308;
+}
+
+.purple {
+  background: #8c7ae9;
+}
+
+.orange {
+  background: #f97316;
+}
+
+.rose {
+  background: #e11d48;
+}
+
+.emptyProjects,
+.loadError {
+  margin: 8px 12px 0;
+  color: #a1a1aa;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.loadError {
+  color: #b91c1c;
 }
 
 .sidebarBottom {

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import logo from '../../../../images/logo.png'
 import Icon from '../Icon/Icon'
 import styles from './Sidebar.module.css'
+import type { Project } from '../../types/dashboard.js'
 
 type SidebarProps = {
   activeView: string
@@ -9,6 +10,10 @@ type SidebarProps = {
   userName: string
   userRole: string
   userAvatarUrl?: string
+  projects: Project[]
+  projectLoadError?: string
+  notificationCount: number
+  messageCount: number
   onNavigate: (view: string) => void
   onClose: () => void
   onProfileClick: () => void
@@ -23,18 +28,16 @@ const primaryItems = [
   { view: 'Admin Console', label: 'Workspace', icon: 'workspace' as const, id: 'admin-nav-item' },
 ]
 
-const initialProjects = [
-  { name: 'Product Launch', color: 'coral' },
-  { name: 'Website Redesign', color: 'blue' },
-  { name: 'Marketing Sprint', color: 'green' },
-]
-
 function Sidebar({
   activeView,
   isOpen,
   userName,
   userRole,
   userAvatarUrl,
+  projects,
+  projectLoadError,
+  notificationCount,
+  messageCount,
   onNavigate,
   onClose,
   onProfileClick,
@@ -91,7 +94,13 @@ function Sidebar({
               <Icon className={styles.navIcon} name={item.icon} />
               <span>{item.label}</span>
               {item.view === 'Messages' && (
-                <span aria-label="Unread messages" className={styles.messagesBadge} hidden />
+                <span
+                  aria-label={`${messageCount} unread messages`}
+                  className={styles.messagesBadge}
+                  hidden={messageCount === 0}
+                >
+                  {messageCount > 99 ? '99+' : messageCount}
+                </span>
               )}
             </button>
           ))}
@@ -111,19 +120,27 @@ function Sidebar({
         </div>
 
         <nav aria-label="Projects" className={styles.projectNav}>
-          {initialProjects.map((project) => (
-            <button
-              aria-current={activeView === project.name ? 'page' : undefined}
-              className={`${styles.navItem} ${styles.project}${activeView === project.name ? ` ${styles.active}` : ''}`}
-              data-view={project.name}
-              key={project.name}
-              onClick={() => navigate(project.name)}
-              type="button"
-            >
-              <i aria-hidden="true" className={`${styles.dot} ${styles[project.color]}`} />
-              <span>{project.name}</span>
-            </button>
-          ))}
+          {projects.map((project, index) => {
+            const color = project.color || ['coral', 'blue', 'green'][index % 3]
+            const dotClass = styles[color] || styles.blue
+            return (
+              <button
+                aria-current={activeView === project.name ? 'page' : undefined}
+                className={`${styles.navItem} ${styles.project}${activeView === project.name ? ` ${styles.active}` : ''}`}
+                data-view={project.name}
+                key={project.project_id || project.id || project.name}
+                onClick={() => navigate(project.name)}
+                type="button"
+              >
+                <i aria-hidden="true" className={`${styles.dot} ${dotClass}`} />
+                <span>{project.name}</span>
+              </button>
+            )
+          })}
+          {projectLoadError && <p className={styles.loadError}>{projectLoadError}</p>}
+          {!projectLoadError && projects.length === 0 && (
+            <p className={styles.emptyProjects}>No projects yet.</p>
+          )}
         </nav>
 
         <div className={styles.sidebarBottom}>
@@ -151,7 +168,11 @@ function Sidebar({
           >
             <Icon className={styles.navIcon} name="bell" />
             <span>Notifications</span>
-            <span className={styles.notificationBadge} id="notification-badge">3</span>
+            {notificationCount > 0 && (
+              <span className={styles.notificationBadge} id="notification-badge">
+                {notificationCount > 99 ? '99+' : notificationCount}
+              </span>
+            )}
           </button>
           <button
             className={styles.profile}
