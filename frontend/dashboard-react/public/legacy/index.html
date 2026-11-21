@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Collab — Workspace</title>
+
+    <link rel="icon" type="image/png" href="./images/favicon.png" />
+
+    <meta name="description"
+        content="Collab brings your projects, tasks, and team conversations into one calm, focused workspace." />
+    <meta property="og:title" content="Collab — Workspace" />
+    <meta property="og:description"
+        content="Collab brings your projects, tasks, and team conversations into one calm, focused workspace." />
+    <meta property="og:image" content="./images/banner.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Collab — Workspace" />
+    <meta name="twitter:description"
+        content="Collab brings your projects, tasks, and team conversations into one calm, focused workspace." />
+    <meta name="twitter:image" content="./images/banner.png">
+    <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+    <div id="app">
+        <header class="landing-header">
+            <nav class="landing-nav">
+                <a class="brand logo-link" href="index.html" aria-label="Collab Home">
+                    <img src="./images/logo.png" alt="Collab." class="brand-logo-img" />
+                </a>
+                <div class="landing-links">
+                    <a href="#how-it-works">How it works</a>
+                    <a href="#features">Features</a>
+                    <a href="#pricing">Pricing</a>
+                    <span class="divider" style="color: #E4E4E7; user-select: none;">|</span>
+                    <a href="./auth/auth.html" class="landing-signin" id="landing-signin-link">Sign in</a>
+                    <a href="./auth/auth.html?mode=register" class="get-collab-btn" id="get-collab-header-btn">Get
+                        Collab for free</a>
+                </div>
+            </nav>
+        </header>
+
+        <main class="landing">
+            <section class="landing-hero">
+                <div class="hero-copy">
+                    <p class="eyebrow">WORK BETTER TOGETHER</p>
+                    <h1>Turn ideas into<br><span>momentum.</span></h1>
+                    <p class="hero-lead">Collab brings your projects, tasks, and team conversations into one calm,
+                        focused workspace.</p>
+                    <div class="hero-actions">
+                        <a href="./dashboard/dashboard.html" class="landing-cta gold-cta large-cta">Start collaborating
+                            <span>→</span></a>
+                        <a class="text-link" href="#how-it-works">See how it works <span>↓</span></a>
+                    </div>
+                    <div class="social-proof">
+                        <div class="proof-avatars">
+                            <span class="avatar coral-bg">AM</span>
+                            <span class="avatar teal-bg">SK</span>
+                            <span class="avatar orange-bg">JL</span>
+                            <span class="avatar more-avatar">+</span>
+                        </div>
+                        <span>Trusted by teams who<br>ship meaningful work.</span>
+                    </div>
+                </div>
+                <div class="hero-visual">
+                    <div class="visual-glow"></div>
+                    <a href="#" class="dashboard-preview" aria-label="Open Collab Workspace Dashboard">
+                        <div class="preview-top">
+                            <div class="preview-brand">
+                                <img src="./images/logo.png" alt="Collab" class="preview-brand-img" />
+                                <div class="preview-title-inline">
+                                    <small>PRODUCT LAUNCH</small>
+                                    <h3>Ship with clarity.</h3>
+                                </div>
+                            </div>
+                            <div class="preview-right-actions">
+                                <span class="preview-dots">•••</span>
+                            </div>
+                        </div>
+                        <div class="preview-screen-wrap">
+                            <img src="./images/dashboard-preview.jpg"
+                                alt="Collab Workspace Dashboard Preview - Product Launch Kanban Board with To do, In progress, Done columns"
+                                class="dashboard-preview-img" referrerPolicy="no-referrer" />
+                        </div>
+                    </a>
+                </div>
+            </section>
+
+            <div class="landing-bottom" id="how-it-works">
+                <span>BUILT FOR FOCUSED TEAMS</span>
+                <div><b>Plan clearly.</b><b>Move quickly.</b><b>Celebrate progress.</b></div>
+            </div>
+
+            <section class="proof-strip">
+                <p>Everything your team needs to move from idea to impact</p>
+                <div class="proof-metrics">
+                    <div><strong>2.4x</strong><span>faster project handoffs</span></div>
+                    <div><strong>38%</strong><span>less time in status meetings</span></div>
+                    <div><strong>100%</strong><span>clarity on what's next</span></div>
+                </div>
+            </section>
+
+            <section class="selling-section feature-section" id="features">
+                <div class="section-intro">
+                    <p class="eyebrow">ONE PLACE TO MOVE WORK FORWARD</p>
+                    <h2>Less chasing.<br><span>More creating.</span></h2>
+                    <p>Collab gives every project a shared source of truth, so your team can spend less time asking for
+                        updates and more time doing their best work.</p>
+                </div>
+            </section>
+
+            <section class="selling-section workflow-section">
+                <div class="section-intro">
+                    <p class="eyebrow">A BETTER WAY TO WORK</p>
+                    <h2>From first idea<br>to <span>final delivery.</span></h2>
+                    <p>Whether you are launching a product, running a campaign, or building something new, Collab makes
+                        the path forward feel simple.</p>
+                    <a href="./dashboard/dashboard.html" class="outline-cta">See Collab in action <span>→</span></a>
+                </div>
+                <div>
+                    <div class="faq-list">
+                        <details open>
+                            <summary>01. Capture the plan</summary>
+                            <p>Give the team a clear destination.</p>
+                        </details>
+                        <details>
+                            <summary>02. Move the work</summary>
+                            <p>Everyone knows what to do next.</p>
+                        </details>
+                        <details>
+                            <summary>03. Share the win</summary>
+                            <p>Celebrate progress together.</p>
+                        </details>
+                    </div>
+                </div>
+            </section>
+
+            <section class="quote-section" id="testimonials">
+                <div class="quote-slider-wrapper">
+                    <button class="quote-nav prev-quote" id="prev-quote-btn" aria-label="Previous testimonial">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="15 18 9 12 15 6"></polyline>
+                        </svg>
+                    </button>
+
+                    <div class="quote-slides-container">
+                        <div class="quote-mark">“</div>
+
+                        <!-- Slide 1 (Original) -->
+                        <div class="quote-slide active" data-index="0">
+                            <blockquote>Collab gave our team a shared rhythm. We stopped managing the work and started
+                                making progress.</blockquote>
+                            <div class="quote-person">
+                                <span class="avatar coral-bg">MC</span>
+                                <span><strong>Maya Chen</strong><small>Head of Product, Northstar</small></span>
+                            </div>
+                        </div>
+
+                        <!-- Slide 2 -->
+                        <div class="quote-slide" data-index="1">
+                            <blockquote>We cut our weekly status meetings by half. With everything on one visual board,
+                                nobody has to ask who owns what.</blockquote>
+                            <div class="quote-person">
+                                <span class="avatar teal-bg">MV</span>
+                                <span><strong>Marcus Vance</strong><small>VP of Engineering, Forma Labs</small></span>
+                            </div>
+                        </div>
+
+                        <!-- Slide 3 -->
+                        <div class="quote-slide" data-index="2">
+                            <blockquote>The transition from chaotic spreadsheets to Collab was instant. Our design
+                                sprints now ship two days ahead of schedule.</blockquote>
+                            <div class="quote-person">
+                                <span class="avatar green-bg">ER</span>
+                                <span><strong>Elena Rostova</strong><small>Lead Product Designer, Studio
+                                        Apex</small></span>
+                            </div>
+                        </div>
+
+                        <!-- Slide 4 -->
+                        <div class="quote-slide" data-index="3">
+                            <blockquote>Finally a collaboration tool that doesn't feel like a noisy cockpit. It keeps
+                                developers focused and stakeholders informed.</blockquote>
+                            <div class="quote-person">
+                                <span class="avatar blue-bg">DP</span>
+                                <span><strong>Devon Patel</strong><small>Tech Lead, Hyperion Tech</small></span>
+                            </div>
+                        </div>
+
+                        <!-- Slide 5 -->
+                        <div class="quote-slide" data-index="4">
+                            <blockquote>Our remote marketing team across four time zones stays totally in sync. It
+                                turned complex multi-channel launches into pure clarity.</blockquote>
+                            <div class="quote-person">
+                                <span class="avatar pink-bg">SJ</span>
+                                <span><strong>Sarah Jenkins</strong><small>Director of Growth, Catalyst
+                                        Media</small></span>
+                            </div>
+                        </div>
+
+                        <!-- Slide 6 -->
+                        <div class="quote-slide" data-index="5">
+                            <blockquote>Collab brings back the joy of shipping together. Decisions happen directly with
+                                the work instead of buried in email threads.</blockquote>
+                            <div class="quote-person">
+                                <span class="avatar orange-bg">LO</span>
+                                <span><strong>Liam O'Connor</strong><small>Operations Lead, Vantage Works</small></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="quote-nav next-quote" id="next-quote-btn" aria-label="Next testimonial">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="quote-dots" id="quote-dots">
+                    <button class="quote-dot active" data-index="0" aria-label="Slide 1"></button>
+                    <button class="quote-dot" data-index="1" aria-label="Slide 2"></button>
+                    <button class="quote-dot" data-index="2" aria-label="Slide 3"></button>
+                    <button class="quote-dot" data-index="3" aria-label="Slide 4"></button>
+                    <button class="quote-dot" data-index="4" aria-label="Slide 5"></button>
+                    <button class="quote-dot" data-index="5" aria-label="Slide 6"></button>
+                </div>
+            </section>
+
+            <section class="selling-section pricing-section" id="pricing">
+                <div class="section-intro centered">
+                    <p class="eyebrow">SIMPLE, HONEST PRICING</p>
+                    <h2>Start free.<br><span>Grow together.</span></h2>
+                    <p>Everything you need to bring your first project to life. Upgrade when your team is ready.</p>
+                </div>
+                <div class="pricing-card">
+                    <div>
+                        <p class="eyebrow">FOR SMALL TEAMS</p>
+                        <h3>Free workspace</h3>
+                        <p class="price"><strong>$0</strong><span> forever</span></p>
+                        <p class="price-copy">The essential workspace for getting organized and moving faster.</p>
+                    </div>
+                    <ul>
+                        <li>Unlimited projects</li>
+                        <li>Unlimited tasks and comments</li>
+                        <li>Up to 8 team members</li>
+                        <li>Board and list views</li>
+                    </ul>
+                    <a href="./dashboard/dashboard.html" class="landing-cta gold-cta pricing-cta">Start for free <span>→</span></a>
+                </div>
+            </section>
+
+            <section class="faq-section">
+                <div class="section-intro">
+                    <p class="eyebrow">QUESTIONS, ANSWERED</p>
+                    <h2>Good to know.</h2>
+                </div>
+                <div class="faq-list">
+                    <details open>
+                        <summary>What is Collab?</summary>
+                        <p>Collab is a focused workspace for planning projects, assigning tasks, and keeping team
+                            communication attached to the work.</p>
+                    </details>
+                    <details>
+                        <summary>Is Collab free to use?</summary>
+                        <p>Yes. The free workspace includes everything a small team needs to get started, with no credit
+                            card required.</p>
+                    </details>
+                    <details>
+                        <summary>Can I invite my whole team?</summary>
+                        <p>Absolutely. Invite your teammates, assign ownership, and keep everyone aligned from one
+                            shared project board.</p>
+                    </details>
+                </div>
+            </section>
+
+            <!-- Trello-Style Pre-Footer CTA Section -->
+            <section class="trello-cta-section">
+                <div class="trello-cta-container">
+                    <h2>Get started with Collab today</h2>
+                    <form class="trello-cta-form"
+                        onsubmit="event.preventDefault(); window.location.href='./auth/auth.html?mode=register&email=' + encodeURIComponent(this.email.value);">
+                        <input type="email" name="email" placeholder="Email" required class="trello-cta-input" />
+
+                        <button type="submit" class="trello-cta-button">
+                            Sign up – it's free!
+                        </button>
+                    </form>
+                    <p class="trello-cta-notice">
+                        Welcome! By entering your email, you acknowledge that you are joining our community and agree to receive updates from us.
+                    </p>
+                </div>
+            </section>
+        </main>
+
+        <!-- Trello-Style Dark Navy Footer for Collab -->
+        <footer class="trello-site-footer">
+            <div class="trello-footer-container">
+                <div class="trello-footer-top-grid">
+                    <!-- Brand Column -->
+                    <div class="trello-footer-col brand-col">
+                        <a href="index.html" class="trello-footer-logo">
+                            <img src="./images/logo.png" alt="Collab" class="trello-footer-logo-img" />
+                        </a>
+
+                    </div>
+
+                    <!-- Column 1: About Collab -->
+                    <div class="trello-footer-col">
+                        <h4><a href="./dashboard/dashboard.html">About Collab</a></h4>
+                        <p>What's behind the boards.</p>
+                    </div>
+
+                    <!-- Column 2: Jobs -->
+                    <div class="trello-footer-col">
+                        <h4><a href="./dashboard/dashboard.html">Jobs</a></h4>
+                        <p>Learn about open roles on the Collab team.</p>
+                    </div>
+
+                    <!-- Column 3: Apps -->
+                    <div class="trello-footer-col">
+                        <h4><a href="./dashboard/dashboard.html">Apps</a></h4>
+                        <p>Download the Collab App for your Desktop or Mobile devices.</p>
+                    </div>
+
+                    <!-- Column 4: Contact us -->
+                    <div class="trello-footer-col">
+                        <h4><a href="./dashboard/dashboard.html">Contact us</a></h4>
+                        <p>Need anything? Get in touch and we can help.</p>
+                    </div>
+                </div>
+
+                <div class="trello-footer-divider"></div>
+
+                <!-- Bottom Row -->
+                <div class="trello-footer-bottom">
+                    <div class="trello-footer-lang">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="2" y1="12" x2="22" y2="12"></line>
+                            <path
+                                d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
+                            </path>
+                        </svg>
+                        <span>English</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </div>
+
+                    <div class="trello-footer-links">
+                        <a href="./legal/privacy.html">Privacy Policy</a>
+                        <a href="./legal/terms.html">Terms</a>
+                        <span>Copyright © <span class="current-year">2026</span> Collab</span>
+                    </div>
+
+                    <div class="trello-footer-socials">
+                        <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram"
+                            class="trello-social-btn">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                                <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+                                <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+                            </svg>
+                        </a>
+                        <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Facebook"
+                            class="trello-social-btn">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path>
+                            </svg>
+                        </a>
+                        <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn"
+                            class="trello-social-btn">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                                <path
+                                    d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z">
+                                </path>
+                                <rect x="2" y="9" width="4" height="12"></rect>
+                                <circle cx="4" cy="4" r="2"></circle>
+                            </svg>
+                        </a>
+                        <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" aria-label="Twitter / X"
+                            class="trello-social-btn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <path
+                                    d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z">
+                                </path>
+                            </svg>
+                        </a>
+                        <a href="https://youtube.com" target="_blank" rel="noopener noreferrer" aria-label="YouTube"
+                            class="trello-social-btn">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                                <path
+                                    d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19.1c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.43zM9.75 15.02V8.48l5.75 3.27-5.75 3.27z">
+                                </path>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </div>
+    <script type="module" src="./main.js"></script>
+</body>
+
+</html>

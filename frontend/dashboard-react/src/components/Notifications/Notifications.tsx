@@ -1,0 +1,9 @@
+// Markup converted 1:1 from frontend/dashboard/dashboard.html lines 482-512.
+// The original dashboard scripts attach behaviour to these elements by id/class, so keep the DOM identical.
+export function Notifications() {
+  return (
+    <>
+{"                "}<div id="notifications-container" className="settings-container" style={{ display: "none" }}>{"\n                    "}<div className="settings-card notification-settings-card">{"\n                        "}<div className="settings-card-header notification-settings-header">{"\n                            "}<div>{"\n                                "}<h2>{"Notifications"}</h2>{"\n                                "}<p>{"Recent task, project, and workspace updates."}</p>{"\n                            "}</div>{"\n                            "}<div className="notification-header-actions">{"\n                                "}<button type="button" className="outline-button" id="mark-all-notifications-read">{"Mark all\n                                    read"}</button>{"\n                                "}<button type="button" className="outline-button notification-clear-button" id="clear-all-notifications">{"Clear all"}</button>{"\n                            "}</div>{"\n                        "}</div>{"\n                        "}<div className="notification-settings-table-wrap">{"\n                            "}<table className="notification-settings-table" aria-label="Notifications"><thead><tr><th scope="col">{"Time"}</th><th scope="col">{"Notification"}</th><th scope="col">{"Details"}</th><th scope="col">{"Status"}</th><th scope="col">{"Action"}</th></tr></thead><tbody id="settings-notifications-tbody"></tbody></table>{"\n                        "}</div>{"\n                    "}</div>{"\n                "}</div>{"\n"}
+    </>
+  );
+}
