@@ -27,6 +27,19 @@ export const Sidebar: React.FC = () => {
   }, [isMobileSidebarOpen]);
 
   const avatarSrc = getAvatarSource(currentUser);
+  const projectAccentColors: Record<string, string> = {
+    red: '#EF4444', blue: '#3B82F6', yellow: '#EAB308', green: '#22C55E',
+    orange: '#F97316', purple: '#8B5CF6', pink: '#EC4899', brown: '#92400E',
+    black: '#111827', white: '#F8FAFC', gray: '#6B7280', violet: '#7C3AED',
+    indigo: '#6366F1', magenta: '#D946EF', turquoise: '#14B8A6', cyan: '#06B6D4',
+    teal: '#0F766E', maroon: '#7F1D1D', beige: '#D6C3A5', burgundy: '#800020',
+    lavender: '#A78BFA', peach: '#FDBA74', lime: '#84CC16', olive: '#808000',
+    coral: '#E07A5F', gold: '#D97706', silver: '#A3A3A3', bronze: '#CD7F32',
+    amber: '#F59E0B', aqua: '#22D3EE', navy: '#1E3A8A', mint: '#10B981',
+    charcoal: '#374151', crimson: '#DC143C', fuchsia: '#E879F9', khaki: '#C3B091',
+    salmon: '#FA8072', ivory: '#FFFFF0', saffron: '#F4C430', mustard: '#D4A017',
+    rose: '#E11D48'
+  };
   const handleNavClick = (event: React.MouseEvent, viewName: string) => {
     event.preventDefault();
     switchView(viewName);
@@ -186,7 +199,19 @@ export const Sidebar: React.FC = () => {
               href={`#${encodeURIComponent(project.name.toLowerCase().replace(/\s+/g, '-'))}`}
               onClick={(e) => handleNavClick(e, project.name)}
             >
-              <i className={`dot ${project.color || 'yellow'}`} /> {project.name}
+              <svg
+                className={cx('project-folder-icon')}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                style={{ color: projectAccentColors[project.color || 'yellow'] || projectAccentColors.yellow }}
+              >
+                <title>Project folder</title>
+                <path
+                  fill="currentColor"
+                  d="M12.414 5H21a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h7.414z"
+                />
+              </svg>
+              <span>{project.name}</span>
             </a>
           ))
         )}

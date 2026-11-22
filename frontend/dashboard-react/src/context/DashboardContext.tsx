@@ -154,7 +154,13 @@ export function getSprintMembers(project?: Project | null, sprint?: ProjectSprin
 
 export function normalizeProject(project: any): Project | null {
   if (!project) return null;
-  const allowedColors = ['yellow', 'green', 'blue', 'purple', 'coral', 'orange', 'rose'] as const;
+  const allowedColors = [
+    'red', 'blue', 'yellow', 'green', 'orange', 'purple', 'pink', 'brown', 'black',
+    'white', 'gray', 'violet', 'indigo', 'magenta', 'turquoise', 'cyan', 'teal',
+    'maroon', 'beige', 'burgundy', 'lavender', 'peach', 'lime', 'olive', 'coral',
+    'gold', 'silver', 'bronze', 'amber', 'aqua', 'navy', 'mint', 'charcoal',
+    'crimson', 'fuchsia', 'khaki', 'salmon', 'ivory', 'saffron', 'mustard', 'rose'
+  ] as const;
   const color = allowedColors.includes(project.color) ? project.color : 'yellow';
   const acceptedMembers = Array.isArray(project.accepted_members)
     ? project.accepted_members
