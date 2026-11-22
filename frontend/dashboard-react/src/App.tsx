@@ -21,6 +21,20 @@ import { createClassNames } from './utils/cx';
 
 const cx = createClassNames(styles);
 
+const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { authReady, firebaseUser } = useDashboard();
+
+  if (!authReady) {
+    return <div className={cx('auth-loading')} role="status" aria-live="polite" />;
+  }
+
+  if (!firebaseUser) {
+    return <div className={cx('auth-loading')} role="status" aria-live="polite" />;
+  }
+
+  return <>{children}</>;
+};
+
 const DashboardShell: React.FC = () => {
   const {
     activeView,
@@ -98,9 +112,11 @@ const DashboardShell: React.FC = () => {
 
 export const App: React.FC = () => (
   <DashboardProvider>
-    <MessagesCallProvider>
-      <DashboardShell />
-    </MessagesCallProvider>
+    <AuthGate>
+      <MessagesCallProvider>
+        <DashboardShell />
+      </MessagesCallProvider>
+    </AuthGate>
   </DashboardProvider>
 );
 

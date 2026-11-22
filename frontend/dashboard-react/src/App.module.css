@@ -1,3 +1,12 @@
+.auth-loading {
+
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #FFFFFF url('/images/loginBG.jpg') center / cover no-repeat;
+
+}
+
 .app-shell {
 
     display: flex;

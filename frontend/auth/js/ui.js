@@ -16,7 +16,7 @@ export function getReturnUrl() {
     const returnUrl = params.get("return");
 
     if (!returnUrl) {
-        return "../dashboard-react/";
+        return "/";
     }
 
     if (
@@ -27,12 +27,12 @@ export function getReturnUrl() {
             const url = new URL(returnUrl);
 
             if (url.origin !== window.location.origin) {
-                return "../dashboard-react/";
+                return "/";
             }
 
             return url.href;
         } catch {
-            return "../dashboard-react/";
+            return "/";
         }
     }
 
@@ -44,7 +44,7 @@ export function getReturnUrl() {
         return returnUrl;
     }
 
-    return "../dashboard-react/";
+    return "/";
 }
 
 export function redirectAfterLogin() {

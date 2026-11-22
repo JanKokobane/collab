@@ -1727,7 +1727,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       if (!user) {
         setNotifications([]);
-        const returnTo = encodeURIComponent('/dashboard-react/');
+        const returnTo = encodeURIComponent('/');
         window.location.replace(`/auth/auth.html?mode=signin&return=${returnTo}`);
         return;
       }

@@ -289,6 +289,13 @@
 
 }
 
+.brainstorm-icon {
+
+    width: calc(1.1rem + 5px);
+    height: calc(1.1rem + 5px);
+
+}
+
 .sidebar-bottom .nav-icon {
 
     width: 1rem;
