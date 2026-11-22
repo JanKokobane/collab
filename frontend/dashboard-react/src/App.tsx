@@ -1,68 +1,107 @@
-import { useEffect } from "react";
-import { Sidebar } from "./components/Sidebar/Sidebar";
-import { Header } from "./components/Header/Header";
-import { Home } from "./components/Home/Home";
-import { Messages } from "./components/Messages/Messages";
-import { Notifications } from "./components/Notifications/Notifications";
-import { Brainstorm } from "./components/Brainstorm/Brainstorm";
-import { Workspace } from "./components/Workspace/Workspace";
-import { Calendar } from "./components/Calendar/Calendar";
-import { Meetings } from "./components/Meetings/Meetings";
-import { Team } from "./components/Team/Team";
-import { Settings } from "./components/Settings/Settings";
+import React from 'react';
+import styles from './App.module.css';
+import { Brainstorm } from './components/Brainstorm';
+import { CallOverlay } from './components/CallOverlay';
+import { Header } from './components/Header';
+import { Home } from './components/Home';
+import { MeetingModal } from './components/MeetingModal';
+import { Meetings } from './components/Meetings';
+import { Messages } from './components/Messages';
+import { Modals } from './components/Modals';
+import { Notifications } from './components/Notifications';
+import { ProjectBoard } from './components/ProjectBoard';
+import { ProjectProgressAside } from './components/ProjectProgressAside';
+import { ProjectStickyNotes } from './components/ProjectStickyNotes';
+import { Settings } from './components/Settings';
+import { Sidebar } from './components/Sidebar';
+import { WorkspaceConsole } from './components/WorkspaceConsole';
+import { DashboardProvider, useDashboard } from './context/DashboardContext';
+import { MessagesCallProvider } from './context/MessagesCallContext';
+import { createClassNames } from './utils/cx';
 
-// Original entry script (Firebase auth, Render API calls, view switching, modals).
-const LEGACY_ENTRY = "/legacy/dashboard/dashboard.js?v=20261121-task-sprint-decoupling";
+const cx = createClassNames(styles);
 
-declare global {
-  interface Window { __collabDashboardBooted?: boolean; __collabDashboardRoot?: HTMLElement | null }
-}
+const DashboardShell: React.FC = () => {
+  const {
+    activeView,
+    isMobileSidebarOpen,
+    setMobileSidebarOpen,
+    asideTaskId,
+    projects
+  } = useDashboard();
 
-export function App() {
-  useEffect(() => {
-    // The original scripts are ES modules that run once per page load and bind to these
-    // elements. Boot after the tree settles; if we come back to a fresh tree after they
-    // already ran, reload so they bind again.
-    const timer = window.setTimeout(() => {
-      const root = document.getElementById("app");
-      if (window.__collabDashboardBooted) {
-        if (window.__collabDashboardRoot !== root) window.location.reload();
-        return;
-      }
-      window.__collabDashboardBooted = true;
-      window.__collabDashboardRoot = root;
-      // Loaded as a native module script, exactly like the original page did.
-      const script = document.createElement("script");
-      script.type = "module";
-      script.src = LEGACY_ENTRY;
-      script.onerror = () => console.error("Collab dashboard scripts failed to load");
-      document.body.appendChild(script);
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
+  const isMessagesView = activeView === 'Messages';
+  const showStickyNotes =
+    activeView === 'My Tasks' ||
+    projects.some((p) => p.name === activeView || p.projectId === activeView);
+
+  const renderActiveView = () => {
+    switch (activeView) {
+      case 'Workspace':
+      case 'Overview':
+        return <Home />;
+      case 'Meetings':
+      case 'Calendar':
+        return <Meetings />;
+      case 'Messages':
+        return <Messages />;
+      case 'Brainstorm':
+        return <Brainstorm />;
+      case 'Admin Console':
+        return <WorkspaceConsole />;
+      case 'Settings':
+        return <Settings />;
+      case 'Notifications':
+        return <Notifications />;
+      case 'My Tasks':
+      default:
+        return <ProjectBoard />;
+    }
+  };
 
   return (
-    <>
-      <div id="app" className="app-shell">
-        <Sidebar />
-        <main className="main-content">
-          <Header />
-          <div id="project-sticky-note-layer" className="project-sticky-note-layer" aria-label="Project sticky notes" hidden />
-          <section className="workspace">
-            <Home />
+    <div className={cx('app-shell')}>
+      <Sidebar />
+
+      <button
+        type="button"
+        className={cx('sidebar-backdrop', isMobileSidebarOpen && 'is-visible')}
+        aria-label="Close navigation sidebar"
+        onClick={() => setMobileSidebarOpen(false)}
+      />
+
+      <div className={cx('main-content', isMessagesView && 'messages-view-active')}>
+        <Header />
+
+        <main className={cx('workspace', isMessagesView && 'messages-active')}>
+          {isMessagesView ? (
             <Messages />
-            <Notifications />
-            <Brainstorm />
-            <Workspace />
-            <Calendar />
-            <Meetings />
-            <Team />
-            <Settings />
-          </section>
+          ) : (
+            <div className={cx('workspace-split-layout')}>
+              <div className={cx('workspace-main-panel')}>
+                {renderActiveView()}
+              </div>
+            </div>
+          )}
+
+          {showStickyNotes && <ProjectStickyNotes />}
+          {asideTaskId !== null && <ProjectProgressAside />}
         </main>
-        <div id="modal-root" />
       </div>
-      <div id="messages-call-root" className="collab-call-portal" hidden aria-live="polite" />
-    </>
+
+      <CallOverlay />
+      <MeetingModal />
+      <Modals />
+    </div>
   );
-}
+};
+
+export const App: React.FC = () => (
+  <DashboardProvider>
+    <MessagesCallProvider>
+      <DashboardShell />
+    </MessagesCallProvider>
+  </DashboardProvider>
+);
+
+export default App;

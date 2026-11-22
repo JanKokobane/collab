@@ -193,7 +193,7 @@ function invitationLinks(token) {
         accept:
             `${frontendUrl}/auth/auth.html?mode=signin&return=` +
             encodeURIComponent(
-                `../dashboard/dashboard.html?invite=${token}`
+                `../dashboard-react/?invite=${token}`
             ),
 
         decline:

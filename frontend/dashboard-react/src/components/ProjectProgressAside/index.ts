@@ -1,0 +1,1 @@
+export { ProjectProgressAside } from './ProjectProgressAside';

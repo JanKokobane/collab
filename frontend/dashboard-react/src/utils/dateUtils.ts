@@ -1,0 +1,73 @@
+export function toLocalDateKey(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function getEarliestDateTimeInput(stepSeconds = 60, now: Date = new Date()) {
+  const stepMinutes = Math.max(1, Math.ceil(stepSeconds / 60));
+  const roundedNow = new Date(now);
+  const currentMinute = roundedNow.getHours() * 60 + roundedNow.getMinutes();
+  const nextStepMinute = (Math.floor(currentMinute / stepMinutes) + 1) * stepMinutes;
+  roundedNow.setHours(0, 0, 0, 0);
+  roundedNow.setMinutes(nextStepMinute);
+  return {
+    date: toLocalDateKey(roundedNow),
+    time: `${String(roundedNow.getHours()).padStart(2, '0')}:${String(roundedNow.getMinutes()).padStart(2, '0')}`
+  };
+}
+
+export function isValidDateKey(dateKey: unknown): dateKey is string {
+  if (typeof dateKey !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+    return false;
+  }
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const parsedDate = new Date(year, month - 1, day);
+  return (
+    parsedDate.getFullYear() === year &&
+    parsedDate.getMonth() === month - 1 &&
+    parsedDate.getDate() === day
+  );
+}
+
+export function notBeforeTodayDateKey(dateKey: unknown, todayKey: string = toLocalDateKey()): string {
+  if (!isValidDateKey(dateKey)) {
+    return todayKey;
+  }
+  return dateKey >= todayKey ? dateKey : todayKey;
+}
+
+export function normalizeDateKey(value: unknown): string | null {
+  const dateKey = typeof value === 'string' ? value.slice(0, 10) : '';
+  return isValidDateKey(dateKey) ? dateKey : null;
+}
+
+export function parseLocalDate(dateKey: string): Date {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+export function addDaysToDateKey(dateKey: string, days: number): string {
+  const date = parseLocalDate(dateKey);
+  date.setDate(date.getDate() + days);
+  return toLocalDateKey(date);
+}
+
+export function getDateDayOffset(dateKey: string, referenceDate: Date = new Date()): number {
+  const target = dateKey.split('-').map(Number);
+  const reference = [referenceDate.getFullYear(), referenceDate.getMonth() + 1, referenceDate.getDate()];
+  const targetUtc = Date.UTC(target[0], target[1] - 1, target[2]);
+  const referenceUtc = Date.UTC(reference[0], reference[1] - 1, reference[2]);
+  return Math.round((targetUtc - referenceUtc) / 86400000);
+}
+
+export function formatRelativeDate(dateKey: string, referenceDate: Date = new Date()): string {
+  if (!isValidDateKey(dateKey)) return '—';
+  const offset = getDateDayOffset(dateKey, referenceDate);
+  if (offset === 0) return 'Today';
+  if (offset === 1) return 'Tomorrow';
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(
+    parseLocalDate(dateKey)
+  );
+}

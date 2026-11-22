@@ -1,9 +1,1306 @@
-// Markup converted 1:1 from frontend/dashboard/dashboard.html lines 989-1633.
-// The original dashboard scripts attach behaviour to these elements by id/class, so keep the DOM identical.
-export function Settings() {
-  return (
-    <>
-{"                "}<div id="settings-container" className="settings-container" style={{ display: "none" }}>{"\n\n                    "}{"\n                    "}<div className="settings-tab-panel" id="settings-tab-profile">{"\n                        "}<div className="settings-card">{"\n                            "}<div className="settings-card-header profile-card-header">{"\n                                "}<div>{"\n                                    "}<h3>{"User Profile & Collaboration Identity"}</h3>{"\n                                    "}<p>{"Update your personal information, job title, avatar tone, and custom status\n                                        visible to team members."}</p>{"\n                                "}</div>{"\n                                "}<div className="profile-preview">{"\n                                    "}<div className="avatar coral-bg profile-preview-avatar" id="profile-preview-avatar">{"AM\n                                    "}</div>{"\n                                    "}<div className="profile-preview-info">{"\n                                        "}<h4 id="profile-preview-name">{"Alex Morgan"}</h4>{"\n                                        "}<p id="profile-preview-email">{"admin@collab.io"}</p>{"\n                                    "}</div>{"\n                                "}</div>{"\n                            "}</div>{"\n\n                            "}<form id="profile-settings-form" className="admin-settings-form">{"\n                                "}<div style={{ marginBottom: "16px" }}>{"\n                                    "}<label htmlFor="profile-image-input" style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "var(--ink)", marginBottom: "8px" }}>{"Profile\n                                        picture"}</label>{"\n                                    "}<input type="file" id="profile-image-input" accept="image/*" className="admin-input" style={{ padding: "10px 12px" }} />{"\n                                    "}<small style={{ display: "block", marginTop: "6px", color: "var(--muted)" }}>{"Upload a square\n                                        image to replace the initials avatar. JPEG, PNG and WebP are supported."}</small>{"\n                                "}</div>{"\n\n                                "}<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>{"\n                                    "}<div className="admin-form-group">{"\n                                        "}<label htmlFor="profile-name-input">{"Your Full Name *"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>{"\n                                                "}<circle cx="12" cy="7" r="4"></circle>{"\n                                            "}</svg>{"\n                                            "}<input type="text" id="profile-name-input" className="admin-input" required placeholder="e.g. David Makau" defaultValue="Alex Morgan" />{"\n                                        "}</div>{"\n                                        "}<small className="profile-field-hint">{"Please enter your full name."}</small>{"\n                                    "}</div>{"\n\n                                    "}<div className="admin-form-group">{"\n                                        "}<label htmlFor="profile-email-input">{"Work Email *"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z">{"\n                                                "}</path>{"\n                                                "}<polyline points="22,6 12,13 2,6"></polyline>{"\n                                            "}</svg>{"\n                                            "}<input type="email" id="profile-email-input" className="admin-input" required placeholder="you@company.com" defaultValue="admin@collab.io" />{"\n                                        "}</div>{"\n                                        "}<small className="profile-field-hint">{"Please enter your email address."}</small>{"\n                                    "}</div>{"\n\n                                    "}<div className="admin-form-group">{"\n                                        "}<label htmlFor="profile-phone-country-input">{"Country calling code *"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<circle cx="12" cy="12" r="10"></circle>{"\n                                                "}<line x1="2" y1="12" x2="22" y2="12"></line>{"\n                                                "}<path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">{"\n                                                "}</path>{"\n                                            "}</svg>{"\n                                            "}<select id="profile-phone-country-input" className="admin-select" required><option value="">{"Choose a country code"}</option><option value="+1" data-countries="US,CA">{"\ud83c\uddfa\ud83c\uddf8\ud83c\udde8\ud83c\udde6 United States /\n                                                    Canada (+1)"}</option><option value="+44" data-countries="GB">{"\ud83c\uddec\ud83c\udde7 United Kingdom (+44)\n                                                "}</option><option value="+254" data-countries="KE">{"\ud83c\uddf0\ud83c\uddea Kenya (+254)"}</option><option value="+27" data-countries="ZA">{"\ud83c\uddff\ud83c\udde6 South Africa (+27)"}</option><option value="+61" data-countries="AU">{"\ud83c\udde6\ud83c\uddfa Australia (+61)"}</option><option value="+64" data-countries="NZ">{"\ud83c\uddf3\ud83c\uddff New Zealand (+64)"}</option><option value="+91" data-countries="IN">{"\ud83c\uddee\ud83c\uddf3 India (+91)"}</option><option value="+234" data-countries="NG">{"\ud83c\uddf3\ud83c\uddec Nigeria (+234)"}</option><option value="+256" data-countries="UG">{"\ud83c\uddfa\ud83c\uddec Uganda (+256)"}</option><option value="+255" data-countries="TZ">{"\ud83c\uddf9\ud83c\uddff Tanzania (+255)"}</option><option value="+233" data-countries="GH">{"\ud83c\uddec\ud83c\udded Ghana (+233)"}</option><option value="+250" data-countries="RW">{"\ud83c\uddf7\ud83c\uddfc Rwanda (+250)"}</option><option value="+251" data-countries="ET">{"\ud83c\uddea\ud83c\uddf9 Ethiopia (+251)"}</option><option value="+20" data-countries="EG">{"\ud83c\uddea\ud83c\uddec Egypt (+20)"}</option><option value="+971" data-countries="AE">{"\ud83c\udde6\ud83c\uddea United Arab Emirates\n                                                    (+971)"}</option><option value="+966" data-countries="SA">{"\ud83c\uddf8\ud83c\udde6 Saudi Arabia (+966)\n                                                "}</option><option value="+33" data-countries="FR">{"\ud83c\uddeb\ud83c\uddf7 France (+33)"}</option><option value="+49" data-countries="DE">{"\ud83c\udde9\ud83c\uddea Germany (+49)"}</option><option value="+34" data-countries="ES">{"\ud83c\uddea\ud83c\uddf8 Spain (+34)"}</option><option value="+39" data-countries="IT">{"\ud83c\uddee\ud83c\uddf9 Italy (+39)"}</option><option value="+31" data-countries="NL">{"\ud83c\uddf3\ud83c\uddf1 Netherlands (+31)"}</option><option value="+353" data-countries="IE">{"\ud83c\uddee\ud83c\uddea Ireland (+353)"}</option><option value="+81" data-countries="JP">{"\ud83c\uddef\ud83c\uddf5 Japan (+81)"}</option><option value="+82" data-countries="KR">{"\ud83c\uddf0\ud83c\uddf7 South Korea (+82)"}</option><option value="+86" data-countries="CN">{"\ud83c\udde8\ud83c\uddf3 China (+86)"}</option><option value="+55" data-countries="BR">{"\ud83c\udde7\ud83c\uddf7 Brazil (+55)"}</option><option value="+52" data-countries="MX">{"\ud83c\uddf2\ud83c\uddfd Mexico (+52)"}</option></select>{"\n                                        "}</div>{"\n                                    "}</div>{"\n\n                                    "}<div className="admin-form-group">{"\n                                        "}<label htmlFor="profile-phone-input">{"Phone Number *"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z">{"\n                                                "}</path>{"\n                                            "}</svg>{"\n                                            "}<input type="tel" id="profile-phone-input" className="admin-input" required autoComplete="tel-national" inputMode="tel" placeholder="Enter your phone number" />{"\n                                        "}</div>{"\n                                    "}</div>{"\n\n                                    "}<div className="admin-form-group">{"\n                                        "}<label htmlFor="profile-collaboration-type-input">{"Type of Collaboration *"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z">{"\n                                                "}</path>{"\n                                            "}</svg>{"\n                                            "}<select id="profile-collaboration-type-input" className="admin-select" required><option value="">{"Choose a collaboration type"}</option><option value="Product collaboration">{"Product collaboration"}</option><option value="Event partnership">{"Event partnership"}</option><option value="Content creation">{"Content creation"}</option><option value="Influencer campaign">{"Influencer campaign"}</option><option value="Other">{"Other"}</option></select>{"\n                                        "}</div>{"\n                                        "}<small className="profile-field-hint">{"Please choose a collaboration type."}</small>{"\n                                    "}</div>{"\n\n                                    "}<div className="admin-form-group" id="profile-collaboration-details-group" hidden>{"\n                                        "}<label htmlFor="profile-collaboration-details-input">{"Collaboration Details *"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z">{"\n                                                "}</path>{"\n                                                "}<polyline points="14 2 14 8 20 8"></polyline>{"\n                                                "}<line x1="16" y1="13" x2="8" y2="13"></line>{"\n                                                "}<line x1="16" y1="17" x2="8" y2="17"></line>{"\n                                                "}<polyline points="10 9 9 9 8 9"></polyline>{"\n                                            "}</svg>{"\n                                            "}<input type="text" id="profile-collaboration-details-input" className="admin-input" placeholder="Describe your collaboration" />{"\n                                        "}</div>{"\n                                    "}</div>{"\n\n                                    "}<div className="admin-form-group">{"\n                                        "}<label htmlFor="profile-workspace-input">{"Brand or Company Name *"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>{"\n                                                "}<line x1="9" y1="22" x2="9" y2="12"></line>{"\n                                                "}<line x1="15" y1="22" x2="15" y2="12"></line>{"\n                                                "}<line x1="9" y1="12" x2="15" y2="12"></line>{"\n                                                "}<line x1="9" y1="6" x2="9" y2="7"></line>{"\n                                                "}<line x1="15" y1="6" x2="15" y2="7"></line>{"\n                                            "}</svg>{"\n                                            "}<input type="text" id="profile-workspace-input" className="admin-input" required placeholder="e.g. Northstar" />{"\n                                        "}</div>{"\n                                        "}<small className="profile-field-hint">{"Please enter your brand or company\n                                            name."}</small>{"\n                                    "}</div>{"\n\n                                    "}<div className="admin-form-group">{"\n                                        "}<label htmlFor="profile-role-input">{"Role or Job Title *"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>{"\n                                            "}</svg>{"\n                                            "}<input type="text" id="profile-role-input" className="admin-input" required placeholder="e.g. Marketing Manager" />{"\n                                        "}</div>{"\n                                        "}<small className="profile-field-hint">{"Please enter your role or job title."}</small>{"\n                                    "}</div>{"\n\n                                    "}<div className="admin-form-group">{"\n                                        "}<label htmlFor="profile-industry-input">{"Industry *"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>{"\n                                                "}<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>{"\n                                            "}</svg>{"\n                                            "}<select id="profile-industry-input" className="admin-select" required><option value="">{"Choose an industry"}</option><option value="Advertising and Marketing">{"Advertising and Marketing\n                                                "}</option><option value="Agriculture">{"Agriculture"}</option><option value="Automotive">{"Automotive"}</option><option value="Construction and Real Estate">{"Construction and Real\n                                                    Estate"}</option><option value="Consumer Goods">{"Consumer Goods"}</option><option value="Education">{"Education"}</option><option value="Energy and Utilities">{"Energy and Utilities"}</option><option value="Entertainment and Media">{"Entertainment and Media"}</option><option value="Fashion and Beauty">{"Fashion and Beauty"}</option><option value="Financial Services">{"Financial Services"}</option><option value="Food and Beverage">{"Food and Beverage"}</option><option value="Government and Public Sector">{"Government and Public\n                                                    Sector"}</option><option value="Healthcare and Life Sciences">{"Healthcare and Life\n                                                    Sciences"}</option><option value="Hospitality and Tourism">{"Hospitality and Tourism"}</option><option value="Manufacturing">{"Manufacturing"}</option><option value="Nonprofit">{"Nonprofit"}</option><option value="Professional Services">{"Professional Services"}</option><option value="Retail and E-commerce">{"Retail and E-commerce"}</option><option value="Technology">{"Technology"}</option><option value="Transportation and Logistics">{"Transportation and\n                                                    Logistics"}</option></select>{"\n                                        "}</div>{"\n                                        "}<small className="profile-field-hint">{"Please choose your industry."}</small>{"\n                                    "}</div>{"\n\n                                    "}<div className="admin-form-group">{"\n                                        "}<label htmlFor="profile-avatar-tone">{"Avatar Tone & Color"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"></circle>{"\n                                                "}<circle cx="17.5" cy="10.5" r=".5" fill="currentColor"></circle>{"\n                                                "}<circle cx="8.5" cy="7.5" r=".5" fill="currentColor"></circle>{"\n                                                "}<circle cx="6.5" cy="12.5" r=".5" fill="currentColor"></circle>{"\n                                                "}<path d="M12 2C6.49 2 2 6.49 2 12c0 3.31 2.69 6 6 6h1.25a1.75 1.75 0 0 1 1.75 1.75c0 .41-.14.79-.38 1.09-.43.54-.62 1.25-.62 1.96C10 23.94 10.96 24 12 24c6.63 0 12-5.37 12-12S18.63 2 12 2z">{"\n                                                "}</path>{"\n                                            "}</svg>{"\n                                            "}<select id="profile-avatar-tone" className="admin-select"><option value="coral">{"Warm Coral"}</option><option value="teal">{"Mint Teal"}</option><option value="orange">{"Sunset Orange"}</option><option value="purple">{"Royal Purple"}</option><option value="blue">{"Sapphire Blue"}</option><option value="green">{"Forest Green"}</option></select>{"\n                                        "}</div>{"\n                                    "}</div>{"\n\n                                    "}<div className="admin-form-group">{"\n                                        "}<label htmlFor="profile-timezone-input">{"Timezone"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<circle cx="12" cy="12" r="10"></circle>{"\n                                                "}<polyline points="12 6 12 12 16 14"></polyline>{"\n                                            "}</svg>{"\n                                            "}<select id="profile-timezone-input" className="admin-select" defaultValue="America/Los_Angeles"><option value="UTC">{"UTC (Universal Time)"}</option><option value="America/New_York">{"America/New_York (EST / EDT)"}</option><option value="America/Los_Angeles">{"America/Los_Angeles (PST /\n                                                    PDT)\n                                                "}</option><option value="Europe/London">{"Europe/London (GMT / BST)"}</option><option value="Europe/Paris">{"Europe/Paris (CET / CEST)"}</option><option value="Asia/Tokyo">{"Asia/Tokyo (JST)"}</option></select>{"\n                                        "}</div>{"\n                                    "}</div>{"\n                                "}</div>{"\n\n                                "}<div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>{"\n                                    "}<button type="submit" className="primary-button gold" id="save-profile-btn">{"Update\n                                        Profile"}</button>{"\n                                "}</div>{"\n                            "}</form>{"\n                        "}</div>{"\n                    "}</div>{"\n\n                    "}{"\n                    "}<div className="settings-tab-panel" id="settings-tab-security">{"\n                        "}<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "20px" }}>{"\n                            "}{"\n                            "}<div className="settings-card">{"\n                                "}<div className="settings-card-header">{"\n                                    "}<div>{"\n                                        "}<h3>{"Change Password"}</h3>{"\n                                        "}<p>{"Keep your account secure with a strong, updated password."}</p>{"\n                                    "}</div>{"\n                                "}</div>{"\n\n                                "}<form id="password-settings-form" className="admin-settings-form">{"\n                                    "}<div className="admin-form-group">{"\n                                        "}<label htmlFor="current-password-input">{"Current Password"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>{"\n                                                "}<path d="M7 11V7a5 5 0 0 1 10 0v4"></path>{"\n                                            "}</svg>{"\n                                            "}<input type="password" id="current-password-input" className="admin-input" placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" style={{ paddingRight: "38px" }} />{"\n                                            "}<button type="button" className="pwd-toggle-btn" data-target="current-password-input" style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", border: "0", background: "transparent", cursor: "pointer", color: "var(--muted)", fontSize: "14px" }}>{"\ud83d\udc41\ufe0f"}</button>{"\n                                        "}</div>{"\n                                    "}</div>{"\n\n                                    "}<div className="admin-form-group">{"\n                                        "}<label htmlFor="new-password-input">{"New Password *"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>{"\n                                                "}<path d="M7 11V7a5 5 0 0 1 10 0v4"></path>{"\n                                            "}</svg>{"\n                                            "}<input type="password" id="new-password-input" className="admin-input" placeholder="At least 6 characters" required minLength={6} style={{ paddingRight: "38px" }} />{"\n                                            "}<button type="button" className="pwd-toggle-btn" data-target="new-password-input" style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", border: "0", background: "transparent", cursor: "pointer", color: "var(--muted)", fontSize: "14px" }}>{"\ud83d\udc41\ufe0f"}</button>{"\n                                        "}</div>{"\n                                        "}<small style={{ display: "block", marginTop: "6px", color: "var(--muted)" }}>{"At least 6\n                                            characters."}</small>{"\n                                        "}<div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>{"\n                                            "}<div style={{ flex: "1", height: "4px", background: "#E4E4E7", borderRadius: "2px", overflow: "hidden" }}>{"\n                                                "}<div id="pwd-strength-bar" style={{ height: "100%", width: "0%", background: "#EF4444", transition: "all .2s" }}>{"\n                                                "}</div>{"\n                                            "}</div>{"\n                                            "}<span id="pwd-strength-text" style={{ fontSize: "11px", color: "var(--muted)" }}>{"Password strength"}</span>{"\n                                        "}</div>{"\n                                    "}</div>{"\n\n                                    "}<div className="admin-form-group">{"\n                                        "}<label htmlFor="confirm-password-input">{"Confirm New Password"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>{"\n                                                "}<path d="M7 11V7a5 5 0 0 1 10 0v4"></path>{"\n                                            "}</svg>{"\n                                            "}<input type="password" id="confirm-password-input" className="admin-input" placeholder="Repeat new password" required style={{ paddingRight: "38px" }} />{"\n                                            "}<button type="button" className="pwd-toggle-btn" data-target="confirm-password-input" style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", border: "0", background: "transparent", cursor: "pointer", color: "var(--muted)", fontSize: "14px" }}>{"\ud83d\udc41\ufe0f"}</button>{"\n                                        "}</div>{"\n                                    "}</div>{"\n\n                                    "}<button type="submit" className="primary-button gold" id="update-password-btn">{"Update\n                                        Password"}</button>{"\n                                "}</form>{"\n                            "}</div>{"\n\n                            "}{"\n                            "}<div className="settings-card">{"\n                                "}<div className="settings-card-header">{"\n                                    "}<div>{"\n                                        "}<h3>{"Two-Factor Authentication & Sessions"}</h3>{"\n                                        "}<p>{"Manage authentication challenges and authorized devices."}</p>{"\n                                    "}</div>{"\n                                "}</div>{"\n\n                                "}<div className="settings-toggles-list">{"\n                                    "}<div className="settings-toggle-item">{"\n                                        "}<div className="toggle-text">{"\n                                            "}<div style={{ display: "flex", alignItems: "center", gap: "6px" }}>{"\n                                                "}<strong>{"Two-Factor Authentication (2FA)"}</strong>{"\n                                                "}<span className="admin-pill" id="badge-2fa-status" style={{ fontSize: "10px" }}>{"Active"}</span>{"\n                                            "}</div>{"\n                                            "}<p>{"Require verification codes on unrecognized browser logins."}</p>{"\n                                        "}</div>{"\n                                        "}<label className="switch">{"\n                                            "}<input type="checkbox" id="toggle-2fa" defaultChecked />{"\n                                            "}<span className="slider round"></span>{"\n                                        "}</label>{"\n                                    "}</div>{"\n\n                                    "}<div className="settings-toggle-item">{"\n                                        "}<div className="toggle-text">{"\n                                            "}<strong>{"Inactivity Auto-Logout"}</strong>{"\n                                            "}<p>{"Sign out automatically after 30 minutes without activity."}</p>{"\n                                        "}</div>{"\n                                        "}<label className="switch">{"\n                                            "}<input type="checkbox" id="toggle-sec-timeout" defaultChecked />{"\n                                            "}<span className="slider round"></span>{"\n                                        "}</label>{"\n                                    "}</div>{"\n                                "}</div>{"\n\n                                "}<div style={{ marginTop: "20px", paddingTop: "16px", borderTop: "1px solid var(--line)" }}>{"\n                                    "}<h4 style={{ fontSize: "13px", fontWeight: "700", color: "var(--ink)", marginBottom: "8px" }}>{"\n                                        Active Sessions"}</h4>{"\n                                    "}<div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12px", marginBottom: "14px" }}>{"\n                                        "}<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "#FAFAFB", border: "1px solid var(--line)", borderRadius: "8px" }}>{"\n                                            "}<div>{"\n                                                "}<strong style={{ color: "var(--ink)" }}>{"\ud83d\udda5\ufe0f Chrome on macOS / Linux"}</strong>{"\n                                                "}<span style={{ display: "block", fontSize: "11px", color: "#10B981" }}>{"\u25cf Current\n                                                    Active Session"}</span>{"\n                                            "}</div>{"\n                                            "}<span className="admin-pill" style={{ fontSize: "10px" }}>{"This Device"}</span>{"\n                                        "}</div>{"\n                                        "}<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "#FAFAFB", border: "1px solid var(--line)", borderRadius: "8px" }}>{"\n                                            "}<div>{"\n                                                "}<strong style={{ color: "var(--ink)" }}>{"\ud83d\udcf1 Collab Mobile Client\n                                                    (iOS)"}</strong>{"\n                                                "}<span style={{ display: "block", fontSize: "11px", color: "var(--muted)" }}>{"Last\n                                                    active 2 hours ago"}</span>{"\n                                            "}</div>{"\n                                            "}<button type="button" className="action-btn delete" id="revoke-mobile-session-btn" style={{ padding: "2px 8px", fontSize: "11px" }}>{"Revoke"}</button>{"\n                                        "}</div>{"\n                                    "}</div>{"\n                                    "}<button type="button" className="outline-button full" id="signout-other-sessions-btn">{"Sign Out All Other Sessions"}</button>{"\n                                "}</div>{"\n                            "}</div>{"\n                        "}</div>{"\n                    "}</div>{"\n\n                    "}{"\n                    "}<div className="settings-tab-panel" id="settings-tab-collaboration">{"\n                        "}<div className="settings-card">{"\n                            "}<div className="settings-card-header">{"\n                                "}<div>{"\n                                    "}<h3>{"Collaboration Tool & Workflow Settings"}</h3>{"\n                                    "}<p>{"Configure team synchronization, calendar meeting pins, approval gates, and\n                                        notifications."}</p>{"\n                                "}</div>{"\n                            "}</div>{"\n\n                            "}<form id="workspace-config-form" className="admin-settings-form" style={{ marginBottom: "24px" }}>{"\n                                "}<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>{"\n                                    "}<div className="admin-form-group">{"\n                                        "}<label htmlFor="ws-name-input">{"Workspace Organization Name"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>{"\n                                                "}<line x1="9" y1="22" x2="9" y2="12"></line>{"\n                                                "}<line x1="15" y1="22" x2="15" y2="12"></line>{"\n                                                "}<line x1="9" y1="12" x2="15" y2="12"></line>{"\n                                                "}<line x1="9" y1="6" x2="9" y2="7"></line>{"\n                                                "}<line x1="15" y1="6" x2="15" y2="7"></line>{"\n                                            "}</svg>{"\n                                            "}<input type="text" id="ws-name-input" className="admin-input" defaultValue="Collab HQ" required />{"\n                                        "}</div>{"\n                                    "}</div>{"\n\n                                    "}<div className="admin-form-group">{"\n                                        "}<label htmlFor="ws-default-role-input">{"Default Member Role"}</label>{"\n                                        "}<div className="input-with-icon">{"\n                                            "}<svg className="input-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                                                "}<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>{"\n                                            "}</svg>{"\n                                            "}<select id="ws-default-role-input" className="admin-select" defaultValue="Engineer"><option value="Product Lead">{"Product Lead"}</option><option value="Designer">{"Product Designer"}</option><option value="Engineer">{"Software Engineer"}</option><option value="Viewer">{"Viewer (Read-only)"}</option></select>{"\n                                        "}</div>{"\n                                    "}</div>{"\n                                "}</div>{"\n                            "}</form>{"\n\n                            "}<div className="settings-toggles-list">{"\n                                "}<div className="settings-toggle-item">{"\n                                    "}<div className="toggle-text">{"\n                                        "}<strong>{"Real-Time Collaboration & Presence Sync"}</strong>{"\n                                        "}<p>{"Stream live task updates, status changes, and collaborator presence in real\n                                            time."}</p>{"\n                                    "}</div>{"\n                                    "}<label className="switch">{"\n                                        "}<input type="checkbox" id="toggle-collab-sync" defaultChecked />{"\n                                        "}<span className="slider round"></span>{"\n                                    "}</label>{"\n                                "}</div>{"\n\n                                "}<div className="settings-toggle-item">{"\n                                    "}<div className="toggle-text">{"\n                                        "}<strong>{"Auto-Pin Scheduled Meetings to Calendar"}</strong>{"\n                                        "}<p>{"Pin scheduled team syncs and sprint reviews directly to the workspace\n                                            calendar view."}</p>{"\n                                    "}</div>{"\n                                    "}<label className="switch">{"\n                                        "}<input type="checkbox" id="toggle-calendar-pins" defaultChecked />{"\n                                        "}<span className="slider round"></span>{"\n                                    "}</label>{"\n                                "}</div>{"\n\n                                "}<div className="settings-toggle-item">{"\n                                    "}<div className="toggle-text">{"\n                                        "}<strong>{"Project Creator Approval Workflow"}</strong>{"\n                                        "}<p>{"Require project creators or workspace admins to formally approve completed\n                                            deliverables."}</p>{"\n                                    "}</div>{"\n                                    "}<label className="switch">{"\n                                        "}<input type="checkbox" id="toggle-approval-workflow" defaultChecked />{"\n                                        "}<span className="slider round"></span>{"\n                                    "}</label>{"\n                                "}</div>{"\n\n                                "}<div className="settings-toggle-item">{"\n                                    "}<div className="toggle-text">{"\n                                        "}<strong>{"Sprint Auto-Rollover"}</strong>{"\n                                        "}<p>{"Automatically migrate incomplete deliverables to the upcoming sprint when a\n                                            sprint closes."}</p>{"\n                                    "}</div>{"\n                                    "}<label className="switch">{"\n                                        "}<input type="checkbox" id="toggle-sprint-rollover" defaultChecked />{"\n                                        "}<span className="slider round"></span>{"\n                                    "}</label>{"\n                                "}</div>{"\n\n                                "}<div className="settings-toggle-item">{"\n                                    "}<div className="toggle-text">{"\n                                        "}<strong>{"Threaded Task Comments & Mentions"}</strong>{"\n                                        "}<p>{"Allow collaborators to post threaded feedback and @mention team members on\n                                            deliverables."}</p>{"\n                                    "}</div>{"\n                                    "}<label className="switch">{"\n                                        "}<input type="checkbox" id="toggle-comments" defaultChecked />{"\n                                        "}<span className="slider round"></span>{"\n                                    "}</label>{"\n                                "}</div>{"\n\n                                "}<div className="settings-toggle-item">{"\n                                    "}<div className="toggle-text">{"\n                                        "}<strong>{"Audio Chimes & Notification Sounds"}</strong>{"\n                                        "}<p>{"Play subtle audio cues when tasks are assigned or high-priority reminders\n                                            trigger."}</p>{"\n                                    "}</div>{"\n                                    "}<label className="switch">{"\n                                        "}<input type="checkbox" id="toggle-sound-notifs" defaultChecked />{"\n                                        "}<span className="slider round"></span>{"\n                                    "}</label>{"\n                                "}</div>{"\n\n                                "}<div className="settings-toggle-item">{"\n                                    "}<div className="toggle-text">{"\n                                        "}<strong>{"Standup Huddle & Video Links"}</strong>{"\n                                        "}<p>{"Auto-generate Google Meet / video conferencing links for all scheduled\n                                            calendar events."}</p>{"\n                                    "}</div>{"\n                                    "}<label className="switch">{"\n                                        "}<input type="checkbox" id="toggle-huddle-links" defaultChecked />{"\n                                        "}<span className="slider round"></span>{"\n                                    "}</label>{"\n                                "}</div>{"\n\n                                "}<div className="settings-toggle-item">{"\n                                    "}<div className="toggle-text">{"\n                                        "}<strong>{"Public Read-Only Board Links"}</strong>{"\n                                        "}<p>{"Allow members to generate shareable read-only preview links for external\n                                            stakeholders."}</p>{"\n                                    "}</div>{"\n                                    "}<label className="switch">{"\n                                        "}<input type="checkbox" id="toggle-public-share" defaultChecked />{"\n                                        "}<span className="slider round"></span>{"\n                                    "}</label>{"\n                                "}</div>{"\n\n                                "}<div className="settings-toggle-item">{"\n                                    "}<div className="toggle-text">{"\n                                        "}<strong>{"Central Admin Authority for Tasks & Meetings"}</strong>{"\n                                        "}<p>{"Centralize task creation, member invitations, and meeting scheduling under\n                                            workspace leaders."}</p>{"\n                                    "}</div>{"\n                                    "}<label className="switch">{"\n                                        "}<input type="checkbox" id="toggle-sec-admin-authority" defaultChecked />{"\n                                        "}<span className="slider round"></span>{"\n                                    "}</label>{"\n                                "}</div>{"\n                            "}</div>{"\n\n                            "}<div style={{ display: "flex", justifyContent: "flex-end", marginTop: "20px" }}>{"\n                                "}<button type="button" className="primary-button gold" id="save-collab-settings-btn">{"Save\n                                    Collaboration Settings"}</button>{"\n                            "}</div>{"\n                        "}</div>{"\n                    "}</div>{"\n\n                    "}{"\n                    "}<div className="settings-tab-panel" id="settings-tab-audit">{"\n                        "}<div className="settings-card">{"\n                            "}<div className="settings-card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>{"\n                                "}<div>{"\n                                    "}<h3>{"Security & Audit Log"}</h3>{"\n                                    "}<p>{"Comprehensive event timeline of authentication, profile updates, and permissions\n                                        changes."}</p>{"\n                                "}</div>{"\n                                "}<button type="button" className="outline-button" id="export-audit-btn">{"Export Log"}</button>{"\n                            "}</div>{"\n\n                            "}<div className="admin-audit-list" id="settings-audit-list">{"\n                                "}{"\n                            "}</div>{"\n                        "}</div>{"\n                    "}</div>{"\n                "}</div>
-    </>
-  );
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  EmailAuthProvider,
+  linkWithCredential,
+  reauthenticateWithCredential,
+  updateEmail,
+  updatePassword,
+  updateProfile
+} from 'firebase/auth';
+import {
+  type CollabToolSettings,
+  getAvatarSource,
+  getUserInitials,
+  useDashboard
+} from '../../context/DashboardContext';
+import { api } from '../../services/api';
+import { firebaseAuth } from '../../services/firebase';
+import type { AccentTheme, ThemeMode } from '../../types/dashboard';
+import { createCx } from '../../utils/cx';
+import { SvgIcon } from '../../utils/icons';
+import { validatePhoneNumber } from '../../utils/phoneValidation';
+import styles from './Settings.module.css';
+
+const cx = createCx(styles);
+
+const COUNTRIES: Array<{ code: string; label: string; countries: string[] }> = [
+  { code: '+27', label: 'South Africa (+27)', countries: ['ZA'] },
+  { code: '+1', label: 'United States / Canada (+1)', countries: ['US', 'CA'] },
+  { code: '+44', label: 'United Kingdom (+44)', countries: ['GB'] },
+  { code: '+61', label: 'Australia (+61)', countries: ['AU'] },
+  { code: '+91', label: 'India (+91)', countries: ['IN'] },
+  { code: '+234', label: 'Nigeria (+234)', countries: ['NG'] },
+  { code: '+254', label: 'Kenya (+254)', countries: ['KE'] },
+  { code: '+233', label: 'Ghana (+233)', countries: ['GH'] },
+  { code: '+20', label: 'Egypt (+20)', countries: ['EG'] },
+  { code: '+212', label: 'Morocco (+212)', countries: ['MA'] },
+  { code: '+49', label: 'Germany (+49)', countries: ['DE'] },
+  { code: '+33', label: 'France (+33)', countries: ['FR'] },
+  { code: '+34', label: 'Spain (+34)', countries: ['ES'] },
+  { code: '+39', label: 'Italy (+39)', countries: ['IT'] },
+  { code: '+31', label: 'Netherlands (+31)', countries: ['NL'] },
+  { code: '+46', label: 'Sweden (+46)', countries: ['SE'] },
+  { code: '+41', label: 'Switzerland (+41)', countries: ['CH'] },
+  { code: '+353', label: 'Ireland (+353)', countries: ['IE'] },
+  { code: '+351', label: 'Portugal (+351)', countries: ['PT'] },
+  { code: '+55', label: 'Brazil (+55)', countries: ['BR'] },
+  { code: '+52', label: 'Mexico (+52)', countries: ['MX'] },
+  { code: '+81', label: 'Japan (+81)', countries: ['JP'] },
+  { code: '+82', label: 'South Korea (+82)', countries: ['KR'] },
+  { code: '+86', label: 'China (+86)', countries: ['CN'] },
+  { code: '+65', label: 'Singapore (+65)', countries: ['SG'] },
+  { code: '+971', label: 'United Arab Emirates (+971)', countries: ['AE'] },
+  { code: '+64', label: 'New Zealand (+64)', countries: ['NZ'] }
+];
+
+const INDUSTRIES = [
+  'Software & Technology',
+  'Design & Creative Agency',
+  'Marketing & Advertising',
+  'Product Management',
+  'Education & Academic',
+  'Finance & Consulting',
+  'Healthcare & Biotech',
+  'Media & Entertainment',
+  'E-commerce & Retail',
+  'Real Estate & Architecture',
+  'Legal & Compliance',
+  'Nonprofit & Community',
+  'Engineering & Manufacturing',
+  'Operations & Logistics',
+  'Human Resources & Recruiting',
+  'Gaming & Interactive Media',
+  'Research & Data Science',
+  'Telecommunications',
+  'Government & Public Sector',
+  'Other'
+];
+
+const TONES = [
+  { value: 'coral', label: 'Coral Orange (#F46B45)' },
+  { value: 'teal', label: 'Teal Green (#2E9D8F)' },
+  { value: 'purple', label: 'Royal Purple (#7C3AED)' },
+  { value: 'blue', label: 'Ocean Blue (#2563EB)' },
+  { value: 'amber', label: 'Golden Amber (#D97706)' },
+  { value: 'rose', label: 'Crimson Rose (#E11D48)' }
+];
+
+const TIMEZONES = [
+  { value: 'UTC-8', label: '(UTC-08:00) Pacific Time (US & Canada)' },
+  { value: 'UTC-5', label: '(UTC-05:00) Eastern Time (US & Canada)' },
+  { value: 'UTC+0', label: '(UTC+00:00) Greenwich Mean Time (London)' },
+  { value: 'UTC+1', label: '(UTC+01:00) Central European Time (Berlin)' },
+  { value: 'UTC+2', label: '(UTC+02:00) South Africa Standard Time (SAST)' },
+  { value: 'UTC+5:30', label: '(UTC+05:30) India Standard Time (IST)' }
+];
+
+const COLLAB_TOGGLES: Array<{
+  key: keyof CollabToolSettings;
+  title: string;
+  desc: string;
+}> = [
+  {
+    key: 'collabSync',
+    title: 'Real-time Collaborator Sync',
+    desc: 'Broadcast task movements and edits instantly across active members.'
+  },
+  {
+    key: 'calendarPins',
+    title: 'Shared Meeting Calendar Pins',
+    desc: 'Highlight scheduled group meetings with golden pins on all member calendars.'
+  },
+  {
+    key: 'comments',
+    title: 'Task Comments & Mentions',
+    desc: 'Allow members to post threaded feedback and mention teammates on tasks.'
+  },
+  {
+    key: 'approvalWorkflow',
+    title: 'Admin Approval Workflow',
+    desc: 'Allow admins to grant approval badges to verified task deliverables.'
+  },
+  {
+    key: 'sprintCadence',
+    title: 'Sprint Cadence Reminders',
+    desc: 'Send notification badges 24h before tasks hit target deadlines.'
+  },
+  {
+    key: 'publicShare',
+    title: 'Public Share Links',
+    desc: 'Permit team members to copy read-only links for external review.'
+  },
+  {
+    key: 'soundNotifs',
+    title: 'Live Activity Sound Alerts',
+    desc: 'Play a subtle chime when you receive invitations, mentions, or poll alerts.'
+  },
+  {
+    key: 'huddleLinks',
+    title: 'Instant Video & Audio Huddle Links',
+    desc: 'Auto-attach instant huddle room links when scheduling project meetings.'
+  },
+  {
+    key: 'sprintRollover',
+    title: 'Weekly Sprint Auto-Rollover',
+    desc: 'Automatically carry unfinished tasks into the next sprint cycle.'
+  }
+];
+
+function getPasswordStrength(value: string) {
+  let score = 0;
+  if (value.length >= 6) score += 25;
+  if (value.length >= 10) score += 25;
+  if (/[A-Z]/.test(value) && /[0-9]/.test(value)) score += 25;
+  if (/[^A-Za-z0-9]/.test(value)) score += 25;
+
+  if (!value) {
+    return { width: '0%', color: '#EF4444', text: 'Enter at least 6 characters for security' };
+  }
+  if (score <= 25) {
+    return { width: '25%', color: '#EF4444', text: 'Weak password - add numbers and uppercase letters' };
+  }
+  if (score <= 50) {
+    return { width: '50%', color: '#F59E0B', text: 'Moderate strength - consider adding special symbols' };
+  }
+  if (score <= 75) {
+    return { width: '75%', color: '#3B82F6', text: 'Strong password - good for workspace security' };
+  }
+  return { width: '100%', color: '#10B981', text: 'Very strong password! Secure and ready.' };
 }
+
+async function compressProfileImage(file: File): Promise<string> {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Could not read the selected image.'));
+      el.src = objectUrl;
+    });
+    const maxSize = 256;
+    const ratio = Math.min(maxSize / (img.width || maxSize), maxSize / (img.height || maxSize), 1);
+    const width = Math.max(1, Math.round((img.width || maxSize) * ratio));
+    const height = Math.max(1, Math.round((img.height || maxSize) * ratio));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas is unavailable.');
+    ctx.drawImage(img, 0, 0, width, height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+    if (dataUrl.length > 350000) {
+      return canvas.toDataURL('image/jpeg', 0.55);
+    }
+    return dataUrl;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+export const Settings: React.FC = () => {
+  const {
+    firebaseUser,
+    currentUser,
+    setCurrentUserProfile,
+    currentTheme,
+    isDarkThemeActive,
+    currentAccent,
+    collabSettings,
+    applyTheme,
+    applyAccent,
+    toggleDarkLightMode,
+    updateCollabSetting,
+    auditLogs,
+    addAuditLog,
+    pushNotification,
+    showDashboardToast
+  } = useDashboard();
+
+  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'collaboration' | 'audit'>(
+    'profile'
+  );
+
+  // Profile state
+  const [profileName, setProfileName] = useState(currentUser.name || '');
+  const [profileEmail, setProfileEmail] = useState(currentUser.email || '');
+  const [phoneCountryCode, setPhoneCountryCode] = useState(
+    currentUser.phoneCountryCode || '+27'
+  );
+  const [phoneNumber, setPhoneNumber] = useState(currentUser.phoneNumber || '');
+  const [collabType, setCollabType] = useState(currentUser.collaborationType || '');
+  const [collabDetails, setCollabDetails] = useState(currentUser.collaborationDetails || '');
+  const [workspaceName, setWorkspaceName] = useState(currentUser.workspace || '');
+  const [roleTitle, setRoleTitle] = useState(currentUser.role || 'Workspace Admin');
+  const [industry, setIndustry] = useState(currentUser.industry || '');
+  const [tone, setTone] = useState(currentUser.tone || 'coral');
+  const [timezone, setTimezone] = useState(currentUser.timezone || 'UTC+2');
+  const [bio, setBio] = useState(currentUser.bio || '');
+  const [profileImageUploading, setProfileImageUploading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  // Password / security state
+  const [currentPwd, setCurrentPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [showCurrentPwd, setShowCurrentPwd] = useState(false);
+  const [showNewPwd, setShowNewPwd] = useState(false);
+  const [showConfirmPwd, setShowConfirmPwd] = useState(false);
+  const [pwdUpdating, setPwdUpdating] = useState(false);
+  const [sessions, setSessions] = useState([
+    {
+      id: 'session-current',
+      device: 'Chrome on Windows 11 (Current Session)',
+      meta: 'Cape Town, South Africa · Active now',
+      current: true
+    },
+    {
+      id: 'session-mobile',
+      device: 'Collab iOS Mobile App',
+      meta: 'Johannesburg, South Africa · Last synced 18 mins ago',
+      current: false
+    }
+  ]);
+
+  // Workspace config state
+  const [wsName, setWsName] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('collab-workspace-settings') || '{}');
+      return saved.workspaceName || 'Collab Workspace';
+    } catch {
+      return 'Collab Workspace';
+    }
+  });
+  const [wsDefaultRole, setWsDefaultRole] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('collab-workspace-settings') || '{}');
+      return saved.defaultRole || 'Collaborator';
+    } catch {
+      return 'Collaborator';
+    }
+  });
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Synchronize profile inputs whenever context updates from API
+  useEffect(() => {
+    setProfileName(currentUser.name || '');
+    setProfileEmail(currentUser.email || '');
+    setPhoneCountryCode(currentUser.phoneCountryCode || '+27');
+    setPhoneNumber(currentUser.phoneNumber || '');
+    setCollabType(currentUser.collaborationType || '');
+    setCollabDetails(currentUser.collaborationDetails || '');
+    setWorkspaceName(currentUser.workspace || '');
+    setRoleTitle(currentUser.role || 'Workspace Admin');
+    setIndustry(currentUser.industry || '');
+    setTone(currentUser.tone || 'coral');
+    setTimezone(currentUser.timezone || 'UTC+2');
+    setBio(currentUser.bio || '');
+  }, [currentUser]);
+
+  const hasPasswordProvider = Boolean(
+    (firebaseUser?.providerData || []).some((p) => p.providerId === 'password')
+  );
+  const previewSrc = getAvatarSource(currentUser);
+  const previewInitials = getUserInitials(profileName || currentUser.name);
+  const strength = getPasswordStrength(newPwd);
+
+  const handleProfileImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showDashboardToast('Please select a valid image file.', 'error');
+      return;
+    }
+    setProfileImageUploading(true);
+    try {
+      const compressed = await compressProfileImage(file);
+      const res = await api.put('/users/profile-image', { profileImage: compressed });
+      const savedUser = res?.data?.user || {};
+      const nextProfileImage = savedUser.profileImage || savedUser.profile_image || compressed;
+      setCurrentUserProfile({
+        ...currentUser,
+        ...savedUser,
+        profileImage: nextProfileImage,
+        photoURL: nextProfileImage
+      });
+      addAuditLog('Profile photo updated', 'Uploaded a new workspace avatar.', 'user');
+      showDashboardToast('Profile photo updated.', 'success');
+    } catch (error: any) {
+      showDashboardToast(error?.message || 'Unable to upload profile image.', 'error');
+    } finally {
+      setProfileImageUploading(false);
+    }
+  };
+
+  const handleRemoveProfileImage = async () => {
+    setProfileImageUploading(true);
+    try {
+      await api.put('/users/profile-image', { profileImage: '' });
+      setCurrentUserProfile({
+        ...currentUser,
+        profileImage: '',
+        profile_image: '',
+        photoURL: ''
+      });
+      addAuditLog('Profile photo removed', 'Reverted to initials avatar.', 'user');
+      showDashboardToast('Profile photo removed.', 'success');
+    } catch (error: any) {
+      showDashboardToast(error?.message || 'Unable to remove profile photo.', 'error');
+    } finally {
+      setProfileImageUploading(false);
+    }
+  };
+
+  const handleProfileSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const cleanedName = profileName.trim();
+    const cleanedEmail = profileEmail.trim();
+    const cleanedWorkspace = workspaceName.trim();
+    const cleanedRole = roleTitle.trim();
+
+    if (!cleanedName || !cleanedEmail) {
+      showDashboardToast('Display name and email are required.', 'warning');
+      return;
+    }
+
+    const countryMeta = COUNTRIES.find((c) => c.code === phoneCountryCode);
+    const phoneCheck = validatePhoneNumber(
+      phoneNumber,
+      phoneCountryCode,
+      countryMeta?.countries || ['ZA']
+    );
+    if (!phoneCheck.valid) {
+      showDashboardToast(phoneCheck.message || 'Enter a valid phone number.', 'warning');
+      return;
+    }
+
+    if (collabType === 'Other' && !collabDetails.trim()) {
+      showDashboardToast('Please describe how you collaborate when selecting Other.', 'warning');
+      return;
+    }
+
+    setProfileSaving(true);
+    try {
+      if (firebaseAuth.currentUser) {
+        if (cleanedName !== (firebaseAuth.currentUser.displayName || '')) {
+          await updateProfile(firebaseAuth.currentUser, { displayName: cleanedName });
+        }
+        if (cleanedEmail !== (firebaseAuth.currentUser.email || '')) {
+          await updateEmail(firebaseAuth.currentUser, cleanedEmail);
+        }
+      }
+
+      const payload = {
+        name: cleanedName,
+        email: cleanedEmail,
+        phoneCountryCode,
+        phoneNumber: phoneCheck.number || phoneNumber.trim(),
+        collaborationType: collabType,
+        collaborationDetails: collabType === 'Other' ? collabDetails.trim() : '',
+        workspace: cleanedWorkspace,
+        role: cleanedRole,
+        industry,
+        tone,
+        timezone,
+        bio: bio.trim()
+      };
+
+      const res = await api.put('/users/profile', payload);
+      const savedUser = res?.data?.user || {};
+      setCurrentUserProfile({
+        ...currentUser,
+        ...payload,
+        ...savedUser,
+        initials: getUserInitials(cleanedName)
+      });
+      addAuditLog('Profile updated', `${cleanedName} updated workspace profile details.`, 'user');
+      pushNotification('Profile Saved', 'Your workspace profile details are up to date.', '✅', 'teal-bg');
+      showDashboardToast('Your profile has been updated.', 'success');
+    } catch (error: any) {
+      showDashboardToast(
+        error?.message || 'Could not update your profile. Re-authenticate if you changed email.',
+        'error'
+      );
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handlePasswordSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (newPwd.length < 6) {
+      showDashboardToast('Password must be at least 6 characters long.', 'warning');
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      showDashboardToast('New password and confirmation do not match.', 'warning');
+      return;
+    }
+
+    const user = firebaseAuth.currentUser;
+    if (!user) {
+      showDashboardToast('You must be signed in to update your password.', 'error');
+      return;
+    }
+
+    setPwdUpdating(true);
+    try {
+      if (hasPasswordProvider) {
+        if (!currentPwd) {
+          showDashboardToast('Enter your current password first.', 'warning');
+          setPwdUpdating(false);
+          return;
+        }
+        const cred = EmailAuthProvider.credential(user.email || currentUser.email, currentPwd);
+        await reauthenticateWithCredential(user, cred);
+        await updatePassword(user, newPwd);
+      } else {
+        const cred = EmailAuthProvider.credential(user.email || currentUser.email, newPwd);
+        await linkWithCredential(user, cred);
+      }
+      setCurrentPwd('');
+      setNewPwd('');
+      setConfirmPwd('');
+      addAuditLog('Password updated', 'Account password credentials refreshed.', 'lock');
+      pushNotification('Password Updated', 'Your account security credentials were updated.', '🔐', 'teal-bg');
+      showDashboardToast('Password updated successfully.', 'success');
+    } catch (error: any) {
+      showDashboardToast(
+        error?.message || 'Unable to update password. Check your current password.',
+        'error'
+      );
+    } finally {
+      setPwdUpdating(false);
+    }
+  };
+
+  const handleWorkspaceConfigSave = (event: React.FormEvent) => {
+    event.preventDefault();
+    const cleaned = wsName.trim() || 'Collab Workspace';
+    try {
+      localStorage.setItem(
+        'collab-workspace-settings',
+        JSON.stringify({ workspaceName: cleaned, defaultRole: wsDefaultRole })
+      );
+    } catch {
+      // Ignore storage error
+    }
+    addAuditLog(
+      'Workspace preferences saved',
+      `Updated "${cleaned}" default role to ${wsDefaultRole}.`,
+      'sync'
+    );
+    showDashboardToast('Workspace preferences saved.', 'success');
+  };
+
+  const handleExportAuditLog = () => {
+    const content = [
+      `Collab Workspace Audit Log Export (${new Date().toISOString()})`,
+      `Account: ${currentUser.name} <${currentUser.email}>`,
+      '',
+      ...auditLogs.map((entry) => `[${entry.time}] ${entry.action} — ${entry.detail}`)
+    ].join('\n');
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `collab-audit-log-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showDashboardToast('Audit log downloaded.', 'success');
+  };
+
+  return (
+    <div id="settings-container" className={cx('settings-container')}>
+      <div className={cx('settings-banner')}>
+        <div>
+          <div className={cx('settings-banner-eyebrow')}>
+            <span className={cx('settings-gear-icon')}>⚙️</span>
+            <span>WORKSPACE SETTINGS</span>
+            <span className={cx('settings-badge-tag')}>Personal &amp; Team</span>
+          </div>
+          <h2>Account, Security &amp; Appearance</h2>
+          <p>
+            Manage your collaborator identity, theme mode, password security, and workspace audit trail.
+          </p>
+        </div>
+
+        <div className={cx('settings-banner-actions')}>
+          <button
+            type="button"
+            id="settings-banner-theme-toggle"
+            className={cx('theme-mode-toggle-pill')}
+            onClick={toggleDarkLightMode}
+          >
+            <span className={cx('theme-toggle-icon')}>{isDarkThemeActive ? '☀️' : '🌙'}</span>
+            <span>{isDarkThemeActive ? 'Switch to Light Mode' : 'Switch to Dark Mode'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Navigation Sub-tabs */}
+      <div className="console-tabs" role="tablist" aria-label="Settings sections">
+        <button
+          type="button"
+          className={`console-tab${activeTab === 'profile' ? ' active' : ''}`}
+          onClick={() => setActiveTab('profile')}
+        >
+          Profile &amp; Appearance
+        </button>
+        <button
+          type="button"
+          className={`console-tab${activeTab === 'security' ? ' active' : ''}`}
+          onClick={() => setActiveTab('security')}
+        >
+          Security &amp; Sessions
+        </button>
+        <button
+          type="button"
+          className={`console-tab${activeTab === 'collaboration' ? ' active' : ''}`}
+          onClick={() => setActiveTab('collaboration')}
+        >
+          Collaboration Preferences
+        </button>
+        <button
+          type="button"
+          className={`console-tab${activeTab === 'audit' ? ' active' : ''}`}
+          onClick={() => setActiveTab('audit')}
+        >
+          Workspace Audit Log
+        </button>
+      </div>
+
+      {activeTab === 'profile' && (
+        <div id="settings-tab-profile" className={cx('settings-tab-panel')}>
+          {/* Appearance & Theme Card */}
+          <div className={cx('settings-card')}>
+            <div className={cx('settings-card-header')}>
+              <h3>Appearance &amp; Theme</h3>
+              <p>Customize workspace theme mode, accent tint, and visual accessibility.</p>
+            </div>
+
+            <div className={cx('theme-cards-grid')}>
+              {(
+                [
+                  {
+                    id: 'light',
+                    name: 'Light Mode',
+                    desc: 'Clean bright workspace surfaces for daylight clarity.'
+                  },
+                  {
+                    id: 'dark',
+                    name: 'Dark Mode',
+                    desc: 'Low-glare charcoal theme tuned for extended focus.'
+                  },
+                  {
+                    id: 'system',
+                    name: 'System Default',
+                    desc: 'Automatically follows your operating system preference.'
+                  }
+                ] as Array<{ id: ThemeMode; name: string; desc: string }>
+              ).map((t) => (
+                <div
+                  key={t.id}
+                  role="button"
+                  tabIndex={0}
+                  className={cx('theme-card', { active: currentTheme === t.id })}
+                  onClick={() => applyTheme(t.id, true)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      applyTheme(t.id, true);
+                    }
+                  }}
+                >
+                  <div
+                    className={cx(
+                      'theme-preview-box',
+                      t.id === 'light'
+                        ? 'light-preview'
+                        : t.id === 'dark'
+                          ? 'dark-preview'
+                          : 'system-preview'
+                    )}
+                  >
+                    {t.id === 'system' ? (
+                      <>
+                        <div className={cx('preview-half', 'light-half')} />
+                        <div className={cx('preview-half', 'dark-half')} />
+                      </>
+                    ) : (
+                      <>
+                        <div className={cx('preview-sidebar')} />
+                        <div className={cx('preview-content')}>
+                          <div className={cx('preview-header')} />
+                          <div className={cx('preview-cards')}>
+                            <span />
+                            <span />
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className={cx('theme-info')}>
+                    <div className={cx('theme-name-row')}>
+                      <strong>{t.name}</strong>
+                      <span className={cx('theme-check')}>✓</span>
+                    </div>
+                    <p>{t.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <strong style={{ fontSize: 12, color: 'var(--ink)' }}>Accent Tint</strong>
+              <div className={cx('accent-color-options')}>
+                {(
+                  [
+                    { id: 'gold', label: 'Collab Gold' },
+                    { id: 'blue', label: 'Ocean Blue' },
+                    { id: 'emerald', label: 'Emerald' },
+                    { id: 'coral', label: 'Crimson Coral' },
+                    { id: 'purple', label: 'Royal Purple' }
+                  ] as Array<{ id: AccentTheme; label: string }>
+                ).map((acc) => (
+                  <button
+                    key={acc.id}
+                    type="button"
+                    className={cx('accent-pill', { active: currentAccent === acc.id })}
+                    onClick={() => applyAccent(acc.id, true)}
+                  >
+                    <span className={cx('accent-dot', acc.id)} />
+                    <span>{acc.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className={cx('settings-toggles-list')} style={{ marginTop: 18 }}>
+              <div className={cx('settings-toggle-item')}>
+                <div className={cx('toggle-text')}>
+                  <strong>High-Contrast Mode</strong>
+                  <p>Increase border contrast and text legibility across panels.</p>
+                </div>
+                <label className="switch">
+                  <input
+                    id="toggle-high-contrast"
+                    type="checkbox"
+                    checked={Boolean(collabSettings.highContrast)}
+                    onChange={(e) => {
+                      updateCollabSetting('highContrast', e.target.checked);
+                      addAuditLog(
+                        'High contrast toggled',
+                        `High contrast mode ${e.target.checked ? 'enabled' : 'disabled'}.`,
+                        'palette'
+                      );
+                    }}
+                  />
+                  <span className="slider round" />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Profile Card */}
+          <div className={cx('settings-card')}>
+            <div className={`${cx('settings-card-header')} ${cx('profile-card-header')}`}>
+              <div>
+                <h3>Collaborator Profile</h3>
+                <p>Update your personal details, avatar, contact info, and role across projects.</p>
+              </div>
+              <div className={cx('profile-preview')}>
+                {previewSrc ? (
+                  <img
+                    id="profile-preview-avatar"
+                    src={previewSrc}
+                    alt={profileName || currentUser.name}
+                    className={`${cx('profile-preview-avatar')} avatar ${tone}-bg`}
+                    style={{ objectFit: 'cover' }}
+                  />
+                ) : (
+                  <span
+                    id="profile-preview-avatar"
+                    className={`${cx('profile-preview-avatar')} avatar ${tone}-bg`}
+                  >
+                    {previewInitials}
+                  </span>
+                )}
+                <div className={cx('profile-preview-info')}>
+                  <h4 id="profile-preview-name">{profileName || currentUser.name}</h4>
+                  <p id="profile-preview-email">{profileEmail || currentUser.email}</p>
+                </div>
+              </div>
+            </div>
+
+            <form id="profile-settings-form" onSubmit={handleProfileSubmit}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  gap: 10,
+                  marginBottom: 18
+                }}
+              >
+                <input
+                  ref={fileInputRef}
+                  id="profile-image-input"
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={handleProfileImageChange}
+                />
+                <button
+                  type="button"
+                  className="outline-button"
+                  disabled={profileImageUploading}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {profileImageUploading ? 'Uploading...' : 'Upload Profile Photo'}
+                </button>
+                {previewSrc && (
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    disabled={profileImageUploading}
+                    onClick={handleRemoveProfileImage}
+                  >
+                    Remove Photo
+                  </button>
+                )}
+              </div>
+
+              <div className="form-grid-2col">
+                <div className="form-group">
+                  <label htmlFor="profile-name">Display Name</label>
+                  <input
+                    id="profile-name"
+                    type="text"
+                    required
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="profile-email">Work Email</label>
+                  <input
+                    id="profile-email"
+                    type="email"
+                    required
+                    value={profileEmail}
+                    onChange={(e) => setProfileEmail(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="form-grid-2col">
+                <div className="form-group">
+                  <label htmlFor="profile-phone-country">Country Code</label>
+                  <select
+                    id="profile-phone-country"
+                    value={phoneCountryCode}
+                    onChange={(e) => setPhoneCountryCode(e.target.value)}
+                  >
+                    {COUNTRIES.map((c) => (
+                      <option key={`${c.code}-${c.countries.join(',')}`} value={c.code}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="profile-phone-number">Phone Number</label>
+                  <input
+                    id="profile-phone-number"
+                    type="tel"
+                    placeholder="e.g. 082 123 4567"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="form-grid-2col">
+                <div className="form-group">
+                  <label htmlFor="profile-collab-type">Collaboration Focus</label>
+                  <select
+                    id="profile-collab-type"
+                    value={collabType}
+                    onChange={(e) => setCollabType(e.target.value)}
+                  >
+                    <option value="">Select collaboration type</option>
+                    <option value="Team Collaboration">Team Collaboration</option>
+                    <option value="School & University Projects">
+                      School &amp; University Projects
+                    </option>
+                    <option value="Personal Organization">Personal Organization</option>
+                    <option value="Client & Agency Work">Client &amp; Agency Work</option>
+                    <option value="Engineering & Product Sprints">
+                      Engineering &amp; Product Sprints
+                    </option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="profile-workspace">Brand / Company / Team Name</label>
+                  <input
+                    id="profile-workspace"
+                    type="text"
+                    placeholder="e.g. Collab Studio"
+                    value={workspaceName}
+                    onChange={(e) => setWorkspaceName(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {collabType === 'Other' && (
+                <div className="form-group" id="profile-collab-details-wrap">
+                  <label htmlFor="profile-collab-details">Describe how you collaborate</label>
+                  <input
+                    id="profile-collab-details"
+                    type="text"
+                    value={collabDetails}
+                    onChange={(e) => setCollabDetails(e.target.value)}
+                  />
+                </div>
+              )}
+
+              <div className="form-grid-2col">
+                <div className="form-group">
+                  <label htmlFor="profile-role">Role / Title</label>
+                  <input
+                    id="profile-role"
+                    type="text"
+                    placeholder="e.g. Product Designer"
+                    value={roleTitle}
+                    onChange={(e) => setRoleTitle(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="profile-industry">Industry</label>
+                  <select
+                    id="profile-industry"
+                    value={industry}
+                    onChange={(e) => setIndustry(e.target.value)}
+                  >
+                    <option value="">Select industry</option>
+                    {INDUSTRIES.map((ind) => (
+                      <option key={ind} value={ind}>
+                        {ind}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-grid-2col">
+                <div className="form-group">
+                  <label htmlFor="profile-tone">Avatar Color Tone</label>
+                  <select
+                    id="profile-tone"
+                    value={tone}
+                    onChange={(e) => setTone(e.target.value)}
+                  >
+                    {TONES.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="profile-timezone">Timezone</label>
+                  <select
+                    id="profile-timezone"
+                    value={timezone}
+                    onChange={(e) => setTimezone(e.target.value)}
+                  >
+                    {TIMEZONES.map((tz) => (
+                      <option key={tz.value} value={tz.value}>
+                        {tz.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="profile-bio">Bio &amp; Role Notes</label>
+                <textarea
+                  id="profile-bio"
+                  rows={3}
+                  placeholder="Share what you focus on with teammates..."
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                />
+                <small className={cx('profile-field-hint')}>
+                  Visible to members across shared project spaces.
+                </small>
+              </div>
+
+              <div className="form-actions">
+                <button type="submit" className="primary-button" disabled={profileSaving}>
+                  {profileSaving ? 'Saving Profile...' : 'Save Profile Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'security' && (
+        <div id="settings-tab-security" className={cx('settings-tab-panel')}>
+          <div className={cx('settings-card')}>
+            <div className={cx('settings-card-header')}>
+              <h3>Password &amp; Authentication</h3>
+              <p>Keep your Collab account protected with a strong password.</p>
+            </div>
+
+            <form id="password-settings-form" onSubmit={handlePasswordSubmit}>
+              {hasPasswordProvider && (
+                <div className="form-group" id="pwd-current-group">
+                  <label htmlFor="pwd-current">Current Password</label>
+                  <div className="password-wrapper">
+                    <input
+                      id="pwd-current"
+                      type={showCurrentPwd ? 'text' : 'password'}
+                      value={currentPwd}
+                      onChange={(e) => setCurrentPwd(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className={`pwd-toggle-btn ${cx('pwd-toggle-btn')}`}
+                      aria-label="Toggle current password visibility"
+                      onClick={() => setShowCurrentPwd((v) => !v)}
+                    >
+                      {showCurrentPwd ? '🙈' : '👁️'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="form-grid-2col">
+                <div className="form-group">
+                  <label htmlFor="pwd-new">New Password</label>
+                  <div className="password-wrapper">
+                    <input
+                      id="pwd-new"
+                      type={showNewPwd ? 'text' : 'password'}
+                      value={newPwd}
+                      onChange={(e) => setNewPwd(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className={`pwd-toggle-btn ${cx('pwd-toggle-btn')}`}
+                      aria-label="Toggle new password visibility"
+                      onClick={() => setShowNewPwd((v) => !v)}
+                    >
+                      {showNewPwd ? '🙈' : '👁️'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="pwd-confirm">Confirm New Password</label>
+                  <div className="password-wrapper">
+                    <input
+                      id="pwd-confirm"
+                      type={showConfirmPwd ? 'text' : 'password'}
+                      value={confirmPwd}
+                      onChange={(e) => setConfirmPwd(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className={`pwd-toggle-btn ${cx('pwd-toggle-btn')}`}
+                      aria-label="Toggle confirm password visibility"
+                      onClick={() => setShowConfirmPwd((v) => !v)}
+                    >
+                      {showConfirmPwd ? '🙈' : '👁️'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <div
+                  style={{
+                    height: 6,
+                    borderRadius: 4,
+                    background: '#E4E4E7',
+                    overflow: 'hidden',
+                    marginBottom: 6
+                  }}
+                >
+                  <div
+                    id="pwd-strength-bar"
+                    style={{
+                      height: '100%',
+                      width: strength.width,
+                      background: strength.color,
+                      transition: 'width .2s ease'
+                    }}
+                  />
+                </div>
+                <small id="pwd-strength-text" style={{ color: 'var(--muted)', fontSize: 11 }}>
+                  {strength.text}
+                </small>
+              </div>
+
+              <div className="form-actions">
+                <button type="submit" className="primary-button" disabled={pwdUpdating}>
+                  {pwdUpdating ? 'Updating...' : 'Update Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className={cx('settings-card')}>
+            <div className={cx('settings-card-header')}>
+              <h3>Security Safeguards &amp; Sessions</h3>
+              <p>Control two-factor checks, inactivity auto-logout, and active device sessions.</p>
+            </div>
+
+            <div className={cx('settings-toggles-list')} style={{ marginBottom: 18 }}>
+              <div className={cx('settings-toggle-item')}>
+                <div className={cx('toggle-text')}>
+                  <strong>Two-Factor Authentication Verification</strong>
+                  <p>Require additional verification on new devices.</p>
+                </div>
+                <label className="switch">
+                  <input
+                    id="toggle-sec-2fa"
+                    type="checkbox"
+                    checked={Boolean(collabSettings.twoFactor)}
+                    onChange={(e) => {
+                      updateCollabSetting('twoFactor', e.target.checked);
+                      addAuditLog(
+                        'Two-Factor Authentication',
+                        `2FA protection ${e.target.checked ? 'enabled' : 'disabled'}.`,
+                        'shield'
+                      );
+                    }}
+                  />
+                  <span className="slider round" />
+                </label>
+              </div>
+
+              <div className={cx('settings-toggle-item')}>
+                <div className={cx('toggle-text')}>
+                  <strong>30-Minute Inactivity Auto-Logout</strong>
+                  <p>Automatically sign out inactive browser sessions for workspace safety.</p>
+                </div>
+                <label className="switch">
+                  <input
+                    id="toggle-sec-timeout"
+                    type="checkbox"
+                    checked={Boolean(collabSettings.sessionTimeout)}
+                    onChange={(e) => {
+                      updateCollabSetting('sessionTimeout', e.target.checked);
+                      addAuditLog(
+                        'Inactivity timeout',
+                        `Auto-logout ${e.target.checked ? 'enabled' : 'disabled'}.`,
+                        'lock'
+                      );
+                    }}
+                  />
+                  <span className="slider round" />
+                </label>
+              </div>
+            </div>
+
+            <div id="active-sessions-list" style={{ display: 'grid', gap: 10 }}>
+              {sessions.map((s) => (
+                <div
+                  key={s.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    padding: '12px 14px',
+                    borderRadius: 10,
+                    border: '1px solid var(--line)',
+                    background: '#FAFAFB'
+                  }}
+                >
+                  <div>
+                    <strong style={{ fontSize: 13 }}>{s.device}</strong>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{s.meta}</div>
+                  </div>
+                  {s.current ? (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: '#059669',
+                        background: '#ECFDF5',
+                        padding: '3px 8px',
+                        borderRadius: 6
+                      }}
+                    >
+                      Active
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="outline-button"
+                      onClick={() => {
+                        setSessions((prev) => prev.filter((item) => item.id !== s.id));
+                        showDashboardToast(`Revoked ${s.device}.`, 'info');
+                      }}
+                    >
+                      Revoke
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {sessions.length > 1 && (
+              <div style={{ marginTop: 14 }}>
+                <button
+                  type="button"
+                  id="signout-all-sessions-btn"
+                  className="outline-button"
+                  onClick={() => {
+                    setSessions((prev) => prev.filter((item) => item.current));
+                    addAuditLog(
+                      'Sessions terminated',
+                      'Signed out of all remote secondary sessions.',
+                      'shield'
+                    );
+                    showDashboardToast('Signed out of all other sessions.', 'success');
+                  }}
+                >
+                  Sign out of all other sessions
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'collaboration' && (
+        <div id="settings-tab-collaboration" className={cx('settings-tab-panel')}>
+          <div className={cx('settings-card')}>
+            <div className={cx('settings-card-header')}>
+              <h3>Workspace Defaults</h3>
+              <p>Configure default workspace branding and collaborator role assignments.</p>
+            </div>
+            <form id="workspace-config-form" onSubmit={handleWorkspaceConfigSave}>
+              <div className="form-grid-2col">
+                <div className="form-group">
+                  <label htmlFor="ws-name-input">Workspace Name</label>
+                  <input
+                    id="ws-name-input"
+                    type="text"
+                    value={wsName}
+                    onChange={(e) => setWsName(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ws-default-role-input">Default Member Role</label>
+                  <select
+                    id="ws-default-role-input"
+                    value={wsDefaultRole}
+                    onChange={(e) => setWsDefaultRole(e.target.value)}
+                  >
+                    <option value="Collaborator">Collaborator</option>
+                    <option value="Contributor">Contributor</option>
+                    <option value="Reviewer">Reviewer</option>
+                    <option value="Viewer">Viewer</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-actions">
+                <button type="submit" className="primary-button">
+                  Save Workspace Defaults
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className={cx('settings-card')}>
+            <div className={cx('settings-card-header')}>
+              <h3>Collaboration Tool Switches</h3>
+              <p>Toggle live collaboration tools and team automation behaviors.</p>
+            </div>
+            <div className={cx('settings-toggles-list')}>
+              {COLLAB_TOGGLES.map((toggle) => (
+                <div key={toggle.key} className={cx('settings-toggle-item')}>
+                  <div className={cx('toggle-text')}>
+                    <strong>{toggle.title}</strong>
+                    <p>{toggle.desc}</p>
+                  </div>
+                  <label className="switch">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(collabSettings[toggle.key])}
+                      onChange={(e) => updateCollabSetting(toggle.key, e.target.checked)}
+                    />
+                    <span className="slider round" />
+                  </label>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'audit' && (
+        <div id="settings-tab-audit" className={cx('settings-tab-panel')}>
+          <div className={cx('settings-card')}>
+            <div
+              className={cx('settings-card-header')}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}
+            >
+              <div>
+                <h3>Workspace Audit Log</h3>
+                <p>Recent collaborator sessions, task updates, and settings changes.</p>
+              </div>
+              <button
+                type="button"
+                id="export-audit-btn"
+                className="outline-button"
+                onClick={handleExportAuditLog}
+              >
+                Export Log
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: 10 }}>
+              {auditLogs.map((entry, idx) => (
+                <div key={entry.id || `${entry.action}-${idx}`} className={cx('audit-item')}>
+                  <span
+                    className={cx(
+                      'activity-icon-badge',
+                      entry.iconType === 'shield'
+                        ? 'shield'
+                        : entry.iconType === 'team'
+                          ? 'team'
+                          : entry.iconType === 'checkCircle'
+                            ? 'done'
+                            : 'sync'
+                    )}
+                  >
+                    <SvgIcon name={entry.iconType || 'sync'} width={15} height={15} />
+                  </span>
+                  <div className={cx('audit-content')}>
+                    <strong>{entry.action}</strong>
+                    <p>
+                      {entry.detail} · {entry.time}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

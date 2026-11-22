@@ -1,9 +1,281 @@
-// Markup converted 1:1 from frontend/dashboard/dashboard.html lines 22-133.
-// The original dashboard scripts attach behaviour to these elements by id/class, so keep the DOM identical.
-export function Sidebar() {
+import React, { useEffect } from 'react';
+import { getAvatarSource, useDashboard } from '../../context/DashboardContext';
+import { createCx } from '../../utils/cx';
+import styles from './Sidebar.module.css';
+
+const cx = createCx(styles);
+
+export const Sidebar: React.FC = () => {
+  const {
+    activeView,
+    switchView,
+    projects,
+    projectsLoaded,
+    currentUser,
+    unreadNotificationCount,
+    messagesUnreadCount,
+    setActiveModal,
+    isMobileSidebarOpen,
+    setMobileSidebarOpen
+  } = useDashboard();
+
+  useEffect(() => {
+    document.body.classList.toggle('sidebar-open', isMobileSidebarOpen);
+    return () => {
+      document.body.classList.remove('sidebar-open');
+    };
+  }, [isMobileSidebarOpen]);
+
+  const avatarSrc = getAvatarSource(currentUser);
+  const handleNavClick = (event: React.MouseEvent, viewName: string) => {
+    event.preventDefault();
+    switchView(viewName);
+    setMobileSidebarOpen(false);
+  };
+
   return (
-    <>
-{"        "}<aside className="sidebar" id="main-sidebar">{"\n            "}<a className="brand-link" href="/legacy/index.html" title="Back to Collab Home">{"\n                "}<img src="/legacy/images/logo.png" alt="Collab." className="brand-logo-img" />{"\n            "}</a>{"\n\n            "}<nav className="primary-nav">{"\n                "}<a className="nav-item" data-view="Workspace" id="workspace-nav-item">{"\n                    "}<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-house preview-icon">{"\n                        "}<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />{"\n                        "}<path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />{"\n                    "}</svg>{"\n                    "}<span>{"Home"}</span>{"\n                "}</a>{"\n                "}<a className="nav-item" data-view="Meetings" id="meetings-nav-item">{"\n                    "}<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-video preview-icon">{"\n                        "}<rect x="3" y="5" width="13" height="14" rx="2" />{"\n                        "}<path d="m16 10 5-3v10l-5-3" />{"\n                    "}</svg>{"\n                    "}<span>{"Meetings"}</span>{"\n                "}</a>{"\n                "}<a className="nav-item" data-view="Messages" id="messages-nav-item">{"\n                    "}<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-messages-square preview-icon">{"\n                        "}<path d="M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />{"\n                        "}<path d="M20 9a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1" />{"\n                    "}</svg>{"\n                    "}<span>{"Messages"}</span>{"\n                    "}<span className="messages-nav-badge" id="messages-nav-badge" hidden></span>{"\n                "}</a>{"\n                "}<a className="nav-item" data-view="Brainstorm" id="brainstorm-nav-item">{"\n                    "}<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-user-group preview-icon">{"\n                        "}<path d="M17 21v-1a2 2 0 00-2-2H9a2 2 0 00-2 2v1" />{"\n                        "}<path d="M19 10h1a2 2 0 012 2v1" />{"\n                        "}<path d="M5 10H4a2 2 0 00-2 2v1" />{"\n                        "}<circle cx="12" cy="11" r="3" />{"\n                        "}<circle cx="18" cy="4" r="2" />{"\n                        "}<circle cx="6" cy="4" r="2" />{"\n                    "}</svg>{"\n                    "}<span>{"Team Brainstorm"}</span>{"\n                "}</a>{"\n                "}<a className="nav-item admin-nav-link" data-view="Admin Console" id="admin-nav-item">{"\n                    "}<svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                        "}<rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>{"\n                        "}<line x1="8" y1="21" x2="16" y2="21"></line>{"\n                        "}<line x1="12" y1="17" x2="12" y2="21"></line>{"\n                    "}</svg>{"\n                    "}<span>{"Workspace"}</span>{"\n                "}</a>{"\n            "}</nav>{"\n\n            "}<div className="nav-label">{"\n                "}<span>{"PROJECTS"}</span>{"\n                "}<button className="tiny-plus" id="add-project" title="Create group project">{"+"}</button>{"\n            "}</div>{"\n\n            "}<nav className="project-nav" id="project-nav-list">{"\n                "}<a className="nav-item project active" data-view="Product Launch">{"\n                    "}<i className="dot coral"></i><span>{"Product Launch"}</span>{"\n                "}</a>{"\n                "}<a className="nav-item project" data-view="Website Redesign">{"\n                    "}<i className="dot blue"></i><span>{"Website Redesign"}</span>{"\n                "}</a>{"\n                "}<a className="nav-item project" data-view="Marketing Sprint">{"\n                    "}<i className="dot green"></i><span>{"Marketing Sprint"}</span>{"\n                "}</a>{"\n            "}</nav>{"\n\n            "}<div className="sidebar-bottom">{"\n                "}<a className="nav-item settings-nav-link" data-view="Settings" id="settings-nav-item" title="Collaboration & Workspace Settings">{"\n                    "}<svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                        "}<circle cx="12" cy="12" r="3"></circle>{"\n                        "}<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">{"\n                        "}</path>{"\n                    "}</svg>{"\n                    "}<span>{"Settings"}</span>{"\n                "}</a>{"\n                "}<button type="button" className="nav-item notification-btn sidebar-notification-btn" id="notification-btn" data-view="Notifications" aria-label="Notifications" title="Open notifications">{"\n                    "}<svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{"\n                        "}<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>{"\n                        "}<path d="M13.73 21a2 2 0 0 0 3.46 0"></path>{"\n                    "}</svg>{"\n                    "}<span>{"Notifications"}</span>{"\n                    "}<span className="notification-badge" id="notification-badge">{"3"}</span>{"\n                "}</button>{"\n                "}<div className="profile" id="user-profile" title="Account settings & logout">{"\n                    "}<div className="avatar coral-bg" id="sidebar-avatar">{"AM"}</div>{"\n                    "}<div>{"\n                        "}<strong id="sidebar-name"></strong>{"\n                        "}<small id="sidebar-role">{"Active Member"}</small>{"\n                    "}</div>{"\n                "}</div>{"\n            "}</div>{"\n        "}</aside>{"\n        "}<button type="button" className="sidebar-backdrop" id="sidebar-backdrop" aria-label="Close navigation menu" tabIndex={-1}></button>{"\n"}
-    </>
+    <aside
+      className={cx('sidebar', { 'is-open': isMobileSidebarOpen })}
+      aria-label="Primary"
+    >
+      <a className={cx('brand-link')} href="/" aria-label="Collab Home">
+        <img src="/images/logo.png" alt="Collab." className={cx('brand-logo-img')} />
+      </a>
+
+      <nav className={cx('primary-nav')}>
+        <a
+          className={cx('nav-item', { active: activeView === 'Workspace' })}
+          data-view="Workspace"
+          href="#workspace"
+          onClick={(e) => handleNavClick(e, 'Workspace')}
+        >
+          <svg className={cx('nav-icon')} viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="m16 8.41l-4.5-4.5L4.41 11H6v8h3v-6h5v6h3v-8h1.59L17 9.41V6h-1zM2 12l9.5-9.5L15 6V5h3v4l3 3h-3v8h-5v-6h-3v6H5v-8z"
+            />
+          </svg>
+          Home
+        </a>
+
+        <a
+          className={cx('nav-item', { active: activeView === 'Meetings' })}
+          data-view="Meetings"
+          href="#meetings"
+          onClick={(e) => handleNavClick(e, 'Meetings')}
+        >
+          <svg className={cx('nav-icon')} viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="square"
+              strokeMiterlimit={3.5}
+              strokeWidth={1.5}
+              d="M2.5 6h13v12h-13Zm13 4.5l6-3.5v10l-6-3.5Z"
+            />
+          </svg>
+          Meetings
+        </a>
+
+        <a
+          className={cx('nav-item', { active: activeView === 'Messages' })}
+          data-view="Messages"
+          href="#messages"
+          onClick={(e) => handleNavClick(e, 'Messages')}
+        >
+          <svg className={cx('nav-icon')} viewBox="0 0 24 24" aria-hidden="true">
+            <g
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="square"
+              strokeMiterlimit={2}
+              strokeWidth={1.5}
+            >
+              <path d="M8.25 7.25v-3.5h13v10.5H18.5v2.907l-.85-.607l-1.15-2.3" />
+              <path d="M2.75 10.25v-2h12.5v10H9.5L5.85 21l-.85.607V18.25H2.75v-2Z" />
+            </g>
+          </svg>
+          Messages{' '}
+          <b
+            id="messages-nav-badge"
+            className={cx('messages-nav-badge')}
+            hidden={messagesUnreadCount === 0}
+          >
+            {messagesUnreadCount}
+          </b>
+        </a>
+
+        <a
+          className={cx('nav-item', { active: activeView === 'Brainstorm' })}
+          data-view="Brainstorm"
+          href="#brainstorm"
+          onClick={(e) => handleNavClick(e, 'Brainstorm')}
+        >
+          <svg className={cx('nav-icon')} viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M18.564 9.304a1.34 1.34 0 0 0-.59-.16c-.489 0-1.238.14-1.528.16a4 4 0 0 0-.52 0a.7.7 0 0 0-.35.21c-.24.3-.34.75-.55 1.08a.4.4 0 0 1-.319.2c-.24 0-.38 0-.46-.15c-.3-.4-.38-1-.899-1.22a2.2 2.2 0 0 0-.88-.11c-.44 0-.949.09-1.338.13q.074-.185.12-.38c.12-.6 0-1.249.13-1.858l.18.06c.19.045.388.045.579 0a2.83 2.83 0 0 0 1.629-1.39a1.66 1.66 0 0 0 0-1.558a1 1 0 0 0-.79-.5a4 4 0 0 0-.92 0H11.8a4.4 4.4 0 0 1-.57-1.419c-.083-.3-.23-.58-.43-.82a2.24 2.24 0 0 0-1.888-.449a.33.33 0 0 0-.3.34a.32.32 0 0 0 .34.3c.75 0 1.14 0 1.35.28c.163.234.27.505.309.789c.118.548.342 1.067.66 1.529a.6.6 0 0 0 .44.24h.938c.16 0 .33 0 .4.11a.91.91 0 0 1-.16.999a1.9 1.9 0 0 1-.999.7c-.08 0-.19 0-.3-.07q-.301-.072-.61-.04a.61.61 0 0 0-.559.489c-.17.68-.08 1.419-.23 2.108c-.045.184-.12.36-.22.52c-.26 0-.68-.18-.73-.18a3.3 3.3 0 0 0-.888-.13a5.4 5.4 0 0 0-.62-1.329a1.75 1.75 0 0 0-1.399-.7a1.42 1.42 0 0 0-1.24.59a4.7 4.7 0 0 0-.579 1.819l-.4.07H2.497a4 4 0 0 1-1-.13c-.25-.06-.3-.28-.3-.52c.06-.583.213-1.153.45-1.688a7.9 7.9 0 0 1 2.089-2.898a8.6 8.6 0 0 1 3.148-1.809a.28.28 0 0 0-.16-.52a9.3 9.3 0 0 0-3.438 1.81A8.64 8.64 0 0 0 .897 6.935a5.2 5.2 0 0 0-.56 2.398a1.24 1.24 0 0 0 .93 1.06q.579.16 1.179.2h1.679q.394.023.789 0a.6.6 0 0 0 .53-.41c.084-.58.228-1.15.43-1.7a.5.5 0 0 1 .469-.349a.72.72 0 0 1 .58.29q.394.684.63 1.439a.64.64 0 0 0 .479.36q.6.04 1.199 0c.1 0 .76.09 1 .08a.65.65 0 0 0 .509-.23v-.06c.39 0 1.07-.07 1.639-.06a1.5 1.5 0 0 1 .58.09c.23.11.26.36.339.58c.077.27.225.515.43.709c.26.207.588.307.92.28c.299-.006.586-.12.808-.32q.375-.463.63-1c.4 0 1.689-.13 1.689-.13c0 .17-.22 1.4-.33 1.89q-.163.739-.4 1.458l-1.069 3.178a6 6 0 0 1-.28.81a.76.76 0 0 1-.23.3a2.6 2.6 0 0 1-1.059.369c-.635.06-1.274.06-1.908 0h-1.38q-.225.015-.45 0a4 4 0 0 0 .31-1.18a6.3 6.3 0 0 0 0-2.238a.61.61 0 0 0-.489-.38l-.76-.1a1.55 1.55 0 0 1-.749-.35a.83.83 0 0 1-.3-.589c0-.28 0-.43.18-.46a3.6 3.6 0 0 1 1 .09c.22.054.449.054.669 0a.77.77 0 0 0 .36-.639q.054-.825 0-1.649a.32.32 0 0 0-.34-.3a.32.32 0 0 0-.3.33a8.4 8.4 0 0 1-.06 1.609a6 6 0 0 1-.86-.17a1.46 1.46 0 0 0-.998.16a1.19 1.19 0 0 0-.45 1.07c.001.36.12.711.34.998a2.47 2.47 0 0 0 1.249.82l.6.11c.043.405.043.814 0 1.219c-.03.48-.173.946-.42 1.359c0 .05-.1.05-.16.07q-.314.09-.64.11H7.602a10 10 0 0 1-1.469-.07a2.3 2.3 0 0 1-.79-.22a1 1 0 0 1-.359-.33c-.22-.34-.39-.73-.58-.999a26.5 26.5 0 0 1-2.098-3.278c-.398-.76-.713-1.56-.94-2.388a.28.28 0 1 0-.54.13c.186.883.474 1.742.86 2.558a28.4 28.4 0 0 0 1.999 3.498c.21.32.38.81.63 1.189c.141.223.333.411.559.55a3.4 3.4 0 0 0 1.11.36l.469.06v.729c.006.209.05.416.13.61c.086.207.223.39.4.529l.18.1a.3.3 0 0 0 0 .09c.037.581.2 1.147.48 1.658c.225.378.555.683.948.88a3.37 3.37 0 0 0 2.998-.14a2.35 2.35 0 0 0 1.25-2.658a2.2 2.2 0 0 0 .439-.28a2.24 2.24 0 0 0 .7-1.649h.54a3.5 3.5 0 0 0 1.428-.44a1.6 1.6 0 0 0 .57-.609q.213-.438.37-.9c.29-.729.619-1.448.909-2.178c.13-.33.25-.65.36-1c.17-.509.32-.998.44-1.558q.177-.8.24-1.619a4.7 4.7 0 0 0 0-.95a.65.65 0 0 0-.27-.429M11.5 22.474a2.7 2.7 0 0 1-1.229.42a2.8 2.8 0 0 1-1.289-.12a1.5 1.5 0 0 1-.79-.599a3.3 3.3 0 0 1-.38-.85h.06q.601.097 1.21.1c.59 0 1.18-.07 1.739-.11q.7-.056 1.389-.2a1.55 1.55 0 0 1-.71 1.36m1.25-2.487a3.6 3.6 0 0 1-2 .29c-.639.05-1.308.1-1.998.11q-.405.021-.81 0a1.3 1.3 0 0 1-.439-.1a.62.62 0 0 1-.31-.21a1.1 1.1 0 0 1-.12-.45a4 4 0 0 1 0-.49h.51q.949.022 1.889-.11c.292-.055.569-.174.81-.35a.34.34 0 0 0 .17.11q.316.06.639.07h1.359l.849.08a1.48 1.48 0 0 1-.55 1.05"
+            />
+            <path
+              fill="currentColor"
+              d="M23.55 4.298q-.248-.668-.579-1.3A4.83 4.83 0 0 0 19.713.242a7.85 7.85 0 0 0-4.217.1a.32.32 0 0 0-.22.4a.33.33 0 0 0 .39.22a7.1 7.1 0 0 1 3.828 0a4 4 0 0 1 2.658 2.377c.07.17.23.52.35.87s.2.46.16.59s-.13.11-.21.17c-.23.15-.52.29-.75.429q-.212.133-.38.32a.66.66 0 0 0-.17.48c0 .16.07.42.07.539a1.4 1.4 0 0 1-.19.64a.44.44 0 0 1-.34.27c-.23 0-.329-.14-.429-.29a4.5 4.5 0 0 0-.5-.69a1.34 1.34 0 0 0-.66-.39a1 1 0 0 0-.489 0a7.6 7.6 0 0 0-1.049.51a1 1 0 0 1-.27.11h-.07a2 2 0 0 1-.2-.34c-.17-.37-.3-.81-.46-1.13l-.07-.139a4.1 4.1 0 0 0 1.29-1.19a1.24 1.24 0 0 0-.29-1.658a1.32 1.32 0 0 0-.95-.38a7.4 7.4 0 0 0-1.518.47l-.05-.17l-.56-1.549a.286.286 0 1 0-.54.19l.49 1.569s.09.32.14.43a.36.36 0 0 0 .34.23c.49 0 1-.34 1.509-.42a.63.63 0 0 1 .62.19a.53.53 0 0 1 .11.69c-.37.455-.834.827-1.36 1.088a.48.48 0 0 0-.24.47q.075.338.23.65c.14.32.26.76.41 1.139q.126.298.32.56a1 1 0 0 0 .81.4a2.6 2.6 0 0 0 1.118-.4c.2-.11.53-.24.53-.24c.138.117.253.26.34.42q.208.351.5.639a1.3 1.3 0 0 0 1.059.33a1.4 1.4 0 0 0 .999-.58c.296-.4.464-.881.48-1.379a1.7 1.7 0 0 0 0-.5c.28-.2.7-.39.999-.62c.154-.136.274-.307.35-.499a1.47 1.47 0 0 0-.08-.87"
+            />
+          </svg>
+          Team Brainstorm
+        </a>
+
+        <a
+          className={cx('nav-item', { active: activeView === 'Admin Console' })}
+          data-view="Admin Console"
+          href="#workspace-console"
+          onClick={(e) => handleNavClick(e, 'Admin Console')}
+        >
+          <svg className={cx('nav-icon')} viewBox="0 0 24 24" aria-hidden="true">
+            <g
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+            >
+              <rect width="18.5" height="12.5" x="2.75" y="3.75" rx="2.5" />
+              <path d="M12 16.25v4m-3.75 0h7.5" />
+            </g>
+          </svg>
+          Workspace
+        </a>
+      </nav>
+
+      <div className={cx('nav-label')}>
+        <span>PROJECTS</span>
+        <button
+          id="add-project"
+          className={cx('tiny-plus')}
+          type="button"
+          aria-label="Add project"
+          onClick={() => {
+            setMobileSidebarOpen(false);
+            setActiveModal({ type: 'createProject' });
+          }}
+        >
+          +
+        </button>
+      </div>
+
+      <nav className={cx('project-nav')} id="project-nav">
+        {projectsLoaded && projects.length === 0 ? (
+          <div className={cx('project-nav-empty')}>
+            <p>No projects yet. Create one to start collaborating.</p>
+            <button
+              type="button"
+              className="outline-button"
+              onClick={() => {
+                setMobileSidebarOpen(false);
+                setActiveModal({ type: 'createProject' });
+              }}
+            >
+              + Create Project
+            </button>
+          </div>
+        ) : (
+          projects.map((project) => (
+            <a
+              key={project.projectId}
+              className={cx('nav-item', { active: activeView === project.name })}
+              data-view={project.name}
+              href={`#${encodeURIComponent(project.name.toLowerCase().replace(/\s+/g, '-'))}`}
+              onClick={(e) => handleNavClick(e, project.name)}
+            >
+              <i className={`dot ${project.color || 'yellow'}`} /> {project.name}
+            </a>
+          ))
+        )}
+      </nav>
+
+      <div className={cx('sidebar-bottom')}>
+        <a
+          className={cx('nav-item', { active: activeView === 'Settings' })}
+          data-view="Settings"
+          href="#settings"
+          onClick={(e) => handleNavClick(e, 'Settings')}
+        >
+          <svg
+            className={cx('nav-icon')}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+          Settings
+        </a>
+
+        <button
+          id="notification-btn"
+          className={`notification-btn${activeView === 'Notifications' ? ' active' : ''}`}
+          type="button"
+          aria-label="Notifications"
+          onClick={() => switchView('Notifications')}
+        >
+          <svg
+            className={cx('nav-icon')}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
+          <span>Notifications</span>
+          <span
+            id="notification-badge"
+            className="notification-badge"
+            hidden={unreadNotificationCount === 0}
+          >
+            {unreadNotificationCount}
+          </span>
+        </button>
+
+        <div
+          className={cx('profile')}
+          id="user-profile"
+          role="button"
+          tabIndex={0}
+          title="Open Account & Profile Settings"
+          onClick={() => switchView('Settings')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              switchView('Settings');
+            }
+          }}
+        >
+          {avatarSrc ? (
+            <img
+              src={avatarSrc}
+              alt={currentUser.name || 'User'}
+              className={`avatar ${currentUser.tone || 'coral'}-bg`}
+              style={{ objectFit: 'cover' }}
+            />
+          ) : (
+            <span className={`avatar ${currentUser.tone || 'coral'}-bg`}>
+              {currentUser.initials}
+            </span>
+          )}
+          <div>
+            <strong id="sidebar-user-name">{currentUser.name}</strong>
+            <small id="sidebar-user-role">{currentUser.role || 'Workspace Admin'}</small>
+          </div>
+        </div>
+      </div>
+    </aside>
   );
-}
+};
