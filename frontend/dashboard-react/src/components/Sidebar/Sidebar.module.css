@@ -148,6 +148,34 @@
 
 }
 
+.project-task-list {
+
+    display: grid;
+    gap: 2px;
+    list-style: none;
+    margin: 0 0 8px 36px;
+    padding: 0 0 0 10px;
+    border-left: 1px solid #E4E4E7;
+
+}
+
+.project-task-list li {
+
+    color: #71717A;
+    font-size: 11px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+    padding: 4px 6px;
+
+}
+
+.project-task-list .project-task-empty {
+
+    color: #A1A1AA;
+    font-style: italic;
+
+}
+
 .sidebar-bottom {
 
     margin-top: auto;
@@ -346,6 +374,46 @@
 
     background: #282833;
     color: #FFFFFF;
+
+}
+
+.project-nav .project-nav-item:hover,
+.project-nav .project-nav-item:global(.active) {
+
+    background: transparent;
+    transform: none;
+
+}
+
+.project-nav .project-nav-item:global(.active) {
+
+    font-weight: 500;
+
+}
+
+.project-nav .project-nav-item:hover .project-folder-icon,
+.project-nav .project-nav-item:global(.active) .project-folder-icon {
+
+    transform: none;
+
+}
+
+:global(body.dark-mode) .project-nav .project-nav-item:hover,
+:global(body.dark-mode) .project-nav .project-nav-item:global(.active) {
+
+    background: transparent;
+
+}
+
+:global(body.dark-mode) .project-task-list {
+
+    border-color: #3F3F4A;
+
+}
+
+:global(body.dark-mode) .project-task-list li {
+
+    color: #A1A1AA;
 
 }
 

@@ -11,6 +11,7 @@ export const Sidebar: React.FC = () => {
     switchView,
     projects,
     projectsLoaded,
+    accessibleTasks,
     currentUser,
     unreadNotificationCount,
     messagesUnreadCount,
@@ -191,29 +192,64 @@ export const Sidebar: React.FC = () => {
             </button>
           </div>
         ) : (
-          projects.map((project) => (
-            <a
-              key={project.projectId}
-              className={cx('nav-item', { active: activeView === project.name })}
-              data-view={project.name}
-              href={`#${encodeURIComponent(project.name.toLowerCase().replace(/\s+/g, '-'))}`}
-              onClick={(e) => handleNavClick(e, project.name)}
-            >
-              <svg
-                className={cx('project-folder-icon')}
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-                style={{ color: projectAccentColors[project.color || 'yellow'] || projectAccentColors.yellow }}
-              >
-                <title>Project folder</title>
-                <path
-                  fill="currentColor"
-                  d="M12.414 5H21a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h7.414z"
-                />
-              </svg>
-              <span>{project.name}</span>
-            </a>
-          ))
+          projects.map((project) => {
+            const isProjectActive = activeView === project.name;
+            const projectTasks = accessibleTasks.filter(
+              (task) =>
+                task.projectId === project.projectId ||
+                task.project_id === project.projectId ||
+                task.project === project.name
+            );
+            const taskListId = `project-tasks-${project.projectId}`;
+
+            return (
+              <React.Fragment key={project.projectId}>
+                <a
+                  className={cx('nav-item', 'project-nav-item', {
+                    active: isProjectActive
+                  })}
+                  data-view={project.name}
+                  href={`#${encodeURIComponent(project.name.toLowerCase().replace(/\s+/g, '-'))}`}
+                  aria-expanded={isProjectActive}
+                  aria-controls={isProjectActive ? taskListId : undefined}
+                  onClick={(e) => handleNavClick(e, project.name)}
+                >
+                  <svg
+                    className={cx('project-folder-icon')}
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    style={{
+                      color:
+                        projectAccentColors[project.color || 'yellow'] ||
+                        projectAccentColors.yellow
+                    }}
+                  >
+                    <title>Project folder</title>
+                    <path
+                      fill="currentColor"
+                      d="M12.414 5H21a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h7.414z"
+                    />
+                  </svg>
+                  <span>{project.name}</span>
+                </a>
+                {isProjectActive && (
+                  <ul
+                    id={taskListId}
+                    className={cx('project-task-list')}
+                    aria-label={`${project.name} tasks`}
+                  >
+                    {projectTasks.length > 0 ? (
+                      projectTasks.map((task) => (
+                        <li key={task.taskId || task.task_id || task.id}>{task.title}</li>
+                      ))
+                    ) : (
+                      <li className={cx('project-task-empty')}>No tasks yet</li>
+                    )}
+                  </ul>
+                )}
+              </React.Fragment>
+            );
+          })
         )}
       </nav>
 

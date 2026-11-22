@@ -22,7 +22,7 @@ import {
 
 export type BoardToolbarDropdown = 'dueDate' | 'assignee' | 'priority' | 'advance' | null;
 
-export function useProjectBoard() {
+export function useProjectBoard({ overviewOnly = false }: { overviewOnly?: boolean } = {}) {
   const {
     activeView,
     activeProject,
@@ -52,9 +52,6 @@ export function useProjectBoard() {
   const [automationMenuOpen, setAutomationMenuOpen] = useState<boolean>(false);
   const [autoAssignOnCreate, setAutoAssignOnCreate] = useState<boolean>(true);
   const [notifyOverdue, setNotifyOverdue] = useState<boolean>(true);
-  const [isEditingTitle, setIsEditingTitle] = useState<boolean>(false);
-  const [customTitleMap, setCustomTitleMap] = useState<Record<string, string>>({});
-  const [draftTitle, setDraftTitle] = useState<string>('');
   const [uploadedFiles, setUploadedFiles] = useState<LocalProjectFile[]>([]);
   const [showAllActivity, setShowAllActivity] = useState<boolean>(false);
 
@@ -78,11 +75,12 @@ export function useProjectBoard() {
   const currentUid = firebaseUser?.uid || currentUser?.uid || '';
 
   useEffect(() => {
+    if (overviewOnly) return;
     if (prevDisplayModeRef.current !== activeDisplayMode) {
       prevDisplayModeRef.current = activeDisplayMode;
       setActiveBoardTab(activeDisplayMode === 'list' ? 'list' : 'board');
     }
-  }, [activeDisplayMode]);
+  }, [activeDisplayMode, overviewOnly]);
 
   useEffect(() => {
     const handleDocClick = (event: MouseEvent) => {
@@ -105,7 +103,6 @@ export function useProjectBoard() {
         setAutomationMenuOpen(false);
         setOpenStatusMenuTaskId(null);
         setOpenColumnMenuStatus(null);
-        setIsEditingTitle(false);
       }
     };
     document.addEventListener('click', handleDocClick);
@@ -402,9 +399,7 @@ export function useProjectBoard() {
 
   const canCreateCard = activeView === 'Workspace' || isCurrentUserProjectCreator;
 
-  const projectTitleKey = activeProject?.projectId || activeView;
-  const rawProjectTitle = activeProject?.name || activeView || 'Design Project';
-  const displayProjectTitle = customTitleMap[projectTitleKey] || rawProjectTitle;
+  const displayProjectTitle = activeProject?.name || activeView || 'Design Project';
 
   const projectOwnerPerson = useMemo<ProjectMember>(() => {
     if (activeProject) {
@@ -484,6 +479,7 @@ export function useProjectBoard() {
       : 'This Project on track!';
 
   const handleTabSelect = (tab: BoardViewTab) => {
+    if (overviewOnly) return;
     setActiveBoardTab(tab);
     if (tab === 'list') {
       setActiveDisplayMode('list');
@@ -545,12 +541,6 @@ export function useProjectBoard() {
     setAutoAssignOnCreate,
     notifyOverdue,
     setNotifyOverdue,
-    isEditingTitle,
-    setIsEditingTitle,
-    customTitleMap,
-    setCustomTitleMap,
-    draftTitle,
-    setDraftTitle,
     uploadedFiles,
     showAllActivity,
     setShowAllActivity,
@@ -598,7 +588,6 @@ export function useProjectBoard() {
     teamMemberCount,
     projectSprints,
     canCreateCard,
-    projectTitleKey,
     displayProjectTitle,
     projectOwnerPerson,
     getTaskVisiblePeople,

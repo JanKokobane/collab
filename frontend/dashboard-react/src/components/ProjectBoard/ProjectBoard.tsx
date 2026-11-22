@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   AlertCircle,
-  Box,
   Calendar as CalendarIcon,
   Check,
   CheckCircle2,
@@ -14,14 +13,11 @@ import {
   Kanban,
   List as ListIcon,
   MoreHorizontal,
-  Pencil,
   Plus,
   SlidersHorizontal,
   StickyNote,
-  Upload,
   UserCircle2,
-  UserPlus,
-  Users
+  UserPlus
 } from 'lucide-react';
 import { createCx } from '../../utils/cx';
 import { SvgIcon } from '../../utils/icons';
@@ -56,21 +52,7 @@ export const ProjectBoard: React.FC = () => {
     openMessageContext,
     showDashboardToast,
     activeBoardTab,
-    quickActionsExpanded,
-    setQuickActionsExpanded,
     boardSummaryExpanded,
-    setBoardSummaryExpanded,
-    automationMenuOpen,
-    setAutomationMenuOpen,
-    autoAssignOnCreate,
-    setAutoAssignOnCreate,
-    notifyOverdue,
-    setNotifyOverdue,
-    isEditingTitle,
-    setIsEditingTitle,
-    setCustomTitleMap,
-    draftTitle,
-    setDraftTitle,
     uploadedFiles,
     showAllActivity,
     setShowAllActivity,
@@ -92,7 +74,6 @@ export const ProjectBoard: React.FC = () => {
     setDragOverCol,
     updatingTaskIds,
     boardToolbarRef,
-    automationWrapRef,
     fileInputRef,
     currentUid,
     isProjectView,
@@ -111,19 +92,16 @@ export const ProjectBoard: React.FC = () => {
     hasAnyToolbarFilter,
     clearAllBoardFilters,
     projectTasksAll,
-    teamMemberCount,
     projectSprints,
     canCreateCard,
-    projectTitleKey,
     displayProjectTitle,
     projectOwnerPerson,
     getTaskVisiblePeople,
     recentActivityItems,
     calendarGroups,
     summaryStatusHeadline,
-    handleTabSelect,
     handleFilePicked
-  } = useProjectBoard();
+  } = useProjectBoard({ overviewOnly: true });
 
   const renderSprintsAndBoardHeader = () => (
     <>
@@ -505,346 +483,6 @@ export const ProjectBoard: React.FC = () => {
         onChange={handleFilePicked}
       />
 
-      {/* Top Project Header Bar */}
-      <header className={cx('project-top-bar')}>
-        <div className={cx('project-title-group')}>
-          <span className={cx('project-title-icon')} aria-hidden="true">
-            <FileText size={18} strokeWidth={1.8} />
-          </span>
-          {isEditingTitle ? (
-            <input
-              type="text"
-              className={cx('project-title-input')}
-              value={draftTitle}
-              autoFocus
-              aria-label="Edit project title"
-              onChange={(event) => setDraftTitle(event.target.value)}
-              onBlur={() => {
-                if (draftTitle.trim()) {
-                  setCustomTitleMap((prev) => ({
-                    ...prev,
-                    [projectTitleKey]: draftTitle.trim()
-                  }));
-                }
-                setIsEditingTitle(false);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  if (draftTitle.trim()) {
-                    setCustomTitleMap((prev) => ({
-                      ...prev,
-                      [projectTitleKey]: draftTitle.trim()
-                    }));
-                  }
-                  setIsEditingTitle(false);
-                } else if (event.key === 'Escape') {
-                  setIsEditingTitle(false);
-                }
-              }}
-            />
-          ) : (
-            <h1 className={cx('project-title-heading')}>{displayProjectTitle}</h1>
-          )}
-          <button
-            type="button"
-            className={cx('project-edit-btn')}
-            title="Rename project"
-            aria-label="Rename project"
-            onClick={() => {
-              setDraftTitle(displayProjectTitle);
-              setIsEditingTitle(true);
-            }}
-          >
-            <Pencil size={15} strokeWidth={1.8} />
-          </button>
-        </div>
-
-        <div className={cx('project-top-actions')}>
-          {teamMembersForStats.length > 0 && (
-            <button
-              type="button"
-              className={cx('header-avatar-stack')}
-              id="project-manage-collab-btn"
-              title={
-                teamMemberCount
-                  ? `${teamMemberCount} Team Members — View & manage`
-                  : 'View & manage team members'
-              }
-              onClick={() => {
-                if (activeProject) {
-                  setActiveModal({
-                    type: 'manageCollaborators',
-                    projectId: activeProject.projectId
-                  });
-                }
-              }}
-            >
-              {teamMembersForStats.slice(0, 3).map((person, idx) => (
-                <span
-                  key={person.firebaseUid || person.email || `${person.name}-${idx}`}
-                  className={cx('header-avatar-item')}
-                >
-                  <PersonAvatar person={person} />
-                </span>
-              ))}
-            </button>
-          )}
-
-          <span className={cx('header-divider')} aria-hidden="true" />
-
-          <button
-            type="button"
-            className={cx('header-outline-btn')}
-            id="project-invite-collab-btn"
-            title="Invite team members to this project by email"
-            onClick={() => {
-              if (activeProject) {
-                setActiveModal({
-                  type: 'inviteCollaborator',
-                  projectId: activeProject.projectId
-                });
-              } else {
-                showDashboardToast('Select a project to invite team members.', 'info');
-              }
-            }}
-          >
-            Share
-          </button>
-
-          <div className={cx('automation-menu-wrap')} ref={automationWrapRef}>
-            <button
-              type="button"
-              className={cx('header-outline-btn')}
-              aria-expanded={automationMenuOpen}
-              onClick={(event) => {
-                event.stopPropagation();
-                setAutomationMenuOpen((prev) => !prev);
-              }}
-            >
-              Automation
-            </button>
-
-            {automationMenuOpen && (
-              <div className={cx('automation-popover')} role="menu">
-                <div className={cx('automation-popover-title')}>Project Tools</div>
-                <button
-                  type="button"
-                  className={cx('automation-popover-item')}
-                  id="project-add-sticky-note"
-                  onClick={() => {
-                    setAutomationMenuOpen(false);
-                    window.dispatchEvent(new CustomEvent('collab-open-project-sticky-note'));
-                  }}
-                >
-                  <span className={cx('automation-popover-left')}>
-                    <StickyNote size={14} />
-                    <span>Add Sticky Note</span>
-                  </span>
-                </button>
-                {isProjectView && activeProject && isCurrentUserProjectCreator && (
-                  <button
-                    type="button"
-                    className={cx('automation-popover-item')}
-                    onClick={() => {
-                      setAutomationMenuOpen(false);
-                      setActiveModal({
-                        type: 'addSprint',
-                        projectId: activeProject.projectId
-                      });
-                    }}
-                  >
-                    <span className={cx('automation-popover-left')}>
-                      <Plus size={14} />
-                      <span>Break into Sprint</span>
-                    </span>
-                  </button>
-                )}
-                <div className={cx('automation-popover-title')}>Workflow Rules</div>
-                <button
-                  type="button"
-                  className={cx('automation-popover-item')}
-                  onClick={() => {
-                    setAutoAssignOnCreate((prev) => !prev);
-                    showDashboardToast(
-                      `Auto-assign creator ${!autoAssignOnCreate ? 'enabled' : 'disabled'}`,
-                      'info'
-                    );
-                  }}
-                >
-                  <span>Auto-assign creator</span>
-                  <span className={cx('automation-status-pill')}>
-                    {autoAssignOnCreate ? 'On' : 'Off'}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={cx('automation-popover-item')}
-                  onClick={() => {
-                    setNotifyOverdue((prev) => !prev);
-                    showDashboardToast(
-                      `Overdue reminders ${!notifyOverdue ? 'enabled' : 'disabled'}`,
-                      'info'
-                    );
-                  }}
-                >
-                  <span>Overdue alerts</span>
-                  <span className={cx('automation-status-pill')}>
-                    {notifyOverdue ? 'On' : 'Off'}
-                  </span>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* Navigation Tabs Row */}
-      <nav className={cx('project-tabs-row')} aria-label="Project views">
-        <div className={cx('project-tabs-nav')}>
-          <button
-            type="button"
-            className={cx('project-tab-btn', activeBoardTab === 'overview' && 'is-active')}
-            onClick={() => handleTabSelect('overview')}
-          >
-            <Clock size={15} strokeWidth={1.8} />
-            <span>Overview</span>
-          </button>
-          <button
-            type="button"
-            className={cx('project-tab-btn', activeBoardTab === 'list' && 'is-active')}
-            onClick={() => handleTabSelect('list')}
-          >
-            <ListIcon size={15} strokeWidth={1.8} />
-            <span>List</span>
-          </button>
-          <button
-            type="button"
-            className={cx('project-tab-btn', activeBoardTab === 'board' && 'is-active')}
-            onClick={() => handleTabSelect('board')}
-          >
-            <Kanban size={15} strokeWidth={1.8} />
-            <span>Board</span>
-          </button>
-          <button
-            type="button"
-            className={cx('project-tab-btn', activeBoardTab === 'calendar' && 'is-active')}
-            onClick={() => handleTabSelect('calendar')}
-          >
-            <CalendarIcon size={15} strokeWidth={1.8} />
-            <span>Calendar</span>
-          </button>
-          <button
-            type="button"
-            className={cx('project-tab-btn', activeBoardTab === 'files' && 'is-active')}
-            onClick={() => handleTabSelect('files')}
-          >
-            <FileText size={15} strokeWidth={1.8} />
-            <span>Files</span>
-          </button>
-        </div>
-
-        <button
-          type="button"
-          className={cx(
-            'tabs-collapse-btn',
-            (activeBoardTab === 'overview' ? !quickActionsExpanded : !boardSummaryExpanded) &&
-              'is-collapsed'
-          )}
-          title={
-            activeBoardTab === 'overview'
-              ? quickActionsExpanded
-                ? 'Collapse quick actions'
-                : 'Expand quick actions'
-              : boardSummaryExpanded
-                ? 'Hide sprints & summary'
-                : 'Show sprints & summary'
-          }
-          aria-label={
-            activeBoardTab === 'overview'
-              ? quickActionsExpanded
-                ? 'Collapse quick actions'
-                : 'Expand quick actions'
-              : boardSummaryExpanded
-                ? 'Hide sprints & summary'
-                : 'Show sprints & summary'
-          }
-          onClick={() => {
-            if (activeBoardTab === 'overview') {
-              setQuickActionsExpanded((prev) => !prev);
-            } else {
-              setBoardSummaryExpanded((prev) => !prev);
-            }
-          }}
-        >
-          <ChevronUp size={16} strokeWidth={1.8} />
-        </button>
-      </nav>
-
-      {/* 3 Quick Action Cards (shown on Overview) */}
-      {activeBoardTab === 'overview' && quickActionsExpanded && (
-        <section className={cx('quick-actions-grid')} aria-label="Quick actions">
-          <button
-            type="button"
-            className={cx('quick-action-card')}
-            onClick={() =>
-              setActiveModal({
-                type: 'createTask',
-                projectId: activeProject?.projectId,
-                defaultStatus: 'To do'
-              })
-            }
-          >
-            <span className={cx('quick-action-icon-box')} aria-hidden="true">
-              <Box size={19} strokeWidth={1.8} />
-              <span className={cx('quick-action-plus-badge')}>+</span>
-            </span>
-            <span className={cx('quick-action-text')}>
-              <strong className={cx('quick-action-title')}>Create Task</strong>
-              <span className={cx('quick-action-subtitle')}>Organize task to your project</span>
-            </span>
-          </button>
-
-          <button
-            type="button"
-            className={cx('quick-action-card')}
-            onClick={() => {
-              if (activeProject) {
-                setActiveModal({
-                  type: 'inviteCollaborator',
-                  projectId: activeProject.projectId
-                });
-              } else {
-                showDashboardToast('Select a project to invite team members.', 'info');
-              }
-            }}
-          >
-            <span className={cx('quick-action-icon-box')} aria-hidden="true">
-              <Users size={19} strokeWidth={1.8} />
-              <span className={cx('quick-action-plus-badge')}>+</span>
-            </span>
-            <span className={cx('quick-action-text')}>
-              <strong className={cx('quick-action-title')}>Invite Team</strong>
-              <span className={cx('quick-action-subtitle')}>Organize task to your project</span>
-            </span>
-          </button>
-
-          <button
-            type="button"
-            className={cx('quick-action-card')}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <span className={cx('quick-action-icon-box')} aria-hidden="true">
-              <Upload size={19} strokeWidth={1.8} />
-              <span className={cx('quick-action-plus-badge')}>+</span>
-            </span>
-            <span className={cx('quick-action-text')}>
-              <strong className={cx('quick-action-title')}>Upload a File</strong>
-              <span className={cx('quick-action-subtitle')}>Upload file to your projects</span>
-            </span>
-          </button>
-        </section>
-      )}
-
       {/* OVERVIEW TAB */}
       {activeBoardTab === 'overview' && (
         <div className={cx('overview-split-grid')}>
@@ -1065,30 +703,29 @@ export const ProjectBoard: React.FC = () => {
                 })}
               </div>
 
-              {canCreateCard && (
-                <button
-                  type="button"
-                  className={cx('overview-add-task-link')}
-                  onClick={() =>
-                    setActiveModal({
-                      type: 'createTask',
-                      projectId: activeProject?.projectId,
-                      defaultStatus: 'To do'
-                    })
-                  }
-                >
-                  <Plus size={14} strokeWidth={2.2} />
-                  <span>Add Task</span>
-                </button>
-              )}
             </section>
           </div>
 
           <aside className={cx('overview-right-col')} aria-label="Project Summary">
+            {canCreateCard && (
+              <button
+                type="button"
+                className={cx('overview-add-task-button')}
+                onClick={() =>
+                  setActiveModal({
+                    type: 'createTask',
+                    projectId: activeProject?.projectId,
+                    defaultStatus: 'To do'
+                  })
+                }
+              >
+                <Plus size={14} strokeWidth={2.2} />
+                <span>Add Task</span>
+              </button>
+            )}
             <h2 className={cx('overview-section-title')}>Summary</h2>
 
             <div className={cx('summary-status-card')}>
-              <div className={cx('summary-status-top-accent')} />
               <div className={cx('summary-status-body')}>
                 <h3 className={cx('summary-status-title')}>{summaryStatusHeadline}</h3>
                 <p className={cx('summary-status-copy')}>
@@ -1128,14 +765,10 @@ export const ProjectBoard: React.FC = () => {
                 type="button"
                 className={cx('activity-view-all-btn')}
                 onClick={() => {
-                  if (!showAllActivity && statsTasks.length > 3) {
-                    setShowAllActivity(true);
-                  } else {
-                    handleTabSelect('board');
-                  }
+                  setShowAllActivity((previous) => !previous);
                 }}
               >
-                {showAllActivity ? 'Open Board View' : 'View All'}
+                {showAllActivity ? 'Show Less' : 'View All'}
               </button>
             </div>
           </aside>
