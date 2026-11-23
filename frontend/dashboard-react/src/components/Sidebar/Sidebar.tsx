@@ -1,22 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { getAvatarSource, useDashboard } from '../../context/DashboardContext';
 import { createCx } from '../../utils/cx';
-import { TaskDetails } from '../ProjectBoard/TaskDetails';
 import styles from './Sidebar.module.css';
 
 const cx = createCx(styles);
 
 export const Sidebar: React.FC = () => {
   const [collapsedProjectId, setCollapsedProjectId] = useState<string | null>(null);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | number | null>(null);
   const {
     activeView,
     switchView,
-    closeTaskDetails,
+    selectedTaskViewId,
+    openFullTaskView,
     projects,
     projectsLoaded,
     accessibleTasks,
-    moveTaskStatus,
     currentUser,
     unreadNotificationCount,
     messagesUnreadCount,
@@ -33,22 +31,6 @@ export const Sidebar: React.FC = () => {
   }, [isMobileSidebarOpen]);
 
   const avatarSrc = getAvatarSource(currentUser);
-  const selectedTask =
-    selectedTaskId === null
-      ? null
-      : accessibleTasks.find(
-          (task) =>
-            String(task.id) === String(selectedTaskId) ||
-            String(task.taskId || task.task_id || '') === String(selectedTaskId)
-        ) || null;
-  const selectedTaskProject = selectedTask
-    ? projects.find(
-        (project) =>
-          project.projectId === selectedTask.projectId ||
-          project.projectId === selectedTask.project_id ||
-          project.name === selectedTask.project
-      ) || null
-    : null;
   const projectAccentColors: Record<string, string> = {
     red: '#EF4444', blue: '#3B82F6', yellow: '#EAB308', green: '#22C55E',
     orange: '#F97316', purple: '#8B5CF6', pink: '#EC4899', brown: '#92400E',
@@ -69,7 +51,6 @@ export const Sidebar: React.FC = () => {
   };
 
   return (
-    <>
       <aside
         className={cx('sidebar', { 'is-open': isMobileSidebarOpen })}
         aria-label="Primary"
@@ -237,7 +218,7 @@ export const Sidebar: React.FC = () => {
                   aria-expanded={isProjectExpanded}
                   aria-controls={isProjectExpanded ? taskListId : undefined}
                   onClick={(e) => {
-                    if (isProjectActive) {
+                    if (isProjectActive && selectedTaskViewId === null) {
                       setCollapsedProjectId((current) =>
                         current === project.projectId ? null : project.projectId
                       );
@@ -272,26 +253,31 @@ export const Sidebar: React.FC = () => {
                     aria-label={`${project.name} tasks`}
                   >
                     {projectTasks.length > 0 ? (
-                      projectTasks.map((task) => (
-                        <li key={task.taskId || task.task_id || task.id}>
-                          <span className={cx('project-task-branch')} aria-hidden="true" />
-                          <button
-                            type="button"
-                            className={cx('project-task-open')}
-                            onClick={() => {
-                              closeTaskDetails();
-                              setMobileSidebarOpen(false);
-                              setSelectedTaskId(task.taskId || task.id);
-                            }}
-                            aria-label={`View task: ${task.title}`}
-                          >
-                            <span className={cx('project-task-file-icon')} aria-hidden="true">
-                              📄
-                            </span>
-                            <span className={cx('project-task-title')}>{task.title}</span>
-                          </button>
-                        </li>
-                      ))
+                      projectTasks.map((task) => {
+                        const tid = task.taskId || task.task_id || task.id;
+                        const isSelectedTask =
+                          selectedTaskViewId !== null &&
+                          (String(selectedTaskViewId) === String(task.id) ||
+                            String(selectedTaskViewId) === String(tid));
+                        return (
+                          <li key={tid}>
+                            <span className={cx('project-task-branch')} aria-hidden="true" />
+                            <button
+                              type="button"
+                              className={cx('project-task-open', {
+                                'is-active': isSelectedTask
+                              })}
+                              onClick={() => openFullTaskView(tid, project.name)}
+                              aria-label={`View task: ${task.title}`}
+                            >
+                              <span className={cx('project-task-file-icon')} aria-hidden="true">
+                                📄
+                              </span>
+                              <span className={cx('project-task-title')}>{task.title}</span>
+                            </button>
+                          </li>
+                        );
+                      })
                     ) : (
                       <li className={cx('project-task-empty')}>No tasks yet</li>
                     )}
@@ -388,16 +374,5 @@ export const Sidebar: React.FC = () => {
         </div>
     </div>
       </aside>
-      {selectedTaskId !== null && (
-        <TaskDetails
-          task={selectedTask}
-          project={selectedTaskProject}
-          comments={selectedTask?.commentsList}
-          error={!selectedTask ? 'The selected task is no longer available.' : ''}
-          onClose={() => setSelectedTaskId(null)}
-          onStatusChange={moveTaskStatus}
-        />
-      )}
-    </>
   );
 };

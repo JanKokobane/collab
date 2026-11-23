@@ -2,12 +2,16 @@ require('dotenv').config();
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { pool, closeDB } = require('./db');
+const { pool, closeDB, isDatabaseConnected } = require('./db');
 
 const migrationsDirectory = path.join(__dirname, '../../db/migrations');
 const migrationLockId = 721946381;
 
 async function runMigrations() {
+    if (!isDatabaseConnected()) {
+        console.warn('[AI Studio] Skipping SQL migrations (mock DB active)');
+        return;
+    }
     const client = await pool.connect();
     try {
         await client.query('SELECT pg_advisory_lock($1)', [migrationLockId]);

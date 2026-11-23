@@ -1,4 +1,17 @@
 {
+  "name": "collab",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend/dashboard-react"
+  ],
+  "scripts": {
+    "dev": "node backend/index.js",
+    "build": "npm run build:frontend",
+    "build:frontend": "npm run build --workspace=frontend/dashboard-react",
+    "start": "node backend/index.js",
+    "lint": "npm run lint --workspace=frontend/dashboard-react"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0"
   }

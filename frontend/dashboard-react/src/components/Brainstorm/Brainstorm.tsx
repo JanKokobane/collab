@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getUserInitials, useDashboard } from '../../context/DashboardContext';
 import { api } from '../../services/api';
 import { firebaseAuth } from '../../services/firebase';
-import type { ProjectMember } from '../../types/dashboard';
+import type { Project, ProjectMember } from '../../types/dashboard';
 import { createCx } from '../../utils/cx';
 import { SvgIcon } from '../../utils/icons';
 import styles from './Brainstorm.module.css';
@@ -118,6 +118,7 @@ export const Brainstorm: React.FC = () => {
   const [boards, setBoards] = useState<ServerBrainstormBoard[]>([]);
   const [loadingProjectIds, setLoadingProjectIds] = useState<Record<string, boolean>>({});
   const [activeBoard, setActiveBoard] = useState<ServerBrainstormBoard | null>(null);
+  const [activeBoardMembers, setActiveBoardMembers] = useState<ProjectMember[]>([]);
   const [stickyNotes, setStickyNotes] = useState<CanvasStickyNote[]>([]);
   const [stickyLinks, setStickyLinks] = useState<CanvasStickyLink[]>([]);
 
@@ -215,6 +216,7 @@ export const Brainstorm: React.FC = () => {
     if (!accessibleProjects.length) {
       setSelectedProjectId('');
       setActiveBoard(null);
+      setActiveBoardMembers([]);
       setStickyNotes([]);
       setStickyLinks([]);
       return;
@@ -231,6 +233,7 @@ export const Brainstorm: React.FC = () => {
     async (boardId: string) => {
       if (!boardId) {
         setActiveBoard(null);
+        setActiveBoardMembers([]);
         setStickyNotes([]);
         setStickyLinks([]);
         setDirty(false);
@@ -280,6 +283,7 @@ export const Brainstorm: React.FC = () => {
 
       setActiveBoard(board);
       setSelectedProjectId(board.project_id);
+      setActiveBoardMembers(boardMembers);
       setStickyNotes(normalizedNotes);
       setStickyLinks(normalizedLinks);
       setDirty(false);
@@ -875,6 +879,7 @@ export const Brainstorm: React.FC = () => {
                   return;
                 }
                 setActiveBoard(null);
+                setActiveBoardMembers([]);
                 setStickyNotes([]);
                 setStickyLinks([]);
                 setDirty(false);

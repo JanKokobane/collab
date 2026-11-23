@@ -81,6 +81,18 @@ function formatDate(value?: string | null): string {
   }).format(date);
 }
 
+function formatActivityTime(raw?: string | null): string {
+  if (!raw) return 'Recently';
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return String(raw);
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(parsed);
+}
+
 export const TaskDetails: React.FC<TaskDetailsProps> = ({
   task,
   project,
@@ -132,7 +144,7 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
     setEditingTitle(false);
     setTitleDraft(task?.title || '');
     setBoardItems(task?.boardItems || []);
-  }, [task?.id, task?.title]);
+  }, [task?.id, task?.title, task?.boardItems]);
 
   useEffect(() => {
     const handleDocClick = (event: MouseEvent) => {
@@ -173,7 +185,7 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
     if (task?.owner) return task.owner;
     if (project) {
       return {
-        firebaseUid: project.creatorFirebaseUid,
+        firebaseUid: project.creatorFirebaseUid || undefined,
         name: project.creatorName || 'Project Owner',
         email: project.creatorEmail,
         initials: project.creatorInitials,
@@ -208,19 +220,24 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
   }, [task, localFiles]);
 
   const activityItems = useMemo(() => {
-    const base = Array.isArray(task?.activity) ? [...task.activity] : [];
+    const base = Array.isArray(task?.activity)
+      ? task.activity.map((item) => ({
+          ...item,
+          time: formatActivityTime(item.time)
+        }))
+      : [];
     comments.forEach((c, idx) => {
       base.push({
         id: `comment-act-${c.id || idx}`,
         text: `${c.authorName || c.author || 'Teammate'} commented: ${c.text || c.body || ''}`,
-        time: c.createdAt || c.created_at || 'Today'
+        time: formatActivityTime(c.createdAt || c.created_at || 'Today')
       });
     });
     if (base.length === 0 && task) {
       base.push({
         id: 'act-created',
         text: `${task.title} created`,
-        time: task.updatedAt || 'Today'
+        time: formatActivityTime(task.updatedAt || task.createdAt || 'Today')
       });
     }
     return showAllActivity ? base : base.slice(0, 3);
@@ -1312,88 +1329,98 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredBoardItems.map((item) => {
-                      const isCompleted =
-                        item.status === 'Completed' || item.status === 'Launched';
-                      const colCfg = BOARD_COLUMNS.find((c) => c.status === item.status);
+                    {filteredBoardItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={7}>
+                          <div className={styles['empty-board-notice']}>
+                            No tasks match the active filters. Click &ldquo;Add New&rdquo; or reset filters.
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredBoardItems.map((item) => {
+                        const isCompleted =
+                          item.status === 'Completed' || item.status === 'Launched';
+                        const colCfg = BOARD_COLUMNS.find((c) => c.status === item.status);
 
-                      return (
-                        <tr key={item.id}>
-                          <td>
-                            <button
-                              type="button"
-                              className={`${styles['task-circle-btn']} ${
-                                isCompleted ? styles['is-done'] : ''
-                              }`}
-                              aria-label={`Toggle ${item.title}`}
-                              onClick={() =>
-                                moveBoardCard(item.id, isCompleted ? 'Pending' : 'Completed')
-                              }
-                            >
-                              {isCompleted && <Check size={11} strokeWidth={2.5} />}
-                            </button>
-                          </td>
-                          <td>
-                            <span
-                              className={`${styles['task-row-title']} ${
-                                isCompleted ? styles['is-done'] : ''
-                              }`}
-                            >
-                              {item.title}
-                            </span>
-                          </td>
-                          <td>
-                            <span
-                              className={`${styles['col-status-pill']} ${
-                                styles[colCfg?.toneClass || 'tone-pending']
-                              }`}
-                            >
-                              {renderColumnStatusIcon(item.status)}
-                              <span>{item.status}</span>
-                            </span>
-                          </td>
-                          <td>
-                            {item.assignees.length > 0 ? (
-                              <div className={styles['card-avatar-row']}>
-                                {item.assignees.slice(0, 3).map((person, idx) => (
-                                  <span
-                                    key={`${item.id}-${person.name}-${idx}`}
-                                    className={styles['card-avatar-item']}
-                                  >
-                                    <PersonAvatar person={person} />
-                                  </span>
-                                ))}
+                        return (
+                          <tr key={item.id}>
+                            <td>
+                              <button
+                                type="button"
+                                className={`${styles['task-circle-btn']} ${
+                                  isCompleted ? styles['is-done'] : ''
+                                }`}
+                                aria-label={`Toggle ${item.title}`}
+                                onClick={() =>
+                                  moveBoardCard(item.id, isCompleted ? 'Pending' : 'Completed')
+                                }
+                              >
+                                {isCompleted && <Check size={11} strokeWidth={2.5} />}
+                              </button>
+                            </td>
+                            <td>
+                              <span
+                                className={`${styles['task-row-title']} ${
+                                  isCompleted ? styles['is-done'] : ''
+                                }`}
+                              >
+                                {item.title}
+                              </span>
+                            </td>
+                            <td>
+                              <span
+                                className={`${styles['col-status-pill']} ${
+                                  styles[colCfg?.toneClass || 'tone-pending']
+                                }`}
+                              >
+                                {renderColumnStatusIcon(item.status)}
+                                <span>{item.status}</span>
+                              </span>
+                            </td>
+                            <td>
+                              {item.assignees.length > 0 ? (
+                                <div className={styles['card-avatar-row']}>
+                                  {item.assignees.slice(0, 3).map((person, idx) => (
+                                    <span
+                                      key={`${item.id}-${person.name}-${idx}`}
+                                      className={styles['card-avatar-item']}
+                                    >
+                                      <PersonAvatar person={person} />
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className={styles['card-meta-empty']}>Unassigned</span>
+                              )}
+                            </td>
+                            <td>
+                              <span className={styles['card-date-text']}>
+                                {item.due || '—'}
+                              </span>
+                              {item.overdue && (
+                                <span className={styles['card-overdue-text']}> Overdue</span>
+                              )}
+                            </td>
+                            <td>
+                              <div className={styles['priority-inline']}>
+                                {renderPriorityFlag(item.priority)}
                               </div>
-                            ) : (
-                              <span className={styles['card-meta-empty']}>Unassigned</span>
-                            )}
-                          </td>
-                          <td>
-                            <span className={styles['card-date-text']}>
-                              {item.due || '—'}
-                            </span>
-                            {item.overdue && (
-                              <span className={styles['card-overdue-text']}> Overdue</span>
-                            )}
-                          </td>
-                          <td>
-                            <div className="flex items-center gap-1.5">
-                              {renderPriorityFlag(item.priority)}
-                            </div>
-                          </td>
-                          <td>
-                            <button
-                              type="button"
-                              className={styles['row-more-btn']}
-                              aria-label={`Delete ${item.title}`}
-                              onClick={() => deleteBoardCard(item.id)}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className={styles['row-more-btn']}
+                                aria-label={`Delete ${item.title}`}
+                                onClick={() => deleteBoardCard(item.id)}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1676,54 +1703,60 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
           {activeTab === 'calendar' && (
             <>
               {renderBoardToolbar()}
-              <div className={styles['calendar-grid']}>
-                {calendarGroups.map(([dateLabel, items]) => (
-                  <div key={dateLabel} className={styles['calendar-day-box']}>
-                    <div className={styles['calendar-day-header']}>
-                      <span className={styles['calendar-day-label']}>{dateLabel}</span>
-                      <span className={styles['calendar-day-count']}>{items.length}</span>
-                    </div>
+              {calendarGroups.length === 0 ? (
+                <div className={styles['empty-board-notice']}>
+                  No scheduled tasks match the active filters.
+                </div>
+              ) : (
+                <div className={styles['calendar-grid']}>
+                  {calendarGroups.map(([dateLabel, items]) => (
+                    <div key={dateLabel} className={styles['calendar-day-box']}>
+                      <div className={styles['calendar-day-header']}>
+                        <span className={styles['calendar-day-label']}>{dateLabel}</span>
+                        <span className={styles['calendar-day-count']}>{items.length}</span>
+                      </div>
 
-                    {items.map((item) => {
-                      const colCfg = BOARD_COLUMNS.find((c) => c.status === item.status);
-                      return (
-                        <div key={item.id} className={styles['calendar-card']}>
-                          <div className="flex items-center justify-between gap-2">
-                            <span
-                              className={`${styles['col-status-pill']} ${
-                                styles[colCfg?.toneClass || 'tone-pending']
-                              }`}
-                            >
-                              {renderColumnStatusIcon(item.status)}
-                              <span>{item.status}</span>
-                            </span>
-                            {item.overdue && (
-                              <span className={styles['card-overdue-text']}>Overdue</span>
-                            )}
-                          </div>
-                          <strong className={styles['board-card-title']}>{item.title}</strong>
-                          <div className="flex items-center justify-between gap-2 pt-1">
-                            {item.assignees.length > 0 ? (
-                              <div className={styles['card-avatar-row']}>
-                                {item.assignees.slice(0, 3).map((person, idx) => (
-                                  <span key={idx} className={styles['card-avatar-item']}>
-                                    <PersonAvatar person={person} />
-                                  </span>
-                                ))}
+                      {items.map((item) => {
+                        const colCfg = BOARD_COLUMNS.find((c) => c.status === item.status);
+                        return (
+                          <div key={item.id} className={styles['calendar-card']}>
+                            <div className={styles['calendar-card-head']}>
+                              <span
+                                className={`${styles['col-status-pill']} ${
+                                  styles[colCfg?.toneClass || 'tone-pending']
+                                }`}
+                              >
+                                {renderColumnStatusIcon(item.status)}
+                                <span>{item.status}</span>
+                              </span>
+                              {item.overdue && (
+                                <span className={styles['card-overdue-text']}>Overdue</span>
+                              )}
+                            </div>
+                            <strong className={styles['board-card-title']}>{item.title}</strong>
+                            <div className={styles['calendar-card-foot']}>
+                              {item.assignees.length > 0 ? (
+                                <div className={styles['card-avatar-row']}>
+                                  {item.assignees.slice(0, 3).map((person, idx) => (
+                                    <span key={idx} className={styles['card-avatar-item']}>
+                                      <PersonAvatar person={person} />
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className={styles['card-meta-empty']}>Unassigned</span>
+                              )}
+                              <div className={styles['priority-inline']}>
+                                {renderPriorityFlag(item.priority)}
                               </div>
-                            ) : (
-                              <span className={styles['card-meta-empty']}>Unassigned</span>
-                            )}
-                            <div className="flex items-center gap-1">
-                              {renderPriorityFlag(item.priority)}
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
 

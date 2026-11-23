@@ -8,7 +8,7 @@ const { createServer } = require('node:http');
 const { attachMessageSocket } = require('./src/realtime/messageSocket');
 const { sweepTaskDeadlines } = require('./src/services/taskDeadlineService');
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 
 const runTaskDeadlineSweep = async () => {
     try {

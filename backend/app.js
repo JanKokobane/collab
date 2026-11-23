@@ -1,4 +1,6 @@
 const express = require('express');
+const fs = require('node:fs');
+const path = require('node:path');
 const helmet = require('helmet');
 const { rateLimit } = require('express-rate-limit');
 
@@ -10,7 +12,7 @@ const userRouter = require('./src/routes/user');
 const messagesRouter = require('./src/routes/messages');
 const aiRouter = require('./src/routes/ai');
 
-const { pool } = require('./src/config/db');
+const { pool, isDatabaseConnected } = require('./src/config/db');
 const { getCorsOrigin, isOriginAllowed } = require('./src/config/cors');
 
 const app = express();
@@ -45,7 +47,14 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(helmet());
+app.use(
+    helmet({
+        contentSecurityPolicy: false,
+        crossOriginEmbedderPolicy: false,
+        crossOriginOpenerPolicy: false,
+        xFrameOptions: false
+    })
+);
 
 app.use(
     rateLimit({
@@ -65,14 +74,6 @@ app.use(
 app.use(express.json({ limit: '300mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-app.get('/', (req, res) => {
-    res.json({
-        success: true,
-        message: 'Backend API is running',
-        environment: process.env.NODE_ENV || 'development'
-    });
-});
-
 app.get('/api/health', (req, res) => {
     res.json({
         success: true,
@@ -81,6 +82,15 @@ app.get('/api/health', (req, res) => {
 });
 
 app.get('/api/health/database', async (req, res) => {
+    if (!isDatabaseConnected()) {
+        return res.json({
+            success: true,
+            data: {
+                database: 'mock'
+            }
+        });
+    }
+
     try {
         await pool.query('SELECT 1');
 
@@ -111,10 +121,35 @@ app.use('/api/users', userRouter);
 app.use('/api/messages', messagesRouter);
 app.use('/api/ai', aiRouter);
 
-app.use((req, res) => {
+app.use('/api', (req, res) => {
     res.status(404).json({
         success: false,
         message: 'API endpoint not found.'
+    });
+});
+
+const dashboardDistDir = path.resolve(__dirname, '../frontend/dashboard-react/dist');
+const frontendStaticDir = path.resolve(__dirname, '../frontend');
+
+if (fs.existsSync(dashboardDistDir)) {
+    app.use(express.static(dashboardDistDir));
+}
+
+app.use('/legal', express.static(path.join(frontendStaticDir, 'legal')));
+app.get('/landing', (req, res) => {
+    res.sendFile(path.join(frontendStaticDir, 'index.html'));
+});
+app.use(express.static(frontendStaticDir));
+
+app.use((req, res) => {
+    const spaEntry = path.join(dashboardDistDir, 'index.html');
+    if (req.method === 'GET' && fs.existsSync(spaEntry)) {
+        return res.sendFile(spaEntry);
+    }
+
+    return res.status(404).json({
+        success: false,
+        message: 'Endpoint not found.'
     });
 });
 

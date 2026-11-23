@@ -33,29 +33,38 @@ const initializeFirebaseAdmin = () => {
     let credential;
     let credentialProjectId;
 
-    if (clientEmail && privateKey) {
-        credential = admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail,
-            privateKey
-        });
-    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-        credential = admin.credential.applicationDefault();
-    } else if (fs.existsSync(serviceAccountPath)) {
-        const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
-        credential = admin.credential.cert(serviceAccount);
-        credentialProjectId = serviceAccount.project_id;
-    } else {
-        throw new Error(
-            'Configure Firebase Admin credentials with FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY, GOOGLE_APPLICATION_CREDENTIALS, or FIREBASE_SERVICE_ACCOUNT_PATH.'
-        );
+    const hasValidPemKey = Boolean(
+        privateKey &&
+        privateKey.includes('BEGIN') &&
+        privateKey.includes('PRIVATE KEY')
+    );
+
+    try {
+        if (clientEmail && hasValidPemKey) {
+            credential = admin.credential.cert({
+                projectId: process.env.FIREBASE_PROJECT_ID,
+                clientEmail,
+                privateKey
+            });
+        } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS && fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS)) {
+            credential = admin.credential.applicationDefault();
+        } else if (fs.existsSync(serviceAccountPath)) {
+            const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+            credential = admin.credential.cert(serviceAccount);
+            credentialProjectId = serviceAccount.project_id;
+        } else {
+            console.warn('[AI Studio] Firebase Admin service account not configured — initializing with projectId only for token verification');
+        }
+    } catch (error) {
+        console.warn('[AI Studio] Firebase Admin credential error — falling back to projectId-only initialization:', error.message);
+        credential = undefined;
     }
 
-    const projectId = process.env.FIREBASE_PROJECT_ID || credentialProjectId;
-    if (projectId) {
+    const projectId = process.env.FIREBASE_PROJECT_ID || credentialProjectId || 'collab-5a8c2';
+    if (credential) {
         admin.initializeApp({ credential, projectId });
     } else {
-        admin.initializeApp({ credential });
+        admin.initializeApp({ projectId });
     }
 
     initialized = true;

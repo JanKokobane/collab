@@ -1,4 +1,4 @@
-const { pool } = require('../config/db');
+const { pool, isDatabaseConnected } = require('../config/db');
 
 const getProjectTaskRecipients = async (client, projectId) => {
     const result = await client.query(
@@ -19,6 +19,7 @@ const getProjectTaskRecipients = async (client, projectId) => {
 };
 
 const sweepTaskDeadlines = async () => {
+    if (!isDatabaseConnected()) return;
     const client = await pool.connect();
     try {
         await client.query('BEGIN');

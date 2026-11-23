@@ -1,15 +1,67 @@
-import React, { useMemo } from 'react';
-import { getSprintMembers, useDashboard } from '../../context/DashboardContext';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  getSprintMembers,
+  normalizeTaskRecord,
+  useDashboard
+} from '../../context/DashboardContext';
+import { api } from '../../services/api';
 import type { Project, ProjectMember, TaskItem } from '../../types/dashboard';
+import type {
+  BoardCardItem,
+  BoardColumnStatus,
+  TaskAttachment,
+  TaskComment,
+  TaskItem as ViewerTaskItem,
+  TaskSubtask
+} from '../../types/taskViewer';
 import { ProjectOverview } from './ProjectOverview';
+import { TaskDetails } from './TaskDetails';
 
 type OverviewTask = TaskItem & { assignees: ProjectMember[] };
 
 function getOverviewTask(task: TaskItem, project: Project): OverviewTask {
   const sprint = project.sprints.find((item) => item.name === task.sprint);
+  const sprintMembers = sprint ? getSprintMembers(project, sprint) : [];
   return {
     ...task,
-    assignees: sprint ? getSprintMembers(project, sprint) : []
+    assignees: sprintMembers.length > 0 ? sprintMembers : task.sprintMembers || []
+  };
+}
+
+function toBoardStatus(status?: string): BoardColumnStatus {
+  if (status === 'Done') return 'Completed';
+  if (status === 'In progress') return 'In Progress';
+  return 'Pending';
+}
+
+function toBoardPriority(priority?: string): 'high' | 'normal' | 'low' {
+  const normalized = String(priority || '').toLowerCase();
+  if (normalized === 'high') return 'high';
+  if (normalized === 'low') return 'low';
+  return 'normal';
+}
+
+function normalizeTaskComment(raw: Record<string, unknown>, idx: number): TaskComment {
+  const id = String(raw.comment_id || raw.id || `comment-${idx}`);
+  const authorName = String(
+    raw.author_name || raw.authorName || raw.author || raw.author_email || 'Teammate'
+  );
+  const text = String(raw.body ?? raw.text ?? '');
+  const createdAt = String(raw.created_at || raw.createdAt || '');
+  return {
+    id,
+    commentId: raw.comment_id ? String(raw.comment_id) : id,
+    author: authorName,
+    authorName,
+    author_name: authorName,
+    authorEmail: raw.author_email ? String(raw.author_email) : undefined,
+    authorUid: raw.author_firebase_uid ? String(raw.author_firebase_uid) : undefined,
+    authorProfileImage: raw.author_profile_image ? String(raw.author_profile_image) : undefined,
+    text,
+    body: text,
+    createdAt,
+    created_at: createdAt,
+    attachments: Array.isArray(raw.attachments) ? (raw.attachments as TaskComment['attachments']) : []
   };
 }
 
@@ -19,12 +71,18 @@ export const ProjectBoard: React.FC = () => {
     projects,
     accessibleTasks,
     switchView,
+    selectedTaskViewId,
+    openFullTaskView,
+    closeFullTaskView,
     openTaskDetails,
     moveTaskStatus,
-    setActiveModal
+    setActiveModal,
+    setTasks,
+    showDashboardToast
   } = useDashboard();
 
   const project = activeProject;
+
   const tasks = useMemo(() => {
     if (!project) return [];
     return accessibleTasks
@@ -36,6 +94,7 @@ export const ProjectBoard: React.FC = () => {
       )
       .map((task) => getOverviewTask(task, project));
   }, [accessibleTasks, project]);
+
   const allTasks = useMemo(
     () =>
       accessibleTasks.map((task) => {
@@ -49,6 +108,287 @@ export const ProjectBoard: React.FC = () => {
       }),
     [accessibleTasks, projects]
   );
+
+  const selectedTaskBase = useMemo(() => {
+    if (selectedTaskViewId === null) return null;
+    const target = String(selectedTaskViewId);
+    return (
+      tasks.find(
+        (t) =>
+          String(t.id) === target ||
+          String(t.taskId || '') === target ||
+          String(t.task_id || '') === target
+      ) ||
+      allTasks.find(
+        (t) =>
+          String(t.id) === target ||
+          String(t.taskId || '') === target ||
+          String(t.task_id || '') === target
+      ) ||
+      null
+    );
+  }, [selectedTaskViewId, tasks, allTasks]);
+
+  const selectedTaskProject = useMemo(() => {
+    if (!selectedTaskBase) return project || null;
+    return (
+      projects.find(
+        (item) =>
+          item.projectId === selectedTaskBase.projectId ||
+          item.projectId === selectedTaskBase.project_id ||
+          item.name === selectedTaskBase.project
+      ) ||
+      project ||
+      null
+    );
+  }, [selectedTaskBase, projects, project]);
+
+  const [fetchedTask, setFetchedTask] = useState<OverviewTask | null>(null);
+  const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
+  const [taskLoading, setTaskLoading] = useState<boolean>(false);
+  const [taskError, setTaskError] = useState<string>('');
+  const [retryCounter, setRetryCounter] = useState<number>(0);
+  const [subtasksByTask, setSubtasksByTask] = useState<Record<string, TaskSubtask[]>>({});
+
+  useEffect(() => {
+    if (selectedTaskViewId === null || !selectedTaskProject?.projectId) {
+      setFetchedTask(null);
+      setTaskComments([]);
+      setTaskLoading(false);
+      setTaskError('');
+      return;
+    }
+
+    const projectId = selectedTaskProject.projectId;
+    const taskId = String(
+      selectedTaskBase?.taskId || selectedTaskBase?.task_id || selectedTaskViewId
+    );
+    let cancelled = false;
+
+    setTaskLoading(!selectedTaskBase);
+    setTaskError('');
+
+    Promise.all([
+      api.get(
+        `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}?metadataOnly=true`
+      ),
+      api.get(
+        `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/comments`
+      )
+    ])
+      .then(([taskRes, commentsRes]) => {
+        if (cancelled) return;
+        const rawTask = taskRes?.data?.task;
+        if (rawTask) {
+          const normalized = normalizeTaskRecord(rawTask, selectedTaskProject);
+          setFetchedTask(getOverviewTask(normalized, selectedTaskProject));
+        }
+        const rawComments = Array.isArray(commentsRes?.data?.comments)
+          ? commentsRes.data.comments
+          : [];
+        setTaskComments(rawComments.map(normalizeTaskComment));
+        setTaskError('');
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const message =
+          err instanceof Error ? err.message : 'Unable to load task details right now.';
+        setTaskError(message);
+      })
+      .finally(() => {
+        if (!cancelled) setTaskLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTaskViewId, selectedTaskProject, selectedTaskBase?.taskId, selectedTaskBase?.task_id, retryCounter]);
+
+  const activeViewerTask: ViewerTaskItem | null = useMemo(() => {
+    const source = fetchedTask || selectedTaskBase;
+    if (!source) return null;
+
+    const projectTasks = selectedTaskProject
+      ? allTasks.filter(
+          (item) =>
+            item.projectId === selectedTaskProject.projectId ||
+            item.project_id === selectedTaskProject.projectId ||
+            item.project === selectedTaskProject.name
+        )
+      : tasks;
+
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const boardItems: BoardCardItem[] = projectTasks.map((item) => {
+      const dueDateKey = item.date || item.due_date || undefined;
+      return {
+        id: String(item.taskId || item.id),
+        title: item.title,
+        status: toBoardStatus(item.status),
+        assignees: item.assignees || [],
+        due: item.due && item.due !== '—' ? item.due : undefined,
+        dueDateKey: dueDateKey || undefined,
+        priority: toBoardPriority(item.priority),
+        progress: item.progress,
+        overdue: Boolean(dueDateKey && dueDateKey < todayKey && item.status !== 'Done')
+      };
+    });
+
+    const key = String(source.taskId || source.id);
+    return {
+      ...source,
+      subtasks: subtasksByTask[key] || [],
+      boardItems
+    };
+  }, [fetchedTask, selectedTaskBase, selectedTaskProject, allTasks, tasks, subtasksByTask]);
+
+  const handleAddComment = useCallback(
+    async (taskId: string | number, text: string) => {
+      if (!selectedTaskProject?.projectId) return;
+      const tid = String(selectedTaskBase?.taskId || selectedTaskBase?.task_id || taskId);
+      try {
+        const res = await api.post(
+          `/projects/${encodeURIComponent(selectedTaskProject.projectId)}/tasks/${encodeURIComponent(tid)}/comments`,
+          { text, attachments: [] }
+        );
+        const created = res?.data?.comment;
+        if (created) {
+          setTaskComments((prev) => [...prev, normalizeTaskComment(created, prev.length)]);
+          setTasks((prev) =>
+            prev.map((item) =>
+              String(item.id) === String(taskId) || String(item.taskId || '') === tid
+                ? { ...item, comments: (item.comments || 0) + 1 }
+                : item
+            )
+          );
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Unable to post comment.';
+        showDashboardToast(message, 'error');
+      }
+    },
+    [selectedTaskProject, selectedTaskBase, setTasks, showDashboardToast]
+  );
+
+  const handleRenameTask = useCallback(
+    async (taskId: string | number, nextTitle: string) => {
+      const source = fetchedTask || selectedTaskBase;
+      if (!source || !selectedTaskProject?.projectId) return;
+      const tid = String(source.taskId || source.task_id || taskId);
+      try {
+        const payload = {
+          title: nextTitle,
+          description: source.description || '',
+          category: source.category || source.tag || 'Product',
+          tags: Array.isArray(source.tags) ? source.tags : [],
+          status: source.status || 'To do',
+          priority: String(source.priority || 'medium').toLowerCase(),
+          startDate: source.startDate || source.start_date || null,
+          dueDate: source.date || source.due_date || null,
+          chatMessageId: source.chatMessageId || source.chat_message_id || null,
+          descriptionAttachments: Array.isArray(source.descriptionAttachments)
+            ? source.descriptionAttachments
+            : []
+        };
+        const res = await api.put(
+          `/projects/${encodeURIComponent(selectedTaskProject.projectId)}/tasks/${encodeURIComponent(tid)}`,
+          payload
+        );
+        const updatedRaw = res?.data?.task;
+        if (updatedRaw) {
+          const normalized = normalizeTaskRecord(updatedRaw, selectedTaskProject);
+          setFetchedTask(getOverviewTask(normalized, selectedTaskProject));
+          setTasks((prev) =>
+            prev.map((item) =>
+              String(item.id) === String(taskId) || String(item.taskId || '') === tid
+                ? { ...item, ...normalized }
+                : item
+            )
+          );
+          showDashboardToast('Task title updated.', 'success');
+        }
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : 'Unable to update the task title.';
+        showDashboardToast(message, 'error');
+      }
+    },
+    [fetchedTask, selectedTaskBase, selectedTaskProject, setTasks, showDashboardToast]
+  );
+
+  const handleAddSubtask = useCallback(
+    (taskId: string | number, title: string) => {
+      const key = String(selectedTaskBase?.taskId || taskId);
+      setSubtasksByTask((prev) => {
+        const existing = prev[key] || [];
+        return {
+          ...prev,
+          [key]: [
+            ...existing,
+            {
+              id: `sub-${Date.now()}`,
+              title,
+              done: false
+            }
+          ]
+        };
+      });
+    },
+    [selectedTaskBase]
+  );
+
+  const handleToggleSubtask = useCallback(
+    (taskId: string | number, subtaskId: string) => {
+      const key = String(selectedTaskBase?.taskId || taskId);
+      setSubtasksByTask((prev) => {
+        const existing = prev[key] || [];
+        return {
+          ...prev,
+          [key]: existing.map((sub) =>
+            sub.id === subtaskId ? { ...sub, done: !sub.done } : sub
+          )
+        };
+      });
+    },
+    [selectedTaskBase]
+  );
+
+  const handleUploadAttachment = useCallback(
+    (_taskId: string | number, uploaded: TaskAttachment[]) => {
+      if (uploaded.length > 0) {
+        showDashboardToast(
+          `${uploaded.length} file${uploaded.length === 1 ? '' : 's'} attached to this task view.`,
+          'success'
+        );
+      }
+    },
+    [showDashboardToast]
+  );
+
+  if (selectedTaskViewId !== null) {
+    return (
+      <TaskDetails
+        task={activeViewerTask}
+        project={selectedTaskProject}
+        comments={taskComments}
+        loading={taskLoading}
+        error={taskError}
+        onRetry={() => setRetryCounter((n) => n + 1)}
+        onClose={closeFullTaskView}
+        onStatusChange={(tid, status) => {
+          void moveTaskStatus(tid, status);
+        }}
+        onAddComment={(tid, text) => {
+          void handleAddComment(tid, text);
+        }}
+        onRenameTask={(tid, title) => {
+          void handleRenameTask(tid, title);
+        }}
+        onAddSubtask={handleAddSubtask}
+        onToggleSubtask={handleToggleSubtask}
+        onUploadAttachment={handleUploadAttachment}
+      />
+    );
+  }
 
   if (!project) {
     return (
@@ -68,7 +408,8 @@ export const ProjectBoard: React.FC = () => {
         const selected = projects.find((item) => item.projectId === projectId);
         if (selected) switchView(selected.name);
       }}
-      onOpenProgressAside={openTaskDetails}
+      onOpenProgressAside={(taskId) => openFullTaskView(taskId, project.name)}
+      onOpenAnalytics={tasks[0] ? () => openTaskDetails(tasks[0].id) : undefined}
       onToggleTaskDone={(taskId) => {
         const task = tasks.find((item) => String(item.id) === String(taskId));
         if (task) {

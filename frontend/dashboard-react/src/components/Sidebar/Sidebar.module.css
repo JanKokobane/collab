@@ -188,9 +188,11 @@
 
 }
 
-.project-task-open:hover .project-task-title {
+.project-task-open:hover .project-task-title,
+.project-task-open.is-active .project-task-title {
 
-    color: #2563EB;
+    color: #5E3BEE;
+    font-weight: 600;
 
 }
 

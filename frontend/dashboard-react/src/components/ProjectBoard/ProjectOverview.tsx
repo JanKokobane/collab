@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  BarChart3,
   Calendar as CalendarIcon,
   Check,
   ChevronLeft,
@@ -8,7 +9,7 @@ import {
   UserPlus,
   X
 } from 'lucide-react';
-import type { Project, TaskItem } from '../../types/taskViewer';
+import type { Project, ProjectMember, TaskItem } from '../../types/taskViewer';
 import { PersonAvatar } from './PersonAvatar';
 import styles from './ProjectOverview.module.css';
 
@@ -19,29 +20,24 @@ export interface ProjectOverviewProps {
   allTasks?: TaskItem[];
   onSelectProject?: (projectId: string) => void;
   onOpenProgressAside: (taskId: string | number) => void;
+  onOpenAnalytics?: () => void;
   onToggleTaskDone: (taskId: string | number) => void;
   onAddTask?: (projectId: string, title: string) => void;
 }
 
-const WEEKLY_BARS = [
-  { day: 'Mon', val: 4.8 },
-  { day: 'Tue', val: 6.0 },
-  { day: 'Wed', val: 4.8 },
-  { day: 'Thu', val: 7.0 },
-  { day: 'Fri', val: 4.8 },
-  { day: 'Sat', val: 3.1 },
-  { day: 'Sun', val: 4.0 }
-];
+const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-const MONTHLY_BARS = [
-  { day: 'Mon', val: 6.2 },
-  { day: 'Tue', val: 5.4 },
-  { day: 'Wed', val: 7.4 },
-  { day: 'Thu', val: 6.1 },
-  { day: 'Fri', val: 5.9 },
-  { day: 'Sat', val: 3.8 },
-  { day: 'Sun', val: 4.5 }
-];
+function formatActivityTime(raw?: string | null): string {
+  if (!raw) return 'Recently';
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return String(raw);
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(parsed);
+}
 
 export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   project,
@@ -50,6 +46,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   allTasks,
   onSelectProject,
   onOpenProgressAside,
+  onOpenAnalytics,
   onToggleTaskDone,
   onAddTask
 }) => {
@@ -67,15 +64,32 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   const inProgressCount = tasks.filter((t) => t.status === 'In progress').length;
   const todoCount = tasks.filter((t) => t.status === 'To do' || t.status === 'Backlog').length;
 
-  const owner = {
-    firebaseUid: project.creatorFirebaseUid,
-    name: project.creatorName,
-    email: project.creatorEmail,
-    initials: project.creatorInitials,
-    profileImage: project.creatorProfileImage,
-    tone: project.creatorTone || 'indigo',
-    role: 'Project Owner'
-  };
+  const owner: ProjectMember = useMemo(
+    () => ({
+      firebaseUid: project.creatorFirebaseUid || undefined,
+      name: project.creatorName,
+      email: project.creatorEmail,
+      initials: project.creatorInitials,
+      profileImage: project.creatorProfileImage,
+      tone: project.creatorTone || 'indigo',
+      role: 'Project Owner'
+    }),
+    [
+      project.creatorFirebaseUid,
+      project.creatorName,
+      project.creatorEmail,
+      project.creatorInitials,
+      project.creatorProfileImage,
+      project.creatorTone
+    ]
+  );
+
+  const assigneesList: ProjectMember[] = useMemo(() => {
+    const members = Array.isArray(project.acceptedMembers) ? project.acceptedMembers : [];
+    if (members.length > 0) return members;
+    if (owner.name || owner.email) return [owner];
+    return [];
+  }, [project.acceptedMembers, owner]);
 
   const visibleTasks = useMemo(() => {
     return tasks.filter((t) => (taskFilter === 'pending' ? t.status !== 'Done' : true));
@@ -107,22 +121,26 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
       unread?: boolean;
     }> = [];
 
+    const nowDateKey = new Date().toISOString().slice(0, 10);
+
     tasks.forEach((t, idx) => {
       const id = `act-${t.id}`;
       if (dismissedActivityIds[id]) return;
 
-      const timeText = t.updatedAt || (idx < 2 ? 'Today, 2:24pm' : 'Yesterday, 5:10pm');
+      const rawTime = t.updatedAt || t.createdAt;
+      const timeText = formatActivityTime(rawTime);
+      const isToday = rawTime ? String(rawTime).slice(0, 10) === nowDateKey : idx < 2;
       const entry = {
         id,
         title: t.title,
         time: timeText,
-        detail: `${t.title} · ${timeText}`,
-        unread: idx === 0 || t.status === 'In progress'
+        detail: `${t.status || 'To do'}${t.sprint ? ` · ${t.sprint}` : ''}`,
+        unread: t.status === 'In progress' || t.status === 'Blocked'
       };
-      if (timeText.toLowerCase().includes('yesterday')) {
-        yesterday.push(entry);
-      } else {
+      if (isToday) {
         today.push(entry);
+      } else {
+        yesterday.push(entry);
       }
     });
 
@@ -145,7 +163,26 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     };
   }, [tasks, activityTab, dismissedActivityIds]);
 
-  const chartData = timeframe === 'Weekly' ? WEEKLY_BARS : MONTHLY_BARS;
+  const chartData = useMemo(() => {
+    const counts = [0, 0, 0, 0, 0, 0, 0];
+    tasks.forEach((t, index) => {
+      const raw = t.updatedAt || t.createdAt || t.due_date || t.date;
+      let dayIdx = index % 7;
+      if (raw) {
+        const parsed = new Date(raw);
+        if (!Number.isNaN(parsed.getTime())) {
+          const jsDay = parsed.getDay();
+          dayIdx = jsDay === 0 ? 6 : jsDay - 1;
+        }
+      }
+      counts[dayIdx] += t.status === 'Done' ? 2 : t.status === 'In progress' ? 1.5 : 1;
+    });
+    const multiplier = timeframe === 'Monthly' ? 1.25 : 1;
+    return DAY_LABELS.map((day, idx) => ({
+      day,
+      val: Number(Math.min(8, counts[idx] * multiplier).toFixed(1))
+    }));
+  }, [tasks, timeframe]);
 
   const handleQuickAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,29 +201,41 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
           <header className={styles['top-header']}>
             <div className={styles['top-header-left']}>
               <span className={styles['hero-avatar-ring']}>
-                <PersonAvatar person={owner} />
+                <PersonAvatar person={owner} size={46} />
               </span>
-              <div className="min-w-0">
+              <div className={styles['top-header-copy']}>
                 <h1 className={styles['header-title']}>{project.name}</h1>
                 <p className={styles['header-subtitle']}>
-                  Project Overview · Click any task in the sidebar for full task view
+                  Project Overview · Click any task below or in the sidebar for full task details
                 </p>
               </div>
             </div>
 
-            <button
-              type="button"
-              className={styles['primary-add-btn']}
-              onClick={() => {
-                const inputEl = document.getElementById('overview-add-task-input');
-                inputEl?.focus();
-              }}
-            >
-              <span className={styles['primary-add-plus']}>
-                <Plus size={14} strokeWidth={2.5} />
-              </span>
-              <span>Add Task</span>
-            </button>
+            <div className={styles['header-actions-group']}>
+              {onOpenAnalytics && tasks.length > 0 && (
+                <button
+                  type="button"
+                  className={styles['secondary-pill-btn']}
+                  onClick={onOpenAnalytics}
+                >
+                  <BarChart3 size={14} strokeWidth={2.2} />
+                  <span>Analytics</span>
+                </button>
+              )}
+              <button
+                type="button"
+                className={styles['primary-add-btn']}
+                onClick={() => {
+                  const inputEl = document.getElementById('overview-add-task-input');
+                  inputEl?.focus();
+                }}
+              >
+                <span className={styles['primary-add-plus']}>
+                  <Plus size={14} strokeWidth={2.5} />
+                </span>
+                <span>Add Task</span>
+              </button>
+            </div>
           </header>
 
           {/* 4 KPI Cards */}
@@ -263,7 +312,9 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                     <div className={styles['spotlight-info']}>
                       <div className={styles['spotlight-kicker']}>{activeSprint}</div>
                       <h3 className={styles['spotlight-title']}>{cardProject.name}</h3>
-                      <p className={styles['spotlight-desc']}>{cardProject.description}</p>
+                      <p className={styles['spotlight-desc']}>
+                        {cardProject.description || 'No project description provided yet.'}
+                      </p>
                       <span className={styles['team-label']}>Assignee</span>
                       <div className={styles['team-row']}>
                         <div className={styles['team-avatar-stack']}>
@@ -272,7 +323,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                               key={member.uid || member.email || idx}
                               className={styles['team-avatar-item']}
                             >
-                              <PersonAvatar person={member} />
+                              <PersonAvatar person={member} size={30} />
                             </span>
                           ))}
                         </div>
@@ -334,23 +385,33 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
             <div className={styles['details-strip-split']}>
               <div>
                 <h3 className={styles['details-block-title']}>Project Descriptions</h3>
-                <p className={styles['details-block-copy']}>{project.description}</p>
+                <p className={styles['details-block-copy']}>
+                  {project.description || 'No project description provided yet.'}
+                </p>
               </div>
               <div className={styles['details-assignee-col']}>
                 <h3 className={styles['details-block-title']}>Assignee</h3>
                 <div className={styles['assignee-list-grid']}>
-                  {project.acceptedMembers.map((member, idx) => (
-                    <div
-                      key={member.uid || member.email || idx}
-                      className={styles['assignee-chip']}
-                    >
-                      <PersonAvatar person={member} />
-                      <div className={styles['assignee-meta']}>
-                        <strong>{member.name}</strong>
-                        <span>{member.role || 'Contributor'}</span>
+                  {assigneesList.length > 0 ? (
+                    assigneesList.map((member, idx) => (
+                      <div
+                        key={member.uid || member.firebaseUid || member.email || idx}
+                        className={styles['assignee-chip']}
+                      >
+                        <PersonAvatar
+                          person={member}
+                          size={34}
+                          className={styles['assignee-avatar']}
+                        />
+                        <div className={styles['assignee-meta']}>
+                          <strong>{member.name}</strong>
+                          <span>{member.role || 'Contributor'}</span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <span className={styles['details-block-copy']}>No members assigned yet.</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -445,77 +506,85 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
               </div>
 
               <div className={styles['recent-tasks-list']}>
-                {visibleTasks.map((task) => {
-                  const isDone = task.status === 'Done';
-                  const people = task.assignees || [];
+                {visibleTasks.length === 0 ? (
+                  <div className={styles['empty-state-box']}>
+                    {taskFilter === 'pending'
+                      ? 'All tasks in this project are completed.'
+                      : 'No tasks in this project yet. Add one below.'}
+                  </div>
+                ) : (
+                  visibleTasks.map((task) => {
+                    const isDone = task.status === 'Done';
+                    const people = task.assignees || [];
 
-                  return (
-                    <div
-                      key={String(task.id)}
-                      className={styles['recent-task-tile']}
-                      onClick={() => onOpenProgressAside(task.id)}
-                    >
-                      <div className={styles['recent-task-left']}>
-                        <button
-                          type="button"
-                          className={`${styles['task-check-circle']} ${
-                            isDone ? styles['is-done'] : ''
-                          }`}
-                          aria-label={`Toggle ${task.title}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleTaskDone(task.id);
-                          }}
-                        >
-                          {isDone && <Check size={11} strokeWidth={2.6} />}
-                        </button>
-                        <div className={styles['recent-task-meta']}>
-                          <span
-                            className={`${styles['recent-task-name']} ${
-                              isDone ? styles['is-done'] : ''
-                            }`}
-                          >
-                            {task.title}
-                          </span>
-                          <div className={styles['recent-task-sub']}>
-                            {task.due ? (
-                              <span>{task.due}</span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1">
-                                <CalendarIcon size={11} />
-                                <span>Add date</span>
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className={styles['recent-task-right']}>
-                        {people.length > 0 ? (
-                          <div className={styles['mini-avatars-stack']}>
-                            {people.slice(0, 3).map((person, idx) => (
-                              <span key={person.uid || idx}>
-                                <PersonAvatar person={person} />
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
+                    return (
+                      <div
+                        key={String(task.id)}
+                        className={styles['recent-task-tile']}
+                        onClick={() => onOpenProgressAside(task.id)}
+                      >
+                        <div className={styles['recent-task-left']}>
                           <button
                             type="button"
-                            className={styles['assign-ghost-btn']}
+                            className={`${styles['task-check-circle']} ${
+                              isDone ? styles['is-done'] : ''
+                            }`}
+                            aria-label={`Toggle ${task.title}`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              onOpenProgressAside(task.id);
+                              onToggleTaskDone(task.id);
                             }}
                           >
-                            <UserPlus size={12} />
-                            <span>Assign</span>
+                            {isDone && <Check size={11} strokeWidth={2.6} />}
                           </button>
-                        )}
+                          <div className={styles['recent-task-meta']}>
+                            <span
+                              className={`${styles['recent-task-name']} ${
+                                isDone ? styles['is-done'] : ''
+                              }`}
+                            >
+                              {task.title}
+                            </span>
+                            <div className={styles['recent-task-sub']}>
+                              {task.due && task.due !== '—' ? (
+                                <span>{task.due}</span>
+                              ) : (
+                                <span className={styles['add-date-inline']}>
+                                  <CalendarIcon size={11} />
+                                  <span>Add date</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className={styles['recent-task-right']}>
+                          {people.length > 0 ? (
+                            <div className={styles['mini-avatars-stack']}>
+                              {people.slice(0, 3).map((person, idx) => (
+                                <span key={person.uid || person.firebaseUid || idx}>
+                                  <PersonAvatar person={person} size={24} />
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className={styles['assign-ghost-btn']}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenProgressAside(task.id);
+                              }}
+                            >
+                              <UserPlus size={12} />
+                              <span>Open</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
 
               <form className={styles['add-subtask-bar']} onSubmit={handleQuickAddSubmit}>
@@ -533,117 +602,129 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                 </div>
               </form>
             </section>
+
+            <aside
+              className={`${styles['panel-card']} ${styles['right-col']}`}
+              aria-label="Recent Activity"
+            >
+              <div>
+                <h2 className={styles['section-heading']} style={{ marginBottom: 12 }}>
+                  Recent Activity
+                </h2>
+
+                <div
+                  className={styles['segmented-tabs']}
+                  role="tablist"
+                  aria-label="Activity filter"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activityTab === 'all'}
+                    className={`${styles['segmented-tab']} ${
+                      activityTab === 'all' ? styles['is-active'] : ''
+                    }`}
+                    onClick={() => setActivityTab('all')}
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activityTab === 'unread'}
+                    className={`${styles['segmented-tab']} ${
+                      activityTab === 'unread' ? styles['is-active'] : ''
+                    }`}
+                    onClick={() => setActivityTab('unread')}
+                  >
+                    Unread
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activityTab === 'mentions'}
+                    className={`${styles['segmented-tab']} ${
+                      activityTab === 'mentions' ? styles['is-active'] : ''
+                    }`}
+                    onClick={() => setActivityTab('mentions')}
+                  >
+                    I was mentioned
+                  </button>
+                </div>
+              </div>
+
+              {activityItems.today.length > 0 && (
+                <div>
+                  <div className={styles['activity-group-label']}>Today</div>
+                  <div className={styles['activity-cards-stack']}>
+                    {activityItems.today.map((item) => (
+                      <div key={item.id} className={styles['activity-card']}>
+                        <span className={styles['activity-badge-icon']} aria-hidden="true">
+                          <Check size={15} strokeWidth={2.5} />
+                        </span>
+                        <div className={styles['activity-card-body']}>
+                          <div className={styles['activity-card-head']}>
+                            <strong>{item.title}</strong>
+                            <span>{item.time}</span>
+                          </div>
+                          <p className={styles['activity-card-text']}>{item.detail}</p>
+                        </div>
+                        <button
+                          type="button"
+                          className={styles['activity-dismiss-btn']}
+                          aria-label={`Dismiss ${item.title} activity`}
+                          onClick={() =>
+                            setDismissedActivityIds((prev) => ({ ...prev, [item.id]: true }))
+                          }
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {activityItems.yesterday.length > 0 && (
+                <div>
+                  <div className={styles['activity-group-label']}>Yesterday</div>
+                  <div className={styles['activity-cards-stack']}>
+                    {activityItems.yesterday.map((item) => (
+                      <div key={item.id} className={styles['activity-card']}>
+                        <span className={styles['activity-badge-icon']} aria-hidden="true">
+                          <Check size={15} strokeWidth={2.5} />
+                        </span>
+                        <div className={styles['activity-card-body']}>
+                          <div className={styles['activity-card-head']}>
+                            <strong>{item.title}</strong>
+                            <span>{item.time}</span>
+                          </div>
+                          <p className={styles['activity-card-text']}>{item.detail}</p>
+                        </div>
+                        <button
+                          type="button"
+                          className={styles['activity-dismiss-btn']}
+                          aria-label={`Dismiss ${item.title} activity`}
+                          onClick={() =>
+                            setDismissedActivityIds((prev) => ({ ...prev, [item.id]: true }))
+                          }
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {activityItems.today.length === 0 && activityItems.yesterday.length === 0 && (
+                <div className={styles['empty-state-box']}>
+                  No recent activity to display for this filter.
+                </div>
+              )}
+            </aside>
           </div>
         </div>
-
-        {/* RIGHT COLUMN: Recent Activity (No Search, No Summary Card) */}
-        <aside className={styles['right-col']} aria-label="Recent Activity">
-          <div>
-            <h2 className={styles['section-heading']} style={{ marginBottom: 12 }}>
-              Recent Activity
-            </h2>
-
-            <div className={styles['segmented-tabs']} role="tablist" aria-label="Activity filter">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activityTab === 'all'}
-                className={`${styles['segmented-tab']} ${
-                  activityTab === 'all' ? styles['is-active'] : ''
-                }`}
-                onClick={() => setActivityTab('all')}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activityTab === 'unread'}
-                className={`${styles['segmented-tab']} ${
-                  activityTab === 'unread' ? styles['is-active'] : ''
-                }`}
-                onClick={() => setActivityTab('unread')}
-              >
-                Unread
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activityTab === 'mentions'}
-                className={`${styles['segmented-tab']} ${
-                  activityTab === 'mentions' ? styles['is-active'] : ''
-                }`}
-                onClick={() => setActivityTab('mentions')}
-              >
-                I was mentioned
-              </button>
-            </div>
-          </div>
-
-          {activityItems.today.length > 0 && (
-            <div>
-              <div className={styles['activity-group-label']}>Today</div>
-              <div className={styles['activity-cards-stack']}>
-                {activityItems.today.map((item) => (
-                  <div key={item.id} className={styles['activity-card']}>
-                    <span className={styles['activity-badge-icon']} aria-hidden="true">
-                      <Check size={15} strokeWidth={2.5} />
-                    </span>
-                    <div className={styles['activity-card-body']}>
-                      <div className={styles['activity-card-head']}>
-                        <strong>{item.title}</strong>
-                        <span>{item.time}</span>
-                      </div>
-                      <p className={styles['activity-card-text']}>{item.detail}</p>
-                    </div>
-                    <button
-                      type="button"
-                      className={styles['activity-dismiss-btn']}
-                      aria-label={`Dismiss ${item.title} activity`}
-                      onClick={() =>
-                        setDismissedActivityIds((prev) => ({ ...prev, [item.id]: true }))
-                      }
-                    >
-                      <X size={13} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {activityItems.yesterday.length > 0 && (
-            <div>
-              <div className={styles['activity-group-label']}>Yesterday</div>
-              <div className={styles['activity-cards-stack']}>
-                {activityItems.yesterday.map((item) => (
-                  <div key={item.id} className={styles['activity-card']}>
-                    <span className={styles['activity-badge-icon']} aria-hidden="true">
-                      <Check size={15} strokeWidth={2.5} />
-                    </span>
-                    <div className={styles['activity-card-body']}>
-                      <div className={styles['activity-card-head']}>
-                        <strong>{item.title}</strong>
-                        <span>{item.time}</span>
-                      </div>
-                      <p className={styles['activity-card-text']}>{item.detail}</p>
-                    </div>
-                    <button
-                      type="button"
-                      className={styles['activity-dismiss-btn']}
-                      aria-label={`Dismiss ${item.title} activity`}
-                      onClick={() =>
-                        setDismissedActivityIds((prev) => ({ ...prev, [item.id]: true }))
-                      }
-                    >
-                      <X size={13} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </aside>
       </div>
     </div>
   );

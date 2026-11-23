@@ -1,6 +1,12 @@
 .task-viewer-shell {
+  box-sizing: border-box;
   width: 100%;
+  min-height: 100%;
   background: #FFFFFF;
+  border: 1px solid #EAEDF5;
+  border-radius: 20px;
+  padding: 24px 28px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.03);
   color: #18181B;
   font-family: 'DM Sans', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
@@ -1714,7 +1720,42 @@
   background: #F4F4F5;
 }
 
+.priority-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.calendar-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.calendar-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.empty-board-notice {
+  background: #F8FAFC;
+  border: 1px dashed #D8DFEE;
+  border-radius: 12px;
+  padding: 24px 16px;
+  font-size: 13px;
+  color: #71717A;
+  text-align: center;
+}
+
 @media (max-width: 680px) {
+  .task-viewer-shell {
+    padding: 16px;
+    border-radius: 14px;
+  }
   .tasks-head,
   .tasks-row {
     grid-template-columns: minmax(0, 1fr) 90px 28px;
@@ -1723,4 +1764,149 @@
   .tasks-row > :nth-child(3) {
     display: none;
   }
+}
+
+/* Dark Mode Overrides */
+:global(body.dark-mode) .task-viewer-shell {
+  background: #16161C;
+  border-color: #272732;
+  color: #F4F4F5;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
+}
+
+:global(body.dark-mode) .task-title,
+:global(body.dark-mode) .section-title,
+:global(body.dark-mode) .quick-action-title,
+:global(body.dark-mode) .assignee-name,
+:global(body.dark-mode) .task-row-title,
+:global(body.dark-mode) .summary-status-title,
+:global(body.dark-mode) .summary-meta-item dd,
+:global(body.dark-mode) .summary-owner-meta strong,
+:global(body.dark-mode) .recent-activity-title,
+:global(body.dark-mode) .activity-text,
+:global(body.dark-mode) .board-card-title,
+:global(body.dark-mode) .card-priority-text,
+:global(body.dark-mode) .file-row-meta strong,
+:global(body.dark-mode) .list-table td {
+  color: #F4F4F5;
+}
+
+:global(body.dark-mode) .description-text,
+:global(body.dark-mode) .description-meta-line,
+:global(body.dark-mode) .quick-action-subtitle,
+:global(body.dark-mode) .assignee-role,
+:global(body.dark-mode) .tasks-head,
+:global(body.dark-mode) .task-date-cell,
+:global(body.dark-mode) .summary-status-copy,
+:global(body.dark-mode) .summary-status-note,
+:global(body.dark-mode) .summary-meta-item dt,
+:global(body.dark-mode) .summary-owner-meta span,
+:global(body.dark-mode) .activity-time,
+:global(body.dark-mode) .card-date-text,
+:global(body.dark-mode) .card-meta-row,
+:global(body.dark-mode) .file-row-meta small,
+:global(body.dark-mode) .list-table th,
+:global(body.dark-mode) .task-tab-btn,
+:global(body.dark-mode) .toolbar-filter-key {
+  color: #A1A1AA;
+}
+
+:global(body.dark-mode) .task-tab-btn:hover,
+:global(body.dark-mode) .toolbar-filter-val {
+  color: #F4F4F5;
+}
+
+:global(body.dark-mode) .task-tab-btn.is-active {
+  color: #A78BFA;
+  border-bottom-color: #7C5CFC;
+}
+
+:global(body.dark-mode) .header-outline-btn,
+:global(body.dark-mode) .header-close-btn,
+:global(body.dark-mode) .toolbar-filter-btn,
+:global(body.dark-mode) .inline-subtask-cancel,
+:global(body.dark-mode) .quick-action-card,
+:global(body.dark-mode) .summary-status-card,
+:global(body.dark-mode) .recent-activity-card,
+:global(body.dark-mode) .board-card,
+:global(body.dark-mode) .list-view-card,
+:global(body.dark-mode) .calendar-card,
+:global(body.dark-mode) .tab-panel-card,
+:global(body.dark-mode) .file-row,
+:global(body.dark-mode) .inline-new-card,
+:global(body.dark-mode) .automation-popover,
+:global(body.dark-mode) .toolbar-popover,
+:global(body.dark-mode) .card-action-menu {
+  background: #1E1E26;
+  border-color: #2D2D3A;
+  color: #E4E4E7;
+}
+
+:global(body.dark-mode) .board-column,
+:global(body.dark-mode) .calendar-day-box,
+:global(body.dark-mode) .list-table th {
+  background: #23232D;
+  border-color: #30303E;
+}
+
+:global(body.dark-mode) .task-tabs-row,
+:global(body.dark-mode) .section-divider,
+:global(body.dark-mode) .summary-meta-grid,
+:global(body.dark-mode) .tasks-head,
+:global(body.dark-mode) .tasks-row,
+:global(body.dark-mode) .list-table th,
+:global(body.dark-mode) .list-table td,
+:global(body.dark-mode) .comment-composer,
+:global(body.dark-mode) .card-dashed-divider {
+  border-color: #2D2D3A;
+}
+
+:global(body.dark-mode) .header-divider,
+:global(body.dark-mode) .toolbar-divider,
+:global(body.dark-mode) .activity-timeline::before {
+  background: #2D2D3A;
+}
+
+:global(body.dark-mode) .task-circle-btn,
+:global(body.dark-mode) .task-title-input,
+:global(body.dark-mode) .inline-subtask-input,
+:global(body.dark-mode) .comment-input,
+:global(body.dark-mode) .inline-new-card input,
+:global(body.dark-mode) .inline-new-card select {
+  background: #181820;
+  border-color: #343446;
+  color: #F4F4F5;
+}
+
+:global(body.dark-mode) .tasks-row:hover,
+:global(body.dark-mode) .list-table tbody tr:hover td,
+:global(body.dark-mode) .task-edit-btn:hover,
+:global(body.dark-mode) .header-close-btn:hover,
+:global(body.dark-mode) .row-more-btn:hover,
+:global(body.dark-mode) .card-more-btn:hover,
+:global(body.dark-mode) .col-icon-btn:hover,
+:global(body.dark-mode) .tabs-collapse-btn:hover {
+  background: #2A2A37;
+  color: #F4F4F5;
+}
+
+:global(body.dark-mode) .automation-popover-item,
+:global(body.dark-mode) .filter-option-btn,
+:global(body.dark-mode) .card-action-option {
+  color: #D4D4D8;
+}
+
+:global(body.dark-mode) .automation-popover-item:hover,
+:global(body.dark-mode) .filter-option-btn:hover,
+:global(body.dark-mode) .card-action-option:hover,
+:global(body.dark-mode) .toolbar-filter-btn.is-filtered {
+  background: #2B2544;
+  color: #C4B5FD;
+}
+
+:global(body.dark-mode) .empty-board-notice,
+:global(body.dark-mode) .skeleton-bar {
+  background: #1B1B22;
+  border-color: #30303E;
+  color: #A1A1AA;
 }

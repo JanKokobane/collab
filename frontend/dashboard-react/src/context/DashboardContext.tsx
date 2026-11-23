@@ -606,6 +606,10 @@ export interface DashboardContextValue {
   openTaskDetails: (taskId: string | number) => void;
   closeTaskDetails: () => void;
 
+  selectedTaskViewId: string | number | null;
+  openFullTaskView: (taskId: string | number, projectName?: string) => void;
+  closeFullTaskView: () => void;
+
   activeModal: ActiveModalState;
   setActiveModal: React.Dispatch<React.SetStateAction<ActiveModalState>>;
   closeModal: () => void;
@@ -719,6 +723,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [dismissedPollIds, setDismissedPollIds] = useState<string[]>([]);
 
   const [asideTaskId, setAsideTaskId] = useState<string | number | null>(null);
+  const [selectedTaskViewId, setSelectedTaskViewId] = useState<string | number | null>(null);
   const [activeModal, setActiveModal] = useState<ActiveModalState>({ type: null });
   const [confirmationState, setConfirmationState] = useState<ConfirmationModalState>({
     isOpen: false,
@@ -927,6 +932,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const switchView = useCallback((viewName: DashboardView) => {
     const resolved = viewName === 'Calendar' ? 'Meetings' : viewName;
     setActiveView(resolved);
+    setSelectedTaskViewId(null);
     setActiveSprintFilter('all');
     setMobileSidebarOpen(false);
   }, []);
@@ -1379,10 +1385,17 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (asideTaskId && String(asideTaskId) === String(task.id)) {
         setAsideTaskId(null);
       }
+      if (
+        selectedTaskViewId &&
+        (String(selectedTaskViewId) === String(task.id) ||
+          String(selectedTaskViewId) === String(task.taskId || ''))
+      ) {
+        setSelectedTaskViewId(null);
+      }
       addAuditLog('Task deleted', `Deleted task "${task.title}" from ${task.project}.`, 'trash');
       showDashboardToast('Task deleted.', 'success');
     },
-    [asideTaskId, addAuditLog, showDashboardConfirmation, showDashboardToast]
+    [asideTaskId, selectedTaskViewId, addAuditLog, showDashboardConfirmation, showDashboardToast]
   );
 
   const addAnnouncement = useCallback(
@@ -1558,6 +1571,36 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const closeTaskDetails = useCallback(() => {
     setAsideTaskId(null);
+  }, []);
+
+  const openFullTaskView = useCallback(
+    (taskId: string | number, projectName?: string) => {
+      setAsideTaskId(null);
+      if (projectName) {
+        setActiveView(projectName);
+      } else {
+        const matchedTask = tasks.find(
+          (item) =>
+            String(item.id) === String(taskId) ||
+            String(item.taskId || item.task_id || '') === String(taskId)
+        );
+        if (matchedTask?.project) {
+          setActiveView(matchedTask.project);
+        } else if (matchedTask?.projectId) {
+          const matchedProject = projectsRef.current.find(
+            (p) => p.projectId === matchedTask.projectId
+          );
+          if (matchedProject) setActiveView(matchedProject.name);
+        }
+      }
+      setSelectedTaskViewId(taskId);
+      setMobileSidebarOpen(false);
+    },
+    [tasks]
+  );
+
+  const closeFullTaskView = useCallback(() => {
+    setSelectedTaskViewId(null);
   }, []);
 
   const closeModal = useCallback(() => {
@@ -2020,6 +2063,9 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     asideTaskId,
     openTaskDetails,
     closeTaskDetails,
+    selectedTaskViewId,
+    openFullTaskView,
+    closeFullTaskView,
     activeModal,
     setActiveModal,
     closeModal,
