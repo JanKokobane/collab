@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
   Calendar as CalendarIcon,
@@ -26,6 +26,85 @@ export interface ProjectOverviewProps {
 }
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function getTaskUpdateSeries(
+  tasks: TaskItem[],
+  matches: (task: TaskItem) => boolean = () => true
+): number[] {
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - (6 - index));
+    return date;
+  });
+  const counts = new Map(
+    days.map((date) => [
+      `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`,
+      0
+    ])
+  );
+
+  tasks.forEach((task) => {
+    const updatedAt = task.updatedAt || task.createdAt;
+    if (!updatedAt || !matches(task)) return;
+    const date = new Date(updatedAt);
+    if (Number.isNaN(date.getTime())) return;
+    const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+    if (counts.has(key)) counts.set(key, (counts.get(key) || 0) + 1);
+  });
+
+  return days.map(
+    (date) => counts.get(`${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`) || 0
+  );
+}
+
+const AnimatedMetric: React.FC<{ value: number }> = ({ value }) => {
+  const [displayedValue, setDisplayedValue] = useState(0);
+  const displayedValueRef = useRef(0);
+
+  useEffect(() => {
+    const startValue = displayedValueRef.current;
+    const startTime = performance.now();
+    const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 500;
+    let frameId = 0;
+
+    const update = (now: number) => {
+      const progress = duration === 0 ? 1 : Math.min((now - startTime) / duration, 1);
+      const easedProgress = 1 - (1 - progress) ** 3;
+      const nextValue = Math.round(startValue + (value - startValue) * easedProgress);
+      displayedValueRef.current = nextValue;
+      setDisplayedValue(nextValue);
+      if (progress < 1) frameId = requestAnimationFrame(update);
+    };
+
+    frameId = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(frameId);
+  }, [value]);
+
+  return <span className={styles['kpi-value']}>{displayedValue}</span>;
+};
+
+function TaskSparkline({ values }: { values: number[] }) {
+  const max = Math.max(...values, 1);
+  const points = values
+    .map((value, index) => {
+      const x = 2 + (index / Math.max(values.length - 1, 1)) * 60;
+      const y = 24 - (value / max) * 20;
+      return `${x},${y}`;
+    })
+    .join(' ');
+
+  return (
+    <svg
+      className={styles['kpi-sparkline']}
+      viewBox="0 0 64 28"
+      role="img"
+      aria-label="Task updates during the last seven days"
+    >
+      <polyline points={points} />
+    </svg>
+  );
+}
 
 function formatActivityTime(raw?: string | null): string {
   if (!raw) return 'Recently';
@@ -63,6 +142,13 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   const completedCount = tasks.filter((t) => t.status === 'Done').length;
   const inProgressCount = tasks.filter((t) => t.status === 'In progress').length;
   const todoCount = tasks.filter((t) => t.status === 'To do' || t.status === 'Backlog').length;
+  const totalTaskActivity = getTaskUpdateSeries(tasks);
+  const pendingTaskActivity = getTaskUpdateSeries(
+    tasks,
+    (task) => task.status === 'To do' || task.status === 'Backlog'
+  );
+  const inProgressTaskActivity = getTaskUpdateSeries(tasks, (task) => task.status === 'In progress');
+  const completedTaskActivity = getTaskUpdateSeries(tasks, (task) => task.status === 'Done');
 
   const owner: ProjectMember = useMemo(
     () => ({
@@ -241,19 +327,31 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
           {/* 4 KPI Cards */}
           <section className={styles['kpi-grid']} aria-label="Project Metrics">
             <div className={styles['kpi-card']}>
-              <span className={styles['kpi-value']}>{tasks.length}</span>
+              <div className={styles['kpi-card-top']}>
+                <AnimatedMetric value={tasks.length} />
+                <TaskSparkline values={totalTaskActivity} />
+              </div>
               <span className={styles['kpi-label']}>Total tasks</span>
             </div>
             <div className={styles['kpi-card']}>
-              <span className={styles['kpi-value']}>{todoCount}</span>
+              <div className={styles['kpi-card-top']}>
+                <AnimatedMetric value={todoCount} />
+                <TaskSparkline values={pendingTaskActivity} />
+              </div>
               <span className={styles['kpi-label']}>Pending tasks</span>
             </div>
             <div className={styles['kpi-card']}>
-              <span className={styles['kpi-value']}>{inProgressCount}</span>
+              <div className={styles['kpi-card-top']}>
+                <AnimatedMetric value={inProgressCount} />
+                <TaskSparkline values={inProgressTaskActivity} />
+              </div>
               <span className={styles['kpi-label']}>In progress tasks</span>
             </div>
             <div className={styles['kpi-card']}>
-              <span className={styles['kpi-value']}>{completedCount}</span>
+              <div className={styles['kpi-card-top']}>
+                <AnimatedMetric value={completedCount} />
+                <TaskSparkline values={completedTaskActivity} />
+              </div>
               <span className={styles['kpi-label']}>Complete tasks</span>
             </div>
           </section>
@@ -358,7 +456,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                           cy="44"
                           r={radius}
                           fill="none"
-                          stroke="#6C5CE7"
+                          stroke="var(--purple)"
                           strokeWidth="7"
                           strokeDasharray={circumference}
                           strokeDashoffset={offset}
