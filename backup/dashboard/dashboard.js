@@ -117,7 +117,7 @@ import {
   onAuthStateChanged,
   signOut
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
-import { firebaseAuth, markCurrentUserOffline } from '../firebase.js'
+import { firebaseAuth, markCurrentUserOffline } from '../../frontend/firebase.js'
 import { loadProjectMeetings } from './js/meetings.js'
 import { initModalChrome, showDashboardToast } from './js/modalChrome.js'
 

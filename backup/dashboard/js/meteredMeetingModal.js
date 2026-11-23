@@ -1,5 +1,5 @@
 import { api } from './api.js'
-import { firebaseAuth } from '../../firebase.js'
+import { firebaseAuth } from '../../../frontend/firebase.js'
 import { getSprintMemberUids, hub, projects } from './state.js'
 
 const SDK_URL = 'https://cdn.metered.ca/sdk/video/1.4.6/sdk.min.js'

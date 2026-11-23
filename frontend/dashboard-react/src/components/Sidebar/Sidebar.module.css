@@ -142,6 +142,8 @@
 
 .project-folder-icon {
 
+    position: relative;
+    z-index: 1;
     width: 1.5rem;
     height: 1.5rem;
     flex-shrink: 0;
@@ -151,21 +153,112 @@
 .project-task-list {
 
     display: grid;
-    gap: 2px;
+    gap: 0;
     list-style: none;
-    margin: 0 0 8px 36px;
-    padding: 0 0 0 10px;
-    border-left: 1px solid #E4E4E7;
+    margin: -4px 0 8px 24px;
+    padding: 0;
 
 }
 
 .project-task-list li {
 
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    min-width: 0;
     color: #71717A;
     font-size: 11px;
     line-height: 1.4;
+    padding: 3px 0;
+
+}
+
+.project-task-open {
+
+    display: flex;
+    align-items: flex-start;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+}
+
+.project-task-open:hover .project-task-title {
+
+    color: #2563EB;
+
+}
+
+.project-task-open:focus-visible {
+
+    outline: 2px solid #2563EB;
+    outline-offset: 2px;
+
+}
+
+.project-task-branch {
+
+    flex: 0 0 24px;
+
+}
+
+.project-task-list li::before {
+
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    border-left: 1px solid #D4D4D8;
+
+}
+
+.project-task-list li:first-child::before {
+
+    top: -16px;
+
+}
+
+.project-task-list li:last-child::before {
+
+    bottom: calc(100% - 10px);
+
+}
+
+.project-task-list li::after {
+
+    content: '';
+    position: absolute;
+    top: 10px;
+    left: 0;
+    width: 24px;
+    border-top: 1px solid #D4D4D8;
+
+}
+
+.project-task-list .project-task-empty::before,
+.project-task-list .project-task-empty::after {
+
+    content: none;
+
+}
+
+.project-task-file-icon {
+
+    flex: 0 0 20px;
+    line-height: 1.35;
+
+}
+
+.project-task-title {
+
+    min-width: 0;
     overflow-wrap: anywhere;
-    padding: 4px 6px;
 
 }
 
@@ -405,15 +498,16 @@
 
 }
 
-:global(body.dark-mode) .project-task-list {
-
-    border-color: #3F3F4A;
-
-}
-
 :global(body.dark-mode) .project-task-list li {
 
     color: #A1A1AA;
+
+}
+
+:global(body.dark-mode) .project-task-list li::before,
+:global(body.dark-mode) .project-task-list li::after {
+
+    border-color: #71717A;
 
 }
 

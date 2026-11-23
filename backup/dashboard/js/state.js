@@ -7,7 +7,7 @@ import {
   formatRelativeDate,
   toLocalDateKey
 } from './dateUtils.js?v=20261117-date-input-validation'
-import { firebaseAuth } from '../../firebase.js'
+import { firebaseAuth } from '../../../frontend/firebase.js'
 import { api } from './api.js'
 
 const seedToday = toLocalDateKey()

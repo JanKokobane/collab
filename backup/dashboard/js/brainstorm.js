@@ -1,6 +1,6 @@
 import { projects, currentUser, addAuditLog, make, root, closeModal, loadNotificationsFromAPI, renderAvatarElement } from './state.js'
 import { api } from './api.js'
-import { firebaseAuth } from '../../firebase.js'
+import { firebaseAuth } from '../../../frontend/firebase.js'
 import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { getSvg } from './icons.js'
 

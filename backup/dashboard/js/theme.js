@@ -19,8 +19,8 @@ import {
   updatePassword,
   updateProfile
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'
-import { firebaseAuth } from '../../firebase.js'
-import { validatePhoneNumber } from '../../shared/phoneValidation.js'
+import { firebaseAuth } from '../../../frontend/firebase.js'
+import { validatePhoneNumber } from '../../../frontend/shared/phoneValidation.js'
 import { api } from './api.js'
 
 let passwordProviderObserverInitialized = false

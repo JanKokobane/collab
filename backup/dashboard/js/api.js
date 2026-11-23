@@ -1,4 +1,4 @@
-import { firebaseAuth, markCurrentUserOffline } from '../../firebase.js';
+import { firebaseAuth, markCurrentUserOffline } from '../../../frontend/firebase.js';
 
 import {
     signOut

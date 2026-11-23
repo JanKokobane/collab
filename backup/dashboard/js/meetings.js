@@ -1,4 +1,4 @@
-import { firebaseAuth } from '../../firebase.js'
+import { firebaseAuth } from '../../../frontend/firebase.js'
 import { api } from './api.js'
 import { meetings, projects, setMeetings } from './state.js'
 

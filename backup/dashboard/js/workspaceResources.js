@@ -1,6 +1,6 @@
 import { projects, pushNotification, make, root, closeModal, activeView } from './state.js'
 import { api } from './api.js'
-import { firebaseAuth } from '../../firebase.js'
+import { firebaseAuth } from '../../../frontend/firebase.js'
 import { getSvg } from './icons.js'
 import { showDashboardConfirmation, showDashboardToast } from './modalChrome.js'
 import { getActiveProject } from './auth.js?v=20261117-no-auto-sprints'
