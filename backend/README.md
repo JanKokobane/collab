@@ -10,6 +10,8 @@ Copy `.env.example` to `.env` for local development and set:
 
 - `DATABASE_URL`: PostgreSQL connection URL. Use a local database URL for
   development and Render's PostgreSQL URL in production.
+- `PORT`: Optional HTTP port. Render provides this automatically; local
+  development defaults to `3000`.
 - `FIREBASE_PROJECT_ID`: project that signs the frontend's Firebase ID tokens.
 - Firebase Admin credentials through `FIREBASE_SERVICE_ACCOUNT_PATH` (defaults
   to `backend/serviceAccountKey.json`), `GOOGLE_APPLICATION_CREDENTIALS`, or
@@ -23,6 +25,16 @@ Copy `.env.example` to `.env` for local development and set:
 For an existing Render deployment, set `CORS_ALLOWED_ORIGINS` to `*` (or remove
 the variable) and redeploy the backend; an existing exact-origin value overrides
 the wildcard default.
+
+On Render, attach a PostgreSQL database to the backend or set `DATABASE_URL`
+to the database's internal connection URL. If PostgreSQL is not configured or
+temporarily unavailable, the HTTP server still starts, but database-backed
+features remain unavailable and `/api/health/database` returns `503`. A
+configured database is retried and migrations are applied after it recovers.
+Errors stating that the account or project exceeded its quota must be resolved
+with the database provider (for example, by restoring quota or upgrading the
+database plan); restarting or redeploying the backend does not restore that
+quota.
 - `WEBRTC_STUN_URLS`: Optional comma-separated STUN URLs; defaults to Google's
   public STUN servers.
 - `WEBRTC_TURN_URLS` and `WEBRTC_TURN_SHARED_SECRET`: Optional TURN relay

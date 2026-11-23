@@ -10,51 +10,63 @@ const databaseUrl =
         ? `postgresql://${encodeURIComponent(process.env.DB_USER)}:${encodeURIComponent(process.env.DB_PASSWORD)}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}?sslmode=verify-full`
         : null);
 
-if (!databaseUrl) {
-    throw new Error('PostgreSQL is not configured. Set DATABASE_URL or the DB_* variables.');
-}
-
-const realPool = new Pool({
-    connectionString: databaseUrl,
-    ssl: {
-        rejectUnauthorized: true
-    },
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000
-});
+const realPool = databaseUrl
+    ? new Pool({
+        connectionString: databaseUrl,
+        ssl: {
+            rejectUnauthorized: true
+        },
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000
+    })
+    : null;
 let dbConnected = false;
 
-realPool.on('connect', () => {
-    console.log('PostgreSQL client connected');
-});
+if (realPool) {
+    realPool.on('connect', () => {
+        console.log('PostgreSQL client connected');
+    });
 
-realPool.on('error', (error) => {
-    console.error('PostgreSQL pool error:', error.message);
-});
+    realPool.on('error', (error) => {
+        console.error('PostgreSQL pool error:', error.message);
+    });
+}
+
+const requireConfiguredPool = () => {
+    if (!realPool) {
+        throw new Error('PostgreSQL is not configured. Set DATABASE_URL or the DB_* variables.');
+    }
+    return realPool;
+};
 
 const pool = {
     query: async (text, params = []) => {
         if (!dbConnected) {
             throw new Error('PostgreSQL is not connected.');
         }
-        return realPool.query(text, params);
+        return requireConfiguredPool().query(text, params);
     },
     connect: async () => {
         if (!dbConnected) {
             throw new Error('PostgreSQL is not connected.');
         }
-        return realPool.connect();
+        return requireConfiguredPool().connect();
     },
     end: async () => {
-        await realPool.end();
+        if (realPool) await realPool.end();
     },
-    on: (...args) => realPool.on(...args)
+    on: (...args) => requireConfiguredPool().on(...args)
 };
 
 const isDatabaseConnected = () => dbConnected;
+const isDatabaseConfigured = () => Boolean(realPool);
 
 const connectDB = async () => {
+    if (!realPool) {
+        throw new Error('PostgreSQL is not configured. Set DATABASE_URL or the DB_* variables.');
+    }
+
     let client;
     try {
         console.log('🔌 Connecting to PostgreSQL...');
@@ -96,8 +108,10 @@ const query = async (text, params = []) => {
 };
 
 const closeDB = async () => {
-    await realPool.end();
-    console.log('PostgreSQL connection pool closed');
+    if (realPool) {
+        await realPool.end();
+        console.log('PostgreSQL connection pool closed');
+    }
     dbConnected = false;
 };
 
@@ -106,5 +120,6 @@ module.exports = {
     query,
     connectDB,
     closeDB,
-    isDatabaseConnected
+    isDatabaseConnected,
+    isDatabaseConfigured
 };
