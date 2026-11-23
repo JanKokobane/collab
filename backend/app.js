@@ -83,11 +83,9 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/health/database', async (req, res) => {
     if (!isDatabaseConnected()) {
-        return res.json({
-            success: true,
-            data: {
-                database: 'mock'
-            }
+        return res.status(503).json({
+            success: false,
+            message: 'Database is unavailable.'
         });
     }
 

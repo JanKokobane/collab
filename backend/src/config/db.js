@@ -10,74 +10,51 @@ const databaseUrl =
         ? `postgresql://${encodeURIComponent(process.env.DB_USER)}:${encodeURIComponent(process.env.DB_PASSWORD)}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}?sslmode=verify-full`
         : null);
 
-let realPool = null;
+if (!databaseUrl) {
+    throw new Error('PostgreSQL is not configured. Set DATABASE_URL or the DB_* variables.');
+}
+
+const realPool = new Pool({
+    connectionString: databaseUrl,
+    ssl: {
+        rejectUnauthorized: true
+    },
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000
+});
 let dbConnected = false;
 
-const createMockClient = () => ({
-    query: async () => ({ rows: [], rowCount: 0 }),
-    release: () => {}
+realPool.on('connect', () => {
+    console.log('PostgreSQL client connected');
 });
 
-if (databaseUrl) {
-    try {
-        realPool = new Pool({
-            connectionString: databaseUrl,
-            ssl: {
-                rejectUnauthorized: true
-            },
-            max: 10,
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 5000
-        });
-
-        realPool.on('connect', () => {
-            console.log('PostgreSQL client connected');
-        });
-
-        realPool.on('error', (error) => {
-            console.error('PostgreSQL pool error:', error.message);
-        });
-    } catch (error) {
-        realPool = null;
-        console.warn('[AI Studio] PostgreSQL pool init failed — using mock DB:', error.message);
-    }
-} else {
-    console.warn('[AI Studio] PostgreSQL env vars not configured — running with mock DB');
-}
+realPool.on('error', (error) => {
+    console.error('PostgreSQL pool error:', error.message);
+});
 
 const pool = {
     query: async (text, params = []) => {
-        if (!realPool || !dbConnected) {
-            return { rows: [], rowCount: 0 };
+        if (!dbConnected) {
+            throw new Error('PostgreSQL is not connected.');
         }
         return realPool.query(text, params);
     },
     connect: async () => {
-        if (!realPool || !dbConnected) {
-            return createMockClient();
+        if (!dbConnected) {
+            throw new Error('PostgreSQL is not connected.');
         }
         return realPool.connect();
     },
     end: async () => {
-        if (realPool) {
-            await realPool.end();
-        }
+        await realPool.end();
     },
-    on: (...args) => {
-        if (realPool) {
-            realPool.on(...args);
-        }
-    }
+    on: (...args) => realPool.on(...args)
 };
 
 const isDatabaseConnected = () => dbConnected;
 
 const connectDB = async () => {
-    if (!realPool) {
-        dbConnected = false;
-        return;
-    }
-
     let client;
     try {
         console.log('🔌 Connecting to PostgreSQL...');
@@ -97,7 +74,8 @@ const connectDB = async () => {
         console.log(`Server time: ${result.rows[0].server_time}`);
     } catch (error) {
         dbConnected = false;
-        console.warn('[AI Studio] PostgreSQL connection failed — using mock DB:', error.message);
+        console.error('PostgreSQL connection failed:', error.message);
+        throw error;
     } finally {
         if (client) {
             client.release();
@@ -106,8 +84,8 @@ const connectDB = async () => {
 };
 
 const query = async (text, params = []) => {
-    if (!realPool || !dbConnected) {
-        return { rows: [], rowCount: 0 };
+    if (!dbConnected) {
+        throw new Error('PostgreSQL is not connected.');
     }
     try {
         return await realPool.query(text, params);
@@ -118,10 +96,8 @@ const query = async (text, params = []) => {
 };
 
 const closeDB = async () => {
-    if (realPool) {
-        await realPool.end();
-        console.log('PostgreSQL connection pool closed');
-    }
+    await realPool.end();
+    console.log('PostgreSQL connection pool closed');
     dbConnected = false;
 };
 
