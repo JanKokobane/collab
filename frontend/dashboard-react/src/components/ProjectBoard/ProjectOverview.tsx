@@ -18,6 +18,7 @@ export interface ProjectOverviewProps {
   allProjects?: Project[];
   tasks: TaskItem[];
   allTasks?: TaskItem[];
+  canViewTaskMetrics: boolean;
   onSelectProject?: (projectId: string) => void;
   onOpenProgressAside: (taskId: string | number) => void;
   onOpenAnalytics?: () => void;
@@ -123,7 +124,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   allProjects,
   tasks,
   allTasks,
-  onSelectProject,
+  canViewTaskMetrics,
   onOpenProgressAside,
   onOpenAnalytics,
   onToggleTaskDone,
@@ -142,6 +143,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   const completedCount = tasks.filter((t) => t.status === 'Done').length;
   const inProgressCount = tasks.filter((t) => t.status === 'In progress').length;
   const todoCount = tasks.filter((t) => t.status === 'To do' || t.status === 'Backlog').length;
+  const projectRingCircumference = 2 * Math.PI * 36;
   const totalTaskActivity = getTaskUpdateSeries(tasks);
   const pendingTaskActivity = getTaskUpdateSeries(
     tasks,
@@ -170,13 +172,6 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     ]
   );
 
-  const assigneesList: ProjectMember[] = useMemo(() => {
-    const members = Array.isArray(project.acceptedMembers) ? project.acceptedMembers : [];
-    if (members.length > 0) return members;
-    if (owner.name || owner.email) return [owner];
-    return [];
-  }, [project.acceptedMembers, owner]);
-
   const visibleTasks = useMemo(() => {
     return tasks.filter((t) => (taskFilter === 'pending' ? t.status !== 'Done' : true));
   }, [tasks, taskFilter]);
@@ -186,10 +181,24 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
       project,
       ...projectPool.filter((p) => p.projectId !== project.projectId)
     ];
-    if (ordered.length <= 2) return ordered;
+    if (ordered.length <= 1) return ordered;
     const start = spotlightOffset % ordered.length;
     return [ordered[start], ordered[(start + 1) % ordered.length]];
   }, [project, projectPool, spotlightOffset]);
+  const detailsProject = spotlightProjects[0] || project;
+  const detailsTasks = taskPool.filter((task) => task.projectId === detailsProject.projectId);
+  const detailsCompletedCount = detailsTasks.filter((task) => task.status === 'Done').length;
+  const detailsCompletionPercentage = detailsTasks.length > 0
+    ? Math.round((detailsCompletedCount / detailsTasks.length) * 100)
+    : 0;
+  const detailsRingOffset =
+    projectRingCircumference * (1 - detailsCompletionPercentage / 100);
+
+  const showPreviousProject = () =>
+    setSpotlightOffset((prev) =>
+      prev === 0 ? Math.max(0, projectPool.length - 1) : prev - 1
+    );
+  const showNextProject = () => setSpotlightOffset((prev) => prev + 1);
 
   const activityItems = useMemo(() => {
     const today: Array<{
@@ -325,159 +334,42 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
           </header>
 
           {/* 4 KPI Cards */}
-          <section className={styles['kpi-grid']} aria-label="Project Metrics">
-            <div className={styles['kpi-card']}>
-              <div className={styles['kpi-card-top']}>
-                <AnimatedMetric value={tasks.length} />
-                <TaskSparkline values={totalTaskActivity} />
+          {canViewTaskMetrics && (
+            <section className={styles['kpi-grid']} aria-label="Project Metrics">
+              <div className={styles['kpi-card']}>
+                <div className={styles['kpi-card-top']}>
+                  <AnimatedMetric value={tasks.length} />
+                  <TaskSparkline values={totalTaskActivity} />
+                </div>
+                <span className={styles['kpi-label']}>Total tasks</span>
               </div>
-              <span className={styles['kpi-label']}>Total tasks</span>
-            </div>
-            <div className={styles['kpi-card']}>
-              <div className={styles['kpi-card-top']}>
-                <AnimatedMetric value={todoCount} />
-                <TaskSparkline values={pendingTaskActivity} />
+              <div className={styles['kpi-card']}>
+                <div className={styles['kpi-card-top']}>
+                  <AnimatedMetric value={todoCount} />
+                  <TaskSparkline values={pendingTaskActivity} />
+                </div>
+                <span className={styles['kpi-label']}>Pending tasks</span>
               </div>
-              <span className={styles['kpi-label']}>Pending tasks</span>
-            </div>
-            <div className={styles['kpi-card']}>
-              <div className={styles['kpi-card-top']}>
-                <AnimatedMetric value={inProgressCount} />
-                <TaskSparkline values={inProgressTaskActivity} />
+              <div className={styles['kpi-card']}>
+                <div className={styles['kpi-card-top']}>
+                  <AnimatedMetric value={inProgressCount} />
+                  <TaskSparkline values={inProgressTaskActivity} />
+                </div>
+                <span className={styles['kpi-label']}>In progress tasks</span>
               </div>
-              <span className={styles['kpi-label']}>In progress tasks</span>
-            </div>
-            <div className={styles['kpi-card']}>
-              <div className={styles['kpi-card-top']}>
-                <AnimatedMetric value={completedCount} />
-                <TaskSparkline values={completedTaskActivity} />
+              <div className={styles['kpi-card']}>
+                <div className={styles['kpi-card-top']}>
+                  <AnimatedMetric value={completedCount} />
+                  <TaskSparkline values={completedTaskActivity} />
+                </div>
+                <span className={styles['kpi-label']}>Complete tasks</span>
               </div>
-              <span className={styles['kpi-label']}>Complete tasks</span>
-            </div>
-          </section>
-
-          {/* Project Overview Spotlight Cards */}
-          <section aria-label="Project Overview Cards">
-            <div className={styles['section-bar']} style={{ marginBottom: 12 }}>
-              <h2 className={styles['section-heading']}>Project Overview</h2>
-              <div className={styles['carousel-controls']}>
-                <button
-                  type="button"
-                  className={styles['carousel-btn']}
-                  aria-label="Previous project"
-                  onClick={() =>
-                    setSpotlightOffset((prev) =>
-                      prev === 0 ? Math.max(0, projectPool.length - 1) : prev - 1
-                    )
-                  }
-                >
-                  <ChevronLeft size={15} />
-                </button>
-                <button
-                  type="button"
-                  className={styles['carousel-btn']}
-                  aria-label="Next project"
-                  onClick={() => setSpotlightOffset((prev) => prev + 1)}
-                >
-                  <ChevronRight size={15} />
-                </button>
-              </div>
-            </div>
-
-            <div className={styles['spotlight-grid']}>
-              {spotlightProjects.map((cardProject) => {
-                const cardTasks = taskPool.filter(
-                  (t) => t.projectId === cardProject.projectId
-                );
-                const cardDone = cardTasks.filter((t) => t.status === 'Done').length;
-                const pct =
-                  cardTasks.length > 0 ? Math.round((cardDone / cardTasks.length) * 100) : 0;
-                const radius = 36;
-                const circumference = 2 * Math.PI * radius;
-                const offset = circumference * (1 - pct / 100);
-                const isSelected = cardProject.projectId === project.projectId;
-                const activeSprint = cardProject.sprints?.[0]?.name || 'Active Sprint';
-
-                return (
-                  <div
-                    key={cardProject.projectId}
-                    className={`${styles['spotlight-card']} ${
-                      isSelected ? styles['is-selected'] : ''
-                    }`}
-                    onClick={() => onSelectProject?.(cardProject.projectId)}
-                    style={{ cursor: onSelectProject ? 'pointer' : 'default' }}
-                  >
-                    <div className={styles['spotlight-info']}>
-                      <div className={styles['spotlight-kicker']}>{activeSprint}</div>
-                      <h3 className={styles['spotlight-title']}>{cardProject.name}</h3>
-                      <p className={styles['spotlight-desc']}>
-                        {cardProject.description || 'No project description provided yet.'}
-                      </p>
-                      <span className={styles['team-label']}>Assignee</span>
-                      <div className={styles['team-row']}>
-                        <div className={styles['team-avatar-stack']}>
-                          {cardProject.acceptedMembers.slice(0, 4).map((member, idx) => (
-                            <span
-                              key={member.uid || member.email || idx}
-                              className={styles['team-avatar-item']}
-                            >
-                              <PersonAvatar person={member} size={30} />
-                            </span>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          className={styles['team-add-btn']}
-                          title="Assign team member"
-                          aria-label="Assign team member"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            document.getElementById('overview-add-task-input')?.focus();
-                          }}
-                        >
-                          <Plus size={13} strokeWidth={2.6} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className={styles['ring-wrap']}>
-                      <svg width="88" height="88" viewBox="0 0 88 88" aria-hidden="true">
-                        <circle
-                          cx="44"
-                          cy="44"
-                          r={radius}
-                          fill="none"
-                          stroke="#E5E9F4"
-                          strokeWidth="7"
-                        />
-                        <circle
-                          className={styles['ring-progress-stroke']}
-                          cx="44"
-                          cy="44"
-                          r={radius}
-                          fill="none"
-                          stroke="var(--purple)"
-                          strokeWidth="7"
-                          strokeDasharray={circumference}
-                          strokeDashoffset={offset}
-                          strokeLinecap="round"
-                          transform="rotate(-90 44 44)"
-                        />
-                      </svg>
-                      <div className={styles['ring-center']}>
-                        <span className={styles['ring-percent']}>{pct}%</span>
-                        <span className={styles['ring-tasks']}>{cardTasks.length} Tasks</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+            </section>
+          )}
 
           {/* Full Project Descriptions + Assignees Card */}
           <section
-            className={styles['details-strip-card']}
+            className={`${styles['details-strip-card']} ${styles['details-strip-overview']}`}
             aria-label="Project Descriptions and Assignees"
           >
             <div className={styles['details-strip-split']}>
@@ -488,28 +380,95 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                 </p>
               </div>
               <div className={styles['details-assignee-col']}>
-                <h3 className={styles['details-block-title']}>Assignee</h3>
-                <div className={styles['assignee-list-grid']}>
-                  {assigneesList.length > 0 ? (
-                    assigneesList.map((member, idx) => (
-                      <div
-                        key={member.uid || member.firebaseUid || member.email || idx}
-                        className={styles['assignee-chip']}
+                <div className={styles['details-project-overview']}>
+                  <div className={`${styles['section-bar']} ${styles['details-overview-controls']}`}>
+                    <div className={styles['carousel-controls']}>
+                      <button
+                        type="button"
+                        className={styles['carousel-btn']}
+                        aria-label="Previous project"
+                        onClick={showPreviousProject}
                       >
-                        <PersonAvatar
-                          person={member}
-                          size={34}
-                          className={styles['assignee-avatar']}
-                        />
-                        <div className={styles['assignee-meta']}>
-                          <strong>{member.name}</strong>
-                          <span>{member.role || 'Contributor'}</span>
+                        <ChevronLeft size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        className={styles['carousel-btn']}
+                        aria-label="Next project"
+                        onClick={showNextProject}
+                      >
+                        <ChevronRight size={15} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className={styles['details-overview-content']}>
+                    <div className={styles['spotlight-info']}>
+                      <span className={styles['spotlight-kicker']}>
+                        {detailsProject.sprints?.[0]?.name || 'Active Sprint'}
+                      </span>
+                      <h3 className={styles['spotlight-title']}>{detailsProject.name}</h3>
+                      <p className={styles['spotlight-desc']}>
+                        {detailsProject.description || 'No project description provided yet.'}
+                      </p>
+                      <span className={styles['team-label']}>Assignee</span>
+                      <div className={styles['team-row']}>
+                        <div className={styles['team-avatar-stack']}>
+                          {detailsProject.acceptedMembers.slice(0, 4).map((member, idx) => (
+                            <span
+                              key={member.uid || member.email || idx}
+                              className={styles['team-avatar-item']}
+                            >
+                              <PersonAvatar person={member} size={24} />
+                            </span>
+                          ))}
                         </div>
+                        <button
+                          type="button"
+                          className={styles['team-add-btn']}
+                          title="Assign team member"
+                          aria-label="Assign team member"
+                          onClick={() =>
+                            document.getElementById('overview-add-task-input')?.focus()
+                          }
+                        >
+                          <Plus size={12} strokeWidth={2.6} />
+                        </button>
                       </div>
-                    ))
-                  ) : (
-                    <span className={styles['details-block-copy']}>No members assigned yet.</span>
-                  )}
+                    </div>
+                    <div className={`${styles['ring-wrap']} ${styles['details-overview-ring']}`}>
+                      <svg width="72" height="72" viewBox="0 0 88 88" aria-hidden="true">
+                        <circle
+                          cx="44"
+                          cy="44"
+                          r="36"
+                          fill="none"
+                          stroke="#E5E9F4"
+                          strokeWidth="7"
+                        />
+                        <circle
+                          className={styles['ring-progress-stroke']}
+                          cx="44"
+                          cy="44"
+                          r="36"
+                          fill="none"
+                          stroke="var(--purple)"
+                          strokeWidth="7"
+                          strokeDasharray={projectRingCircumference}
+                          strokeDashoffset={detailsRingOffset}
+                          strokeLinecap="round"
+                          transform="rotate(-90 44 44)"
+                        />
+                      </svg>
+                      <div className={styles['ring-center']}>
+                        <span className={styles['ring-percent']}>
+                          {detailsCompletionPercentage}%
+                        </span>
+                        <span className={styles['ring-tasks']}>
+                          {detailsTasks.length} {detailsTasks.length === 1 ? 'Task' : 'Tasks'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -518,7 +477,8 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
           {/* Bottom Split: Task Progress + Recent Tasks */}
           <div className={styles['bottom-split-grid']}>
             {/* Task Progress Card */}
-            <section className={styles['panel-card']} aria-label="Task Progress">
+            {canViewTaskMetrics && (
+              <section className={styles['panel-card']} aria-label="Task Progress">
               <div className={styles['panel-head']}>
                 <h2 className={styles['section-heading']}>Task Progress</h2>
                 <select
@@ -575,7 +535,8 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                   ))}
                 </div>
               </div>
-            </section>
+              </section>
+            )}
 
             {/* Recent Tasks Card */}
             <section className={styles['panel-card']} aria-label="Recent Tasks">

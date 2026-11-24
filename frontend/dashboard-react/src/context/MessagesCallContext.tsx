@@ -1579,7 +1579,7 @@ export const MessagesCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
           autoConnect: false,
           reconnection: true,
           reconnectionAttempts: Infinity,
-          transports: ['polling', 'websocket'],
+          transports: ['websocket', 'polling'],
           tryAllTransports: true
         });
         socketRef.current = socket;

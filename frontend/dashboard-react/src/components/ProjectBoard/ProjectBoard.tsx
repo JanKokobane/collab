@@ -68,6 +68,7 @@ function normalizeTaskComment(raw: Record<string, unknown>, idx: number): TaskCo
 export const ProjectBoard: React.FC = () => {
   const {
     activeProject,
+    isCurrentUserProjectCreator,
     projects,
     accessibleTasks,
     switchView,
@@ -404,6 +405,7 @@ export const ProjectBoard: React.FC = () => {
       allProjects={projects}
       tasks={tasks}
       allTasks={allTasks}
+      canViewTaskMetrics={isCurrentUserProjectCreator}
       onSelectProject={(projectId) => {
         const selected = projects.find((item) => item.projectId === projectId);
         if (selected) switchView(selected.name);

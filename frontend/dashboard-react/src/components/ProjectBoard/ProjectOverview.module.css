@@ -446,7 +446,24 @@
 }
 
 .details-strip-card {
+  position: relative;
+  isolation: isolate;
   padding: 24px;
+}
+
+.details-strip-overview::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 0 48%;
+  border-radius: 0 16px 16px 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(239, 246, 255, 0.1) 40%,
+    rgba(219, 234, 254, 0.24) 100%
+  );
+  content: '';
+  pointer-events: none;
 }
 
 .details-strip-split {
@@ -475,45 +492,72 @@
   line-height: 1.7;
 }
 
-.assignee-list-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px 22px;
-}
-
-.assignee-chip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 150px;
-}
-
-.assignee-avatar {
-  flex: 0 0 auto;
-}
-
-.assignee-meta {
-  display: flex;
+.details-project-overview {
+  position: relative;
   min-width: 0;
-  flex-direction: column;
-  gap: 3px;
 }
 
-.assignee-meta strong {
-  overflow: hidden;
-  color: var(--ink-900);
-  font-size: 12px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.details-overview-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
 }
 
-.assignee-meta span {
-  overflow: hidden;
-  color: var(--ink-500);
+.details-overview-controls .carousel-btn {
+  width: 28px;
+  height: 28px;
+}
+
+.details-overview-content {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.details-overview-content .spotlight-kicker {
+  margin-bottom: 4px;
+  font-size: 9px;
+}
+
+.details-overview-content .spotlight-title {
+  font-size: 14px;
+}
+
+.details-overview-content .spotlight-desc {
+  margin: 4px 0 10px;
   font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.45;
+}
+
+.details-overview-content .team-label {
+  margin-bottom: 4px;
+  font-size: 9px;
+}
+
+.details-overview-content .team-avatar-item {
+  width: 26px;
+  height: 26px;
+}
+
+.details-overview-content .team-add-btn {
+  width: 24px;
+  height: 24px;
+  margin-left: 6px;
+}
+
+.details-overview-ring {
+  width: 72px;
+  height: 72px;
+}
+
+.details-overview-ring .ring-percent {
+  font-size: 13px;
+}
+
+.details-overview-ring .ring-tasks {
+  font-size: 8px;
 }
 
 .bottom-split-grid {
