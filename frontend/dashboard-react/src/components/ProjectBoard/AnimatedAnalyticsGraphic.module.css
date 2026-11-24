@@ -1,0 +1,280 @@
+.analytics-graphic {
+  position: relative;
+  width: 68px;
+  height: 54px;
+  flex: 0 0 68px;
+  overflow: visible;
+  isolation: isolate;
+  animation: analytics-entrance 650ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transition: transform 220ms ease;
+}
+
+.analytics-graphic:hover {
+  transform: translateY(-2px);
+}
+
+.grid-card {
+  position: absolute;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  border-radius: 7px;
+  background-color: #f8fafc;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.11) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.11) 1px, transparent 1px);
+  background-size: 7px 7px;
+  box-shadow: 0 3px 6px rgba(15, 23, 42, 0.14);
+}
+
+.grid-card-back {
+  inset: 5px 2px 6px 9px;
+  transform: rotate(5deg);
+}
+
+.grid-card-front {
+  inset: 7px 5px 8px 3px;
+  transform: rotate(-4deg);
+}
+
+.paperclip {
+  position: absolute;
+  z-index: 4;
+  top: -1px;
+  left: 31px;
+  width: 8px;
+  height: 14px;
+  fill: none;
+  stroke: #94a3b8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.2;
+}
+
+.trend-card {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  left: 3px;
+  width: 33px;
+  height: 25px;
+  border-radius: 5px;
+  background-color: #22c55e;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.15) 1px, transparent 1px);
+  background-size: 6px 6px;
+  box-shadow: 0 3px 5px rgba(22, 101, 52, 0.27);
+}
+
+.trend-line {
+  position: absolute;
+  inset: 3px 2px 2px;
+  width: 29px;
+  height: 20px;
+  overflow: visible;
+}
+
+.trend-line path {
+  fill: none;
+  stroke: url(#analytics-line-gradient);
+  stroke-dasharray: 80;
+  stroke-dashoffset: 80;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.8;
+  animation: draw-trend 2.4s ease-in-out infinite;
+}
+
+.trend-line .trend-arrow {
+  stroke-dasharray: 24;
+  animation-delay: 250ms;
+}
+
+.star-badge {
+  position: absolute;
+  z-index: 3;
+  bottom: -5px;
+  left: -4px;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 50%;
+  background: rgba(125, 211, 252, 0.82);
+  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.2);
+  animation: badge-bob 2.5s ease-in-out infinite;
+}
+
+.star-badge svg {
+  width: 9px;
+  height: 9px;
+  fill: #ffffff;
+}
+
+.bar-chart {
+  position: absolute;
+  z-index: 3;
+  bottom: 12px;
+  left: 27px;
+  display: flex;
+  height: 29px;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.chart-bar {
+  position: relative;
+  width: 6px;
+  border-radius: 4px 4px 2px 2px;
+  background: linear-gradient(0deg, #22c55e 0%, #1685ee 100%);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
+  transform-origin: bottom;
+  animation: bar-pulse 1.8s ease-in-out infinite;
+}
+
+.chart-bar-one {
+  height: 11px;
+  animation-delay: 0s;
+}
+
+.chart-bar-two {
+  height: 19px;
+  animation-delay: 180ms;
+}
+
+.chart-bar-three {
+  height: 27px;
+  animation-delay: 360ms;
+}
+
+.chart-wick {
+  width: 1px;
+  height: 29px;
+  margin-bottom: -1px;
+  background: rgba(37, 99, 235, 0.55);
+}
+
+.donut-chart {
+  position: absolute;
+  z-index: 3;
+  right: 5px;
+  bottom: 12px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 8deg,
+    #f8fafc 0deg 100deg,
+    #047857 100deg 220deg,
+    #65e51a 220deg 360deg
+  );
+  box-shadow: 1px 3px 3px rgba(15, 23, 42, 0.28);
+  animation: donut-rotate 8s linear infinite;
+}
+
+.donut-chart::after {
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: #f8fafc;
+  content: '';
+}
+
+.toggle-track {
+  position: absolute;
+  z-index: 4;
+  right: 13px;
+  bottom: 3px;
+  left: 13px;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3b82f6, #22c55e);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22);
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  display: grid;
+  width: 12px;
+  height: 12px;
+  place-items: center;
+  border: 1px solid #ffffff;
+  border-radius: 50%;
+  background: #ec4899;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.3);
+  transform: translateY(-50%);
+  animation: toggle-slide 2.8s ease-in-out infinite alternate;
+}
+
+.toggle-knob svg {
+  width: 7px;
+  height: 7px;
+  fill: #ffffff;
+}
+
+@keyframes analytics-entrance {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes draw-trend {
+  0%,
+  12% {
+    stroke-dashoffset: 80;
+  }
+  62%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes bar-pulse {
+  0%,
+  100% {
+    transform: scaleY(0.86);
+  }
+  50% {
+    transform: scaleY(1.05);
+  }
+}
+
+@keyframes donut-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes badge-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes toggle-slide {
+  to {
+    left: calc(100% - 15px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analytics-graphic,
+  .trend-line path,
+  .chart-bar,
+  .donut-chart,
+  .star-badge,
+  .toggle-knob {
+    animation: none;
+  }
+}
