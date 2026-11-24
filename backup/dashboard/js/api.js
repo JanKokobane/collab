@@ -8,7 +8,7 @@ const configuredBaseUrl = window.COLLAB_API_BASE_URL;
 
 const apiBaseUrl = (
     configuredBaseUrl ||
-    'https://collab-y7pb.onrender.com'
+    'https://mortise-dual-lion.abasthan.app'
 ).replace(/\/+$/, '');
 
 export class ApiError extends Error {

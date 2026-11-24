@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 import type { User } from 'firebase/auth';
 
 const apiBaseUrl = (
-  process.env.EXPO_PUBLIC_API_BASE_URL || 'https://collab-y7pb.onrender.com'
+  process.env.EXPO_PUBLIC_API_BASE_URL || 'https://mortise-dual-lion.abasthan.app'
 ).replace(/\/+$/, '');
 
 export async function sendPushTokenToBackend(token: string, user: User): Promise<void> {

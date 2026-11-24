@@ -145,7 +145,7 @@ export class MessagesApiError extends Error {
 }
 
 const apiBaseUrl = (
-  process.env.EXPO_PUBLIC_API_BASE_URL || 'https://collab-y7pb.onrender.com'
+  process.env.EXPO_PUBLIC_API_BASE_URL || 'https://mortise-dual-lion.abasthan.app'
 ).replace(/\/+$/, '');
 
 function normalizeConversation(row: Record<string, unknown>): Conversation {

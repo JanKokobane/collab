@@ -27,7 +27,7 @@ export const firestoreDb = getFirestore(firebaseApp)
 export async function markCurrentUserOffline() {
   const user = firebaseAuth.currentUser
   if (!user) return
-  const baseUrl = (window.COLLAB_API_BASE_URL || 'https://collab-y7pb.onrender.com').replace(/\/+$/, '')
+  const baseUrl = (window.COLLAB_API_BASE_URL || 'https://mortise-dual-lion.abasthan.app').replace(/\/+$/, '')
   const response = await fetch(`${baseUrl}/api/messages/presence`, {
     method: 'POST',
     headers: {

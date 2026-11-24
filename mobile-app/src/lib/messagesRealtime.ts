@@ -3,7 +3,7 @@ import type { User } from 'firebase/auth';
 type Listener = (payload?: unknown) => void;
 
 const socketBaseUrl = (
-  process.env.EXPO_PUBLIC_API_BASE_URL || 'https://collab-y7pb.onrender.com'
+  process.env.EXPO_PUBLIC_API_BASE_URL || 'https://mortise-dual-lion.abasthan.app'
 ).replace(/\/+$/, '');
 
 export class MessagesRealtime {
