@@ -525,7 +525,7 @@ const updateOwnPresence = async (req, res) => {
         await setPresence(req.firebaseUid, req.body.isOnline);
         return res.json({ success: true });
     } catch (error) {
-        console.error('Update PostgreSQL message presence failed:', error.message);
+        console.error('Update PostgreSQL message presence failed:', error);
         return res.status(500).json({
             success: false, code: 'PRESENCE_UPDATE_FAILED',
             message: 'Presence could not be updated.'

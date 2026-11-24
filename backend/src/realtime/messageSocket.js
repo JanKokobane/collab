@@ -63,16 +63,20 @@ const setPresence = async (uid, isOnline) => {
         is_online: isOnline,
         last_seen_at: new Date().toISOString()
     }
-    io?.to(userRoom(uid)).emit('presence:updated', presence)
-    const conversations = await query(
-        `SELECT conversation_id::text AS conversation_id
-         FROM message_conversation_members WHERE firebase_uid = $1`,
-        [uid]
-    )
-    for (const row of conversations.rows) {
-        if (await isConversationMember(row.conversation_id, uid)) {
-            await emitToConversation(row.conversation_id, 'presence:updated', presence)
+    try {
+        io?.to(userRoom(uid)).emit('presence:updated', presence)
+        const conversations = await query(
+            `SELECT conversation_id::text AS conversation_id
+             FROM message_conversation_members WHERE firebase_uid = $1`,
+            [uid]
+        )
+        for (const row of conversations.rows) {
+            if (await isConversationMember(row.conversation_id, uid)) {
+                await emitToConversation(row.conversation_id, 'presence:updated', presence)
+            }
         }
+    } catch (error) {
+        console.error('Message presence was saved, but realtime broadcast failed:', error);
     }
 };
 
