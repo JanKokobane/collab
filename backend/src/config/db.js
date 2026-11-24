@@ -7,20 +7,21 @@ const databaseUrl =
     process.env.DB_NAME &&
     process.env.DB_USER &&
     process.env.DB_PASSWORD
-        ? `postgresql://${encodeURIComponent(process.env.DB_USER)}:${encodeURIComponent(process.env.DB_PASSWORD)}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}?sslmode=verify-full`
+        ? `postgresql://${encodeURIComponent(process.env.DB_USER)}:${encodeURIComponent(process.env.DB_PASSWORD)}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}?sslmode=require`
         : null);
 
 const realPool = databaseUrl
     ? new Pool({
         connectionString: databaseUrl,
         ssl: {
-            rejectUnauthorized: true
+            rejectUnauthorized: false
         },
         max: 10,
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 5000
+        connectionTimeoutMillis: 15000
     })
     : null;
+
 let dbConnected = false;
 
 if (realPool) {
@@ -29,7 +30,7 @@ if (realPool) {
     });
 
     realPool.on('error', (error) => {
-        console.error('PostgreSQL pool error:', error.message);
+        console.error('PostgreSQL pool error:', error.message || error);
     });
 }
 
@@ -86,7 +87,7 @@ const connectDB = async () => {
         console.log(`Server time: ${result.rows[0].server_time}`);
     } catch (error) {
         dbConnected = false;
-        console.error('PostgreSQL connection failed:', error.message);
+        console.error('PostgreSQL connection failed:', error.message || error);
         throw error;
     } finally {
         if (client) {
@@ -102,7 +103,7 @@ const query = async (text, params = []) => {
     try {
         return await realPool.query(text, params);
     } catch (error) {
-        console.error('Database query failed:', error.message);
+        console.error('Database query failed:', error.message || error);
         throw error;
     }
 };
