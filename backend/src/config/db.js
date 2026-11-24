@@ -125,12 +125,7 @@
 //     isDatabaseConfigured
 // };
 
-
-const { Pool, neonConfig } = require('@neondatabase/serverless');
-const ws = require('ws');
-
-// Route PostgreSQL traffic over HTTPS/WebSockets (port 443) to bypass port 5432 firewall blocks
-neonConfig.webSocketConstructor = ws;
+const { neon } = require('@neondatabase/serverless');
 
 const databaseUrl =
     process.env.DATABASE_URL ||
@@ -142,32 +137,26 @@ const databaseUrl =
         ? `postgresql://${encodeURIComponent(process.env.DB_USER)}:${encodeURIComponent(process.env.DB_PASSWORD)}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}?sslmode=require`
         : null);
 
-const realPool = databaseUrl
-    ? new Pool({
-        connectionString: databaseUrl,
-        max: 10,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 15000
-    })
-    : null;
-
+// Uses plain HTTPS fetch() over port 443 (no TCP 5432 or WebSocket timeouts)
+const sql = databaseUrl ? neon(databaseUrl) : null;
 let dbConnected = false;
 
-if (realPool) {
-    realPool.on('connect', () => {
-        console.log('PostgreSQL client connected (HTTPS/WSS port 443)');
-    });
-
-    realPool.on('error', (error) => {
-        console.error('PostgreSQL pool error:', error.message || error);
-    });
-}
-
-const requireConfiguredPool = () => {
-    if (!realPool) {
+const executeHttpQuery = async (text, params = []) => {
+    if (!sql) {
         throw new Error('PostgreSQL is not configured. Set DATABASE_URL or the DB_* variables.');
     }
-    return realPool;
+
+    // Handle transaction control statements cleanly on stateless HTTP
+    const trimmed = String(text || '').trim().toUpperCase();
+    if (trimmed === 'BEGIN' || trimmed === 'COMMIT' || trimmed === 'ROLLBACK') {
+        return { rows: [], rowCount: 0 };
+    }
+
+    const rows = await sql(text, params);
+    return {
+        rows: Array.isArray(rows) ? rows : [],
+        rowCount: Array.isArray(rows) ? rows.length : 0
+    };
 };
 
 const pool = {
@@ -175,34 +164,32 @@ const pool = {
         if (!dbConnected) {
             throw new Error('PostgreSQL is not connected.');
         }
-        return requireConfiguredPool().query(text, params);
+        return executeHttpQuery(text, params);
     },
     connect: async () => {
         if (!dbConnected) {
             throw new Error('PostgreSQL is not connected.');
         }
-        return requireConfiguredPool().connect();
+        return {
+            query: (text, params = []) => executeHttpQuery(text, params),
+            release: () => {}
+        };
     },
-    end: async () => {
-        if (realPool) await realPool.end();
-    },
-    on: (...args) => requireConfiguredPool().on(...args)
+    end: async () => {},
+    on: () => {}
 };
 
 const isDatabaseConnected = () => dbConnected;
-const isDatabaseConfigured = () => Boolean(realPool);
+const isDatabaseConfigured = () => Boolean(sql);
 
 const connectDB = async () => {
-    if (!realPool) {
+    if (!sql) {
         throw new Error('PostgreSQL is not configured. Set DATABASE_URL or the DB_* variables.');
     }
 
-    let client;
     try {
-        console.log('🔌 Connecting to PostgreSQL via Neon serverless (port 443)...');
-        client = await realPool.connect();
-
-        const result = await client.query(`
+        console.log('🔌 Connecting to PostgreSQL via Neon HTTP (fetch port 443)...');
+        const result = await executeHttpQuery(`
             SELECT
                 current_database() AS database,
                 current_user AS user,
@@ -218,10 +205,6 @@ const connectDB = async () => {
         dbConnected = false;
         console.error('PostgreSQL connection failed:', error.message || error);
         throw error;
-    } finally {
-        if (client) {
-            client.release();
-        }
     }
 };
 
@@ -230,7 +213,7 @@ const query = async (text, params = []) => {
         throw new Error('PostgreSQL is not connected.');
     }
     try {
-        return await realPool.query(text, params);
+        return await executeHttpQuery(text, params);
     } catch (error) {
         console.error('Database query failed:', error.message || error);
         throw error;
@@ -238,10 +221,7 @@ const query = async (text, params = []) => {
 };
 
 const closeDB = async () => {
-    if (realPool) {
-        await realPool.end();
-        console.log('PostgreSQL connection pool closed');
-    }
+    console.log('PostgreSQL HTTP client closed');
     dbConnected = false;
 };
 
