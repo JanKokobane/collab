@@ -22,8 +22,12 @@ export const firebaseAuth = initializeAuth(firebaseApp, {
 });
 export const firestoreDb = getFirestore(firebaseApp);
 
+const configuredApiBaseUrl = window.COLLAB_API_BASE_URL?.trim();
+
 export const apiBaseUrl = (
-  window.COLLAB_API_BASE_URL || 'https://collab-backup-backend.onrender.com'
+  import.meta.env.DEV
+    ? ''
+    : configuredApiBaseUrl || 'https://collab-backup-backend.onrender.com'
 ).replace(/\/+$/, '');
 
 export async function markCurrentUserOffline(): Promise<void> {

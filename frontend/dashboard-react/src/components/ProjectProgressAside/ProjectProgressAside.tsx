@@ -399,7 +399,7 @@ export const ProjectProgressAside: React.FC = () => {
     const tid = String(task.taskId || task.id);
     try {
       const token = await firebaseUser?.getIdToken();
-      const url = `${apiBaseUrl}/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(tid)}/submission-attachments/${index}`;
+      const url = `${apiBaseUrl}/api/projects/${encodeURIComponent(project.projectId)}/tasks/${encodeURIComponent(tid)}/submission-attachments/${index}`;
       const resp = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
