@@ -58,7 +58,7 @@ import {
 // BACKEND API
 // ============================================================
 
-const API_BASE_URL = (window.COLLAB_API_BASE_URL || "https://mortise-dual-lion.abasthan.app").replace(/\/+$/, "");
+const API_BASE_URL = (window.COLLAB_API_BASE_URL || "https://collab-backup-backend.onrender.com").replace(/\/+$/, "");
 
 
 // ============================================================

@@ -38,7 +38,7 @@ export const firestoreDb = getFirestore(firebaseApp);
 
 export async function setUserPresence(user: User, isOnline: boolean): Promise<void> {
   const baseUrl = (
-    process.env.EXPO_PUBLIC_API_BASE_URL || 'https://mortise-dual-lion.abasthan.app'
+    process.env.EXPO_PUBLIC_API_BASE_URL || 'https://collab-backup-backend.onrender.com'
   ).replace(/\/+$/, '');
   let response = await fetch(`${baseUrl}/api/messages/presence`, {
     method: 'POST',

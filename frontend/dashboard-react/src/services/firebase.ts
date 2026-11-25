@@ -23,7 +23,7 @@ export const firebaseAuth = initializeAuth(firebaseApp, {
 export const firestoreDb = getFirestore(firebaseApp);
 
 export const apiBaseUrl = (
-  window.COLLAB_API_BASE_URL || 'https://mortise-dual-lion.abasthan.app'
+  window.COLLAB_API_BASE_URL || 'https://collab-backup-backend.onrender.com'
 ).replace(/\/+$/, '');
 
 export async function markCurrentUserOffline(): Promise<void> {

@@ -1,7 +1,7 @@
 import { firebaseAuth } from '@/lib/firebase';
 
 const apiBaseUrl = (
-  process.env.EXPO_PUBLIC_API_BASE_URL || 'https://mortise-dual-lion.abasthan.app'
+  process.env.EXPO_PUBLIC_API_BASE_URL || 'https://collab-backup-backend.onrender.com'
 ).replace(/\/+$/, '');
 
 export class HomeApiError extends Error {

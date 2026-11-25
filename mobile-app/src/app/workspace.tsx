@@ -311,7 +311,7 @@ export default function WorkspaceScreen() {
       try {
         if (!user) return;
         const baseUrl = (
-          process.env.EXPO_PUBLIC_API_BASE_URL || 'https://mortise-dual-lion.abasthan.app'
+          process.env.EXPO_PUBLIC_API_BASE_URL || 'https://collab-backup-backend.onrender.com'
         ).replace(/\/+$/, '');
         const token = await user.getIdToken();
         let response = await fetch(`${baseUrl}/api/users/profile-image`, {

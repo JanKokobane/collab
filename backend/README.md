@@ -58,8 +58,8 @@ short-lived room-scoped access token. The frontend joins through Metered's
 JavaScript SDK in the existing dashboard meeting modal. Existing external
 meeting links remain available alongside the Metered room.
 
-Do not commit `.env` files or service-account credentials. Frontend API clients
-default to `https://mortise-dual-lion.abasthan.app` for non-local hosts; set
+Do not commit `.env` files or service-account credentials. API clients
+default to `https://collab-backup-backend.onrender.com` for non-local hosts; set
 `window.COLLAB_API_BASE_URL` before loading the client to override it.
 
 ### Enabling calls and voice notes
