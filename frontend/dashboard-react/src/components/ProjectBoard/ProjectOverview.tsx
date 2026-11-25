@@ -289,30 +289,45 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
           {canViewTaskMetrics && (
             <section className={styles['kpi-grid']} aria-label="Project Metrics">
               <div className={styles['kpi-card']}>
-                <div className={styles['kpi-total-row']}>
+                <div className={styles['kpi-count-row']}>
                   <AnimatedMetric value={tasks.length} />
                   <AnimatedAnalyticsGraphic />
                 </div>
                 <span className={styles['kpi-label']}>Total tasks</span>
               </div>
               <div className={styles['kpi-card']}>
-                <AnimatedMetric value={todoCount} />
+                <div className={styles['kpi-count-row']}>
+                  <AnimatedMetric value={todoCount} />
+                  <AnimatedAnalyticsGraphic variant="pending" />
+                </div>
                 <span className={styles['kpi-label']}>Pending tasks</span>
               </div>
               <div className={styles['kpi-card']}>
-                <AnimatedMetric value={inProgressCount} />
+                <div className={styles['kpi-count-row']}>
+                  <AnimatedMetric value={inProgressCount} />
+                  <AnimatedAnalyticsGraphic variant="in-progress" />
+                </div>
                 <span className={styles['kpi-label']}>In progress</span>
               </div>
               <div className={styles['kpi-card']}>
-                <AnimatedMetric value={completedCount} />
+                <div className={styles['kpi-count-row']}>
+                  <AnimatedMetric value={completedCount} />
+                  <AnimatedAnalyticsGraphic variant="complete" />
+                </div>
                 <span className={styles['kpi-label']}>Complete tasks</span>
               </div>
               <div className={styles['kpi-card']}>
-                <AnimatedMetric value={overdueCount} />
+                <div className={styles['kpi-count-row']}>
+                  <AnimatedMetric value={overdueCount} />
+                  <AnimatedAnalyticsGraphic variant="overdue" />
+                </div>
                 <span className={styles['kpi-label']}>Overdue tasks</span>
               </div>
               <div className={styles['kpi-card']}>
-                <AnimatedMetric value={dueSoonCount} />
+                <div className={styles['kpi-count-row']}>
+                  <AnimatedMetric value={dueSoonCount} />
+                  <AnimatedAnalyticsGraphic variant="due-soon" />
+                </div>
                 <span className={styles['kpi-label']}>Due soon</span>
               </div>
             </section>
