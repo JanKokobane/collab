@@ -9,7 +9,7 @@ import {
   UserPlus,
   X
 } from 'lucide-react';
-import type { Project, ProjectMember, TaskItem } from '../../types/taskViewer';
+import type { Project, TaskItem } from '../../types/taskViewer';
 import { AnimatedAnalyticsGraphic } from './AnimatedAnalyticsGraphic';
 import { PersonAvatar } from './PersonAvatar';
 import styles from './ProjectOverview.module.css';
@@ -22,7 +22,6 @@ export interface ProjectOverviewProps {
   canViewTaskMetrics: boolean;
   onSelectProject?: (projectId: string) => void;
   onOpenProgressAside: (taskId: string | number) => void;
-  onOpenAnalytics?: () => void;
   onToggleTaskDone: (taskId: string | number) => void;
   onAddTask?: (projectId: string, title: string) => void;
 }
@@ -74,7 +73,6 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   allTasks,
   canViewTaskMetrics,
   onOpenProgressAside,
-  onOpenAnalytics,
   onToggleTaskDone,
   onAddTask
 }) => {
@@ -104,26 +102,6 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     return dueDate && dueDate >= todayKey && dueDate <= dueSoonLimitKey && task.status !== 'Done';
   }).length;
   const projectRingCircumference = 2 * Math.PI * 36;
-  const owner: ProjectMember = useMemo(
-    () => ({
-      firebaseUid: project.creatorFirebaseUid || undefined,
-      name: project.creatorName,
-      email: project.creatorEmail,
-      initials: project.creatorInitials,
-      profileImage: project.creatorProfileImage,
-      tone: project.creatorTone || 'indigo',
-      role: 'Project Owner'
-    }),
-    [
-      project.creatorFirebaseUid,
-      project.creatorName,
-      project.creatorEmail,
-      project.creatorInitials,
-      project.creatorProfileImage,
-      project.creatorTone
-    ]
-  );
-
   const visibleTasks = useMemo(() => {
     return tasks.filter((t) => (taskFilter === 'pending' ? t.status !== 'Done' : true));
   }, [tasks, taskFilter]);
@@ -244,47 +222,6 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
       <div className={styles['overview-layout']}>
         {/* LEFT MAIN COLUMN */}
         <div className={styles['main-col']}>
-          {/* Header Row */}
-          <header className={styles['top-header']}>
-            <div className={styles['top-header-left']}>
-              <span className={styles['hero-avatar-ring']}>
-                <PersonAvatar person={owner} size={46} />
-              </span>
-              <div className={styles['top-header-copy']}>
-                <h1 className={styles['header-title']}>{project.name}</h1>
-                <p className={styles['header-subtitle']}>
-                  Project Overview · Click any task below or in the sidebar for full task details
-                </p>
-              </div>
-            </div>
-
-            <div className={styles['header-actions-group']}>
-              {onOpenAnalytics && tasks.length > 0 && (
-                <button
-                  type="button"
-                  className={styles['secondary-pill-btn']}
-                  onClick={onOpenAnalytics}
-                >
-                  <BarChart3 size={14} strokeWidth={2.2} />
-                  <span>Analytics</span>
-                </button>
-              )}
-              <button
-                type="button"
-                className={styles['primary-add-btn']}
-                onClick={() => {
-                  const inputEl = document.getElementById('overview-add-task-input');
-                  inputEl?.focus();
-                }}
-              >
-                <span className={styles['primary-add-plus']}>
-                  <Plus size={14} strokeWidth={2.5} />
-                </span>
-                <span>Add Task</span>
-              </button>
-            </div>
-          </header>
-
           {/* Task metric cards */}
           {canViewTaskMetrics && (
             <section className={styles['kpi-grid']} aria-label="Project Metrics">
@@ -401,39 +338,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                         </button>
                       </div>
                     </div>
-                    <div className={`${styles['ring-wrap']} ${styles['details-overview-ring']}`}>
-                      <svg width="72" height="72" viewBox="0 0 88 88" aria-hidden="true">
-                        <circle
-                          cx="44"
-                          cy="44"
-                          r="36"
-                          fill="none"
-                          stroke="#E5E9F4"
-                          strokeWidth="7"
-                        />
-                        <circle
-                          className={styles['ring-progress-stroke']}
-                          cx="44"
-                          cy="44"
-                          r="36"
-                          fill="none"
-                          stroke="var(--purple)"
-                          strokeWidth="7"
-                          strokeDasharray={projectRingCircumference}
-                          strokeDashoffset={detailsRingOffset}
-                          strokeLinecap="round"
-                          transform="rotate(-90 44 44)"
-                        />
-                      </svg>
-                      <div className={styles['ring-center']}>
-                        <span className={styles['ring-percent']}>
-                          {detailsCompletionPercentage}%
-                        </span>
-                        <span className={styles['ring-tasks']}>
-                          {detailsTasks.length} {detailsTasks.length === 1 ? 'Task' : 'Tasks'}
-                        </span>
-                      </div>
-                    </div>
+
                   </div>
                 </div>
               </div>

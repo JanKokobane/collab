@@ -1,20 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
+  BarChart3,
   Calendar as CalendarIcon,
   Check,
   CheckCircle2,
   ChevronDown,
-  ChevronUp,
   Circle,
-  ClipboardList,
   Clock,
   FileText,
   Flag,
   Kanban,
   List as ListIcon,
   MoreHorizontal,
-  Pencil,
   Plus,
   SlidersHorizontal,
   Trash2,
@@ -32,7 +30,6 @@ import type {
   TaskAttachment,
   TaskComment,
   TaskItem,
-  TaskStatus,
   TaskSubtask
 } from '../../types/taskViewer';
 import { PersonAvatar } from './PersonAvatar';
@@ -51,25 +48,24 @@ export interface TaskDetailsProps {
   error?: string;
   onRetry?: () => void;
   onClose?: () => void;
-  onStatusChange?: (taskId: string | number, status: TaskStatus) => void;
+  isProjectOwner?: boolean;
+  onOpenAnalysis?: () => void;
+  onAddTask?: () => void;
   onToggleSubtask?: (taskId: string | number, subtaskId: string) => void;
   onAddSubtask?: (taskId: string | number, title: string) => void;
   onAddComment?: (taskId: string | number, text: string) => void;
   onUploadAttachment?: (taskId: string | number, files: TaskAttachment[]) => void;
-  onRenameTask?: (taskId: string | number, nextTitle: string) => void;
 }
-
-const STATUS_OPTIONS: TaskStatus[] = ['To do', 'In progress', 'Done', 'Blocked', 'Backlog'];
 
 const BOARD_COLUMNS: Array<{
   status: BoardColumnStatus;
   toneClass: string;
 }> = [
-  { status: 'Pending', toneClass: 'tone-pending' },
-  { status: 'In Progress', toneClass: 'tone-in-progress' },
-  { status: 'Completed', toneClass: 'tone-completed' },
-  { status: 'Launched', toneClass: 'tone-launched' }
-];
+    { status: 'Pending', toneClass: 'tone-pending' },
+    { status: 'In Progress', toneClass: 'tone-in-progress' },
+    { status: 'Completed', toneClass: 'tone-completed' },
+    { status: 'Launched', toneClass: 'tone-launched' }
+  ];
 
 function formatDate(value?: string | null): string {
   if (!value) return '—';
@@ -101,23 +97,21 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
   error = '',
   onRetry,
   onClose,
-  onStatusChange,
+  isProjectOwner = false,
+  onOpenAnalysis,
+  onAddTask,
   onToggleSubtask,
   onAddSubtask,
   onAddComment,
-  onUploadAttachment,
-  onRenameTask
+  onUploadAttachment
 }) => {
   const [activeTab, setActiveTab] = useState<TaskViewerTab>('overview');
-  const [quickActionsExpanded, setQuickActionsExpanded] = useState<boolean>(true);
-  const [automationOpen, setAutomationOpen] = useState<boolean>(false);
   const [showAllActivity, setShowAllActivity] = useState<boolean>(false);
   const [addingSubtask, setAddingSubtask] = useState<boolean>(false);
   const [subtaskDraft, setSubtaskDraft] = useState<string>('');
   const [commentDraft, setCommentDraft] = useState<string>('');
-  const [editingTitle, setEditingTitle] = useState<boolean>(false);
-  const [titleDraft, setTitleDraft] = useState<string>('');
   const [shareCopied, setShareCopied] = useState<boolean>(false);
+  const [, setEditingTitle] = useState<boolean>(false);
 
   // Interactive Board / List / Calendar / Files state (seeded with mock data for now)
   const [boardItems, setBoardItems] = useState<BoardCardItem[]>([]);
@@ -135,22 +129,16 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
   const [newCardPriority, setNewCardPriority] = useState<'normal' | 'high' | 'low'>('normal');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const automationRef = useRef<HTMLDivElement | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setAddingSubtask(false);
     setSubtaskDraft('');
-    setEditingTitle(false);
-    setTitleDraft(task?.title || '');
     setBoardItems(task?.boardItems || []);
   }, [task?.id, task?.title, task?.boardItems]);
 
   useEffect(() => {
     const handleDocClick = (event: MouseEvent) => {
-      if (automationRef.current && !automationRef.current.contains(event.target as Node)) {
-        setAutomationOpen(false);
-      }
       if (toolbarRef.current && !toolbarRef.current.contains(event.target as Node)) {
         setOpenToolbarDropdown(null);
       }
@@ -158,7 +146,6 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
     };
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setAutomationOpen(false);
         setOpenToolbarDropdown(null);
         setOpenCardMenuId(null);
         setEditingTitle(false);
@@ -222,9 +209,9 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
   const activityItems = useMemo(() => {
     const base = Array.isArray(task?.activity)
       ? task.activity.map((item) => ({
-          ...item,
-          time: formatActivityTime(item.time)
-        }))
+        ...item,
+        time: formatActivityTime(item.time)
+      }))
       : [];
     comments.forEach((c, idx) => {
       base.push({
@@ -320,15 +307,15 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
       prev.map((card) =>
         card.id === cardId
           ? {
-              ...card,
-              status: nextStatus,
-              progress:
-                nextStatus === 'Completed' || nextStatus === 'Launched'
-                  ? 100
-                  : nextStatus === 'In Progress'
-                    ? card.progress || 45
-                    : 0
-            }
+            ...card,
+            status: nextStatus,
+            progress:
+              nextStatus === 'Completed' || nextStatus === 'Launched'
+                ? 100
+                : nextStatus === 'In Progress'
+                  ? card.progress || 45
+                  : 0
+          }
           : card
       )
     );
@@ -355,14 +342,6 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
     setBoardItems((prev) => [nextItem, ...prev]);
     setNewCardTitle('');
     setCreatingInColumn(null);
-  };
-
-  const handleSaveTitle = () => {
-    const trimmed = titleDraft.trim();
-    if (task && trimmed && trimmed !== task.title) {
-      onRenameTask?.(task.id, trimmed);
-    }
-    setEditingTitle(false);
   };
 
   const handleAddSubtaskSubmit = (event: React.FormEvent) => {
@@ -451,9 +430,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
         <div className={styles['toolbar-dropdown-wrap']}>
           <button
             type="button"
-            className={`${styles['toolbar-filter-btn']} ${
-              dueFilter !== 'all' ? styles['is-filtered'] : ''
-            }`}
+            className={`${styles['toolbar-filter-btn']} ${dueFilter !== 'all' ? styles['is-filtered'] : ''
+              }`}
             onClick={(e) => {
               e.stopPropagation();
               setOpenToolbarDropdown((prev) => (prev === 'due' ? null : 'due'));
@@ -476,9 +454,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                 <button
                   key={key}
                   type="button"
-                  className={`${styles['filter-option-btn']} ${
-                    dueFilter === key ? styles['is-active'] : ''
-                  }`}
+                  className={`${styles['filter-option-btn']} ${dueFilter === key ? styles['is-active'] : ''
+                    }`}
                   onClick={() => {
                     setDueFilter(key);
                     setOpenToolbarDropdown(null);
@@ -495,9 +472,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
         <div className={styles['toolbar-dropdown-wrap']}>
           <button
             type="button"
-            className={`${styles['toolbar-filter-btn']} ${
-              assigneeFilter !== 'all' ? styles['is-filtered'] : ''
-            }`}
+            className={`${styles['toolbar-filter-btn']} ${assigneeFilter !== 'all' ? styles['is-filtered'] : ''
+              }`}
             onClick={(e) => {
               e.stopPropagation();
               setOpenToolbarDropdown((prev) => (prev === 'assignee' ? null : 'assignee'));
@@ -517,9 +493,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
             <div className={styles['toolbar-popover']} role="menu">
               <button
                 type="button"
-                className={`${styles['filter-option-btn']} ${
-                  assigneeFilter === 'all' ? styles['is-active'] : ''
-                }`}
+                className={`${styles['filter-option-btn']} ${assigneeFilter === 'all' ? styles['is-active'] : ''
+                  }`}
                 onClick={() => {
                   setAssigneeFilter('all');
                   setOpenToolbarDropdown(null);
@@ -529,9 +504,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
               </button>
               <button
                 type="button"
-                className={`${styles['filter-option-btn']} ${
-                  assigneeFilter === 'unassigned' ? styles['is-active'] : ''
-                }`}
+                className={`${styles['filter-option-btn']} ${assigneeFilter === 'unassigned' ? styles['is-active'] : ''
+                  }`}
                 onClick={() => {
                   setAssigneeFilter('unassigned');
                   setOpenToolbarDropdown(null);
@@ -543,9 +517,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                 <button
                   key={member.name}
                   type="button"
-                  className={`${styles['filter-option-btn']} ${
-                    assigneeFilter === member.name ? styles['is-active'] : ''
-                  }`}
+                  className={`${styles['filter-option-btn']} ${assigneeFilter === member.name ? styles['is-active'] : ''
+                    }`}
                   onClick={() => {
                     setAssigneeFilter(member.name || 'all');
                     setOpenToolbarDropdown(null);
@@ -562,9 +535,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
         <div className={styles['toolbar-dropdown-wrap']}>
           <button
             type="button"
-            className={`${styles['toolbar-filter-btn']} ${
-              priorityFilter !== 'all' ? styles['is-filtered'] : ''
-            }`}
+            className={`${styles['toolbar-filter-btn']} ${priorityFilter !== 'all' ? styles['is-filtered'] : ''
+              }`}
             onClick={(e) => {
               e.stopPropagation();
               setOpenToolbarDropdown((prev) => (prev === 'priority' ? null : 'priority'));
@@ -587,9 +559,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                 <button
                   key={key}
                   type="button"
-                  className={`${styles['filter-option-btn']} ${
-                    priorityFilter === key ? styles['is-active'] : ''
-                  }`}
+                  className={`${styles['filter-option-btn']} ${priorityFilter === key ? styles['is-active'] : ''
+                    }`}
                   onClick={() => {
                     setPriorityFilter(key);
                     setOpenToolbarDropdown(null);
@@ -608,9 +579,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
         <div className={styles['toolbar-dropdown-wrap']}>
           <button
             type="button"
-            className={`${styles['toolbar-filter-btn']} ${
-              activeAdvanceCount > 0 ? styles['is-filtered'] : ''
-            }`}
+            className={`${styles['toolbar-filter-btn']} ${activeAdvanceCount > 0 ? styles['is-filtered'] : ''
+              }`}
             onClick={(e) => {
               e.stopPropagation();
               setOpenToolbarDropdown((prev) => (prev === 'advance' ? null : 'advance'));
@@ -627,9 +597,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
               <div className={styles['advance-popover-heading']}>Column Status</div>
               <button
                 type="button"
-                className={`${styles['filter-option-btn']} ${
-                  statusFilter === 'all' ? styles['is-active'] : ''
-                }`}
+                className={`${styles['filter-option-btn']} ${statusFilter === 'all' ? styles['is-active'] : ''
+                  }`}
                 onClick={() => {
                   setStatusFilter('all');
                   setOpenToolbarDropdown(null);
@@ -641,9 +610,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                 <button
                   key={col.status}
                   type="button"
-                  className={`${styles['filter-option-btn']} ${
-                    statusFilter === col.status ? styles['is-active'] : ''
-                  }`}
+                  className={`${styles['filter-option-btn']} ${statusFilter === col.status ? styles['is-active'] : ''
+                    }`}
                   onClick={() => {
                     setStatusFilter(col.status);
                     setOpenToolbarDropdown(null);
@@ -726,106 +694,105 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
 
       {task && (
         <>
-          {/* Header Row */}
-          <header className={styles['task-header']}>
-            <div className={styles['task-header-left']}>
-              <span className={styles['task-brand-icon']} aria-hidden="true">
-                <ClipboardList size={20} strokeWidth={2} />
-              </span>
-
-              {editingTitle ? (
-                <input
-                  type="text"
-                  className={styles['task-title-input']}
-                  value={titleDraft}
-                  autoFocus
-                  onChange={(e) => setTitleDraft(e.target.value)}
-                  onBlur={handleSaveTitle}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSaveTitle();
-                    if (e.key === 'Escape') {
-                      setTitleDraft(task.title);
-                      setEditingTitle(false);
-                    }
-                  }}
-                />
-              ) : (
-                <h1 className={styles['task-title']}>{task.title}</h1>
-              )}
-
+          {/* Task navigation and actions */}
+          <div className={styles['task-tabs-row']}>
+            <nav className={styles['task-tabs-nav']} aria-label="Task sections">
               <button
                 type="button"
-                className={styles['task-edit-btn']}
-                aria-label="Edit task title"
-                onClick={() => {
-                  setTitleDraft(task.title);
-                  setEditingTitle(true);
-                }}
+                className={`${styles['task-tab-btn']} ${activeTab === 'overview' ? styles['is-active'] : ''
+                  }`}
+                onClick={() => setActiveTab('overview')}
               >
-                <Pencil size={14} strokeWidth={2} />
+                <span>Overview</span>
               </button>
-            </div>
-
-            <div className={styles['task-header-actions']}>
-              <div className={styles['header-avatar-stack']} title="Assigned team">
-                {assignees.slice(0, 4).map((person, idx) => (
-                  <span
-                    key={person.uid || person.firebaseUid || person.email || `${person.name}-${idx}`}
-                    className={styles['header-avatar-item']}
-                  >
-                    <PersonAvatar person={person} />
-                  </span>
-                ))}
-              </div>
-
-              <span className={styles['header-divider']} aria-hidden="true" />
-
               <button
                 type="button"
-                className={styles['header-outline-btn']}
+                className={`${styles['task-tab-btn']} ${activeTab === 'list' ? styles['is-active'] : ''
+                  }`}
+                onClick={() => setActiveTab('list')}
+              >
+                <ListIcon size={18} strokeWidth={2} />
+                <span>List</span>
+              </button>
+              <button
+                type="button"
+                className={`${styles['task-tab-btn']} ${activeTab === 'board' ? styles['is-active'] : ''
+                  }`}
+                onClick={() => setActiveTab('board')}
+              >
+                <Kanban size={18} strokeWidth={2} />
+                <span>Board</span>
+              </button>
+              <button
+                type="button"
+                className={`${styles['task-tab-btn']} ${activeTab === 'calendar' ? styles['is-active'] : ''
+                  }`}
+                onClick={() => setActiveTab('calendar')}
+              >
+                <CalendarIcon size={18} strokeWidth={2} />
+                <span>Calendar</span>
+              </button>
+              <button
+                type="button"
+                className={`${styles['task-tab-btn']} ${activeTab === 'files' ? styles['is-active'] : ''
+                  }`}
+                onClick={() => setActiveTab('files')}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><title>folder-1</title><g fill="none"><path d="M2 20h20V9.75H2zM9 3.5H2v6.25h20V6H11z" /><path stroke="currentColor" stroke-width="2" d="M2 9.75V20h20V9.75m-20 0h20m-20 0V3.5h7L11 6h11v3.75" /></g></svg>
+                <span>Files</span>
+              </button>
+            </nav>
+
+            <div className={styles['task-tabs-actions']}>
+              <span className={styles['task-tabs-divider']} aria-hidden="true" />
+              <button
+                type="button"
+                className={`${styles['header-outline-btn']} ${styles['share-action-btn']}`}
                 onClick={() => {
                   setShareCopied(true);
                   window.setTimeout(() => setShareCopied(false), 1800);
                 }}
               >
-                {shareCopied ? 'Copied' : 'Share'}
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="m20 12l-6.4-7v3.5C10.4 8.5 4 10.6 4 19c0-1.167 1.92-3.5 9.6-3.5V19z"
+                  />
+                </svg>
+                {shareCopied ? 'COPIED' : 'SHARE'}
               </button>
 
-              <div className={styles['automation-wrap']} ref={automationRef}>
+              {isProjectOwner && onOpenAnalysis && (
                 <button
                   type="button"
-                  className={styles['header-outline-btn']}
-                  aria-expanded={automationOpen}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setAutomationOpen((prev) => !prev);
-                  }}
+                  className={`${styles['header-outline-btn']} ${styles['add-task-action']}`}
+                  onClick={onOpenAnalysis}
                 >
-                  Automation
+                  <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><title>graph-bar</title><path fill="currentColor" d="M6 23H2a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1" opacity=".25"/><path fill="currentColor" d="M14 23h-4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v20a1 1 0 0 1-1 1"/><path fill="currentColor" d="M22 23h-4a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1" opacity=".5"/></svg>
+                  Analysis
                 </button>
+              )}
 
-                {automationOpen && (
-                  <div className={styles['automation-popover']} role="menu">
-                    <div className={styles['automation-popover-title']}>Quick Status</div>
-                    {STATUS_OPTIONS.map((statusOption) => (
-                      <button
-                        key={statusOption}
-                        type="button"
-                        className={`${styles['automation-popover-item']} ${
-                          task.status === statusOption ? styles['is-current'] : ''
-                        }`}
-                        onClick={() => {
-                          onStatusChange?.(task.id, statusOption);
-                          setAutomationOpen(false);
-                        }}
-                      >
-                        <span>{statusOption}</span>
-                        {task.status === statusOption && <Check size={13} />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {isProjectOwner && onAddTask && (
+                <button
+                  type="button"
+                  className={`${styles['header-outline-btn']} ${styles['add-task-action']}`}
+                  onClick={onAddTask}
+                >
+                  <Plus size={16} strokeWidth={2} />
+                  Add Task
+                </button>
+              )}
 
               {onClose && (
                 <button
@@ -838,77 +805,10 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                 </button>
               )}
             </div>
-          </header>
-
-          {/* Sub-header Tabs Bar */}
-          <div className={styles['task-tabs-row']}>
-            <nav className={styles['task-tabs-nav']} aria-label="Task sections">
-              <button
-                type="button"
-                className={`${styles['task-tab-btn']} ${
-                  activeTab === 'overview' ? styles['is-active'] : ''
-                }`}
-                onClick={() => setActiveTab('overview')}
-              >
-                <Clock size={14} strokeWidth={2} />
-                <span>Overview</span>
-              </button>
-              <button
-                type="button"
-                className={`${styles['task-tab-btn']} ${
-                  activeTab === 'list' ? styles['is-active'] : ''
-                }`}
-                onClick={() => setActiveTab('list')}
-              >
-                <ListIcon size={14} strokeWidth={2} />
-                <span>List</span>
-              </button>
-              <button
-                type="button"
-                className={`${styles['task-tab-btn']} ${
-                  activeTab === 'board' ? styles['is-active'] : ''
-                }`}
-                onClick={() => setActiveTab('board')}
-              >
-                <Kanban size={14} strokeWidth={2} />
-                <span>Board</span>
-              </button>
-              <button
-                type="button"
-                className={`${styles['task-tab-btn']} ${
-                  activeTab === 'calendar' ? styles['is-active'] : ''
-                }`}
-                onClick={() => setActiveTab('calendar')}
-              >
-                <CalendarIcon size={14} strokeWidth={2} />
-                <span>Calendar</span>
-              </button>
-              <button
-                type="button"
-                className={`${styles['task-tab-btn']} ${
-                  activeTab === 'files' ? styles['is-active'] : ''
-                }`}
-                onClick={() => setActiveTab('files')}
-              >
-                <FileText size={14} strokeWidth={2} />
-                <span>Files</span>
-              </button>
-            </nav>
-
-            <button
-              type="button"
-              className={`${styles['tabs-collapse-btn']} ${
-                !quickActionsExpanded ? styles['is-collapsed'] : ''
-              }`}
-              aria-label={quickActionsExpanded ? 'Collapse quick actions' : 'Expand quick actions'}
-              onClick={() => setQuickActionsExpanded((prev) => !prev)}
-            >
-              <ChevronUp size={15} strokeWidth={2} />
-            </button>
           </div>
 
           {/* 3 Quick Action Cards Row (Overview tab) */}
-          {quickActionsExpanded && activeTab === 'overview' && (
+          {activeTab === 'overview' && (
             <div className={styles['quick-actions-grid']}>
               <button
                 type="button"
@@ -930,11 +830,28 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
               <button
                 type="button"
                 className={styles['quick-action-card']}
-                onClick={() => setAutomationOpen(true)}
               >
-                <span className={styles['quick-action-icon-box']} aria-hidden="true">
-                  <Users size={18} strokeWidth={1.9} />
-                  <span className={styles['quick-action-plus-badge']}>+</span>
+                <span
+                  className={`${styles['quick-action-icon-box']} ${styles['assign-team-icon-box']}`}
+                  aria-hidden="true"
+                >
+                  <svg width="30" height="30" viewBox="0 0 24 24" focusable="false">
+                    <g fill="none">
+                      <path fill="#ffffff" fillOpacity=".2" d="M11.8 3.9L11 4l-.9.4l-.7.4l-.8.8l-.5.6l-.4.9l-.2.9l-.1 1.1l.2.9c.1.5.4 1.1.7 1.5l.6.7l.8.6l.8.4l.9.2c.6.2 1.5.2 2.1 0l.9-.4l.8-.5l.7-.6l.6-.9l.3-.8l.2-1l.1-.9l-.2-1l-.4-.9l-.6-.8l-.6-.6l-.9-.6l-.8-.3l-.9-.2zM4.1 17.8l-.2 1c-.3 1.1-.3 3.7 1.5 3.2c.6-.1.9-1 1-1h11.8c.4 1.4 2.5 1.4 2.5-.1v-1.4l-.1-.8l-.2-.9l-.3-.7l-.5-.8l-.6-.7l-.9-.6c-1.2-1-3.1-.8-4.6-.8c-2.9 0-6.3-.6-8.4 1.9c-.4.5-.9 1.1-1 1.7" className="wm-shadow" />
+                      <path fill="#000000" d="m7.07 8.79l.4 1c.61 1.52 1.83 2.54 3.38 3.01c-1.24.09-2.5-.09-3.73.19c-2.13.49-3.89 2.61-3.89 4.81v1.7c0 .23.12.41.19.61c.13.34.26.74.51 1.01c.76.81 1.72.23 1.95-.7c.08-.03.11-.07.22-.07l11.7.01c.23 0 .44 1.15 1.4 1.11c.45-.02.83-.31 1-.72c.12-.29.07-.64.07-.95c.01-1.06.03-2.18-.47-3.15l-.68-1.33c-.7-1.36-2.33-2.3-3.82-2.46l-2.25-.06c2.25-.67 3.72-2.49 3.62-4.9c-.02-.58-.11-1.22-.37-1.74l-.6-1.21c-.31-.63-.84-1.18-1.41-1.59c-2.93-2.1-7.18-.18-7.44 3.44c-.04.65-.03 1.37.22 1.99" />
+                      <path fill="#ffffff" d="M11.12 2.5c-4.51.44-5.91 6.5-1.94 8.78c.76.44 1.64.67 2.52.64c4.68-.18 6.31-6.45 2.22-8.8c-.84-.48-1.83-.72-2.8-.62M7.61 12.89c-.61.05-1.3.33-1.82.65c-1.66 1.03-2.56 2.72-2.56 4.66c0 .49-.12 1.16.1 1.61c.52 1.09 1.85.81 2.15-.39c.08-.03.11-.07.22-.07l11.8.01l.12.06c.4 1.6 2.25 1.19 2.25-.02V18c.01-2.59-2.18-5.16-4.87-5.16l-6.5-.01z" />
+                      <path fill="#ffffff" fillOpacity=".34" d="M15.1 4.1c.6 1.4 1.2 3.1.4 4.6l-.5.8l-.5.6c-1 1.3-3 1.6-4.5 1.3c-.5-.1-1.1-.5-1.5-.6l.5.4l.8.4l.9.2l1 .1l.9-.1l.7-.2l.8-.4l.8-.7l.5-.6l.5-.9l.3-.9l.1-.8l-.1-.9l-.2-.9c-.2-.5-.6-1-.9-1.4m3.5 10.6c.3.5.7 1.2.8 1.9l.1 1v1.5c0 .9-1 1-1.6.9c.2.3.5.5 1 .5c1.2-.2 1.1-2.4.9-3.3l-.2-.9c-.2-.6-.6-1.2-1-1.6M5.1 19c-.2.8-.7 1.2-1.6 1v.1c.8.7 1.7.3 2-.7h11.6l.2-.1l-.1-.3z" />
+                      <path fill="#ffffff" fillOpacity=".17" d="M19.2 15.5c-.2.7-.2 1.5-.4 2.3s-.7 1.5-.8 2.3c.1.1.2.3.4.3c.4.1 1.4-.1 1.4-.7v-2.5c0-.4-.4-1.3-.6-1.7" />
+                      <path fill="#ffffff" fillOpacity=".075" d="m11.2 2.7l-.8.1l-.8.3l-.7.4l-.7.6l-.5.7l-.4.8c-.3.6-.4 1.7-.2 2.3l.3.8l.4.7l.6.7c.3.4.9.8 1.4.9l.8.2l.9.1c.7.1 1.7-.3 2.2-.7l.7-.6l.5-.6l.4-.7l.3-.9v-.9c.1-.5-.1-1.2-.3-1.6l-.4-.7l-.6-.7c-.3-.4-.9-.8-1.4-.9l-.8-.2zM5.6 13.9l-.8.6c-.7.7-1.3 2-1.3 3v1.8c0 .6.8.7 1.1.4c.2-.2.3-.6.4-.8c.2-.1.3-.2.5-.2h11.8c.2 0 .3.1.4.2c.3.6.4.9 1.1.9c.7-.4.5-1.4.4-2.1c-.1-1.9-1.4-4.2-3.5-4.5l-.9-.1l-2.5-.1c-1.5 0-3.4-.2-4.8.1c-.7.1-1.4.4-1.9.8" />
+                      <path fill="#ffffff" fillOpacity=".075" d="m8.2 10.2l1 .2h1l.9-.2l.9-.3l.9-.6l.7-.6l.6-.8l.4-.9c.3-.4.4-1.1.4-1.6l-.1-.9c0-.5-.4-.9-.9-1.1l-.8-.4c-2.5-1.3-5.9.9-6.2 3.7c-.1 1.1.2 2.3.9 3.2zm-.7 2.9c-1.8.2-3.7 2-4 3.8l-.1.9v1.7c0 1 1.6 1.2 1.9-.2l.3-.1H14l.2-.1c.9-1.3 1.5-3 1.3-4.6l-.2-1l-.1-.4l-6.7-.1z" />
+                      <path fill="#ffffff" fillOpacity=".075" d="M7.1 6.9c2.7 3.8 8.2-.9 4.6-4.2c-2.3-.3-4.6 1.9-4.6 4.2m.4 6.2c-1.5.1-2.8 1.3-3.5 2.6c0 .5.2 1.1.5 1.5l.5.7l.7.6l.7.4l.7.3h2.3c.3 0 .8-.3 1.1-.5l.7-.5l.5-.6l.5-.8l.3-.8l.1-.8l-.1-.9c0-.2-.2-1.3-.5-1.3H8.4z" />
+                      <path fill="#ffffff" fillOpacity=".42" d="M7.5 9.61c-.26-1.02-.55-1.67-.43-2.81c.24-2.26 2.28-4.06 4.53-4.12c.8-.02 1.52.24 2.24.42C9.63.72 5.18 5.34 7.5 9.61m.11 3.28c-.61.05-1.3.33-1.82.65c-1.81 1.12-2.56 2.77-2.56 4.86c0 .54-.05 1.04.18 1.52c.05-.77-.04-1.62.07-2.42c.2-1.61 1.44-3.48 3.03-4.03l.81-.28c.36-.12.81-.16 1.18-.16h6.4c.86 0 1.55.3 2.32.47c-.67-.35-1.43-.66-2.22-.66l-6.5-.01zm10.1 6.68l-.03.12l.13.23c0-.07.01-.21.01-.3z" />
+                      <path fill="#090909" fillOpacity=".75" d="M16.09 6.2c-.11.72 0 1.46-.23 2.2c-.53 1.69-2.01 2.99-3.76 3.26c-.59.09-1.17 0-1.74.03c3.43.79 6.44-2 5.73-5.49m3.51 10.38c-.01.42.08.87.07 1.32v1.2c0 .82-.63 1.14-1.35 1.18v.04c.66.18 1.49-.1 1.49-.92V18c0-.49-.11-.96-.21-1.42m-14.28 2.6c-.27.84-.55 1.04-1.43 1.12c.49.16 1 .13 1.32-.33c.12-.17.15-.68.4-.68l11.59-.01c.11 0 .13-.04.21-.07c-.53-.1-1.14-.06-1.71-.06h-2.8z" />
+                      <path fill="#ffffff" fillOpacity=".16" d="m7.4 5.7l-.2.8c-.2.7 0 1.5.2 2.1l.2-1.2c.1-.8.7-1.8 1.3-2.2l.7-.5c1.8-1.3 4.2-.5 5.6.9c.1 0 .2-.1.3-.1c-.1-.6-.6-1.2-1-1.6c-1.9-1.7-5-1.4-6.5.7zM5.7 14l-.8.6c-1.1.9-1.9 4.2-1.1 5.3l.2-1.7l.3-.9c.3-1 1.4-2.1 2.4-2.4l.8-.3l1.2-.2h6.4l1.3.2l.7-.7c-.8-.7-2-.8-3-.8c-2.1 0-6.9-.4-8.4.9" className="wm-shine" />
+                      <path fill="#ffffff" fillOpacity=".92" d="M8.19 9.85c-.28-.64-.58-1.31-.63-2.05c-.17-2.41 1.73-4.46 4.11-4.6c.89-.05 1.69.29 2.47.6a3.9 3.9 0 0 0-2.04-.86c-3.75-.49-6.36 3.94-3.91 6.91m-4.3 9.99l.05-.04l.01-.1v-1.5c0-.8.26-1.58.64-2.27c.7-1.26 2.02-2.12 3.44-2.33c.68-.1 1.39-.05 2.07-.05h2.7c.99 0 1.99-.04 2.98.05l.12-.12l-.02-.09c-.36-.07-.71-.14-1.08-.14H8.5c-2.63-.01-4.84 2.09-4.85 4.75c0 .41-.11 1.28.06 1.63c.05.11.13.14.18.21" className="wm-shine" />
+                    </g>
+                  </svg>
+                  <span className={`${styles['quick-action-plus-badge']} ${styles['assign-team-plus-badge']}`}>+</span>
                 </span>
                 <span className={styles['quick-action-text']}>
                   <span className={styles['quick-action-title']}>Assign Team</span>
@@ -1018,7 +935,6 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                               <button
                                 type="button"
                                 className={styles['add-role-btn']}
-                                onClick={() => setAutomationOpen(true)}
                               >
                                 + Add role
                               </button>
@@ -1067,9 +983,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                           <div className={styles['task-name-cell']}>
                             <button
                               type="button"
-                              className={`${styles['task-circle-btn']} ${
-                                sub.done ? styles['is-done'] : ''
-                              }`}
+                              className={`${styles['task-circle-btn']} ${sub.done ? styles['is-done'] : ''
+                                }`}
                               aria-label={
                                 sub.done ? `Mark ${sub.title} incomplete` : `Mark ${sub.title} done`
                               }
@@ -1078,9 +993,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                               {sub.done && <Check size={11} strokeWidth={2.5} />}
                             </button>
                             <span
-                              className={`${styles['task-row-title']} ${
-                                sub.done ? styles['is-done'] : ''
-                              }`}
+                              className={`${styles['task-row-title']} ${sub.done ? styles['is-done'] : ''
+                                }`}
                             >
                               {sub.title}
                             </span>
@@ -1102,7 +1016,6 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                               <button
                                 type="button"
                                 className={styles['task-placeholder-action']}
-                                onClick={() => setAutomationOpen(true)}
                               >
                                 <UserPlus size={13} strokeWidth={1.8} />
                                 <span>Assign</span>
@@ -1348,9 +1261,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                             <td>
                               <button
                                 type="button"
-                                className={`${styles['task-circle-btn']} ${
-                                  isCompleted ? styles['is-done'] : ''
-                                }`}
+                                className={`${styles['task-circle-btn']} ${isCompleted ? styles['is-done'] : ''
+                                  }`}
                                 aria-label={`Toggle ${item.title}`}
                                 onClick={() =>
                                   moveBoardCard(item.id, isCompleted ? 'Pending' : 'Completed')
@@ -1361,18 +1273,16 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                             </td>
                             <td>
                               <span
-                                className={`${styles['task-row-title']} ${
-                                  isCompleted ? styles['is-done'] : ''
-                                }`}
+                                className={`${styles['task-row-title']} ${isCompleted ? styles['is-done'] : ''
+                                  }`}
                               >
                                 {item.title}
                               </span>
                             </td>
                             <td>
                               <span
-                                className={`${styles['col-status-pill']} ${
-                                  styles[colCfg?.toneClass || 'tone-pending']
-                                }`}
+                                className={`${styles['col-status-pill']} ${styles[colCfg?.toneClass || 'tone-pending']
+                                  }`}
                               >
                                 {renderColumnStatusIcon(item.status)}
                                 <span>{item.status}</span>
@@ -1440,9 +1350,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                   return (
                     <div
                       key={col.status}
-                      className={`${styles['board-column']} ${
-                        isDragOver ? styles['is-drag-over'] : ''
-                      }`}
+                      className={`${styles['board-column']} ${isDragOver ? styles['is-drag-over'] : ''
+                        }`}
                       onDragOver={(e) => {
                         e.preventDefault();
                         if (dragOverColumn !== col.status) setDragOverColumn(col.status);
@@ -1539,9 +1448,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                             <article
                               key={card.id}
                               draggable
-                              className={`${styles['board-card']} ${
-                                draggingCardId === card.id ? styles['is-dragging'] : ''
-                              }`}
+                              className={`${styles['board-card']} ${draggingCardId === card.id ? styles['is-dragging'] : ''
+                                }`}
                               onDragStart={(e) => {
                                 e.dataTransfer.setData('text/plain', card.id);
                                 e.dataTransfer.effectAllowed = 'move';
@@ -1609,9 +1517,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                                         <button
                                           key={opt.status}
                                           type="button"
-                                          className={`${styles['card-action-option']} ${
-                                            card.status === opt.status ? styles['is-current'] : ''
-                                          }`}
+                                          className={`${styles['card-action-option']} ${card.status === opt.status ? styles['is-current'] : ''
+                                            }`}
                                           onClick={() => {
                                             moveBoardCard(card.id, opt.status);
                                             setOpenCardMenuId(null);
@@ -1722,9 +1629,8 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                           <div key={item.id} className={styles['calendar-card']}>
                             <div className={styles['calendar-card-head']}>
                               <span
-                                className={`${styles['col-status-pill']} ${
-                                  styles[colCfg?.toneClass || 'tone-pending']
-                                }`}
+                                className={`${styles['col-status-pill']} ${styles[colCfg?.toneClass || 'tone-pending']
+                                  }`}
                               >
                                 {renderColumnStatusIcon(item.status)}
                                 <span>{item.status}</span>

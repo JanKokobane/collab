@@ -26,12 +26,28 @@ export const AnimatedAnalyticsGraphic: React.FC<AnimatedAnalyticsGraphicProps> =
     }
   >
     {variant === 'pending' ? (
-      <img className={styles['graph-icon']} src="/images/task-pending-icon.png" alt="" />
+      <svg className={styles['graph-icon']} viewBox="0 0 24 24" aria-hidden="true">
+        <title>graph-bar</title>
+        <path
+          fill="currentColor"
+          d="M6 23H2a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1"
+          opacity=".25"
+        />
+        <path
+          fill="currentColor"
+          d="M14 23h-4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v20a1 1 0 0 1-1 1"
+        />
+        <path
+          fill="currentColor"
+          d="M22 23h-4a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1"
+          opacity=".5"
+        />
+      </svg>
     ) : variant === 'in-progress' ? (
       <img className={styles['graph-icon']} src="/images/task-in-progress-icon.png" alt="" />
     ) : variant === 'complete' ? (
       <img
-        className={`${styles['graph-icon']} ${styles['graph-icon-complete']}`}
+        className={`${styles['graph-icon']} ${styles['complete-icon']}`}
         src="/images/task-complete-icon.png"
         alt=""
       />

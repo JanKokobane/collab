@@ -74,7 +74,6 @@ export const ProjectBoard: React.FC = () => {
     switchView,
     selectedTaskViewId,
     openFullTaskView,
-    closeFullTaskView,
     openTaskDetails,
     moveTaskStatus,
     setActiveModal,
@@ -270,52 +269,6 @@ export const ProjectBoard: React.FC = () => {
     [selectedTaskProject, selectedTaskBase, setTasks, showDashboardToast]
   );
 
-  const handleRenameTask = useCallback(
-    async (taskId: string | number, nextTitle: string) => {
-      const source = fetchedTask || selectedTaskBase;
-      if (!source || !selectedTaskProject?.projectId) return;
-      const tid = String(source.taskId || source.task_id || taskId);
-      try {
-        const payload = {
-          title: nextTitle,
-          description: source.description || '',
-          category: source.category || source.tag || 'Product',
-          tags: Array.isArray(source.tags) ? source.tags : [],
-          status: source.status || 'To do',
-          priority: String(source.priority || 'medium').toLowerCase(),
-          startDate: source.startDate || source.start_date || null,
-          dueDate: source.date || source.due_date || null,
-          chatMessageId: source.chatMessageId || source.chat_message_id || null,
-          descriptionAttachments: Array.isArray(source.descriptionAttachments)
-            ? source.descriptionAttachments
-            : []
-        };
-        const res = await api.put(
-          `/projects/${encodeURIComponent(selectedTaskProject.projectId)}/tasks/${encodeURIComponent(tid)}`,
-          payload
-        );
-        const updatedRaw = res?.data?.task;
-        if (updatedRaw) {
-          const normalized = normalizeTaskRecord(updatedRaw, selectedTaskProject);
-          setFetchedTask(getOverviewTask(normalized, selectedTaskProject));
-          setTasks((prev) =>
-            prev.map((item) =>
-              String(item.id) === String(taskId) || String(item.taskId || '') === tid
-                ? { ...item, ...normalized }
-                : item
-            )
-          );
-          showDashboardToast('Task title updated.', 'success');
-        }
-      } catch (err: unknown) {
-        const message =
-          err instanceof Error ? err.message : 'Unable to update the task title.';
-        showDashboardToast(message, 'error');
-      }
-    },
-    [fetchedTask, selectedTaskBase, selectedTaskProject, setTasks, showDashboardToast]
-  );
-
   const handleAddSubtask = useCallback(
     (taskId: string | number, title: string) => {
       const key = String(selectedTaskBase?.taskId || taskId);
@@ -374,15 +327,19 @@ export const ProjectBoard: React.FC = () => {
         loading={taskLoading}
         error={taskError}
         onRetry={() => setRetryCounter((n) => n + 1)}
-        onClose={closeFullTaskView}
-        onStatusChange={(tid, status) => {
-          void moveTaskStatus(tid, status);
+        isProjectOwner={isCurrentUserProjectCreator}
+        onOpenAnalysis={() => {
+          if (activeViewerTask) openTaskDetails(activeViewerTask.id);
+        }}
+        onAddTask={() => {
+          if (!project) return;
+          setActiveModal({
+            type: 'createTask',
+            projectId: project.projectId
+          });
         }}
         onAddComment={(tid, text) => {
           void handleAddComment(tid, text);
-        }}
-        onRenameTask={(tid, title) => {
-          void handleRenameTask(tid, title);
         }}
         onAddSubtask={handleAddSubtask}
         onToggleSubtask={handleToggleSubtask}
@@ -411,7 +368,6 @@ export const ProjectBoard: React.FC = () => {
         if (selected) switchView(selected.name);
       }}
       onOpenProgressAside={(taskId) => openFullTaskView(taskId, project.name)}
-      onOpenAnalytics={tasks[0] ? () => openTaskDetails(tasks[0].id) : undefined}
       onToggleTaskDone={(taskId) => {
         const task = tasks.find((item) => String(item.id) === String(taskId));
         if (task) {
