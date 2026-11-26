@@ -41,17 +41,27 @@
 }
 
 .carousel-btn,
-.team-add-btn,
 .mini-filter-btn,
+.create-task-button,
 .segmented-tab,
 .assign-ghost-btn,
-.add-subtask-inner button,
 .task-check-circle,
 .activity-dismiss-btn {
   border: 0;
   font: inherit;
   cursor: pointer;
   transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.metrics-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.metrics-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .kpi-grid {
@@ -289,24 +299,6 @@
   border-radius: 50%;
 }
 
-.team-add-btn {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  margin-left: 8px;
-  place-items: center;
-  border: 1px dashed var(--line-strong);
-  border-radius: 50%;
-  color: var(--ink-500);
-  background: var(--surface-soft);
-}
-
-.team-add-btn:hover {
-  border-color: var(--blue-500);
-  color: var(--blue-700);
-  background: var(--surface-blue);
-}
-
 .ring-wrap {
   position: relative;
   display: grid;
@@ -448,12 +440,6 @@
 .details-overview-content .team-avatar-item {
   width: 26px;
   height: 26px;
-}
-
-.details-overview-content .team-add-btn {
-  width: 24px;
-  height: 24px;
-  margin-left: 6px;
 }
 
 .details-overview-ring {
@@ -645,6 +631,30 @@
   background: var(--surface-soft);
 }
 
+.recent-tasks-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.create-task-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 0;
+  border: 0;
+  color: var(--ink-700);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.create-task-button:hover {
+  color: var(--blue-700);
+}
+
 .mini-filter-btn {
   padding: 6px 8px;
   border-radius: 6px;
@@ -778,56 +788,6 @@
   background: var(--surface-blue);
 }
 
-.add-subtask-bar {
-  border-top: 1px solid var(--line);
-  padding-top: 14px;
-}
-
-.add-subtask-inner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px 0 11px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--surface-soft);
-}
-
-.add-subtask-inner:focus-within {
-  border-color: var(--blue-500);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
-}
-
-.add-subtask-inner input {
-  width: 100%;
-  min-height: 36px;
-  border: 0;
-  outline: 0;
-  color: var(--ink-900);
-  background: transparent;
-  font: inherit;
-  font-size: 11px;
-}
-
-.add-subtask-inner input::placeholder {
-  color: var(--ink-400);
-}
-
-.add-subtask-inner button {
-  display: grid;
-  width: 24px;
-  height: 24px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 6px;
-  color: #ffffff;
-  background: var(--ink-950);
-}
-
-.add-subtask-inner button:hover {
-  background: var(--blue-600);
-}
-
 .right-col {
   display: flex;
   flex-direction: column;
@@ -958,6 +918,92 @@
   font-size: 11px;
   line-height: 1.5;
   text-align: center;
+}
+
+.project-sprints-count {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-500);
+  font-size: 11px;
+}
+
+.sprints-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--red-100);
+  border-radius: 10px;
+  color: var(--red-700);
+  background: var(--surface);
+  font-size: 11px;
+}
+
+.sprints-error button {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink-900);
+  background: var(--surface);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.project-sprints-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.project-sprint-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.project-sprint-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.project-sprint-card-heading h3 {
+  margin: 0;
+  color: var(--ink-900);
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.project-sprint-card-heading span {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border-radius: 999px;
+  color: var(--blue-700);
+  background: var(--surface-blue);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.project-sprint-description,
+.project-sprint-dates {
+  margin: 10px 0 0;
+  color: var(--ink-500);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.project-sprint-dates {
+  color: var(--ink-600);
 }
 
 @media (max-width: 1180px) {

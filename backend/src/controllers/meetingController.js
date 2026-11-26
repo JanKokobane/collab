@@ -48,7 +48,21 @@ const getMeetingContext = async (projectId, meetingId, firebaseUid) => {
         `
             SELECT meeting.meeting_id, meeting.attendee_firebase_uids,
                    project.project_id, project.name AS project_name,
-                   project.creator_firebase_uid, project.sprints
+                   project.creator_firebase_uid,
+                   COALESCE((
+                       SELECT jsonb_agg(
+                           sprint.details || jsonb_build_object(
+                               'name', sprint.name,
+                               'status', sprint.status,
+                               'startDate', sprint.start_date::text,
+                               'dueDate', sprint.due_date::text,
+                               'attachments', sprint.attachments
+                           )
+                           ORDER BY sprint.created_at, sprint.sprint_id
+                       )
+                       FROM project_sprints sprint
+                       WHERE sprint.project_id = project.project_id
+                   ), '[]'::jsonb) AS sprints
             FROM project_meetings meeting
             JOIN projects project ON project.project_id = meeting.project_id
             WHERE meeting.project_id = $1
@@ -393,7 +407,21 @@ const dispatchProjectMeetingActionItem = async (req, res) => {
         await client.query('BEGIN');
         const meetingResult = await client.query(
             `SELECT meeting.meeting_id, meeting.attendee_firebase_uids,
-                    project.project_id, project.sprints, project.creator_firebase_uid
+                    project.project_id, project.creator_firebase_uid,
+                    COALESCE((
+                        SELECT jsonb_agg(
+                            sprint.details || jsonb_build_object(
+                                'name', sprint.name,
+                                'status', sprint.status,
+                                'startDate', sprint.start_date::text,
+                                'dueDate', sprint.due_date::text,
+                                'attachments', sprint.attachments
+                            )
+                            ORDER BY sprint.created_at, sprint.sprint_id
+                        )
+                        FROM project_sprints sprint
+                        WHERE sprint.project_id = project.project_id
+                    ), '[]'::jsonb) AS sprints
              FROM project_meetings meeting
              JOIN projects project ON project.project_id = meeting.project_id
              WHERE meeting.project_id = $1 AND meeting.meeting_id = $2::uuid

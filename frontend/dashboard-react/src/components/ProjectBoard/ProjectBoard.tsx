@@ -22,9 +22,43 @@ type OverviewTask = TaskItem & { assignees: ProjectMember[] };
 function getOverviewTask(task: TaskItem, project: Project): OverviewTask {
   const sprint = project.sprints.find((item) => item.name === task.sprint);
   const sprintMembers = sprint ? getSprintMembers(project, sprint) : [];
+  const projectMembers: ProjectMember[] = [
+    ...(project.creatorFirebaseUid
+      ? [
+          {
+            firebaseUid: project.creatorFirebaseUid,
+            name: project.creatorName,
+            email: project.creatorEmail,
+            profileImage: project.creatorProfileImage
+          }
+        ]
+      : []),
+    ...project.acceptedMembers
+  ];
+  const projectAssignee = projectMembers.find(
+    (member) => (member.firebaseUid || member.firebase_uid) === task.assigneeFirebaseUid
+  );
+  const taskAssignee: ProjectMember[] = task.assigneeFirebaseUid
+    ? [
+        {
+          ...projectAssignee,
+          firebaseUid: task.assigneeFirebaseUid,
+          name: task.assigneeName || projectAssignee?.name || 'Project member',
+          profileImage:
+            task.assigneeProfileImage ||
+            projectAssignee?.profileImage ||
+            projectAssignee?.profile_image
+        }
+      ]
+    : [];
   return {
     ...task,
-    assignees: sprintMembers.length > 0 ? sprintMembers : task.sprintMembers || []
+    assignees:
+      taskAssignee.length > 0
+        ? taskAssignee
+        : sprintMembers.length > 0
+          ? sprintMembers
+          : task.sprintMembers || []
   };
 }
 
@@ -70,10 +104,13 @@ export const ProjectBoard: React.FC = () => {
     activeProject,
     isCurrentUserProjectCreator,
     projects,
+    loadProjectSprints,
     accessibleTasks,
     switchView,
     selectedTaskViewId,
     openFullTaskView,
+    selectedSprintView,
+    closeFullSprintView,
     openTaskDetails,
     moveTaskStatus,
     setActiveModal,
@@ -82,6 +119,33 @@ export const ProjectBoard: React.FC = () => {
   } = useDashboard();
 
   const project = activeProject;
+  const [sprintsLoading, setSprintsLoading] = useState(false);
+  const [sprintsLoadError, setSprintsLoadError] = useState('');
+  const [sprintRetryCount, setSprintRetryCount] = useState(0);
+
+  useEffect(() => {
+    if (!project?.projectId) return;
+
+    let cancelled = false;
+    setSprintsLoading(true);
+    setSprintsLoadError('');
+
+    loadProjectSprints(project.projectId)
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        const message =
+          error instanceof Error ? error.message : 'Project sprints could not be loaded.';
+        console.error('Unable to fetch project sprints for the project view:', error);
+        setSprintsLoadError(message);
+      })
+      .finally(() => {
+        if (!cancelled) setSprintsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [project?.projectId, loadProjectSprints, sprintRetryCount]);
 
   const tasks = useMemo(() => {
     if (!project) return [];
@@ -269,27 +333,6 @@ export const ProjectBoard: React.FC = () => {
     [selectedTaskProject, selectedTaskBase, setTasks, showDashboardToast]
   );
 
-  const handleAddSubtask = useCallback(
-    (taskId: string | number, title: string) => {
-      const key = String(selectedTaskBase?.taskId || taskId);
-      setSubtasksByTask((prev) => {
-        const existing = prev[key] || [];
-        return {
-          ...prev,
-          [key]: [
-            ...existing,
-            {
-              id: `sub-${Date.now()}`,
-              title,
-              done: false
-            }
-          ]
-        };
-      });
-    },
-    [selectedTaskBase]
-  );
-
   const handleToggleSubtask = useCallback(
     (taskId: string | number, subtaskId: string) => {
       const key = String(selectedTaskBase?.taskId || taskId);
@@ -341,9 +384,87 @@ export const ProjectBoard: React.FC = () => {
         onAddComment={(tid, text) => {
           void handleAddComment(tid, text);
         }}
-        onAddSubtask={handleAddSubtask}
         onToggleSubtask={handleToggleSubtask}
         onUploadAttachment={handleUploadAttachment}
+      />
+    );
+  }
+
+  if (selectedSprintView?.projectId === project?.projectId && project) {
+    const sprint = selectedSprintView.sprint;
+    const sprintId = sprint.id || sprint.sprintId || '';
+    const sprintTasks = tasks.filter(
+      (task) =>
+        (Boolean(sprintId) &&
+          String(task.sprintId || task.sprint_id || '') === String(sprintId)) ||
+        (!task.sprintId && !task.sprint_id && task.sprint === sprint.name)
+    );
+    const sprintEndDate =
+      sprint.dueDate || sprint.due_date || sprint.endDate || sprint.end_date || null;
+    const status = ['Backlog', 'To do', 'In progress', 'Blocked', 'Done'].includes(
+      sprint.status || ''
+    )
+      ? (sprint.status as TaskItem['status'])
+      : 'To do';
+    const sprintTask: ViewerTaskItem = {
+      id: `sprint-${sprint.id || sprint.sprintId || sprint.name}`,
+      projectId: project.projectId,
+      project_id: project.projectId,
+      project: project.name,
+      sprintId: String(sprintId),
+      sprint_id: String(sprintId),
+      title: sprint.name,
+      description: sprint.description || '',
+      tag: 'Sprint',
+      category: 'Sprint',
+      tags: [],
+      due: sprintEndDate || '—',
+      date: sprintEndDate,
+      startDate: sprint.startDate || sprint.start_date || null,
+      status,
+      priority: 'medium',
+      progress: 0,
+      sprint: sprint.name,
+      subtasks: sprintTasks.map((task) => ({
+        id: String(task.id),
+        title: task.title,
+        done: task.status === 'Done',
+        due: task.due,
+        assignees: task.assignees || task.sprintMembers || []
+      })),
+      boardItems: sprintTasks.map((task) => ({
+        id: String(task.id),
+        title: task.title,
+        status: toBoardStatus(task.status),
+        assignees: task.assignees || task.sprintMembers || [],
+        due: task.due === '—' ? undefined : task.due,
+        dueDateKey: task.date || undefined,
+        priority: toBoardPriority(task.priority)
+      })),
+      descriptionAttachments: [
+        ...(sprint.attachments || []),
+        ...sprintTasks.flatMap((task) => [
+          ...(task.descriptionAttachments || []),
+          ...(task.taskSubmissionAttachments || [])
+        ])
+      ],
+      comments: 0,
+      commentsList: []
+    };
+
+    return (
+      <TaskDetails
+        task={sprintTask}
+        project={project}
+        isProjectOwner={true}
+        onOpenAnalysis={() => openTaskDetails(sprintTask.id)}
+        onAddTask={() => {
+          setActiveModal({
+            type: 'createTask',
+            projectId: project.projectId,
+            sprintId: String(sprintId)
+          });
+        }}
       />
     );
   }
@@ -362,6 +483,9 @@ export const ProjectBoard: React.FC = () => {
       allProjects={projects}
       tasks={tasks}
       allTasks={allTasks}
+      sprintsLoading={sprintsLoading}
+      sprintsLoadError={sprintsLoadError}
+      onRetrySprints={() => setSprintRetryCount((count) => count + 1)}
       canViewTaskMetrics={isCurrentUserProjectCreator}
       onSelectProject={(projectId) => {
         const selected = projects.find((item) => item.projectId === projectId);
@@ -374,11 +498,10 @@ export const ProjectBoard: React.FC = () => {
           void moveTaskStatus(taskId, task.status === 'Done' ? 'To do' : 'Done');
         }
       }}
-      onAddTask={(projectId, title) =>
+      onCreateSprint={(projectId) =>
         setActiveModal({
-          type: 'createTask',
-          projectId,
-          prefill: { title }
+          type: 'addSprint',
+          projectId
         })
       }
     />

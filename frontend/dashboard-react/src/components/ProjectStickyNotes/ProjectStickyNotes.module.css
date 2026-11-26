@@ -116,6 +116,18 @@
 
 }
 
+.project-sticky-note-project-name {
+
+    min-width: 0;
+    overflow: hidden;
+    margin-left: auto;
+    color: rgba(63, 52, 38, .62);
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+}
+
 .project-sticky-note-delete {
 
     min-height: 24px;
@@ -202,8 +214,40 @@
 
 .project-sticky-recipient-list {
 
+    display: flex;
     max-height: 190px;
+    flex-direction: column;
+    gap: 2px;
     padding: 1px 3px 1px 1px;
+
+}
+
+.project-sticky-note-modal :global(.project-sticky-recipient) {
+
+    grid-template-columns: 34px minmax(0, 1fr) 16px;
+    gap: 10px;
+
+}
+
+.project-sticky-note-modal :global(.project-sticky-recipient) > :global(.messages-create-avatar) {
+
+    grid-column: 1;
+    grid-row: 1;
+
+}
+
+.project-sticky-note-modal :global(.project-sticky-recipient) > input[type="checkbox"] {
+
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+
+}
+
+.project-sticky-note-modal :global(.project-sticky-recipient) > span:not(:global(.messages-create-avatar)) {
+
+    grid-column: 2;
+    grid-row: 1;
 
 }
 
@@ -213,6 +257,20 @@
     color: var(--muted);
     font-size: 11px;
     line-height: 1.45;
+
+}
+
+.project-sticky-private-action {
+
+    align-self: flex-start;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #287B6E;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+    cursor: pointer;
 
 }
 
@@ -238,6 +296,7 @@
 .project-sticky-note-modal :global(.messages-create-submit) {
 
     flex: 0 0 auto;
+    color: #FFFFFF;
 
 }
 

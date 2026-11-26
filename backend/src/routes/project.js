@@ -10,6 +10,11 @@ const {
     deleteProject
 } = require('../controllers/projectController');
 const {
+    createProjectSprint,
+    deleteProjectSprint,
+    getProjectSprints
+} = require('../controllers/sprintController');
+const {
     listProjectInvitations,
     revokeInvitation
 } = require('../controllers/invitationController');
@@ -97,6 +102,9 @@ router.get(
 
 router.get('/:projectId/invitations', listProjectInvitations);
 router.delete('/:projectId/invitations/:invitationId', revokeInvitation);
+router.get('/:projectId/sprints', getProjectSprints);
+router.post('/:projectId/sprints', createProjectSprint);
+router.delete('/:projectId/sprints/:sprintId', deleteProjectSprint);
 router.get('/:projectId/tasks', getProjectTasks);
 router.post('/:projectId/tasks', createProjectTask);
 router.post('/:projectId/tasks/:taskId/submit-for-review', submitProjectTaskForReview);

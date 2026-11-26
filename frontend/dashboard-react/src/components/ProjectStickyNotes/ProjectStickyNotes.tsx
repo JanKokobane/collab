@@ -108,12 +108,17 @@ export const ProjectStickyNotes: React.FC = () => {
   }, [hiddenStorageKey, lastViewedStorageKey]);
 
   const activeStickyProject: Project | null = useMemo(() => {
-    const viewProject = projects.find((p) => p.name === activeView && p.projectId);
+    const viewProject = projects.find(
+      (p) => (p.name === activeView || p.projectId === activeView) && p.projectId
+    );
     if (viewProject) return viewProject;
     return projects.find((p) => p.projectId === lastViewedProjectId) || projects[0] || null;
   }, [projects, activeView, lastViewedProjectId]);
 
   const activeProjectId = activeStickyProject?.projectId || '';
+  const isStickyProjectView =
+    activeView === 'My Tasks' ||
+    projects.some((project) => project.name === activeView || project.projectId === activeView);
 
   useEffect(() => {
     if (activeProjectId) {
@@ -142,50 +147,65 @@ export const ProjectStickyNotes: React.FC = () => {
   }, [activeProjectId]);
 
   const fetchNotes = useCallback(
-    async (projectId: string, silent = false) => {
-      if (!projectId) {
+    async (silent = false) => {
+      const reqVersion = ++loadVersionRef.current;
+      const projectTargets = projects.filter((project) => project.projectId);
+      if (!projectTargets.length) {
         setNotes([]);
         return;
       }
-      const reqVersion = ++loadVersionRef.current;
-      try {
-        const response = await api.get(`/projects/${encodeURIComponent(projectId)}/sticky-notes`);
-        if (reqVersion !== loadVersionRef.current) return;
-        const rawNotes = response?.data?.notes;
-        if (!Array.isArray(rawNotes)) {
-          throw new Error('The server returned an invalid sticky notes response.');
-        }
-        setNotes(rawNotes.map(normalizeStickyNote));
-      } catch (error: any) {
-        if (!silent && reqVersion === loadVersionRef.current) {
-          console.error('Unable to load project sticky notes:', error);
-          showDashboardToast(
-            error?.message || 'Project sticky notes could not be loaded.',
-            'error'
+      const results = await Promise.allSettled(
+        projectTargets.map(async (project) => {
+          const response = await api.get(
+            `/projects/${encodeURIComponent(project.projectId)}/sticky-notes`
           );
+          const rawNotes = response?.data?.notes;
+          if (!Array.isArray(rawNotes)) {
+            throw new Error(
+              `The server returned an invalid sticky notes response for "${project.name}".`
+            );
+          }
+          return rawNotes.map((note: unknown) => ({
+            ...normalizeStickyNote(note),
+            projectName: project.name
+          }));
+        })
+      );
+      if (reqVersion !== loadVersionRef.current) return;
+
+      const loadedNotes: ProjectStickyNote[] = [];
+      const failedProjects: string[] = [];
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          loadedNotes.push(...result.value);
+        } else {
+          const projectName = projectTargets[index].name;
+          failedProjects.push(projectName);
+          console.error(`Unable to load sticky notes for project "${projectName}":`, result.reason);
         }
+      });
+      setNotes(loadedNotes);
+      if (!silent && failedProjects.length) {
+        showDashboardToast(
+          `Sticky notes could not be loaded for: ${failedProjects.join(', ')}.`,
+          'error'
+        );
       }
     },
-    [showDashboardToast]
+    [projects, showDashboardToast]
   );
 
   useEffect(() => {
-    if (!activeProjectId) {
-      setNotes([]);
-      return;
-    }
-    setNotes([]);
-    fetchNotes(activeProjectId, false);
-  }, [activeProjectId, stickyNotesRevision, fetchNotes]);
+    fetchNotes(false);
+  }, [stickyNotesRevision, fetchNotes]);
 
   useEffect(() => {
-    if (!activeProjectId) return;
     const timer = window.setInterval(() => {
       if (document.hidden || dragRef.current) return;
-      fetchNotes(activeProjectId, true);
+      fetchNotes(true);
     }, 10000);
     return () => window.clearInterval(timer);
-  }, [activeProjectId, fetchNotes]);
+  }, [fetchNotes]);
 
   const openModalForNote = useCallback((noteToEdit: ProjectStickyNote | null = null) => {
     setEditingNote(noteToEdit);
@@ -354,6 +374,9 @@ export const ProjectStickyNotes: React.FC = () => {
   const handleSubmitNote = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!activeStickyProject || !noteContent.trim()) return;
+    const projectNoteCount = notes.filter(
+      (note) => note.projectId === activeStickyProject.projectId
+    ).length;
     setSubmitting(true);
     try {
       const basePath = `/projects/${encodeURIComponent(activeStickyProject.projectId)}/sticky-notes`;
@@ -367,8 +390,8 @@ export const ProjectStickyNotes: React.FC = () => {
             color: noteColor,
             recipientFirebaseUids: selectedRecipients,
             position: {
-              x: Math.min(0.72, 0.06 + (notes.length % 3) * 0.22),
-              y: Math.min(0.76, 0.08 + Math.floor(notes.length / 3) * 0.2)
+              x: Math.min(0.72, 0.06 + (projectNoteCount % 3) * 0.22),
+              y: Math.min(0.76, 0.08 + Math.floor(projectNoteCount / 3) * 0.2)
             }
           });
       if (!response?.data?.note) {
@@ -421,7 +444,12 @@ export const ProjectStickyNotes: React.FC = () => {
     }
   };
 
-  const visibleNotes = notes.filter((note) => !hiddenNoteIds.has(note.id));
+  const visibleNotes = notes.filter(
+    (note) =>
+      !hiddenNoteIds.has(note.id) &&
+      ((isStickyProjectView && note.projectId === activeProjectId) ||
+        note.recipients.some((recipient) => recipient.firebaseUid === currentUser?.uid))
+  );
 
   return (
     <>
@@ -429,7 +457,7 @@ export const ProjectStickyNotes: React.FC = () => {
         ref={layerRef}
         id="project-sticky-note-layer"
         className={cx('project-sticky-note-layer')}
-        hidden={!activeStickyProject}
+        hidden={!activeStickyProject && !visibleNotes.length}
       >
         {visibleNotes.map((note) => {
           const authorName = getNoteAuthorName(note);
@@ -481,6 +509,9 @@ export const ProjectStickyNotes: React.FC = () => {
                   <SvgIcon name="dots" width={15} height={15} />
                 </span>
                 <span>{authorName}</span>
+                {(!isStickyProjectView || note.projectId !== activeProjectId) && note.projectName && (
+                  <span className={cx('project-sticky-note-project-name')}>{note.projectName}</span>
+                )}
 
                 {note.authorUid === currentUser?.uid && (
                   <button
@@ -580,38 +611,37 @@ export const ProjectStickyNotes: React.FC = () => {
               <div className={cx('project-sticky-sharing')}>
                 <p className="messages-create-label">Share with project members</p>
                 <p className={cx('project-sticky-share-help')}>
-                  Leave everyone unchecked to keep this note private to you. Tagged members will
-                  be notified.
+                  Choose members to notify. With no selection, this note stays private to you.
                 </p>
-                <div className={`messages-member-list ${cx('project-sticky-recipient-list')}`}>
+                {selectedRecipients.length > 0 && (
+                  <button
+                    type="button"
+                    className={cx('project-sticky-private-action')}
+                    onClick={() => setSelectedRecipients([])}
+                  >
+                    Keep note private
+                  </button>
+                )}
+                <div
+                  className={`messages-member-list ${cx('project-sticky-recipient-list')}`}
+                  role="group"
+                  aria-label="Choose who can see this sticky note"
+                >
                   {!projectRecipients.length ? (
                     <p className="messages-list-empty">
                       No other accepted project members are available.
                     </p>
                   ) : (
                     projectRecipients.map((member) => {
-                      const isChecked = selectedRecipients.includes(member.firebaseUid);
+                      const isSelected = selectedRecipients.includes(member.firebaseUid);
                       const avatarSrc = getAvatarSource(member);
                       return (
                         <label
                           key={member.firebaseUid}
                           className={`messages-member-option project-sticky-recipient${
-                            isChecked ? ' selected' : ''
+                            isSelected ? ' selected' : ''
                           }`}
                         >
-                          <input
-                            type="checkbox"
-                            value={member.firebaseUid}
-                            checked={isChecked}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              setSelectedRecipients((prev) =>
-                                checked
-                                  ? [...prev, member.firebaseUid]
-                                  : prev.filter((id) => id !== member.firebaseUid)
-                              );
-                            }}
-                          />
                           <span className="messages-create-avatar">
                             {avatarSrc ? (
                               <img
@@ -629,7 +659,19 @@ export const ProjectStickyNotes: React.FC = () => {
                             )}
                           </span>
                           <span>{member.name}</span>
-                          <small>Project member</small>
+                          <input
+                            type="checkbox"
+                            name="sticky-note-recipient"
+                            value={member.firebaseUid}
+                            checked={isSelected}
+                            onChange={() =>
+                              setSelectedRecipients((current) =>
+                                current.includes(member.firebaseUid)
+                                  ? current.filter((uid) => uid !== member.firebaseUid)
+                                  : [...current, member.firebaseUid]
+                              )
+                            }
+                          />
                         </label>
                       );
                     })

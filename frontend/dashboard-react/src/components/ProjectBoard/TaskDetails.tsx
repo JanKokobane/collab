@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Box,
-  BarChart3,
   Calendar as CalendarIcon,
   Check,
   CheckCircle2,
@@ -16,10 +14,8 @@ import {
   Plus,
   SlidersHorizontal,
   Trash2,
-  Upload,
   UserCircle2,
   UserPlus,
-  Users,
   X
 } from 'lucide-react';
 import type {
@@ -52,7 +48,6 @@ export interface TaskDetailsProps {
   onOpenAnalysis?: () => void;
   onAddTask?: () => void;
   onToggleSubtask?: (taskId: string | number, subtaskId: string) => void;
-  onAddSubtask?: (taskId: string | number, title: string) => void;
   onAddComment?: (taskId: string | number, text: string) => void;
   onUploadAttachment?: (taskId: string | number, files: TaskAttachment[]) => void;
 }
@@ -101,14 +96,11 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
   onOpenAnalysis,
   onAddTask,
   onToggleSubtask,
-  onAddSubtask,
   onAddComment,
   onUploadAttachment
 }) => {
   const [activeTab, setActiveTab] = useState<TaskViewerTab>('overview');
   const [showAllActivity, setShowAllActivity] = useState<boolean>(false);
-  const [addingSubtask, setAddingSubtask] = useState<boolean>(false);
-  const [subtaskDraft, setSubtaskDraft] = useState<string>('');
   const [commentDraft, setCommentDraft] = useState<string>('');
   const [shareCopied, setShareCopied] = useState<boolean>(false);
   const [, setEditingTitle] = useState<boolean>(false);
@@ -132,8 +124,6 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
   const toolbarRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    setAddingSubtask(false);
-    setSubtaskDraft('');
     setBoardItems(task?.boardItems || []);
   }, [task?.id, task?.title, task?.boardItems]);
 
@@ -162,11 +152,11 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
 
   const assignees: ProjectMember[] = useMemo(() => {
     if (!task) return [];
-    if (Array.isArray(task.assignees) && task.assignees.length > 0) {
+    if (Array.isArray(task.assignees)) {
       return task.assignees;
     }
-    return project?.acceptedMembers || [];
-  }, [task, project]);
+    return [];
+  }, [task]);
 
   const ownerPerson: ProjectMember = useMemo(() => {
     if (task?.owner) return task.owner;
@@ -342,15 +332,6 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
     setBoardItems((prev) => [nextItem, ...prev]);
     setNewCardTitle('');
     setCreatingInColumn(null);
-  };
-
-  const handleAddSubtaskSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    const trimmed = subtaskDraft.trim();
-    if (!task || !trimmed) return;
-    onAddSubtask?.(task.id, trimmed);
-    setSubtaskDraft('');
-    setAddingSubtask(false);
   };
 
   const handleCommentSubmit = (event: React.FormEvent) => {
@@ -640,21 +621,6 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
         </div>
       </div>
 
-      <div className={styles['board-toolbar-right']}>
-        <button
-          type="button"
-          className={styles['board-add-new-btn']}
-          onClick={() => {
-            setCreatingInColumn('Pending');
-            if (activeTab === 'calendar' || activeTab === 'files') {
-              setActiveTab('board');
-            }
-          }}
-        >
-          <Plus size={14} strokeWidth={2.4} />
-          <span>Add New</span>
-        </button>
-      </div>
     </div>
   );
 
@@ -738,7 +704,7 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                   }`}
                 onClick={() => setActiveTab('files')}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><title>folder-1</title><g fill="none"><path d="M2 20h20V9.75H2zM9 3.5H2v6.25h20V6H11z" /><path stroke="currentColor" stroke-width="2" d="M2 9.75V20h20V9.75m-20 0h20m-20 0V3.5h7L11 6h11v3.75" /></g></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><title>folder-1</title><g fill="none"><path d="M2 20h20V9.75H2zM9 3.5H2v6.25h20V6H11z" /><path stroke="currentColor" strokeWidth="2" d="M2 9.75V20h20V9.75m-20 0h20m-20 0V3.5h7L11 6h11v3.75" /></g></svg>
                 <span>Files</span>
               </button>
             </nav>
@@ -783,7 +749,54 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                 </button>
               )}
 
-              {isProjectOwner && onAddTask && (
+              <button
+                type="button"
+                className={`${styles['header-outline-btn']} ${styles['add-task-action']}`}
+                onClick={() =>
+                  window.dispatchEvent(new CustomEvent('collab-open-project-sticky-note'))
+                }
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="1em"
+                  height="1em"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <title>sticky-notes-sharp</title>
+                  <g
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="square"
+                    strokeMiterlimit="2"
+                    strokeWidth="1.5"
+                  >
+                    <path d="M16.25 7.75h5v13.5H7.75v-5" />
+                    <path d="M4.75 2.75h11.5v9l-4.5 4.5h-9V2.75z" />
+                    <path d="M11.75 16.25v-4.5h4.5ZM6.25 7h6.5m-6.5 3.25h4" />
+                  </g>
+                </svg>
+                Add Sticky Note
+              </button>
+
+              {activeTab === 'files' && (
+                <button
+                  type="button"
+                  className={`${styles['header-outline-btn']} ${styles['upload-file-header-btn']}`}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <span className={styles['header-upload-icon']} aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" focusable="false">
+                      <path fill="currentColor" fillRule="evenodd" d="M12 2a6 6 0 0 0-5.476 3.545a23 23 0 0 1-.207.452l-.02.001C6.233 6 6.146 6 6 6a4 4 0 1 0 0 8h.172l2-2H6a2 2 0 1 1 0-4h.064c.208 0 .45.001.65-.04a1.9 1.9 0 0 0 .7-.27c.241-.156.407-.35.533-.527a2.4 2.4 0 0 0 .201-.36q.08-.167.196-.428l.004-.01a4.001 4.001 0 0 1 7.304 0l.005.01q.115.26.195.428c.046.097.114.238.201.36c.126.176.291.371.533.528c.242.156.487.227.7.27c.2.04.442.04.65.04L18 8a2 2 0 1 1 0 4h-2.172l2 2H18a4 4 0 0 0 0-8c-.146 0-.233 0-.297-.002h-.02l-.025-.053a24 24 0 0 1-.182-.4A6 6 0 0 0 12 2m5.702 4.034" clipRule="evenodd" />
+                      <path fill="currentColor" d="m12 12l-.707-.707l.707-.707l.707.707zm1 9a1 1 0 1 1-2 0zm-5.707-5.707l4-4l1.414 1.414l-4 4zm5.414-4l4 4l-1.414 1.414l-4-4zM13 12v9h-2v-9z" />
+                    </svg>
+                    <span className={styles['header-upload-plus']}>+</span>
+                  </span>
+                  <span>Upload a File</span>
+                </button>
+              )}
+
+              {activeTab === 'board' && isProjectOwner && onAddTask && (
                 <button
                   type="button"
                   className={`${styles['header-outline-btn']} ${styles['add-task-action']}`}
@@ -793,6 +806,7 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                   Add Task
                 </button>
               )}
+
 
               {onClose && (
                 <button
@@ -813,16 +827,21 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
               <button
                 type="button"
                 className={styles['quick-action-card']}
-                onClick={() => setAddingSubtask(true)}
+                onClick={onAddTask}
               >
                 <span className={styles['quick-action-icon-box']} aria-hidden="true">
-                  <Box size={18} strokeWidth={1.9} />
+                  <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" focusable="false">
+                    <g fill="none" stroke="currentColor" strokeLinecap="square" strokeMiterlimit="3.5" strokeWidth="1.5">
+                      <path d="M3 11a2 2 0 0 1 2-2h3.5l2 2H19a2 2 0 0 1 2 2v6.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+                      <path d="m6 9l-.75-4.5l5-.75L11 11m3 0l.75-8l5 .75L19 11" />
+                    </g>
+                  </svg>
                   <span className={styles['quick-action-plus-badge']}>+</span>
                 </span>
                 <span className={styles['quick-action-text']}>
-                  <span className={styles['quick-action-title']}>Create Subtask</span>
+                  <span className={styles['quick-action-title']}>Create Task</span>
                   <span className={styles['quick-action-subtitle']}>
-                    Organize deliverable to this task
+                    Add a new task to this project
                   </span>
                 </span>
               </button>
@@ -835,23 +854,10 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                   className={`${styles['quick-action-icon-box']} ${styles['assign-team-icon-box']}`}
                   aria-hidden="true"
                 >
-                  <svg width="30" height="30" viewBox="0 0 24 24" focusable="false">
-                    <g fill="none">
-                      <path fill="#ffffff" fillOpacity=".2" d="M11.8 3.9L11 4l-.9.4l-.7.4l-.8.8l-.5.6l-.4.9l-.2.9l-.1 1.1l.2.9c.1.5.4 1.1.7 1.5l.6.7l.8.6l.8.4l.9.2c.6.2 1.5.2 2.1 0l.9-.4l.8-.5l.7-.6l.6-.9l.3-.8l.2-1l.1-.9l-.2-1l-.4-.9l-.6-.8l-.6-.6l-.9-.6l-.8-.3l-.9-.2zM4.1 17.8l-.2 1c-.3 1.1-.3 3.7 1.5 3.2c.6-.1.9-1 1-1h11.8c.4 1.4 2.5 1.4 2.5-.1v-1.4l-.1-.8l-.2-.9l-.3-.7l-.5-.8l-.6-.7l-.9-.6c-1.2-1-3.1-.8-4.6-.8c-2.9 0-6.3-.6-8.4 1.9c-.4.5-.9 1.1-1 1.7" className="wm-shadow" />
-                      <path fill="#000000" d="m7.07 8.79l.4 1c.61 1.52 1.83 2.54 3.38 3.01c-1.24.09-2.5-.09-3.73.19c-2.13.49-3.89 2.61-3.89 4.81v1.7c0 .23.12.41.19.61c.13.34.26.74.51 1.01c.76.81 1.72.23 1.95-.7c.08-.03.11-.07.22-.07l11.7.01c.23 0 .44 1.15 1.4 1.11c.45-.02.83-.31 1-.72c.12-.29.07-.64.07-.95c.01-1.06.03-2.18-.47-3.15l-.68-1.33c-.7-1.36-2.33-2.3-3.82-2.46l-2.25-.06c2.25-.67 3.72-2.49 3.62-4.9c-.02-.58-.11-1.22-.37-1.74l-.6-1.21c-.31-.63-.84-1.18-1.41-1.59c-2.93-2.1-7.18-.18-7.44 3.44c-.04.65-.03 1.37.22 1.99" />
-                      <path fill="#ffffff" d="M11.12 2.5c-4.51.44-5.91 6.5-1.94 8.78c.76.44 1.64.67 2.52.64c4.68-.18 6.31-6.45 2.22-8.8c-.84-.48-1.83-.72-2.8-.62M7.61 12.89c-.61.05-1.3.33-1.82.65c-1.66 1.03-2.56 2.72-2.56 4.66c0 .49-.12 1.16.1 1.61c.52 1.09 1.85.81 2.15-.39c.08-.03.11-.07.22-.07l11.8.01l.12.06c.4 1.6 2.25 1.19 2.25-.02V18c.01-2.59-2.18-5.16-4.87-5.16l-6.5-.01z" />
-                      <path fill="#ffffff" fillOpacity=".34" d="M15.1 4.1c.6 1.4 1.2 3.1.4 4.6l-.5.8l-.5.6c-1 1.3-3 1.6-4.5 1.3c-.5-.1-1.1-.5-1.5-.6l.5.4l.8.4l.9.2l1 .1l.9-.1l.7-.2l.8-.4l.8-.7l.5-.6l.5-.9l.3-.9l.1-.8l-.1-.9l-.2-.9c-.2-.5-.6-1-.9-1.4m3.5 10.6c.3.5.7 1.2.8 1.9l.1 1v1.5c0 .9-1 1-1.6.9c.2.3.5.5 1 .5c1.2-.2 1.1-2.4.9-3.3l-.2-.9c-.2-.6-.6-1.2-1-1.6M5.1 19c-.2.8-.7 1.2-1.6 1v.1c.8.7 1.7.3 2-.7h11.6l.2-.1l-.1-.3z" />
-                      <path fill="#ffffff" fillOpacity=".17" d="M19.2 15.5c-.2.7-.2 1.5-.4 2.3s-.7 1.5-.8 2.3c.1.1.2.3.4.3c.4.1 1.4-.1 1.4-.7v-2.5c0-.4-.4-1.3-.6-1.7" />
-                      <path fill="#ffffff" fillOpacity=".075" d="m11.2 2.7l-.8.1l-.8.3l-.7.4l-.7.6l-.5.7l-.4.8c-.3.6-.4 1.7-.2 2.3l.3.8l.4.7l.6.7c.3.4.9.8 1.4.9l.8.2l.9.1c.7.1 1.7-.3 2.2-.7l.7-.6l.5-.6l.4-.7l.3-.9v-.9c.1-.5-.1-1.2-.3-1.6l-.4-.7l-.6-.7c-.3-.4-.9-.8-1.4-.9l-.8-.2zM5.6 13.9l-.8.6c-.7.7-1.3 2-1.3 3v1.8c0 .6.8.7 1.1.4c.2-.2.3-.6.4-.8c.2-.1.3-.2.5-.2h11.8c.2 0 .3.1.4.2c.3.6.4.9 1.1.9c.7-.4.5-1.4.4-2.1c-.1-1.9-1.4-4.2-3.5-4.5l-.9-.1l-2.5-.1c-1.5 0-3.4-.2-4.8.1c-.7.1-1.4.4-1.9.8" />
-                      <path fill="#ffffff" fillOpacity=".075" d="m8.2 10.2l1 .2h1l.9-.2l.9-.3l.9-.6l.7-.6l.6-.8l.4-.9c.3-.4.4-1.1.4-1.6l-.1-.9c0-.5-.4-.9-.9-1.1l-.8-.4c-2.5-1.3-5.9.9-6.2 3.7c-.1 1.1.2 2.3.9 3.2zm-.7 2.9c-1.8.2-3.7 2-4 3.8l-.1.9v1.7c0 1 1.6 1.2 1.9-.2l.3-.1H14l.2-.1c.9-1.3 1.5-3 1.3-4.6l-.2-1l-.1-.4l-6.7-.1z" />
-                      <path fill="#ffffff" fillOpacity=".075" d="M7.1 6.9c2.7 3.8 8.2-.9 4.6-4.2c-2.3-.3-4.6 1.9-4.6 4.2m.4 6.2c-1.5.1-2.8 1.3-3.5 2.6c0 .5.2 1.1.5 1.5l.5.7l.7.6l.7.4l.7.3h2.3c.3 0 .8-.3 1.1-.5l.7-.5l.5-.6l.5-.8l.3-.8l.1-.8l-.1-.9c0-.2-.2-1.3-.5-1.3H8.4z" />
-                      <path fill="#ffffff" fillOpacity=".42" d="M7.5 9.61c-.26-1.02-.55-1.67-.43-2.81c.24-2.26 2.28-4.06 4.53-4.12c.8-.02 1.52.24 2.24.42C9.63.72 5.18 5.34 7.5 9.61m.11 3.28c-.61.05-1.3.33-1.82.65c-1.81 1.12-2.56 2.77-2.56 4.86c0 .54-.05 1.04.18 1.52c.05-.77-.04-1.62.07-2.42c.2-1.61 1.44-3.48 3.03-4.03l.81-.28c.36-.12.81-.16 1.18-.16h6.4c.86 0 1.55.3 2.32.47c-.67-.35-1.43-.66-2.22-.66l-6.5-.01zm10.1 6.68l-.03.12l.13.23c0-.07.01-.21.01-.3z" />
-                      <path fill="#090909" fillOpacity=".75" d="M16.09 6.2c-.11.72 0 1.46-.23 2.2c-.53 1.69-2.01 2.99-3.76 3.26c-.59.09-1.17 0-1.74.03c3.43.79 6.44-2 5.73-5.49m3.51 10.38c-.01.42.08.87.07 1.32v1.2c0 .82-.63 1.14-1.35 1.18v.04c.66.18 1.49-.1 1.49-.92V18c0-.49-.11-.96-.21-1.42m-14.28 2.6c-.27.84-.55 1.04-1.43 1.12c.49.16 1 .13 1.32-.33c.12-.17.15-.68.4-.68l11.59-.01c.11 0 .13-.04.21-.07c-.53-.1-1.14-.06-1.71-.06h-2.8z" />
-                      <path fill="#ffffff" fillOpacity=".16" d="m7.4 5.7l-.2.8c-.2.7 0 1.5.2 2.1l.2-1.2c.1-.8.7-1.8 1.3-2.2l.7-.5c1.8-1.3 4.2-.5 5.6.9c.1 0 .2-.1.3-.1c-.1-.6-.6-1.2-1-1.6c-1.9-1.7-5-1.4-6.5.7zM5.7 14l-.8.6c-1.1.9-1.9 4.2-1.1 5.3l.2-1.7l.3-.9c.3-1 1.4-2.1 2.4-2.4l.8-.3l1.2-.2h6.4l1.3.2l.7-.7c-.8-.7-2-.8-3-.8c-2.1 0-6.9-.4-8.4.9" className="wm-shine" />
-                      <path fill="#ffffff" fillOpacity=".92" d="M8.19 9.85c-.28-.64-.58-1.31-.63-2.05c-.17-2.41 1.73-4.46 4.11-4.6c.89-.05 1.69.29 2.47.6a3.9 3.9 0 0 0-2.04-.86c-3.75-.49-6.36 3.94-3.91 6.91m-4.3 9.99l.05-.04l.01-.1v-1.5c0-.8.26-1.58.64-2.27c.7-1.26 2.02-2.12 3.44-2.33c.68-.1 1.39-.05 2.07-.05h2.7c.99 0 1.99-.04 2.98.05l.12-.12l-.02-.09c-.36-.07-.71-.14-1.08-.14H8.5c-2.63-.01-4.84 2.09-4.85 4.75c0 .41-.11 1.28.06 1.63c.05.11.13.14.18.21" className="wm-shine" />
-                    </g>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" focusable="false">
+                    <path fill="currentColor" d="M9.175 10.825Q8 9.65 8 8t1.175-2.825T12 4t2.825 1.175T16 8t-1.175 2.825T12 12t-2.825-1.175M4 20v-2.8q0-.85.438-1.562T5.6 14.55q1.55-.775 3.15-1.162T12 13t3.25.388t3.15 1.162q.725.375 1.163 1.088T20 17.2V20z" />
                   </svg>
-                  <span className={`${styles['quick-action-plus-badge']} ${styles['assign-team-plus-badge']}`}>+</span>
+                  <span className={styles['quick-action-plus-badge']}>+</span>
                 </span>
                 <span className={styles['quick-action-text']}>
                   <span className={styles['quick-action-title']}>Assign Team</span>
@@ -867,7 +873,10 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                 onClick={() => fileInputRef.current?.click()}
               >
                 <span className={styles['quick-action-icon-box']} aria-hidden="true">
-                  <Upload size={18} strokeWidth={1.9} />
+                  <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" focusable="false">
+                    <path fill="currentColor" fillRule="evenodd" d="M12 2a6 6 0 0 0-5.476 3.545a23 23 0 0 1-.207.452l-.02.001C6.233 6 6.146 6 6 6a4 4 0 1 0 0 8h.172l2-2H6a2 2 0 1 1 0-4h.064c.208 0 .45.001.65-.04a1.9 1.9 0 0 0 .7-.27c.241-.156.407-.35.533-.527a2.4 2.4 0 0 0 .201-.36q.08-.167.196-.428l.004-.01a4.001 4.001 0 0 1 7.304 0l.005.01q.115.26.195.428c.046.097.114.238.201.36c.126.176.291.371.533.528c.242.156.487.227.7.27c.2.04.442.04.65.04L18 8a2 2 0 1 1 0 4h-2.172l2 2H18a4 4 0 0 0 0-8c-.146 0-.233 0-.297-.002h-.02l-.025-.053a24 24 0 0 1-.182-.4A6 6 0 0 0 12 2m5.702 4.034" clipRule="evenodd" />
+                    <path fill="currentColor" d="m12 12l-.707-.707l.707-.707l.707.707zm1 9a1 1 0 1 1-2 0zm-5.707-5.707l4-4l1.414 1.414l-4 4zm5.414-4l4 4l-1.414 1.414l-4-4zM13 12v9h-2v-9z" />
+                  </svg>
                   <span className={styles['quick-action-plus-badge']}>+</span>
                 </span>
                 <span className={styles['quick-action-text']}>
@@ -1053,51 +1062,17 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                     })}
                   </div>
 
-                  {addingSubtask ? (
-                    <form className={styles['inline-subtask-form']} onSubmit={handleAddSubtaskSubmit}>
-                      <input
-                        type="text"
-                        className={styles['inline-subtask-input']}
-                        placeholder="Enter subtask title..."
-                        value={subtaskDraft}
-                        autoFocus
-                        onChange={(e) => setSubtaskDraft(e.target.value)}
-                      />
-                      <button type="submit" className={styles['inline-subtask-save']}>
-                        Add
-                      </button>
-                      <button
-                        type="button"
-                        className={styles['inline-subtask-cancel']}
-                        onClick={() => {
-                          setAddingSubtask(false);
-                          setSubtaskDraft('');
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </form>
-                  ) : (
-                    <button
-                      type="button"
-                      className={styles['inline-add-link']}
-                      onClick={() => setAddingSubtask(true)}
-                    >
-                      <Plus size={14} strokeWidth={2.2} />
-                      <span>Add Subtask</span>
-                    </button>
-                  )}
                 </section>
               </div>
 
               {/* Right Column */}
               <aside className={styles['overview-right-col']} aria-label="Task Summary">
-                <h2 className={styles['section-title']}>Summary</h2>
+                <h2 className={`${styles['section-title']} ${styles['summary-heading']} ${styles['summary-section-heading']}`}>Summary</h2>
 
-                <div className={styles['summary-status-card']}>
-                  <div className={styles['summary-top-bar']} aria-hidden="true" />
-                  <div className={styles['summary-status-body']}>
-                    <h3 className={styles['summary-status-title']}>{summaryHeadline}</h3>
+                <div className={styles['summary-gradient-border']}>
+                  <div className={styles['summary-status-card']}>
+                    <div className={styles['summary-status-body']}>
+                    <h3 className={`${styles['summary-status-title']} ${styles['summary-heading']}`}>{summaryHeadline}</h3>
                     <p className={styles['summary-status-copy']}>
                       This task focuses on delivering clear milestones within{' '}
                       {project?.name || 'the project'}.
@@ -1142,9 +1117,10 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                     </div>
                   </div>
                 </div>
+                </div>
 
                 <div className={styles['recent-activity-card']}>
-                  <h3 className={styles['recent-activity-title']}>Recent Activity</h3>
+                  <h3 className={`${styles['recent-activity-title']} ${styles['summary-heading']}`}>Recent Activity</h3>
                   <div className={styles['activity-timeline']}>
                     {activityItems.map((item) => (
                       <div key={item.id} className={styles['activity-item']}>
@@ -1161,7 +1137,7 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
 
                   <button
                     type="button"
-                    className={styles['activity-view-all-btn']}
+                    className={styles['recent-activity-view-all-button']}
                     onClick={() => setShowAllActivity((prev) => !prev)}
                   >
                     {showAllActivity ? 'Show Less' : 'View All'}
@@ -1172,7 +1148,7 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                       <input
                         type="text"
                         className={styles['comment-input']}
-                        placeholder="Add a comment or update..."
+                        placeholder="Add a comment..."
                         value={commentDraft}
                         onChange={(e) => setCommentDraft(e.target.value)}
                       />
@@ -1246,7 +1222,7 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                       <tr>
                         <td colSpan={7}>
                           <div className={styles['empty-board-notice']}>
-                            No tasks match the active filters. Click &ldquo;Add New&rdquo; or reset filters.
+                            No tasks match the active filters. Adjust or reset the filters.
                           </div>
                         </td>
                       </tr>
@@ -1668,7 +1644,10 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
 
           {/* FILES TAB */}
           {activeTab === 'files' && (
-            <section className={styles['tab-panel-card']} aria-label="Task Attachments">
+            <section
+              className={`${styles['tab-panel-card']} ${styles['files-deliverables-panel']}`}
+              aria-label="Task Attachments"
+            >
               <div className={styles['tab-panel-header']}>
                 <div>
                   <h2 className={styles['section-title']}>Files &amp; Deliverables</h2>
@@ -1676,14 +1655,6 @@ export const TaskDetails: React.FC<TaskDetailsProps> = ({
                     Specifications, design files, and deliverables attached to {task.title}.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className={styles['tab-panel-btn']}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload size={14} />
-                  <span>Upload a File</span>
-                </button>
               </div>
 
               <div className={styles['files-list']}>

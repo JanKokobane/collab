@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  BarChart3,
   Calendar as CalendarIcon,
   Check,
   ChevronLeft,
@@ -19,11 +18,14 @@ export interface ProjectOverviewProps {
   allProjects?: Project[];
   tasks: TaskItem[];
   allTasks?: TaskItem[];
+  sprintsLoading?: boolean;
+  sprintsLoadError?: string;
+  onRetrySprints?: () => void;
   canViewTaskMetrics: boolean;
   onSelectProject?: (projectId: string) => void;
   onOpenProgressAside: (taskId: string | number) => void;
   onToggleTaskDone: (taskId: string | number) => void;
-  onAddTask?: (projectId: string, title: string) => void;
+  onCreateSprint?: (projectId: string) => void;
 }
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -70,22 +72,21 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   project,
   allProjects,
   tasks,
-  allTasks,
   canViewTaskMetrics,
+  sprintsLoading = false,
+  sprintsLoadError = '',
+  onRetrySprints,
   onOpenProgressAside,
   onToggleTaskDone,
-  onAddTask
+  onCreateSprint
 }) => {
   const [taskFilter, setTaskFilter] = useState<'all' | 'pending'>('all');
   const [timeframe, setTimeframe] = useState<'Weekly' | 'Monthly'>('Weekly');
   const [activityTab, setActivityTab] = useState<'all' | 'unread' | 'mentions'>('all');
-  const [newTaskTitle, setNewTaskTitle] = useState<string>('');
   const [spotlightOffset, setSpotlightOffset] = useState<number>(0);
   const [dismissedActivityIds, setDismissedActivityIds] = useState<Record<string, boolean>>({});
 
   const projectPool = allProjects && allProjects.length > 0 ? allProjects : [project];
-  const taskPool = allTasks && allTasks.length > 0 ? allTasks : tasks;
-
   const completedCount = tasks.filter((t) => t.status === 'Done').length;
   const inProgressCount = tasks.filter((t) => t.status === 'In progress').length;
   const todoCount = tasks.filter((t) => t.status === 'To do' || t.status === 'Backlog').length;
@@ -101,7 +102,6 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     const dueDate = (task.date || task.due_date || '').slice(0, 10);
     return dueDate && dueDate >= todayKey && dueDate <= dueSoonLimitKey && task.status !== 'Done';
   }).length;
-  const projectRingCircumference = 2 * Math.PI * 36;
   const visibleTasks = useMemo(() => {
     return tasks.filter((t) => (taskFilter === 'pending' ? t.status !== 'Done' : true));
   }, [tasks, taskFilter]);
@@ -116,14 +116,6 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     return [ordered[start], ordered[(start + 1) % ordered.length]];
   }, [project, projectPool, spotlightOffset]);
   const detailsProject = spotlightProjects[0] || project;
-  const detailsTasks = taskPool.filter((task) => task.projectId === detailsProject.projectId);
-  const detailsCompletedCount = detailsTasks.filter((task) => task.status === 'Done').length;
-  const detailsCompletionPercentage = detailsTasks.length > 0
-    ? Math.round((detailsCompletedCount / detailsTasks.length) * 100)
-    : 0;
-  const detailsRingOffset =
-    projectRingCircumference * (1 - detailsCompletionPercentage / 100);
-
   const showPreviousProject = () =>
     setSpotlightOffset((prev) =>
       prev === 0 ? Math.max(0, projectPool.length - 1) : prev - 1
@@ -209,66 +201,72 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     }));
   }, [tasks, timeframe]);
 
-  const handleQuickAddSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = newTaskTitle.trim();
-    if (!trimmed) return;
-    onAddTask?.(project.projectId, trimmed);
-    setNewTaskTitle('');
-  };
-
   return (
     <div className={styles['overview-canvas']}>
       <div className={styles['overview-layout']}>
         {/* LEFT MAIN COLUMN */}
         <div className={styles['main-col']}>
           {/* Task metric cards */}
-          {canViewTaskMetrics && (
-            <section className={styles['kpi-grid']} aria-label="Project Metrics">
-              <div className={styles['kpi-card']}>
-                <div className={styles['kpi-count-row']}>
-                  <AnimatedMetric value={tasks.length} />
-                  <AnimatedAnalyticsGraphic />
-                </div>
-                <span className={styles['kpi-label']}>Total tasks</span>
+          <div className={styles['metrics-section']}>
+            {onCreateSprint && (
+              <div className={styles['metrics-actions']}>
+                <button
+                  type="button"
+                  className={styles['create-task-button']}
+                  onClick={() => onCreateSprint?.(project.projectId)}
+                >
+                  <Plus size={14} strokeWidth={2.5} />
+                  Create Sprint
+                </button>
               </div>
-              <div className={styles['kpi-card']}>
-                <div className={styles['kpi-count-row']}>
-                  <AnimatedMetric value={todoCount} />
-                  <AnimatedAnalyticsGraphic variant="pending" />
+            )}
+            {canViewTaskMetrics && (
+              <section className={styles['kpi-grid']} aria-label="Project Metrics">
+                <div className={styles['kpi-card']}>
+                  <div className={styles['kpi-count-row']}>
+                    <AnimatedMetric value={tasks.length} />
+                    <AnimatedAnalyticsGraphic />
+                  </div>
+                  <span className={styles['kpi-label']}>Total tasks</span>
                 </div>
-                <span className={styles['kpi-label']}>Pending tasks</span>
-              </div>
-              <div className={styles['kpi-card']}>
-                <div className={styles['kpi-count-row']}>
-                  <AnimatedMetric value={inProgressCount} />
-                  <AnimatedAnalyticsGraphic variant="in-progress" />
+                <div className={styles['kpi-card']}>
+                  <div className={styles['kpi-count-row']}>
+                    <AnimatedMetric value={todoCount} />
+                    <AnimatedAnalyticsGraphic variant="pending" />
+                  </div>
+                  <span className={styles['kpi-label']}>Pending tasks</span>
                 </div>
-                <span className={styles['kpi-label']}>In progress</span>
-              </div>
-              <div className={styles['kpi-card']}>
-                <div className={styles['kpi-count-row']}>
-                  <AnimatedMetric value={completedCount} />
-                  <AnimatedAnalyticsGraphic variant="complete" />
+                <div className={styles['kpi-card']}>
+                  <div className={styles['kpi-count-row']}>
+                    <AnimatedMetric value={inProgressCount} />
+                    <AnimatedAnalyticsGraphic variant="in-progress" />
+                  </div>
+                  <span className={styles['kpi-label']}>In progress</span>
                 </div>
-                <span className={styles['kpi-label']}>Complete tasks</span>
-              </div>
-              <div className={styles['kpi-card']}>
-                <div className={styles['kpi-count-row']}>
-                  <AnimatedMetric value={overdueCount} />
-                  <AnimatedAnalyticsGraphic variant="overdue" />
+                <div className={styles['kpi-card']}>
+                  <div className={styles['kpi-count-row']}>
+                    <AnimatedMetric value={completedCount} />
+                    <AnimatedAnalyticsGraphic variant="complete" />
+                  </div>
+                  <span className={styles['kpi-label']}>Complete tasks</span>
                 </div>
-                <span className={styles['kpi-label']}>Overdue tasks</span>
-              </div>
-              <div className={styles['kpi-card']}>
-                <div className={styles['kpi-count-row']}>
-                  <AnimatedMetric value={dueSoonCount} />
-                  <AnimatedAnalyticsGraphic variant="due-soon" />
+                <div className={styles['kpi-card']}>
+                  <div className={styles['kpi-count-row']}>
+                    <AnimatedMetric value={overdueCount} />
+                    <AnimatedAnalyticsGraphic variant="overdue" />
+                  </div>
+                  <span className={styles['kpi-label']}>Overdue tasks</span>
                 </div>
-                <span className={styles['kpi-label']}>Due soon</span>
-              </div>
-            </section>
-          )}
+                <div className={styles['kpi-card']}>
+                  <div className={styles['kpi-count-row']}>
+                    <AnimatedMetric value={dueSoonCount} />
+                    <AnimatedAnalyticsGraphic variant="due-soon" />
+                  </div>
+                  <span className={styles['kpi-label']}>Due soon</span>
+                </div>
+              </section>
+            )}
+          </div>
 
           {/* Full Project Descriptions + Assignees Card */}
           <section
@@ -325,17 +323,6 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                             </span>
                           ))}
                         </div>
-                        <button
-                          type="button"
-                          className={styles['team-add-btn']}
-                          title="Assign team member"
-                          aria-label="Assign team member"
-                          onClick={() =>
-                            document.getElementById('overview-add-task-input')?.focus()
-                          }
-                        >
-                          <Plus size={12} strokeWidth={2.6} />
-                        </button>
                       </div>
                     </div>
 
@@ -345,7 +332,66 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
             </div>
           </section>
 
-          {/* Bottom Split: Task Progress + Recent Tasks */}
+          <section className={`${styles['panel-card']} ${styles['project-sprints']}`} id="project-sprints">
+            <div className={styles['panel-head']}>
+              <div>
+                <h2 className={styles['section-heading']}>Project Sprints</h2>
+                <span className={styles['project-sprints-count']}>
+                  {project.sprints.length} planned
+                </span>
+              </div>
+            </div>
+            {sprintsLoading ? (
+              <div className={styles['empty-state-box']} role="status">
+                Loading project sprints…
+              </div>
+            ) : sprintsLoadError ? (
+              <div className={styles['sprints-error']} role="alert">
+                <span>{sprintsLoadError}</span>
+                {onRetrySprints && (
+                  <button type="button" onClick={onRetrySprints}>
+                    Retry
+                  </button>
+                )}
+              </div>
+            ) : project.sprints.length === 0 ? (
+              <div className={styles['empty-state-box']}>No sprints in this project yet.</div>
+            ) : (
+              <div className={styles['project-sprints-list']}>
+                {project.sprints.map((sprint) => {
+                  const startDate = sprint.startDate || sprint.start_date;
+                  const dueDate =
+                    sprint.dueDate || sprint.due_date || sprint.endDate || sprint.end_date;
+
+                  return (
+                    <article
+                      className={styles['project-sprint-card']}
+                      key={sprint.id || sprint.sprintId || sprint.name}
+                    >
+                      <div className={styles['project-sprint-card-heading']}>
+                        <h3>{sprint.name}</h3>
+                        <span>{sprint.status || 'Upcoming'}</span>
+                      </div>
+                      {sprint.description && (
+                        <p className={styles['project-sprint-description']}>
+                          {sprint.description}
+                        </p>
+                      )}
+                      {(startDate || dueDate) && (
+                        <p className={styles['project-sprint-dates']}>
+                          {startDate ? `Starts ${String(startDate).slice(0, 10)}` : ''}
+                          {startDate && dueDate ? ' · ' : ''}
+                          {dueDate ? `Due ${String(dueDate).slice(0, 10)}` : ''}
+                        </p>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* Bottom Split: Task Progress + Recent  Tasks */}
           <div className={styles['bottom-split-grid']}>
             {/* Task Progress Card */}
             {canViewTaskMetrics && (
@@ -440,7 +486,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                   <div className={styles['empty-state-box']}>
                     {taskFilter === 'pending'
                       ? 'All tasks in this project are completed.'
-                      : 'No tasks in this project yet. Add one below.'}
+                      : 'No tasks in this project yet.'}
                   </div>
                 ) : (
                   visibleTasks.map((task) => {
@@ -517,20 +563,6 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                 )}
               </div>
 
-              <form className={styles['add-subtask-bar']} onSubmit={handleQuickAddSubmit}>
-                <div className={styles['add-subtask-inner']}>
-                  <input
-                    id="overview-add-task-input"
-                    type="text"
-                    placeholder="Add new task"
-                    value={newTaskTitle}
-                    onChange={(e) => setNewTaskTitle(e.target.value)}
-                  />
-                  <button type="submit" aria-label="Add new task">
-                    <Plus size={15} strokeWidth={2.5} />
-                  </button>
-                </div>
-              </form>
             </section>
 
             <aside

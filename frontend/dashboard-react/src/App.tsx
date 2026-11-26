@@ -40,15 +40,10 @@ const DashboardShell: React.FC = () => {
     activeView,
     isMobileSidebarOpen,
     setMobileSidebarOpen,
-    asideTaskId,
-    projects
+    asideTaskId
   } = useDashboard();
 
   const isMessagesView = activeView === 'Messages';
-  const showStickyNotes =
-    activeView === 'My Tasks' ||
-    projects.some((p) => p.name === activeView || p.projectId === activeView);
-
   const renderActiveView = () => {
     switch (activeView) {
       case 'Workspace':
@@ -98,7 +93,7 @@ const DashboardShell: React.FC = () => {
             </div>
           )}
 
-          {showStickyNotes && <ProjectStickyNotes />}
+          <ProjectStickyNotes />
           {asideTaskId !== null && <ProjectProgressAside />}
         </main>
       </div>

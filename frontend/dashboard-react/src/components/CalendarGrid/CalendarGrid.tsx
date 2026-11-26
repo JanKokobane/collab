@@ -3,7 +3,6 @@ import { useDashboard } from '../../context/DashboardContext';
 import type { TaskItem } from '../../types/dashboard';
 import { createCx } from '../../utils/cx';
 import {
-  addDaysToDateKey,
   getDateDayOffset,
   isValidDateKey,
   normalizeDateKey,
@@ -595,63 +594,10 @@ export const ScheduleCalendarPicker: React.FC<ScheduleCalendarPickerProps> = ({
     return next;
   };
 
-  const applyPreset = (preset: 'today' | 'tomorrow' | 'week' | 'next-week') => {
-    const start = clamp(todayKey);
-    let end = start;
-    if (preset === 'tomorrow') {
-      end = clamp(addDaysToDateKey(todayKey, 1));
-    } else if (preset === 'week') {
-      end = clamp(addDaysToDateKey(todayKey, 7));
-    } else if (preset === 'next-week') {
-      end = clamp(addDaysToDateKey(todayKey, 14));
-    }
-    if (end < start) end = start;
-    onChange({ startDate: start, dueDate: end });
-  };
-
   return (
     <div className={cx('cal-schedule-picker-card')}>
       <div className={cx('cal-schedule-header')}>
         <div className={cx('cal-schedule-title')}>Task Timeline</div>
-        <div className={cx('cal-schedule-summary')}>
-          <span>🗓️</span>
-          <span>
-            {formatHumanDateLabel(startDate)} — {formatHumanDateLabel(dueDate)}
-          </span>
-        </div>
-      </div>
-
-      <div className={cx('cal-schedule-presets')}>
-        <button
-          type="button"
-          className={cx('cal-preset-pill', {
-            active: startDate === todayKey && dueDate === todayKey
-          })}
-          onClick={() => applyPreset('today')}
-        >
-          Today
-        </button>
-        <button
-          type="button"
-          className={cx('cal-preset-pill')}
-          onClick={() => applyPreset('tomorrow')}
-        >
-          Tomorrow
-        </button>
-        <button
-          type="button"
-          className={cx('cal-preset-pill')}
-          onClick={() => applyPreset('week')}
-        >
-          This Week
-        </button>
-        <button
-          type="button"
-          className={cx('cal-preset-pill')}
-          onClick={() => applyPreset('next-week')}
-        >
-          Next Week
-        </button>
       </div>
 
       <div

@@ -108,9 +108,7 @@
 .comment-composer,
 .board-toolbar,
 .board-toolbar-left,
-.board-toolbar-right,
 .toolbar-filter-btn,
-.board-add-new-btn,
 .board-column-header,
 .col-header-actions,
 .board-card-top,
@@ -196,6 +194,42 @@
   background: transparent;
 }
 
+.task-viewer-shell .task-tabs-actions .upload-file-header-btn,
+.task-viewer-shell .task-tabs-actions .upload-file-header-btn:hover {
+  border-color: transparent;
+  color: var(--ink-600);
+  background: transparent;
+}
+
+.header-upload-icon {
+  position: relative;
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+}
+
+.header-upload-icon svg {
+  display: block;
+}
+
+.header-upload-plus {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: grid;
+  width: 11px;
+  height: 11px;
+  place-items: center;
+  border: 1px solid var(--surface);
+  border-radius: 50%;
+  color: #ffffff;
+  background: var(--blue-600);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .task-viewer-shell .task-tabs-actions .header-outline-btn.share-action-btn:hover {
   border-color: transparent;
 }
@@ -248,8 +282,16 @@
 }
 
 .filter-option-btn:hover,
+.filter-option-btn.is-active {
+  color: var(--ink-700);
+  background: var(--surface-muted);
+}
+
+.toolbar-popover .filter-option-btn + .filter-option-btn {
+  margin-top: 4px;
+}
+
 .card-action-option:hover,
-.filter-option-btn.is-active,
 .card-action-option.is-current {
   color: var(--blue-700);
   background: var(--blue-50);
@@ -339,27 +381,38 @@
   min-height: 76px;
   padding: 14px;
   border-radius: 12px;
+  background: var(--surface);
   cursor: pointer;
   text-align: left;
   transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
+.quick-action-card:nth-child(1) {
+  background: linear-gradient(135deg, var(--surface) 0%, rgba(34, 197, 94, 0.07) 100%);
+}
+
+.quick-action-card:nth-child(2) {
+  background: linear-gradient(135deg, var(--surface) 0%, rgba(168, 85, 247, 0.07) 100%);
+}
+
+.quick-action-card:nth-child(3) {
+  background: linear-gradient(135deg, var(--surface) 0%, rgba(245, 158, 11, 0.08) 100%);
+}
+
 .quick-action-card:hover {
   border-color: #93c5fd;
   box-shadow: 0 12px 25px rgba(37, 99, 235, 0.1);
-  transform: translateY(-2px);
+  transform: scale(1.04);
 }
 
 .quick-action-icon-box {
   position: relative;
+  order: 2;
+  margin-left: auto;
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  color: var(--blue-700);
-  background: var(--blue-50);
-}
-
-.assign-team-icon-box {
+  color: #000000;
   background: transparent;
 }
 
@@ -384,13 +437,9 @@
   line-height: 1;
 }
 
-.assign-team-plus-badge {
-  color: #ffffff;
-  background: #d4af37;
-}
-
 .quick-action-text {
   display: flex;
+  order: 1;
   min-width: 0;
   flex-direction: column;
   gap: 4px;
@@ -427,6 +476,10 @@
 
 .overview-left-col {
   overflow: hidden;
+}
+
+.files-deliverables-panel {
+  margin-top: 5px;
 }
 
 .section-title {
@@ -498,9 +551,8 @@
 }
 
 .add-role-btn,
-.inline-add-link,
 .task-placeholder-action,
-.activity-view-all-btn {
+.recent-activity-view-all-button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -512,10 +564,16 @@
 }
 
 .add-role-btn:hover,
-.inline-add-link:hover,
 .task-placeholder-action:hover,
-.activity-view-all-btn:hover {
+.recent-activity-view-all-button:hover {
   color: var(--ink-950);
+}
+
+.task-viewer-shell .recent-activity-view-all-button {
+  min-height: 0;
+  padding: 0;
+  font-size: 10px;
+  line-height: normal;
 }
 
 .tasks-table {
@@ -617,7 +675,6 @@
   height: 28px;
 }
 
-.inline-subtask-form,
 .inline-new-card {
   display: flex;
   align-items: center;
@@ -630,7 +687,6 @@
   background: var(--surface-soft);
 }
 
-.inline-subtask-input,
 .inline-new-card input,
 .inline-new-card select,
 .comment-input {
@@ -643,7 +699,6 @@
   font-size: 11px;
 }
 
-.inline-subtask-input,
 .inline-new-card input {
   min-width: 180px;
   flex: 1;
@@ -654,7 +709,6 @@
   padding: 0 8px;
 }
 
-.inline-subtask-input:focus,
 .inline-new-card input:focus,
 .inline-new-card select:focus,
 .comment-input:focus {
@@ -683,26 +737,21 @@
   background: var(--surface);
 }
 
-.inline-add-link {
-  margin-top: 13px;
-  padding: 0;
-}
-
 .overview-right-col {
   position: sticky;
   top: 18px;
 }
 
-.summary-status-card {
-  overflow: hidden;
-  border: 1px solid var(--line);
+.summary-gradient-border {
+  padding: 1px;
   border-radius: 13px;
-  background: var(--surface-soft);
+  background: var(--line-strong);
 }
 
-.summary-top-bar {
-  height: 5px;
-  background: linear-gradient(90deg, var(--blue-700), #38bdf8);
+.summary-status-card {
+  overflow: hidden;
+  border-radius: 11px;
+  background: var(--surface-soft);
 }
 
 .summary-status-body {
@@ -715,6 +764,18 @@
   font-size: 16px;
   font-weight: 750;
   letter-spacing: -0.025em;
+}
+
+.summary-heading {
+  color: #000000;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.summary-section-heading {
+  font-size: 12px;
 }
 
 .summary-status-copy,
@@ -826,7 +887,7 @@
   color: var(--ink-400);
 }
 
-.activity-view-all-btn {
+.recent-activity-view-all-button {
   margin-top: 15px;
   padding: 0;
 }
@@ -853,8 +914,7 @@
   font-weight: 700;
 }
 
-.comment-submit:hover,
-.board-add-new-btn:hover {
+.comment-submit:hover {
   background: var(--blue-600);
 }
 
@@ -870,14 +930,12 @@
   box-shadow: 0 5px 18px rgba(15, 23, 42, 0.04);
 }
 
-.board-toolbar-left,
-.board-toolbar-right {
+.board-toolbar-left {
   flex-wrap: wrap;
   gap: 7px;
 }
 
-.toolbar-filter-btn,
-.board-add-new-btn {
+.toolbar-filter-btn {
   gap: 6px;
   min-height: 32px;
   padding: 0 9px;
@@ -885,15 +943,19 @@
   border-radius: 7px;
   color: var(--ink-600);
   background: var(--surface);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
+}
+
+.task-viewer-shell .toolbar-filter-btn {
+  font-size: 12px;
 }
 
 .toolbar-filter-btn:hover,
 .toolbar-filter-btn.is-filtered {
-  border-color: #93c5fd;
-  color: var(--blue-700);
-  background: var(--blue-50);
+  border-color: var(--line-strong);
+  color: var(--ink-700);
+  background: var(--surface-muted);
 }
 
 .toolbar-filter-key {
@@ -907,6 +969,10 @@
 .toolbar-popover {
   top: calc(100% + 7px);
   left: 0;
+}
+
+.task-viewer-shell .toolbar-popover button {
+  font-size: 11px;
 }
 
 .toolbar-filter-badge {
@@ -940,11 +1006,7 @@
   text-align: left;
 }
 
-.board-add-new-btn {
-  border-color: var(--ink-950);
-  color: #ffffff;
-  background: var(--ink-950);
-}
+
 
 .inline-new-card {
   max-width: 1180px;
@@ -1291,23 +1353,6 @@
   margin-bottom: 20px;
 }
 
-.tab-panel-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 34px;
-  padding: 0 11px;
-  border: 1px solid var(--ink-950);
-  border-radius: 8px;
-  color: #ffffff;
-  background: var(--ink-950);
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.tab-panel-btn:hover {
-  background: var(--blue-600);
-}
 
 .files-list {
   display: flex;
@@ -1393,9 +1438,6 @@
     flex-direction: column;
   }
 
-  .board-toolbar-right {
-    justify-content: flex-end;
-  }
 }
 
 @media (max-width: 600px) {

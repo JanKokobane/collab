@@ -158,6 +158,8 @@ export interface ProjectSprint {
   end_date?: string | null;
   dueDate?: string | null;
   status?: string;
+  projectId?: string;
+  attachments?: MediaAttachment[];
   memberFirebaseUids?: string[];
   member_firebase_uids?: string[];
   assigneeFirebaseUid?: string;
@@ -259,7 +261,13 @@ export interface TaskItem {
   done?: boolean;
   progress: number;
   sprint?: string;
+  sprintId?: string;
+  sprint_id?: string;
   sprintMembers?: ProjectMember[];
+  assigneeFirebaseUid?: string | null;
+  assignee_firebase_uid?: string | null;
+  assigneeName?: string;
+  assigneeProfileImage?: string;
   submission_status?: string;
   taskSubmissionStatus?: string;
   taskSubmissionNote?: string;
@@ -447,6 +455,7 @@ export interface ProjectStickyNote {
   zIndex?: number;
   sharedWith?: ProjectMember[];
   shared_with?: ProjectMember[];
+  recipients?: Array<{ firebaseUid: string; name?: string; profileImage?: string }>;
   isOwner?: boolean;
   is_owner?: boolean;
   hidden?: boolean;
@@ -683,6 +692,7 @@ export type ActiveModalState =
       projectId?: string;
       defaultStatus?: TaskStatus;
       defaultDate?: string;
+      sprintId?: string;
       prefill?: {
         title?: string;
         description?: string;

@@ -2,7 +2,14 @@ const { pool, isDatabaseConnected } = require('../config/db');
 
 const getProjectTaskRecipients = async (client, projectId) => {
     const result = await client.query(
-        'SELECT creator_firebase_uid, sprints FROM projects WHERE project_id = $1',
+        `SELECT creator_firebase_uid,
+                COALESCE((
+                    SELECT jsonb_agg(sprint.details)
+                    FROM project_sprints sprint
+                    WHERE sprint.project_id = projects.project_id
+                ), '[]'::jsonb) AS sprints
+         FROM projects
+         WHERE project_id = $1`,
         [projectId]
     );
     const project = result.rows[0];

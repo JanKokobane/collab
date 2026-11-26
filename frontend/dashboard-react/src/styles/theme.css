@@ -963,7 +963,7 @@ form.modal {
     right: 16px;
     background: none;
     border: 0;
-    font-size: 20px;
+    font-size: 24px;
     color: #71717A;
     cursor: pointer;
     line-height: 1;
@@ -1130,9 +1130,9 @@ form.modal {
 .project-task-tags-priority-row {
 
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     align-items: end;
-    gap: 14px;
+    gap: 10px;
 
 }
 
@@ -1897,6 +1897,130 @@ body.dark-mode .project-task-row-meta-value, [data-theme="dark"] .project-task-r
 
 }
 
+.project-task-assignee-options {
+
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 4px);
+    left: 0;
+    display: grid;
+    width: min(360px, calc(100vw - 64px));
+    max-height: 260px;
+    gap: 4px;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 8px;
+    border: 1px solid #DCE5E2;
+    border-radius: 9px;
+    background: #FFFFFF;
+    box-shadow: 0 8px 24px rgba(24, 24, 27, .14);
+
+}
+
+.project-task-assignee-option {
+
+    display: grid;
+    min-height: 42px;
+    grid-template-columns: 34px minmax(0, 1fr) 16px;
+    align-items: center;
+    gap: 9px;
+    padding: 5px 8px;
+    border: 1px solid #E5EBE9;
+    border-radius: 8px;
+    cursor: pointer;
+
+}
+
+.project-task-assignee-option.selected, .project-task-assignee-option:hover {
+
+    border-color: #A8CEC4;
+    background: #F1F8F6;
+
+}
+
+.project-task-assignee-option > span:nth-child(2) {
+
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+}
+
+.project-task-assignee-option input[type="radio"] {
+
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: #287B6E;
+
+}
+
+.project-task-assignee-option-avatar {
+
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border-radius: 50%;
+    background: #E6EFEC;
+    color: #176B63;
+    font-size: 13px;
+    font-weight: 750;
+
+}
+
+.project-task-assignee-option .messages-create-avatar img {
+
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+
+}
+
+.project-task-editor-modal .project-task-assignee-picker {
+
+    width: 100%;
+
+}
+
+.project-task-editor-modal .project-task-assignee-picker .project-task-tag-picker-summary {
+
+    width: 100%;
+
+}
+
+.project-task-editor-modal .project-task-assignee-field {
+
+    display: grid;
+    gap: 7px;
+    position: relative;
+
+}
+
+body.dark-mode .project-task-assignee-options, [data-theme="dark"] .project-task-assignee-options {
+
+    border-color: #383844;
+    background: #202028;
+
+}
+
+body.dark-mode .project-task-assignee-option, [data-theme="dark"] .project-task-assignee-option {
+
+    border-color: #383844;
+    color: #F4F4F6;
+
+}
+
+body.dark-mode .project-task-assignee-option.selected, body.dark-mode .project-task-assignee-option:hover,
+[data-theme="dark"] .project-task-assignee-option.selected, [data-theme="dark"] .project-task-assignee-option:hover {
+
+    border-color: #287B6E;
+    background: #12352F;
+
+}
+
 .project-task-tag-options {
 
     position: absolute;
@@ -1904,11 +2028,11 @@ body.dark-mode .project-task-row-meta-value, [data-theme="dark"] .project-task-r
     top: calc(100% + 4px);
     left: 0;
     display: grid;
-    width: 100%;
-    max-height: 210px;
+    width: min(280px, calc(100vw - 64px));
+    max-height: 240px;
     grid-template-columns: minmax(0, 1fr);
     gap: 3px;
-    overflow: auto;
+    overflow: hidden;
     box-sizing: border-box;
     padding: 9px;
     border: 1px solid #DCE5E2;
@@ -1942,8 +2066,10 @@ form.modal .project-task-tag-options input.project-task-tag-search {
 .project-task-tag-option-list {
 
     display: grid;
+    max-height: 180px;
     grid-template-columns: minmax(0, 1fr);
     gap: 3px;
+    overflow-y: auto;
 
 }
 
@@ -3988,6 +4114,18 @@ body.dark-mode select option:checked, [data-theme="dark"] select option:checked 
 
 }
 
+.project-task-editor-header {
+
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 20px 60px 18px 24px;
+    border-radius: 15px 15px 0 0;
+    background: #000000;
+
+}
+
 
 .messages-create-eyebrow {
 
@@ -4007,8 +4145,25 @@ body.dark-mode select option:checked, [data-theme="dark"] select option:checked 
 
 }
 
+.project-task-editor-modal h2 {
+
+    color: #FFFFFF;
+    font-size: 21px;
+    line-height: 1.25;
+
+}
+
 
 .messages-create-modal .modal-copy {
+
+    margin: 0;
+    color: #D4D4D8;
+    font-size: 13px;
+    line-height: 1.5;
+
+}
+
+.project-task-editor-header .modal-copy {
 
     margin: 0;
     color: #D4D4D8;
@@ -4033,10 +4188,46 @@ body.dark-mode select option:checked, [data-theme="dark"] select option:checked 
 
 }
 
+.project-task-editor-header .close-modal {
+
+    top: 18px;
+    right: 18px;
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border-radius: 9px;
+    background: #27272A;
+    color: #FFFFFF;
+    font-size: 22px;
+
+}
+
 
 .messages-create-modal .close-modal:hover {
 
     background: #3F3F46;
+    color: #FFFFFF;
+
+}
+
+.project-task-editor-header .close-modal:hover {
+
+    background: #3F3F46;
+    color: #FFFFFF;
+
+}
+
+.project-task-editor-modal .project-task-submit-button {
+
+    border-radius: 50%;
+    color: #FFFFFF;
+    font-size: 12px;
+
+}
+
+.project-task-editor-modal .project-task-submit-button:hover {
+
     color: #FFFFFF;
 
 }
@@ -5546,5 +5737,85 @@ body.dark-mode .notification-settings-table .settings-notification-title .notif-
     color: var(--ink);
     font-size: 12px;
     overflow-wrap: anywhere;
+
+}
+
+.project-task-editor-modal .project-task-tags-priority-row > label {
+
+    position: relative;
+    gap: 3px;
+    line-height: 14px;
+
+}
+
+.project-task-editor-modal .project-task-tags-priority-row {
+
+    align-items: start;
+
+}
+
+.project-task-editor-modal .project-task-tags-priority-row .project-task-tag-field {
+
+    gap: 3px;
+
+}
+
+.project-task-editor-modal .project-task-tags-priority-row .project-task-control-title {
+
+    padding-left: 10px;
+
+}
+
+.project-task-editor-modal .project-task-tags-priority-row .project-task-tag-label {
+
+    padding-left: 4px;
+
+}
+
+.project-task-editor-modal .project-task-tags-priority-row .project-task-tag-picker-summary,
+.project-task-editor-modal .project-task-tags-priority-row select {
+
+    border: 2px solid rgba(161, 161, 170, .02);
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: none;
+    padding: 4px 6px;
+    font-size: 12px;
+    transition: color .15s ease, transform .15s ease;
+    transform-origin: center;
+
+}
+
+.project-task-editor-modal .project-task-tags-priority-row .project-task-tag-picker-summary::after {
+
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    content: '';
+    background: var(--dashboard-dropdown-chevron) center / contain no-repeat;
+
+}
+
+.project-task-editor-modal .project-task-tags-priority-row .project-task-tag-picker[open] .project-task-tag-picker-summary::after {
+
+    content: '';
+
+}
+
+.project-task-editor-modal .project-task-tags-priority-row .project-task-tag-picker-summary:hover,
+.project-task-editor-modal .project-task-tags-priority-row select:hover {
+
+    position: relative;
+    z-index: 1;
+    transform: scale(1.04);
+
+}
+
+.project-task-editor-modal .project-task-tags-priority-row .project-task-tag-picker-summary:focus-visible,
+.project-task-editor-modal .project-task-tags-priority-row select:focus-visible {
+
+    border: 2px solid rgba(161, 161, 170, .02);
+    outline: none;
+    box-shadow: none;
 
 }

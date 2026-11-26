@@ -2,25 +2,6 @@ const { pool, query } = require('../config/db');
 const { reconcileUserConversationAccess } = require('../realtime/messageSocket');
 
 
-const sprintSequenceNumber = name => {
-    const match = String(name || '').match(/^\s*Sprint\s+(\d+)\b/i);
-    return match ? Number(match[1]) : null;
-};
-
-const sortSprintsBySequence = sprints => sprints
-    .map((sprint, originalIndex) => ({ sprint, originalIndex }))
-    .sort((first, second) => {
-        const firstNumber = sprintSequenceNumber(first.sprint?.name);
-        const secondNumber = sprintSequenceNumber(second.sprint?.name);
-        if (firstNumber !== null && secondNumber !== null && firstNumber !== secondNumber) {
-            return firstNumber - secondNumber;
-        }
-        if (firstNumber !== null && secondNumber === null) return -1;
-        if (firstNumber === null && secondNumber !== null) return 1;
-        return first.originalIndex - second.originalIndex;
-    })
-    .map(({ sprint }) => sprint);
-
 const sprintMemberUids = sprint => {
     const members = Array.isArray(sprint?.memberFirebaseUids)
         ? sprint.memberFirebaseUids
@@ -137,8 +118,6 @@ const createProject = async (req, res) => {
 
         const invitedMembers = [];
 
-        const projectSprints = Array.isArray(sprints) ? sprints : [];
-
         const creatorEmail =
             req.firebaseEmail ||
             req.firebaseUser?.email ||
@@ -227,7 +206,7 @@ const createProject = async (req, res) => {
             creatorName,
             creatorInitials,
             JSON.stringify(invitedMembers),
-            JSON.stringify(projectSprints)
+            JSON.stringify([])
         ];
 
         client = await pool.connect();
@@ -396,7 +375,27 @@ const getProjects = async (req, res) => {
                     ),
                     '[]'::json
                 ) AS accepted_members,
-                sprints,
+                COALESCE(
+                    (
+                        SELECT jsonb_agg(
+                            sprint.details || jsonb_build_object(
+                                'id', sprint.sprint_id::text,
+                                'sprintId', sprint.sprint_id::text,
+                                'projectId', sprint.project_id,
+                                'name', sprint.name,
+                                'description', sprint.description,
+                                'status', sprint.status,
+                                'startDate', sprint.start_date::text,
+                                'dueDate', sprint.due_date::text,
+                                'attachments', sprint.attachments
+                            )
+                            ORDER BY sprint.created_at, sprint.sprint_id
+                        )
+                        FROM project_sprints sprint
+                        WHERE sprint.project_id = projects.project_id
+                    ),
+                    '[]'::jsonb
+                ) AS sprints,
                 created_at,
                 updated_at
             FROM projects
@@ -512,7 +511,27 @@ const getProject = async (req, res) => {
                     ),
                     '[]'::json
                 ) AS accepted_members,
-                sprints,
+                COALESCE(
+                    (
+                        SELECT jsonb_agg(
+                            sprint.details || jsonb_build_object(
+                                'id', sprint.sprint_id::text,
+                                'sprintId', sprint.sprint_id::text,
+                                'projectId', sprint.project_id,
+                                'name', sprint.name,
+                                'description', sprint.description,
+                                'status', sprint.status,
+                                'startDate', sprint.start_date::text,
+                                'dueDate', sprint.due_date::text,
+                                'attachments', sprint.attachments
+                            )
+                            ORDER BY sprint.created_at, sprint.sprint_id
+                        )
+                        FROM project_sprints sprint
+                        WHERE sprint.project_id = projects.project_id
+                    ),
+                    '[]'::jsonb
+                ) AS sprints,
                 created_at,
                 updated_at
             FROM projects
@@ -585,9 +604,16 @@ const updateProject = async (req, res) => {
             time_span,
             description,
             color,
-            invited_members,
-            sprints
+            invited_members
         } = req.body;
+
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, 'sprints')) {
+            return res.status(400).json({
+                success: false,
+                code: 'SPRINTS_USE_PROJECT_SPRINT_ENDPOINT',
+                message: 'Create or update sprints using the project sprints endpoint.'
+            });
+        }
 
         /*
          * First confirm the project belongs to
@@ -670,90 +696,11 @@ const updateProject = async (req, res) => {
                 ? invited_members
                 : current.invited_members;
 
-        let updatedSprints =
-            sprints !== undefined
-                ? sprints
-                : current.sprints;
-
         if (!Array.isArray(updatedMembers)) {
             return res.status(400).json({
                 success: false,
                 code: 'INVALID_INVITED_MEMBERS',
                 message: 'invited_members must be an array.'
-            });
-        }
-
-        if (!Array.isArray(updatedSprints)) {
-            return res.status(400).json({
-                success: false,
-                code: 'INVALID_SPRINTS',
-                message: 'sprints must be an array.'
-            });
-        }
-
-        if (sprints !== undefined) {
-            const invalidSprint = updatedSprints.find(sprint =>
-                !sprint || typeof sprint !== 'object' || Array.isArray(sprint) ||
-                (sprint.memberFirebaseUids !== undefined && !Array.isArray(sprint.memberFirebaseUids)) ||
-                (sprint.member_firebase_uids !== undefined && !Array.isArray(sprint.member_firebase_uids)) ||
-                [sprint.memberFirebaseUids, sprint.member_firebase_uids]
-                    .filter(Array.isArray)
-                    .some(memberUids => memberUids.some(uid =>
-                        typeof uid !== 'string' || !uid.trim()
-                    ))
-            );
-            if (invalidSprint) {
-                return res.status(400).json({
-                    success: false,
-                    code: 'INVALID_SPRINT_MEMBERS',
-                    message: 'Each sprint must contain a valid memberFirebaseUids array.'
-                });
-            }
-            updatedSprints = updatedSprints.map(sprint => {
-                const normalizedMembers = sprintMemberUids(sprint);
-                const sprintDetails = { ...sprint };
-                delete sprintDetails.member_firebase_uids;
-                delete sprintDetails.assigneeFirebaseUid;
-                delete sprintDetails.assignee_firebase_uid;
-                delete sprintDetails.assigneeName;
-                delete sprintDetails.assignee_name;
-                delete sprintDetails.assigneeProfileImage;
-                delete sprintDetails.assignee_profile_image;
-                return {
-                    ...sprintDetails,
-                    memberFirebaseUids: normalizedMembers
-                };
-            });
-        }
-
-        const sprintMemberNotifications = [];
-        if (sprints !== undefined) {
-            const currentSprints = Array.isArray(current.sprints) ? current.sprints : [];
-            const sprintsById = new Map(
-                currentSprints
-                    .filter(sprint => sprint?.id !== undefined && sprint?.id !== null)
-                    .map(sprint => [String(sprint.id), sprint])
-            );
-            const sprintsByName = new Map(
-                currentSprints
-                    .filter(sprint => typeof sprint?.name === 'string')
-                    .map(sprint => [sprint.name, sprint])
-            );
-
-            updatedSprints.forEach((sprint, sprintIndex) => {
-                const previousSprint =
-                    (sprint?.id !== undefined && sprint?.id !== null
-                        ? sprintsById.get(String(sprint.id))
-                        : null) ||
-                    sprintsByName.get(sprint?.name) ||
-                    currentSprints[sprintIndex];
-                const previousMembers = new Set(sprintMemberUids(previousSprint));
-                sprintMemberUids(sprint)
-                    .filter(memberUid => !previousMembers.has(memberUid))
-                    .forEach(memberFirebaseUid => sprintMemberNotifications.push({
-                        memberFirebaseUid,
-                        sprintName: typeof sprint.name === 'string' ? sprint.name : 'Project sprint'
-                    }));
             });
         }
 
@@ -766,10 +713,9 @@ const updateProject = async (req, res) => {
                 description = $4,
                 color = $5,
                 invited_members = $6::jsonb,
-                sprints = $7::jsonb,
                 updated_at = NOW()
-            WHERE project_id = $8
-              AND creator_firebase_uid = $9
+            WHERE project_id = $7
+              AND creator_firebase_uid = $8
             RETURNING
                 id,
                 project_id,
@@ -785,7 +731,6 @@ const updateProject = async (req, res) => {
                 creator_name,
                 creator_initials,
                 invited_members,
-                sprints,
                 created_at,
                 updated_at
         `;
@@ -797,110 +742,42 @@ const updateProject = async (req, res) => {
             updatedDescription,
             updatedColor,
             JSON.stringify(updatedMembers),
-            JSON.stringify(updatedSprints),
             projectId,
             firebaseUid
         ];
-        let result;
-        let createdNotifications = [];
-        if (sprints !== undefined) {
-            const client = await pool.connect();
-            try {
-                await client.query('BEGIN');
-                const memberUids = [
-                    ...new Set(updatedSprints
-                        .flatMap(sprintMemberUids)
-                        .filter(uid => uid !== current.creator_firebase_uid))
-                ];
-                if (memberUids.length) {
-                    const acceptedMembers = await client.query(
-                        `
-                            SELECT invited_firebase_uid
-                            FROM project_invitations
-                            WHERE project_id = $1
-                              AND status = 'accepted'
-                              AND invited_firebase_uid = ANY($2::text[])
-                        `,
-                        [projectId, memberUids]
-                    );
-                    const acceptedUids = new Set(
-                        acceptedMembers.rows.map(row => row.invited_firebase_uid)
-                    );
-                    const invalidMember = memberUids.find(uid => !acceptedUids.has(uid));
-                    if (invalidMember) {
-                        await client.query('ROLLBACK');
-                        return res.status(400).json({
-                            success: false,
-                            code: 'INVALID_SPRINT_MEMBER',
-                            message: 'Sprint members must be the project owner or accepted invitees.'
-                        });
-                    }
-                }
-
-                result = await client.query(sql, values);
-                if (!result.rowCount) {
-                    await client.query('ROLLBACK');
-                    return res.status(404).json({
-                        success: false,
-                        code: 'PROJECT_NOT_FOUND',
-                        message: 'Project not found.'
-                    });
-                }
-                for (const assignment of sprintMemberNotifications.filter(
-                    item => item.memberFirebaseUid !== current.creator_firebase_uid
-                )) {
-                    const notification = await client.query(
-                        `
-                            INSERT INTO notifications (
-                                recipient_firebase_uid,
-                                project_id,
-                                type,
-                                title,
-                                detail,
-                                avatar,
-                                tone_class
-                            )
-                            VALUES ($1, $2, 'sprint_assigned', $3, $4, $5, 'blue-bg')
-                            RETURNING
-                                id,
-                                project_id,
-                                type,
-                                title,
-                                detail,
-                                avatar,
-                                tone_class,
-                                is_read,
-                                created_at
-                        `,
-                        [
-                            assignment.memberFirebaseUid,
-                            projectId,
-                            'You have been added to a sprint',
-                            `You are a member of "${assignment.sprintName}" in "${updatedName}".`,
-                            current.creator_initials || '•'
-                        ]
-                    );
-                    createdNotifications.push(notification.rows[0]);
-                }
-                await client.query('COMMIT');
-            } catch (error) {
-                await client.query('ROLLBACK').catch(rollbackError => {
-                    console.error('Project sprint update rollback error:', rollbackError);
-                });
-                throw error;
-            } finally {
-                client.release();
-            }
-        } else {
-            result = await query(sql, values);
+        const result = await query(sql, values);
+        if (!result.rowCount) {
+            return res.status(404).json({
+                success: false,
+                code: 'PROJECT_NOT_FOUND',
+                message: 'Project not found.'
+            });
         }
+        const sprintResult = await query(
+            `SELECT sprint.details || jsonb_build_object(
+                        'id', sprint.sprint_id::text,
+                        'sprintId', sprint.sprint_id::text,
+                        'projectId', sprint.project_id,
+                        'name', sprint.name,
+                        'description', sprint.description,
+                        'status', sprint.status,
+                        'startDate', sprint.start_date::text,
+                        'dueDate', sprint.due_date::text,
+                        'attachments', sprint.attachments
+                    ) AS sprint
+             FROM project_sprints sprint
+             WHERE sprint.project_id = $1
+             ORDER BY sprint.created_at, sprint.sprint_id`,
+            [projectId]
+        );
+        result.rows[0].sprints = sprintResult.rows.map(row => row.sprint);
 
         return res.status(200).json({
             success: true,
             message: 'Project updated successfully.',
             data: {
                 project: result.rows[0],
-                notifications: createdNotifications
+                notifications: []
             }
         });
     } catch (error) {
@@ -1045,7 +922,7 @@ const submitProjectSprint = async (req, res) => {
         client = await pool.connect();
         await client.query('BEGIN');
         const projectResult = await client.query(
-            `SELECT project_id, name, creator_firebase_uid, creator_initials, sprints
+            `SELECT project_id, name, creator_firebase_uid, creator_initials
              FROM projects
              WHERE project_id = $1
              FOR UPDATE`,
@@ -1061,7 +938,26 @@ const submitProjectSprint = async (req, res) => {
         }
 
         const project = projectResult.rows[0];
-        const sprints = Array.isArray(project.sprints) ? project.sprints : [];
+        const sprintResult = await client.query(
+            `SELECT sprint_id, name, description, status, start_date::text,
+                    due_date::text, attachments, details
+             FROM project_sprints
+             WHERE project_id = $1
+             ORDER BY created_at, sprint_id
+             FOR UPDATE`,
+            [projectId]
+        );
+        const sprints = sprintResult.rows.map(row => ({
+            ...(row.details || {}),
+            id: row.sprint_id,
+            sprintId: row.sprint_id,
+            name: row.name,
+            description: row.description,
+            status: row.status,
+            startDate: row.start_date,
+            dueDate: row.due_date,
+            attachments: row.attachments || []
+        }));
         const sprintIndex = sprints.findIndex(sprint => sprint?.name === sprintName.trim());
         if (sprintIndex < 0) {
             await client.query('ROLLBACK');
@@ -1137,11 +1033,16 @@ const submitProjectSprint = async (req, res) => {
             reviewComment: ''
         };
         const saved = await client.query(
-            `UPDATE projects
-             SET sprints = $1::jsonb, updated_at = NOW()
-             WHERE project_id = $2
-             RETURNING project_id, sprints`,
-            [JSON.stringify(sprints), projectId]
+            `UPDATE project_sprints
+             SET status = $1, details = $2::jsonb, updated_at = NOW()
+             WHERE project_id = $3 AND sprint_id = $4
+             RETURNING sprint_id, project_id, name, status, details`,
+            [
+                sprints[sprintIndex].status,
+                JSON.stringify(sprints[sprintIndex]),
+                projectId,
+                sprintResult.rows[sprintIndex].sprint_id
+            ]
         );
         if (!saved.rowCount) {
             throw new Error('Sprint submission update did not persist.');
@@ -1176,7 +1077,7 @@ const submitProjectSprint = async (req, res) => {
                 ? 'Sprint completed successfully.'
                 : 'Sprint submitted for owner review.',
             ...(notificationWarning ? { notificationWarning } : {}),
-            data: { project: saved.rows[0] }
+            data: { sprint: saved.rows[0] }
         });
     } catch (error) {
         await client?.query('ROLLBACK').catch(rollbackError => {
@@ -1230,7 +1131,7 @@ const reviewProjectSprint = async (req, res) => {
         client = await pool.connect();
         await client.query('BEGIN');
         const projectResult = await client.query(
-            `SELECT project_id, name, creator_firebase_uid, creator_initials, sprints
+            `SELECT project_id, name, creator_firebase_uid, creator_initials
              FROM projects
              WHERE project_id = $1
              FOR UPDATE`,
@@ -1254,7 +1155,26 @@ const reviewProjectSprint = async (req, res) => {
                 message: 'Only the project owner can review sprint submissions.'
             });
         }
-        const sprints = Array.isArray(project.sprints) ? project.sprints : [];
+        const sprintResult = await client.query(
+            `SELECT sprint_id, name, description, status, start_date::text,
+                    due_date::text, attachments, details
+             FROM project_sprints
+             WHERE project_id = $1
+             ORDER BY created_at, sprint_id
+             FOR UPDATE`,
+            [projectId]
+        );
+        const sprints = sprintResult.rows.map(row => ({
+            ...(row.details || {}),
+            id: row.sprint_id,
+            sprintId: row.sprint_id,
+            name: row.name,
+            description: row.description,
+            status: row.status,
+            startDate: row.start_date,
+            dueDate: row.due_date,
+            attachments: row.attachments || []
+        }));
         const sprintIndex = sprints.findIndex(sprint => sprint?.name === sprintName.trim());
         if (sprintIndex < 0) {
             await client.query('ROLLBACK');
@@ -1301,11 +1221,16 @@ const reviewProjectSprint = async (req, res) => {
             ]
         };
         const saved = await client.query(
-            `UPDATE projects
-             SET sprints = $1::jsonb, updated_at = NOW()
-             WHERE project_id = $2
-             RETURNING project_id, sprints`,
-            [JSON.stringify(sprints), projectId]
+            `UPDATE project_sprints
+             SET status = $1, details = $2::jsonb, updated_at = NOW()
+             WHERE project_id = $3 AND sprint_id = $4
+             RETURNING sprint_id, project_id, name, status, details`,
+            [
+                sprints[sprintIndex].status,
+                JSON.stringify(sprints[sprintIndex]),
+                projectId,
+                sprintResult.rows[sprintIndex].sprint_id
+            ]
         );
         if (!saved.rowCount) {
             throw new Error('Sprint review update did not persist.');
@@ -1344,7 +1269,7 @@ const reviewProjectSprint = async (req, res) => {
             success: true,
             message: decision === 'accept' ? 'Sprint submission accepted.' : 'Changes requested on sprint.',
             ...(notificationWarning ? { notificationWarning } : {}),
-            data: { project: saved.rows[0] }
+            data: { sprint: saved.rows[0] }
         });
     } catch (error) {
         await client?.query('ROLLBACK').catch(rollbackError => {

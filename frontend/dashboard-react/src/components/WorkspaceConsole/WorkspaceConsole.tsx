@@ -60,13 +60,6 @@ function taskDateLabel(value?: string | null): string {
     : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function renumberSprintName(name: string, number: number): string {
-  const title = String(name || 'Sprint')
-    .replace(/^Sprint\s+\d+\s*:\s*/i, '')
-    .trim();
-  return `Sprint ${number}: ${title || 'Untitled'}`;
-}
-
 function getSafeExternalUrl(url?: string | null): string | null {
   const raw = String(url || '').trim();
   if (!raw) return null;
@@ -338,25 +331,18 @@ export const WorkspaceConsole: React.FC = () => {
 
     const confirmed = await showDashboardConfirmation({
       title: 'Remove project sprint?',
-      message: `Remove "${sprint.name}" and update the numbering of the remaining sprints?`,
+      message: `Remove "${sprint.name}"?`,
       confirmLabel: 'Remove sprint',
       destructive: true
     });
     if (!confirmed) return;
 
-    const remainingSprints = sprints
-      .filter((_, idx) => idx !== sprintIndex)
-      .map((item, idx) => ({
-        ...item,
-        name: renumberSprintName(item.name, idx + 1)
-      }));
-
     const sprintKey = `${project.projectId}:${sprintIndex}`;
     setRemovingSprintKey(sprintKey);
     try {
-      await api.put(`/projects/${encodeURIComponent(project.projectId)}`, {
-        sprints: remainingSprints
-      });
+      await api.delete(
+        `/projects/${encodeURIComponent(project.projectId)}/sprints/${encodeURIComponent(String(sprint.sprintId || sprint.id))}`
+      );
       await loadProjectsFromAPI({ silent: true });
       showDashboardToast('Sprint removed.', 'success');
     } catch (error: any) {
