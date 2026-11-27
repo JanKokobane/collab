@@ -89,7 +89,7 @@ const normalizeTaskSubmissionLinks = value => {
 };
 
 const allowedStatuses = new Set(['Backlog', 'To do', 'In progress', 'Blocked', 'Done']);
-const allowedPriorities = new Set(['low', 'medium', 'high']);
+const allowedPriorities = new Set(['none', 'low', 'medium', 'high', 'urgent']);
 const allowedTaskTags = new Set([
     'Accessibility',
     'Blocked',
@@ -569,6 +569,15 @@ const validateTaskProjectTimeline = (project, task) => {
 
 const getProjectTasks = async (req, res) => {
     try {
+        const sprintId = req.query.sprintId || null;
+        if (sprintId !== null && (typeof sprintId !== 'string' || !uuidPattern.test(sprintId))) {
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_SPRINT_ID',
+                message: 'Sprint ID is invalid.'
+            });
+        }
+
         const project = await getProjectAndCheckAccess(req.params.projectId, req.firebaseUid);
         if (!project) {
             return res.status(404).json({
@@ -680,6 +689,7 @@ const getProjectTasks = async (req, res) => {
                       )
                 ) dependencies ON TRUE
                 WHERE t.project_id = $1
+                  AND ($4::uuid IS NULL OR t.sprint_id = $4::uuid)
                   AND (
                     $3::boolean = FALSE
                     OR p.creator_firebase_uid = $2
@@ -704,7 +714,7 @@ const getProjectTasks = async (req, res) => {
                   )
                 ORDER BY t.created_at, t.title
             `,
-            [project.project_id, req.firebaseUid, req.query.assignedToMe === 'true']
+            [project.project_id, req.firebaseUid, req.query.assignedToMe === 'true', sprintId]
         );
         return res.status(200).json({
             success: true,

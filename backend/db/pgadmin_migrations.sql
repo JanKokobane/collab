@@ -665,7 +665,7 @@ INSERT INTO schema_migrations (version) VALUES ('024_collaboration_context_featu
 -- Migration: 025_project_task_priority.sql
 ALTER TABLE project_tasks
     ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'medium'
-        CHECK (priority IN ('low', 'medium', 'high'));
+        CHECK (priority IN ('none', 'low', 'medium', 'high', 'urgent'));
 INSERT INTO schema_migrations (version) VALUES ('025_project_task_priority.sql');
 
 -- Migration: 025_project_timeline_dates.sql
